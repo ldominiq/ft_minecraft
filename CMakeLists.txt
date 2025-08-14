@@ -6,10 +6,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
 # Glad
-add_library(glad glad/src/glad.c)
-target_include_directories(glad PUBLIC glad/include)
-set_target_properties(glad PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
+FetchContent_Declare(
+  glad
+  GIT_REPOSITORY git@github.com:ldominiq/GLAD-4.6.git
+  GIT_TAG main
+)
+FetchContent_MakeAvailable(glad)
 
 # GLFW
 FetchContent_Declare(
@@ -66,6 +68,9 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/shaders)
   file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${CMAKE_BINARY_DIR})
 endif()
 
+
+
+
 # ---------------------------------------------------------------------------
 # ImGui integration
 # ---------------------------------------------------------------------------
@@ -119,12 +124,25 @@ add_custom_command(
 add_custom_target(copy_shaders ALL DEPENDS ${CMAKE_BINARY_DIR}/shaders_timestamp)
 add_dependencies(${PROJECT_NAME} copy_shaders)
 
+add_library(glad STATIC
+  ${glad_SOURCE_DIR}/src/glad.c
+)
+
+target_include_directories(glad PUBLIC
+  ${glad_SOURCE_DIR}/include
+)
+
+set_target_properties(glad PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+
+
+target_link_libraries(${PROJECT_NAME} PRIVATE glad)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   include
   ${glm_SOURCE_DIR}
   ${fastnoise_SOURCE_DIR}/Cpp
-  glad/include
+  ${glad_SOURCE_DIR}/include
   ${stb_SOURCE_DIR}
   ${imgui_SOURCE_DIR}
 )
