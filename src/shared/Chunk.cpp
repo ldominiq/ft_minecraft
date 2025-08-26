@@ -1,5 +1,4 @@
 #include "Chunk.hpp"
-#include "World.hpp"
 
 // This function maps block type + face to UV offset
 glm::vec2 getTextureOffset(const BlockType type, const int face) {
@@ -74,6 +73,11 @@ Chunk::Chunk(const int chunkX, const int chunkZ, const TerrainGenerationParams& 
     	generate(params);
 	else preGenerated = true;
     	
+}
+
+Chunk::Chunk(std::istream& in) : blockIndices(WIDTH * HEIGHT * DEPTH, /*bitsPerEntry=*/4)
+{
+	loadFromStream(in);
 }
 
 Chunk::~Chunk() {
@@ -561,7 +565,6 @@ void Chunk::uploadMesh() {
     meshVertices.shrink_to_fit();
 }
 
-
 void Chunk::addFace(int x, int y, int z, int face) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
@@ -645,12 +648,6 @@ void Chunk::addFace(int x, int y, int z, int face) {
         meshVertices.push_back(normal.y);
         meshVertices.push_back(normal.z);
     }
-}
-
-void Chunk::draw(const std::shared_ptr<Shader>& shader) const {
-    shader->use();
-    glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 9);
 }
 
 void Chunk::saveToStream(std::ostream& out) const {

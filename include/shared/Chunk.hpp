@@ -5,26 +5,34 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/noise.hpp>
-
 #include <glad/glad.h>
+
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
 #include <ostream>
-#include "Shader.hpp"
-#include "FastNoiseLite.h"
 
 #include <random>
 #include <unordered_set>
 #include <queue>
 #include <memory>
 
+#include "FastNoiseLite.h"
 #include "Block.hpp"
 #include "BitPackedArray.hpp"
 #include "TerrainParams.hpp"
 
 class World;
 class BlockStorage;
+
+using ChunkPos = std::pair<int32_t, int32_t>;
+
+template <>
+struct std::hash<ChunkPos> {
+    std::size_t operator()(const ChunkPos& p) const noexcept {
+        return std::hash<int32_t>()(p.first) ^ (std::hash<int32_t>()(p.second) << 1);
+    }
+};
 
 struct IVec3Hash {
     size_t operator()(const glm::ivec3& v) const {
@@ -61,47 +69,8 @@ enum class BiomeType {
 };
 
 class Chunk {
-public:
-	static constexpr int WIDTH = 16; // Size of the chunck in blocks
-	static constexpr int HEIGHT = 256; // Height of the chunck in blocks
-	static constexpr int DEPTH = 16; // Depth of the chunck in blocks
-    static constexpr int BLOCK_COUNT = WIDTH * HEIGHT * DEPTH;
-	const int ATLAS_COLS = 8;
-	const int ATLAS_ROWS = 1;
 
-    Chunk(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
-	Chunk() = default;
-	~Chunk();
-    
-    void carveWorm(Worm& worm, BlockStorage &blocks);
-    void generate(const TerrainGenerationParams& terrainParams);
-
-    BlockType getBlock(int x, int y, int z) const;
-	void setBlock(int x, int y, int z, BlockType block);
-
-	bool isBlockVisible(glm::ivec3 blockPos);
-
-    void draw(const std::shared_ptr<Shader> &shaderProgram) const; // Draw the chunk using the given shader program
-
-	void setAdjacentChunks(int direction, std::shared_ptr<Chunk> &chunk);
-	bool hasAllAdjacentChunkLoaded() const;
-
-	void saveToStream(std::ostream& out) const;
-	void loadFromStream(std::istream& in);
-
-	void buildMesh(); // Build the mesh for rendering
-	void buildMeshData();
-	void uploadMesh();
-
-	bool preGenerated = false;
-
-	BlockType selectBlockType(int y, int surfaceHeight, float blend, const std::vector<BiomeParams>& biomes, const std::vector<float>& weights, const std::vector<float>& heights);
-
-
-private:
-	TerrainGenerationParams currentParams;
-
-	glm::ivec3 getGlobalCoords() const { return glm::ivec3(originX, 0, originZ); }
+	TerrainGenerationParams currentParams; //unused on client - Maybe move generation to World
 
 	int sourceChunkX; // X coordinate of the chunk in the world
 	int sourceChunkZ; // Z coordinate of the chunk in the world
@@ -119,6 +88,49 @@ private:
     std::vector<float> meshVertices; // Vertices for the mesh
 
     void addFace(int x, int y, int z, int face); // Add a face to the mesh vertices
+
+public:
+	static constexpr int WIDTH = 16; // Size of the chunck in blocks
+	static constexpr int HEIGHT = 256; // Height of the chunck in blocks
+	static constexpr int DEPTH = 16; // Depth of the chunck in blocks
+    static constexpr int BLOCK_COUNT = WIDTH * HEIGHT * DEPTH;
+	const int ATLAS_COLS = 8;
+	const int ATLAS_ROWS = 1;
+
+    Chunk(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
+	Chunk(std::istream& in);
+	~Chunk();
+    
+    void carveWorm(Worm& worm, BlockStorage &blocks);
+    void generate(const TerrainGenerationParams& terrainParams);
+
+    BlockType getBlock(int x, int y, int z) const;
+	void setBlock(int x, int y, int z, BlockType block);
+
+	bool isBlockVisible(glm::ivec3 blockPos);
+
+	void setAdjacentChunks(int direction, std::shared_ptr<Chunk> &chunk);
+	bool hasAllAdjacentChunkLoaded() const;
+
+	void saveToStream(std::ostream& out) const;
+	void loadFromStream(std::istream& in);
+
+	void buildMesh(); // Build the mesh for rendering
+	void buildMeshData();
+	void uploadMesh();
+
+	inline const std::pair<int32_t, int32_t> getCoords() const {return std::make_pair(originX, originZ);}
+	inline const GLuint getVao() const {return VAO;}
+	inline const uint getMeshVerticesSize() const {return meshVerticesSize;}
+
+	static inline ChunkPos toKey(int32_t chunkX, int32_t chunkZ) {
+		return std::make_pair(chunkX, chunkZ);
+	}
+
+	bool preGenerated = false;
+
+	BlockType selectBlockType(int y, int surfaceHeight, float blend, const std::vector<BiomeParams>& biomes, const std::vector<float>& weights, const std::vector<float>& heights);
+
 };
 
 class BlockStorage {
