@@ -28,7 +28,6 @@ private:
     int sockfd;
     uint8_t buffer[MAXLINE];
     struct sockaddr_in servaddr;
-    socklen_t len;
 	std::chrono::_V2::steady_clock::time_point currTick;
 
 	std::vector<CPlayerInfo> players;

@@ -68,7 +68,7 @@ void Server::loop() {
 		
 		// 1. Poll sockets (non-blocking)
 		while (true) {
-			ssize_t n = recvfrom(sockfd, buffer, MAXLINE, 0, (sockaddr*)&cliaddr, &len);
+			ssize_t n = recvfrom(sockfd, buffer, MAXLINE, 0, (sockaddr*)&cliaddr, &addrLen);
 			if (n < 0) {
 				if (errno == EWOULDBLOCK || errno == EAGAIN) break; // no more packets
 				perror("recvfrom error");

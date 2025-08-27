@@ -99,6 +99,7 @@ bool World::isBlockVisibleWorld(glm::ivec3 globalCoords)
 	return currChunk->isBlockVisible(glm::vec3(x, y ,z));
 }
 
+//TODO change it. removing from memory based on player loadRadius makes no sense
 void World::handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadius) {
 	if (!outOfMemory) {
 		try {
