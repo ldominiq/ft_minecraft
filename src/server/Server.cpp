@@ -108,6 +108,12 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
             break;
 		}
 
+		case PacketType::PLAYER_MOUSE_INPUT: {
+			auto& p = static_cast<NetPlayerMouseInputs&>(*pkt);
+			receivePlayerMouseInputs(p, cliaddr);
+			break;
+		}
+
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
@@ -145,17 +151,31 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	player->updatePosition(pkt, deltaTime);
 }
 
+void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &cliaddr)
+{
+	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (!player)
+		return ;
+
+	player->lastPktRecvTick = currTick;
+	world->processPlayerMouseInputs(*player, pkt);
+}
+
 void Server::sendAll()
 {
+	std::vector<std::pair<glm::ivec3, BlockType>> newlyUpdatedBlocks;
+	newlyUpdatedBlocks.swap(world->updatedBlocks);
+
 	for (CPlayerInfo &p : players)
 	{
 		world->updateVisibleChunks(p);
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
-		//send mobs position
+		sendNewlyUpdatedBlocks(p, newlyUpdatedBlocks);
 		//send player position
 		//hit/dmg ..
 	}
+	newlyUpdatedBlocks.clear();
 }
 
 void Server::sendChunk(CPlayerInfo &player) {
@@ -219,6 +239,20 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.positionZ = player.getPosition().z;
 	sendPacketTo(pkt, player.addr);
 	// std::cout << "sending positions: " << pkt.positionX << " " << pkt.positionY << " " << pkt.positionZ << std::endl;
+}
+
+void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player, std::vector<std::pair<glm::ivec3, BlockType>> &newlyUpdatedBlocks)
+{
+	for (auto &block : newlyUpdatedBlocks)
+	{
+		NetModifiedBlockData pkt;
+		pkt.x = block.first.x;
+		pkt.y = block.first.y;
+		pkt.z = block.first.z;
+		pkt.blockType = static_cast<uint8_t>(block.second);
+
+		sendPacketTo(pkt, player.addr);
+	}
 }
 
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {

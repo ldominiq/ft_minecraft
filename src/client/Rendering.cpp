@@ -16,6 +16,60 @@ void Rendering::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, i
 		chunkZ--;
 }
 
+// BlockType Rendering::getBlockWorld(glm::ivec3 globalCoords)
+// {
+// 	int x, y, z;
+// 	int chunkX, chunkZ;
+// 	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
+
+// 	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
+// 	if (it == chunks.end()) {
+// 		return BlockType::AIR;
+// 	}
+// 	std::shared_ptr<Chunk> currChunk = it->second;
+// 	return currChunk->getBlock(x, y, z);
+// }
+
+void Rendering::setBlockWorld(glm::vec3 &targetCoords, BlockType type)
+{
+    int x, y, z;
+    int chunkX, chunkZ;
+    globalCoordsToLocalCoords(x, y, z, 
+        targetCoords.x, targetCoords.y, targetCoords.z, 
+        chunkX, chunkZ);
+
+    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
+    if (it == chunks.end())
+        return;
+
+    std::shared_ptr<Chunk> currChunk = it->second;
+
+    currChunk->setBlock(x, y, z, type);
+	currChunk->buildMesh();
+
+	// //update possible neighbour
+	if (x == 0) {
+		if (auto westChunk = currChunk->getAdjacentChunks()[WEST].lock()) {
+			westChunk->buildMesh();
+		}
+	}
+	if (x == Chunk::WIDTH - 1) {
+		if (auto eastChunk = currChunk->getAdjacentChunks()[EAST].lock()) {
+			eastChunk->buildMesh();
+		}
+	}
+	if (z == 0) {
+		if (auto southChunk = currChunk->getAdjacentChunks()[SOUTH].lock()) {
+			southChunk->buildMesh();
+		}
+	}
+	if (z == Chunk::DEPTH - 1) {
+		if (auto northChunk = currChunk->getAdjacentChunks()[NORTH].lock()) {
+			northChunk->buildMesh();
+		}
+	}
+}
+
 bool Rendering::isBlockVisibleWorld(glm::ivec3 globalCoords)
 {
 	int x, y, z;
@@ -45,7 +99,6 @@ void Rendering::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<Chunk> &ch
     const int dirZ[] = { 1, -1, 0, 0 };
     const int opp[]  = { SOUTH, NORTH, WEST, EAST };
 
-	std::cout << chunkX << " " << chunkZ << std::endl;
     for (int dir = 0; dir < 4; ++dir) {
         int nx = chunkX + dirX[dir];
         int nz = chunkZ + dirZ[dir];
@@ -70,13 +123,18 @@ std::vector<std::weak_ptr<Chunk>> Rendering::getRenderedChunks()
 	return renderedChunks;
 }
 
+void Rendering::updateChunk(const NetModifiedBlockData &pkt)
+{
+	glm::vec3 targetCoords = glm::vec3(pkt.x, pkt.y, pkt.z);
+	setBlockWorld(targetCoords, static_cast<BlockType>(pkt.blockType));
+}
+
 void Rendering::buildChunks()
 {
 	std::vector<std::future<ChunkPos>> meshFutures;
 
 	for (auto [chunkX, chunkZ] : chunksToBuild) {
 		std::shared_ptr<Chunk> currChunk = getChunk(chunkX, chunkZ);
-		std::cout << "CURRCHUNK : " << chunkX << " " << chunkZ << std::endl;
 		meshFutures.push_back(std::async(std::launch::async, [chunkX, chunkZ, currChunk]() {
 			currChunk->buildMeshData();
 			return Chunk::toKey(chunkX, chunkZ);

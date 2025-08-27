@@ -411,31 +411,32 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
     	paletteIndex = it->second;
     }
 
+	std::cout << "setting block: " << x << " " << y << " " << z << std::endl;
     blockIndices.set(index, paletteIndex);
 
-	buildMesh();
+	// buildMesh();
 
 	//update possible neighbour
-	if (x == 0) {
-		if (auto westChunk = adjacentChunks[WEST].lock()) {
-			westChunk->buildMesh();
-		}
-	}
-	if (x == WIDTH - 1) {
-		if (auto eastChunk = adjacentChunks[EAST].lock()) {
-			eastChunk->buildMesh();
-		}
-	}
-	if (z == 0) {
-		if (auto southChunk = adjacentChunks[SOUTH].lock()) {
-			southChunk->buildMesh();
-		}
-	}
-	if (z == DEPTH - 1) {
-		if (auto northChunk = adjacentChunks[NORTH].lock()) {
-			northChunk->buildMesh();
-		}
-	}
+	// if (x == 0) {
+	// 	if (auto westChunk = adjacentChunks[WEST].lock()) {
+	// 		westChunk->buildMesh();
+	// 	}
+	// }
+	// if (x == WIDTH - 1) {
+	// 	if (auto eastChunk = adjacentChunks[EAST].lock()) {
+	// 		eastChunk->buildMesh();
+	// 	}
+	// }
+	// if (z == 0) {
+	// 	if (auto southChunk = adjacentChunks[SOUTH].lock()) {
+	// 		southChunk->buildMesh();
+	// 	}
+	// }
+	// if (z == DEPTH - 1) {
+	// 	if (auto northChunk = adjacentChunks[NORTH].lock()) {
+	// 		northChunk->buildMesh();
+	// 	}
+	// }
 }
 
 bool Chunk::isBlockVisible(glm::ivec3 pos) {

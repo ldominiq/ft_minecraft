@@ -65,6 +65,24 @@ struct NetPlayerInputs final : public Packet {
 };
 inline AutoRegister<NetPlayerInputs> _reg_NetPlayerInput;
 
+struct NetPlayerMouseInputs final : public Packet {
+    static constexpr PacketType ID = PacketType::PLAYER_MOUSE_INPUT;
+
+	uint8_t mouseButtons = 0;	// bitfield
+	//uint16_t itemID // itemIDK
+
+    NetPlayerMouseInputs() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+        w.write_u8(mouseButtons);
+    }
+
+    void decode(BufferReader& r) override {
+        mouseButtons = r.read_u8();
+    }
+};
+inline AutoRegister<NetPlayerMouseInputs> _reg_NetPlayerMouseInput;
+
 // TODO : add delta compression
 struct NetPlayerMove final : public Packet {
 	static constexpr PacketType ID = PacketType::PLAYER_MOVE;
@@ -148,5 +166,29 @@ struct NetChunkData final : public Packet {
     }
 };
 inline AutoRegister<NetChunkData> _reg_NetChunkData;
+
+struct NetModifiedBlockData final : public Packet {
+	static constexpr PacketType ID = PacketType::MODIFIED_BLOCK_DATA;
+	int32_t x = 0;
+	int32_t y = 0;
+	int32_t z = 0;
+	uint8_t blockType;
+	
+	NetModifiedBlockData() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+		w.write_i32(x);
+		w.write_i32(y);
+		w.write_i32(z);
+		w.write_u8(blockType);
+    }
+    void decode(BufferReader& r) override {
+		x = r.read_i32();
+		y = r.read_i32();
+		z = r.read_i32();
+		blockType = r.read_u8();
+    }
+};
+inline AutoRegister<NetModifiedBlockData> _reg_NetModifiedBlockData;
 
 #endif

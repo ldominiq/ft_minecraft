@@ -37,7 +37,8 @@ UDPClient::~UDPClient() {
     close(sockfd);
 }
 
-void UDPClient::sendPacket(const std::vector<uint8_t> &bytes) {
+void UDPClient::sendPacket(const Packet &pkt) {
+	auto bytes = encodePacket(pkt);
 	sendto(sockfd, bytes.data(), bytes.size(), 0, (sockaddr*)&servaddr, sizeof(servaddr));
 }
 
@@ -50,32 +51,10 @@ void UDPClient::sendMessage(const char* message) {
 void UDPClient::sendConnect() {
 
 	NetConnect connectPkt;
-	connectPkt.username  = "Steve";
+	connectPkt.username  = "Stesve";
 
-	std::vector<uint8_t> bytes = encodePacket(connectPkt);
-	sendPacket(bytes);
-}
-
-void UDPClient::sendInputs(NetPlayerInputs &inputs)
-{
-	auto bytes = encodePacket(inputs);
-	sendPacket(bytes);
-}
-
-void UDPClient::sendRequestNeededChunks(std::vector<ChunkPos> &neededChunks)
-{
-	// for (auto pos : neededChunks)
-	// {
-	// 	Packet reqPkt;
-	// 	reqPkt.header.type = (uint8_t)PacketTypeClient::REQUEST_CHUNK;
-	// 	reqPkt.header.sequence = 0; // TODO: manage sequence for reliability
-	// 	reqPkt.header.flags = 0;
-	// 	reqPkt.payload = {};
-
-	// 	reqPkt.payload = serializeChunkPos(pos);
-
-	// 	sendPacket(reqPkt);
-	// }
+	// std::vector<uint8_t> bytes = encodePacket(connectPkt);
+	sendPacket(connectPkt);
 }
 
 void UDPClient::receivePacket() {

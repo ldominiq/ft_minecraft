@@ -134,6 +134,32 @@ void App::init() {
 		app->keyPressedRecently = true;
 	});
 
+	glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int button, int action, int mods) {
+		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
+		if (!app) return;
+
+		//kinda weird way to do it.
+		uint8_t mouseButtons = 0;
+		if (action == GLFW_PRESS) {
+			if (button == GLFW_MOUSE_BUTTON_LEFT) {
+				mouseButtons |= IN_LEFT_CLICK;
+			} else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+				mouseButtons |= IN_RIGHT_CLICK;
+			}
+		}
+
+		NetPlayerMouseInputs pkt;
+		pkt.mouseButtons = mouseButtons;
+		app->udpClient->sendPacket(pkt);
+
+		// else if (action == GLFW_RELEASE) {
+		// 	if (button == GLFW_MOUSE_BUTTON_LEFT) {
+		// 		app->onLeftClickReleased();
+		// 	} else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+		// 		app->onRightClickReleased();
+		// 	}
+		// }
+	});
 
     // -------------------------------------------------------------------------
     // ImGui initialization
@@ -184,6 +210,12 @@ void App::setUdpClientPacketCallback()
 				break;
 			}
 
+			case PacketType::MODIFIED_BLOCK_DATA: {
+				auto& p = static_cast<NetModifiedBlockData&>(*pkt);
+				rendering->updateChunk(p);
+				break;
+			}
+
 			// case PacketType::UPDATE_WORLD: {
 			//     auto& p = static_cast<UpdateWorld&>(*pkt);
 			//     // handle movement/world updates
@@ -223,7 +255,7 @@ void App::render() {
 		//sending/receiving packets and stuff
 		udpClient->receivePacket();
 		NetPlayerInputs inputs = buildPlayerInputsPacket();
-		udpClient->sendInputs(inputs);
+		udpClient->sendPacket(inputs);
 
 
         // Calculate delta time for frame rate
@@ -495,11 +527,6 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 
 	if (glfwGetKey(window, controlsArray[MOVE_FAST]) == GLFW_PRESS)
 		keys |= IN_RUN;
-
-	if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
-		keys |= IN_LEFT_CLICK;
-	if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
-		keys |= IN_RIGHT_CLICK;
 
 	inputs.keys = keys;
 	inputs.pitch = camera->getPitch();

@@ -19,9 +19,11 @@ enum class PacketType : uint8_t {
 	NET_CONNECT = 1,	// C2S
 	NET_ACCEPT,			// S2C
 	PLAYER_INPUT,		// C2S
+	PLAYER_MOUSE_INPUT,	// C2S
 	PLAYER_MOVE,		// S2C
 	CHUNK_HEADER,		// S2C
 	CHUNK_DATA,			// S2C
+	MODIFIED_BLOCK_DATA,// S2C
 	NET_DISCONNECT,		// C2S
 };
 
@@ -40,10 +42,13 @@ enum Inputs : uint16_t {
 	IN_UP			= 1 << 4, //jump
 	IN_DOWN			= 1 << 5,
 	IN_RUN			= 1 << 6,
-	IN_LEFT_CLICK	= 1 << 7,  // left click
-	IN_RIGHT_CLICK	= 1 << 8,  // right click
 	// IN_TOGGLE_UI	= 1 << 10, // e.g. F4
 	// … up to 16 for uint16_t, or expand to uint32_t later
+};
+
+enum MouseInputs : uint8_t {
+	IN_LEFT_CLICK	= 1 << 0,  // left click
+	IN_RIGHT_CLICK	= 1 << 1,  // right click
 };
 
 inline PacketFlags operator|(PacketFlags a, PacketFlags b){

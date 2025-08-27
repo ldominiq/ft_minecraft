@@ -102,6 +102,11 @@ class World {
 		void setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates, const CPlayerInfo &player);
 		void updatePlannedChunks(CPlayerInfo &player);
 
+		std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
+		bool getTargetedBlock(const CPlayerInfo &player, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100);
+		void removeTargettedBlock(const CPlayerInfo &player);
+		void setTargettedBlock(const CPlayerInfo &player);
+		void processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt);
 };
 
 #endif //WORLD_HPP

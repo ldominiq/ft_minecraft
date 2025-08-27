@@ -122,6 +122,8 @@ public:
 	inline const std::pair<int32_t, int32_t> getCoords() const {return std::make_pair(originX, originZ);}
 	inline const GLuint getVao() const {return VAO;}
 	inline const uint getMeshVerticesSize() const {return meshVerticesSize;}
+	inline const std::weak_ptr<Chunk>(&getAdjacentChunks() const)[4] { return adjacentChunks;}
+
 
 	static inline ChunkPos toKey(int32_t chunkX, int32_t chunkZ) {
 		return std::make_pair(chunkX, chunkZ);

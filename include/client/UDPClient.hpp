@@ -33,16 +33,13 @@ public:
 
 	void setCallback(std::function<void(const PacketPtr&)> cb) { onPacket = std::move(cb); }
 
-	void sendPacket(const std::vector<uint8_t> &bytes);
+	void sendPacket(const Packet &pkt);
     void sendMessage(const char* message);
 	void sendConnect();
-	void sendInputs(NetPlayerInputs &inputs);
-	void sendRequestNeededChunks(std::vector<ChunkPos> &neededChunks);
 
 	void receivePacket();
 	void dispatch(const uint8_t* data, size_t n);
 	void receiveAccept();
-	void receiveNewPosition(const NetPlayerMove &pkt);
 };
 
 #endif

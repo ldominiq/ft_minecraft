@@ -79,6 +79,8 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
         return;
 
     std::shared_ptr<Chunk> currChunk = it->second;
+
+	updatedBlocks.push_back({glm::ivec3(targetCoords.x, targetCoords.y, targetCoords.z), type});
     currChunk->setBlock(x, y, z, type);
 }
 
@@ -406,4 +408,77 @@ std::string World::getRegionFilename(int regionX, int regionZ) const {
     std::ostringstream ss;
     ss << regionDirName + "/r." << regionX << "." << regionZ << ".rg";
     return ss.str();
+}
+
+//TODO : put it on shared. maths or something and reuse it for camera and world. And maybe make it accept an std::function instead of a unique ptr?
+bool World::getTargetedBlock(const CPlayerInfo &player, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance) {
+    glm::vec3 rayOrigin = player.getPosition();
+    glm::vec3 rayDir = glm::normalize(player.getCameraDir());
+
+    glm::ivec3 blockPos = glm::floor(rayOrigin);
+
+    glm::vec3 deltaDist = glm::abs(glm::vec3(1.0f) / rayDir);
+    glm::ivec3 step;
+    glm::vec3 sideDist;
+
+    for (int i = 0; i < 3; ++i) {
+        if (rayDir[i] < 0) {
+            step[i] = -1;
+            sideDist[i] = (rayOrigin[i] - blockPos[i]) * deltaDist[i];
+        } else {
+            step[i] = 1;
+            sideDist[i] = (blockPos[i] + 1.0f - rayOrigin[i]) * deltaDist[i];
+        }
+    }
+
+    float distanceTraveled = 0.0f;
+    glm::ivec3 prevBlock = blockPos;
+
+    while (distanceTraveled < maxDistance) {
+        int axis;
+        if (sideDist.x < sideDist.y) {
+            if (sideDist.x < sideDist.z) axis = 0;
+            else                         axis = 2;
+        } else {
+            if (sideDist.y < sideDist.z) axis = 1;
+            else                         axis = 2;
+        }
+
+        blockPos[axis] += step[axis];
+        sideDist[axis] += deltaDist[axis];
+
+        // Track face direction
+        faceNormal = glm::ivec3(0);
+        faceNormal[axis] = -step[axis];
+
+		distanceTraveled = glm::min(glm::min(sideDist.x, sideDist.y), sideDist.z);
+
+        // Check if this block exists in your world
+        if (isBlockVisibleWorld(blockPos)) {
+            hitBlock = blockPos;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void World::removeTargettedBlock(const CPlayerInfo &player)
+{
+	glm::ivec3 blockPos, faceNormal;
+	if (getTargetedBlock(player, blockPos, faceNormal))
+		setBlockWorld(blockPos, std::nullopt, BlockType::AIR);
+}
+
+void World::setTargettedBlock(const CPlayerInfo &player)
+{
+	glm::ivec3 blockPos, faceNormal;
+	if (getTargetedBlock(player, blockPos, faceNormal))
+		setBlockWorld(blockPos, faceNormal, BlockType::DIRT);
+}
+
+void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
+{
+	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player);
+	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player);
 }

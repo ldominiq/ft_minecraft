@@ -49,6 +49,7 @@ private:
 	void dispatch(const uint8_t *data, int n, sockaddr_in &clidarr);
 	void receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr);
 	void receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &clieaddr);
+	void receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &clieddr);
 
 	void sendAll();
 	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
@@ -56,6 +57,7 @@ private:
 	
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
+	void sendNewlyUpdatedBlocks(CPlayerInfo &player, std::vector<std::pair<glm::ivec3, BlockType>> &newlyUpdatedBlocks);
 
 	void saveWorldOnExit();
 

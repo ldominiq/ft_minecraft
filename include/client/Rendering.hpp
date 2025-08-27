@@ -9,10 +9,12 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <zstd.h>
+#include <optional>
 
 #include "Shader.hpp"
 #include "Chunk.hpp"
 #include "Protocol.hpp"
+
 
 // previously half of World
 
@@ -47,6 +49,7 @@ class Rendering {
 		void setLoadRadius(int radius) { loadRadius = std::max(1, radius); }
 
 		void buildChunks();
+		void updateChunk(const NetModifiedBlockData &pkt);
 		void organizeChunks(const std::pair<int, int> pos);
     	void draw(const std::shared_ptr<Shader> &shaderProgram, const GLuint &VAO, const uint &meshVerticesSize) const; // Draw the chunk using the given shader program
 
@@ -55,6 +58,9 @@ class Rendering {
 
 		bool isBlockVisibleWorld(glm::ivec3 globalCoords);
 		void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ);
+		// BlockType getBlockWorld(glm::ivec3 globalCoords);
+		void setBlockWorld(glm::vec3 &targetCoords, BlockType type);
+
 };
 
 #endif
