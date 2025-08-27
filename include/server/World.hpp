@@ -5,24 +5,25 @@
 #ifndef WORLD_HPP
 #define WORLD_HPP
 
+#include "Chunk.hpp"
 #include <unordered_map>
 #include <cmath>
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
+#include <string>
 
+#include <mutex>
 #include <future>
 #include <fstream>
 #include <filesystem>
 #include <optional>
 #include <cstring>
 
-#include "Chunk.hpp"
 #include "TerrainParams.hpp"
 #include "Protocol.hpp"
 #include "PlayerInfo.hpp"
 
-struct CPlayerInfo;
 
 static constexpr int REGION_SIZE = 32;
 
@@ -54,13 +55,14 @@ class World {
     // Pending futures representing asynchronous chunk generation tasks.
     std::vector<std::future<std::pair<ChunkPos, std::shared_ptr<Chunk>>>> generationFutures;
 
+    mutable std::mutex chunkMutex;
 	bool outOfMemory = false;
 
     // Maximum number of chunk generation tasks that can be running at the
     // same time.  Limiting concurrency prevents CPU oversubscription and
     // reduces frame drops when many chunks need to be generated.  This
     // value can be tuned based on the number of available CPU cores.
-    std::size_t maxConcurrentGeneration = 8;
+    std::size_t maxConcurrentGeneration = 4;
 
 	void handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadius);
 	void removeLoadedChunksFromPlayer(CPlayerInfo &player);
@@ -71,42 +73,47 @@ class World {
 	void loadRegion(int regionX, int regionZ);
 	std::string getRegionFilename(int regionX, int regionZ) const;
 	std::string regionDirName;
-
+	
 	public:
-		World();
-		World(int seed);
+	    World();
+	World(int seed);
 
-		~World();
+    ~World();
 
-		void updateVisibleChunks(CPlayerInfo &player);
+    void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
+    void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
 
-		// Return the total number of chunks currently loaded in the world.
-		std::size_t getTotalChunkCount() const;
+	std::vector<std::weak_ptr<Chunk>> getRenderedChunks();
 
-		// Get or set the maximum number of chunk generation tasks that can run
-		// simultaneously.  Lower values reduce CPU spikes at the cost of slower
-		// world loading.  Must be at least 1.
-		std::size_t getMaxConcurrentGeneration() const { return maxConcurrentGeneration; }
-		void setMaxConcurrentGeneration(std::size_t n) { maxConcurrentGeneration = std::max<std::size_t>(1, n); }
+    void updateVisibleChunks(CPlayerInfo &player);
 
-		void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ);
-		std::shared_ptr<Chunk> getChunk(int chunkX, int chunkZ);
-		BlockType getBlockWorld(glm::ivec3 globalCoords); //unused for now
-		void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
-		bool isBlockVisibleWorld(glm::ivec3 globalCoords);
+    // Return the total number of chunks currently loaded in the world.
+    std::size_t getTotalChunkCount() const;
 
-		void saveRegionsOnExit();
-		// Terrain params for ImGui
-		TerrainGenerationParams& getTerrainParams() { return terrainParams;}
+    // Get or set the maximum number of chunk generation tasks that can run
+    // simultaneously.  Lower values reduce CPU spikes at the cost of slower
+    // world loading.  Must be at least 1.
+    std::size_t getMaxConcurrentGeneration() const { return maxConcurrentGeneration; }
+    void setMaxConcurrentGeneration(std::size_t n) { maxConcurrentGeneration = std::max<std::size_t>(1, n); }
 
-		void setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates, const CPlayerInfo &player);
-		void updatePlannedChunks(CPlayerInfo &player);
+	void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ);
+    std::shared_ptr<Chunk> getChunk(int chunkX, int chunkZ);
+	BlockType getBlockWorld(glm::ivec3 globalCoords); //unused for now
+	void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
+	bool isBlockVisibleWorld(glm::ivec3 globalCoords);
 
-		std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
-		bool getTargetedBlock(const CPlayerInfo &player, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100);
-		void removeTargettedBlock(const CPlayerInfo &player);
-		void setTargettedBlock(const CPlayerInfo &player);
-		void processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt);
+	void saveRegionsOnExit();
+    // Terrain params for ImGui
+    TerrainGenerationParams& getTerrainParams() { return terrainParams;}
+
+	void setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates, const CPlayerInfo &player);
+	void updatePlannedChunks(CPlayerInfo &player);
+
+	std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
+	bool getTargetedBlock(const CPlayerInfo &player, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100);
+	void removeTargettedBlock(const CPlayerInfo &player);
+	void setTargettedBlock(const CPlayerInfo &player);
+	void processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt);
 };
 
 #endif //WORLD_HPP

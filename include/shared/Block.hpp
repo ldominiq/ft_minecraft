@@ -14,7 +14,9 @@ enum class BlockType : uint8_t{
     SAND,
     SNOW,
     WATER,
-    BEDROCK
+    BEDROCK,
+    LOG,
+    LEAVES
 };
 
 struct Voxel {

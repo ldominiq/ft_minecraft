@@ -4,23 +4,25 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/noise.hpp>
-#include <glad/glad.h>
 
+#include <glad/glad.h>
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
 #include <ostream>
+#include <fstream>
 
 #include <random>
 #include <unordered_set>
 #include <queue>
 #include <memory>
 
-#include "FastNoiseLite.h"
 #include "Block.hpp"
 #include "BitPackedArray.hpp"
 #include "TerrainParams.hpp"
+#include "Noise.hpp"
+#include <GLFW/glfw3.h>
+
 
 class World;
 class BlockStorage;
@@ -30,7 +32,9 @@ using ChunkPos = std::pair<int32_t, int32_t>;
 template <>
 struct std::hash<ChunkPos> {
     std::size_t operator()(const ChunkPos& p) const noexcept {
-        return std::hash<int32_t>()(p.first) ^ (std::hash<int32_t>()(p.second) << 1);
+        std::size_t h1 = std::hash<int>()(p.first);
+        std::size_t h2 = std::hash<int>()(p.second);
+        return h1 ^ (h2 << 1);
     }
 };
 
@@ -40,13 +44,13 @@ struct IVec3Hash {
     }
 };
 
-// TODO : REVAMP CAVES. Idea : map the whole world to some 3D noise map. Maybe possible and efficient?
 struct Worm {
     glm::vec3 pos;
 	float radius = 2.0f;
 	int steps = 120;
-	// FastNoiseLite noise;
 
+	Worm() : pos(0.0f), radius(0.0f), steps(0) {}
+	
 	Worm(const glm::vec3& p, float r, int s)
 		: pos(p), radius(r), steps(s) {}
 
@@ -64,13 +68,17 @@ enum class BiomeType {
     PLAINS,
     DESERT,
     FOREST,
-    MOUNTAIN,
-    SNOW
+    TUNDRA,
+	SWAMP,
+	OCEAN,
+	MOUNTAIN
 };
 
 class Chunk {
 
-	TerrainGenerationParams currentParams; //unused on client - Maybe move generation to World
+	TerrainGenerationParams currentParams;//unused on client - Maybe move generation to World
+
+	glm::ivec3 getGlobalCoords() const { return glm::ivec3(originX, 0, originZ); }
 
 	int sourceChunkX; // X coordinate of the chunk in the world
 	int sourceChunkZ; // Z coordinate of the chunk in the world
@@ -83,31 +91,36 @@ class Chunk {
 	
     int originX; // X coordinate of the chunck origin
     int originZ; // Z coordinate of the chunck origin
-    GLuint VAO = 0, VBO = 0;
+    GLuint VAO = 0;
+    GLuint VBO = 0;
 	uint meshVerticesSize;
     std::vector<float> meshVertices; // Vertices for the mesh
 
     void addFace(int x, int y, int z, int face); // Add a face to the mesh vertices
-
 public:
 	static constexpr int WIDTH = 16; // Size of the chunck in blocks
 	static constexpr int HEIGHT = 256; // Height of the chunck in blocks
 	static constexpr int DEPTH = 16; // Depth of the chunck in blocks
     static constexpr int BLOCK_COUNT = WIDTH * HEIGHT * DEPTH;
-	const int ATLAS_COLS = 8;
+	const int ATLAS_COLS = 10;
 	const int ATLAS_ROWS = 1;
 
     Chunk(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
 	Chunk(std::istream& in);
 	~Chunk();
-    
+
+    // Release GL resources
+    void releaseGL();
+
     void carveWorm(Worm& worm, BlockStorage &blocks);
     void generate(const TerrainGenerationParams& terrainParams);
+	void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 
     BlockType getBlock(int x, int y, int z) const;
 	void setBlock(int x, int y, int z, BlockType block);
 
 	bool isBlockVisible(glm::ivec3 blockPos);
+
 
 	void setAdjacentChunks(int direction, std::shared_ptr<Chunk> &chunk);
 	bool hasAllAdjacentChunkLoaded() const;
@@ -131,8 +144,20 @@ public:
 
 	bool preGenerated = false;
 
-	BlockType selectBlockType(int y, int surfaceHeight, float blend, const std::vector<BiomeParams>& biomes, const std::vector<float>& weights, const std::vector<float>& heights);
 
+	static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
+
+	static float getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz);
+	static float getErosion(const TerrainGenerationParams& terrainParams, float wx, float wz);
+	static float getPV(const TerrainGenerationParams& terrainParams, float wx, float wz);
+
+	static float getTemperature(const TerrainGenerationParams& terrainParams, float wx, float wz);
+	static float getHumidity(const TerrainGenerationParams& terrainParams, float wx, float wz);
+
+	static float surfaceNoiseTransformation(float noise, int splineIndex);
+
+	static int computeTerrainHeight(const TerrainGenerationParams& terrainParams, float worldX, float worldZ);
+	static BiomeType computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height);
 };
 
 class BlockStorage {
