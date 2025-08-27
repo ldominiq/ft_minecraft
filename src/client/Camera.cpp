@@ -14,19 +14,24 @@ glm::mat4 Camera::getViewMatrix() const {
 }
 
 void Camera::processKeyboard(const int direction, const float deltaTime) {
-    const float velocity = MovementSpeed * deltaTime;
+    // const float velocity = MovementSpeed * deltaTime;
 
-    // Minecraft'ish camera. Doens't move along the Y axis
-    glm::vec3 horizontalFront = glm::normalize(glm::vec3(Front.x, 0.0f, Front.z));
+    // // Minecraft'ish camera. Doens't move along the Y axis
+    // glm::vec3 horizontalFront = glm::normalize(glm::vec3(Front.x, 0.0f, Front.z));
 
-    if (direction == FORWARD)
-        Position += horizontalFront * velocity;
-    if (direction == BACKWARD)
-        Position -= horizontalFront * velocity;
-    if (direction == LEFT)
-        Position -= glm::normalize(glm::cross(horizontalFront, WorldUp)) * velocity;
-    if (direction == RIGHT)
-        Position += glm::normalize(glm::cross(horizontalFront, WorldUp)) * velocity;
+    // if (direction == FORWARD)
+    //     Position += horizontalFront * velocity;
+    // if (direction == BACKWARD)
+    //     Position -= horizontalFront * velocity;
+    // if (direction == LEFT)
+    //     Position -= glm::normalize(glm::cross(horizontalFront, WorldUp)) * velocity;
+    // if (direction == RIGHT)
+    //     Position += glm::normalize(glm::cross(horizontalFront, WorldUp)) * velocity;
+}
+
+void Camera::updatePosition(NetPlayerMove &pkt)
+{
+	Position = glm::vec3(pkt.positionX, pkt.positionY, pkt.positionZ);
 }
 
 void Camera::processMouseMovement(float xoffset, float yoffset) {
@@ -52,7 +57,7 @@ void Camera::updateCameraVectors() {
     Up    = glm::normalize(glm::cross(Right, Front));
 }
 
-bool Camera::getTargetedBlock(std::unique_ptr<World> &world, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance) {
+bool Camera::getTargetedBlock(std::unique_ptr<Rendering> &rendering, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance) {
     glm::vec3 rayOrigin = Position;
     glm::vec3 rayDir = glm::normalize(Front);
 
@@ -95,7 +100,7 @@ bool Camera::getTargetedBlock(std::unique_ptr<World> &world, glm::ivec3& hitBloc
 		distanceTraveled = glm::min(glm::min(sideDist.x, sideDist.y), sideDist.z);
 
         // Check if this block exists in your world
-        if (world && world->isBlockVisibleWorld(blockPos)) {
+        if (rendering && rendering->isBlockVisibleWorld(blockPos)) {
             hitBlock = blockPos;
             return true;
         }
@@ -104,19 +109,19 @@ bool Camera::getTargetedBlock(std::unique_ptr<World> &world, glm::ivec3& hitBloc
     return false;
 }
 
-void Camera::removeTargettedBlock(std::unique_ptr<World> &world)
-{
-	glm::ivec3 blockPos, faceNormal;
-	if (getTargetedBlock(world, blockPos, faceNormal))
-		world->setBlockWorld(blockPos, std::nullopt, BlockType::AIR);
-}
+// void Camera::removeTargettedBlock(std::unique_ptr<World> &world)
+// {
+// 	glm::ivec3 blockPos, faceNormal;
+// 	if (getTargetedBlock(world, blockPos, faceNormal))
+// 		world->setBlockWorld(blockPos, std::nullopt, BlockType::AIR);
+// }
 
-void Camera::setTargettedBlock(std::unique_ptr<World> &world)
-{
-	glm::ivec3 blockPos, faceNormal;
-	if (getTargetedBlock(world, blockPos, faceNormal))
-		world->setBlockWorld(blockPos, faceNormal, BlockType::DIRT);
-}
+// void Camera::setTargettedBlock(std::unique_ptr<World> &world)
+// {
+// 	glm::ivec3 blockPos, faceNormal;
+// 	if (getTargetedBlock(world, blockPos, faceNormal))
+// 		world->setBlockWorld(blockPos, faceNormal, BlockType::DIRT);
+// }
 
 void Camera::initWireframeCube() {
 
@@ -158,10 +163,10 @@ void Camera::initWireframeCube() {
 	blockWireframeShader = std::make_unique<Shader>("shaders/simpleWireframe.vert", "shaders/simpleWireframe.frag");
 }
 
-void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<World> &world, glm::mat4 &view, glm::mat4 &projection) {
+void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<Rendering> &rendering, glm::mat4 &view, glm::mat4 &projection) {
 
 	glm::ivec3 blockPos, faceNormal;
-	if (!getTargetedBlock(world, blockPos, faceNormal))
+	if (!getTargetedBlock(rendering, blockPos, faceNormal))
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));

@@ -10,20 +10,21 @@
 
 #include "Camera.hpp"
 #include "Chunk.hpp"
-#include "World.hpp"
 #include "Skybox.hpp"
 #include "Shader.hpp"
 #include "stb_image.h"
+#include "Rendering.hpp"
+#include "UDPClient.hpp"
 
 #include <fstream>
 #include <sstream>
 #include <iostream>
-// glm for vector types used in lighting controls
 #include <glm/vec3.hpp>
 #include <memory>
-// #include <glm/glm.hpp>
-// #include <glm/gtc/matrix_transform.hpp>
-// #include <glm/gtc/type_ptr.hpp>
+#include <optional>
+
+#include <thread>
+#include <chrono>
 
 #define CONTROL_LIST 		\
     X(FORWARD)       		\
@@ -51,18 +52,21 @@ enum controls {
 class App {
 public:
     App();
-	App(int seed);
     ~App();
 
     void run();
+	const Camera* getCamera() const { return camera.get(); };
 
 private:
     void init();
     void loadResources();
     void render();
-
     void cleanup();
+
+	void setUdpClientPacketCallback();
+	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
+
     void updateWindowTitle();
     void toggleDisplayMode();
 
@@ -70,11 +74,9 @@ private:
 	void saveControls(const char* filename = "controls.cfg");
 	void loadControlsFromFile(const char* filename = "controls.cfg");
 
+	// void debugWindow();
 
-	void saveWorldOnExit();
-
-	void debugWindow();
-
+	bool keyPressedRecently = false;
 
     unsigned int VAO, VBO, EBO, shaderProgram, texture;
 
@@ -88,7 +90,9 @@ private:
 	GLFWmonitor* monitor;
     const GLFWvidmode* mode;
 
-    std::unique_ptr<World> world;
+	std::unique_ptr<Rendering> rendering;
+	std::unique_ptr<UDPClient> udpClient;
+
     std::unique_ptr<Skybox> skybox;
     std::shared_ptr<Shader> textureShader;
     std::shared_ptr<Shader> gradientShader;
@@ -100,6 +104,8 @@ private:
     bool firstMouse = true;
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
+
+	bool clientConnected = false;
 
     bool wireframe = false;
 

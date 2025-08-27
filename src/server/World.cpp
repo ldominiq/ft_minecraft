@@ -23,21 +23,12 @@ World::World(int seed) {
 World::~World() {
 }
 
-ChunkPos World::toKey(int chunkX, int chunkZ) {
-    return std::make_pair(chunkX, chunkZ);
-}
-
 std::shared_ptr<Chunk> World::getChunk(int chunkX, int chunkZ) {
-    const ChunkPos key = toKey(chunkX, chunkZ);
+    const ChunkPos key = Chunk::toKey(chunkX, chunkZ);
     auto it = chunks.find(key);
     if (it == chunks.end())
         return nullptr;
     return it->second;
-}
-
-std::vector<std::weak_ptr<Chunk>> World::getRenderedChunks()
-{
-	return renderedChunks;
 }
 
 void World::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ)
@@ -88,6 +79,8 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
         return;
 
     std::shared_ptr<Chunk> currChunk = it->second;
+
+	updatedBlocks.push_back({glm::ivec3(targetCoords.x, targetCoords.y, targetCoords.z), type});
     currChunk->setBlock(x, y, z, type);
 }
 
@@ -106,43 +99,8 @@ bool World::isBlockVisibleWorld(glm::ivec3 globalCoords)
 	return currChunk->isBlockVisible(glm::vec3(x, y ,z));
 }
 
-std::unordered_set<ChunkPos> World::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<Chunk> &chunk) {
-	std::unordered_set<ChunkPos> chunksToBuild;
-
-	if (!chunk) return chunksToBuild;
-
-    const int dirX[] = { 0, 0, 1, -1 };
-    const int dirZ[] = { 1, -1, 0, 0 };
-    const int opp[]  = { SOUTH, NORTH, WEST, EAST };
-
-    for (int dir = 0; dir < 4; ++dir) {
-        int nx = chunkX + dirX[dir];
-        int nz = chunkZ + dirZ[dir];
-
-        std::shared_ptr<Chunk> neighbor = getChunk(nx, nz);
-
-        chunk->setAdjacentChunks(static_cast<Direction>(dir), neighbor);
-		if (chunk->hasAllAdjacentChunkLoaded())
-			chunksToBuild.insert(toKey(chunkX, chunkZ));
-        if (neighbor) {
-            neighbor->setAdjacentChunks(opp[dir], chunk);
-
-            if (neighbor->hasAllAdjacentChunkLoaded()) {
-				chunksToBuild.insert(toKey(nx, nz));
-            }
-        }
-    }
-	return chunksToBuild;
-}
-
-void World::updateVisibleChunks(const glm::vec3& cameraPos, const glm::vec3& cameraDir) {
-    // Unload distant chunks to free memory.  Chunks beyond (loadRadius + 2)
-    // in a circular distance from the camera are removed.  We copy the keys
-    // to a temporary list to avoid invalidating the iterator while erasing.
-
-    const int currentChunkX = static_cast<int>(std::floor(cameraPos.x / Chunk::WIDTH));
-    const int currentChunkZ = static_cast<int>(std::floor(cameraPos.z / Chunk::DEPTH));
-
+//TODO change it. removing from memory based on player loadRadius makes no sense
+void World::handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadius) {
 	if (!outOfMemory) {
 		try {
 			updateRegionStreaming(currentChunkX, currentChunkZ);
@@ -153,7 +111,7 @@ void World::updateVisibleChunks(const glm::vec3& cameraPos, const glm::vec3& cam
 		}
 	} else {
 		//remove chunks to not go out of memory;
-		const int unloadRadius = loadRadius + 32;
+		const int unloadRadius = loadRadius + REGION_SIZE;
 		std::vector<ChunkPos> toRemove;
 		for (const auto& entry : chunks) {
 			const int cx = entry.first.first;
@@ -168,70 +126,134 @@ void World::updateVisibleChunks(const glm::vec3& cameraPos, const glm::vec3& cam
 			chunks.erase(k);
 		}
 	}
+}
 
-    // Determine which chunks we need within the circular radius.  For every
-    // candidate coordinate we either mark it for generation or add it to the
-    // rendered list.  We intentionally skip coordinates outside the circle to
-    // approximate a circular load area.
-    std::vector<std::tuple<int, int, float, float>> candidates;
 
-    glm::vec2 camDir = glm::normalize(glm::vec2(cameraDir.x, cameraDir.z));
-    float maxDist = static_cast<float>(loadRadius);
+void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
+{
+    int unloadRadius = player.loadRadius + 16;
 
-    for (int dx = -loadRadius; dx <= loadRadius; ++dx) {
-        for (int dz = -loadRadius; dz <= loadRadius; ++dz) {
-            if (dx * dx + dz * dz >= loadRadius * loadRadius)
+    // convert player position (world coords) to chunk coords
+    int playerChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
+    int playerChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+
+    for (auto it = player.loadedChunks.begin(); it != player.loadedChunks.end(); )
+    {
+        int dx = it->first - playerChunkX;
+        int dz = it->second - playerChunkZ;
+        int distSq = dx * dx + dz * dz;
+
+        if (distSq >= unloadRadius * unloadRadius)
+        {
+            it = player.loadedChunks.erase(it); // erase returns next iterator
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+void World::setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates,
+                          const CPlayerInfo &player)
+{
+    glm::vec2 camDir = glm::normalize(glm::vec2(player.getCameraDir().x, player.getCameraDir().z));
+    float maxDist = static_cast<float>(player.loadRadius);
+
+    // Get player’s current chunk position
+    int baseChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
+    int baseChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+
+    for (int dx = -player.loadRadius; dx <= player.loadRadius; ++dx) {
+        for (int dz = -player.loadRadius; dz <= player.loadRadius; ++dz) {
+            if (dx * dx + dz * dz >= (int)maxDist * (int)maxDist)
                 continue;
+
+            int cx = baseChunkX + dx;
+            int cz = baseChunkZ + dz;
 
             float dist = std::sqrt(static_cast<float>(dx * dx + dz * dz));
             glm::vec2 offset(dx, dz);
-            float dirScore = glm::dot(glm::normalize(offset), camDir); // [-1, 1]
+            float dirScore = glm::dot(glm::normalize(offset), camDir);
 
-            candidates.emplace_back(dx, dz, dist, dirScore);
+            candidates.emplace_back(cx, cz, dist, dirScore);
         }
     }
 
-    // Sort: closest first, then by direction (front first)
     std::sort(candidates.begin(), candidates.end(),
         [](const auto& a, const auto& b) {
             float distA = std::get<2>(a), distB = std::get<2>(b);
-            if (distA != distB) return distA < distB; // nearer chunks first
-            return std::get<3>(a) > std::get<3>(b);   // if same dist, prefer forward
+            if (distA != distB) return distA < distB;
+            return std::get<3>(a) > std::get<3>(b);
         });
+}
+
+// updates Planned Chunks AND sets chunks to send player
+void World::updatePlannedChunks(CPlayerInfo &player)
+{
+	std::vector<std::tuple<int, int, float, float>> candidates;
+
+	setCandidates(candidates, player);
+	for (auto [cx, cz, dist, distCore] : candidates)
+	{
+		ChunkPos key = Chunk::toKey(cx, cz);
+		std::shared_ptr<Chunk> chunk = getChunk(cx, cz);
+		if (!chunk && !plannedChunks.contains(key)) { // contains is c++ 20
+			plannedChunks.insert(key);
+		}
+
+		if (chunk && !player.loadedChunks.contains(key))
+		{
+			player.loadedChunks.insert(key);
+			player.rdyChunks.push_back(key);
+		}
+	}
+}
+
+//TODO fix the load / saave regions with multiple players
+void World::updateVisibleChunks(CPlayerInfo &player) {
+    // Unload distant chunks to free memory.  Chunks beyond (loadRadius + 2)
+    // in a circular distance from the camera are removed.  We copy the keys
+    // to a temporary list to avoid invalidating the iterator while erasing.
+
+	const int currentChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
+	const int currentChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+
+	handleOutOfMemory(currentChunkX, currentChunkZ, player.loadRadius);
 	
-	std::unordered_set<ChunkPos> generatingChunks;
+	// std::unordered_set<ChunkPos> generatingChunks;
 	uint amountOfConcurrentChunksBeingGenerated = 0;
 
-    for (const auto& [dx, dz, dist, dirScore] : candidates) {
-        const int cx = currentChunkX + dx;
-        const int cz = currentChunkZ + dz;
-        ChunkPos key = toKey(cx, cz);
-        std::shared_ptr<Chunk> chunk = getChunk(cx, cz);
+	removeLoadedChunksFromPlayer(player);
+	updatePlannedChunks(player);
+	
+	for (const auto& [cx, cz] : plannedChunks) {
+		ChunkPos key = Chunk::toKey(cx, cz);
+		std::shared_ptr<Chunk> chunk = getChunk(cx, cz);
 
-        if (!chunk && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) {
-            generationFutures.push_back(std::async(std::launch::async, [=]() {
-                std::shared_ptr<Chunk> newChunk = std::make_shared<Chunk>(cx, cz, terrainParams);
-                return std::make_pair(key, newChunk);
-            }));
-            amountOfConcurrentChunksBeingGenerated++;
-        }
-        else if (chunk && chunk->preGenerated && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) 
+		if (!chunk && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) {
+			generationFutures.push_back(std::async(std::launch::async, [=, this]() {
+				std::shared_ptr<Chunk> newChunk = std::make_shared<Chunk>(cx, cz, terrainParams);
+				return std::make_pair(key, newChunk);
+			}));
+			amountOfConcurrentChunksBeingGenerated++;
+		}
+		else if (chunk && chunk->preGenerated && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) 
 		{
-			generatingChunks.insert(key);
+			// generatingChunks.insert(key);
 			amountOfConcurrentChunksBeingGenerated++;
 			chunk->preGenerated = false;
 		}
-    }
+	}
 
-
-    // Process a limited number of ready futures.  This spreads the cost of
-    // inserting chunks into the world over multiple frames and avoids long
-    // stalls while waiting for all chunks to generate at once.  We loop
-    // through the futures vector, checking each for readiness with a
-    // zero-duration wait. 
+	// Process a limited number of ready futures.  This spreads the cost of
+	// inserting chunks into the world over multiple frames and avoids long
+	// stalls while waiting for all chunks to generate at once.  We loop
+	// through the futures vector, checking each for readiness with a
+	// zero-duration wait. 
 
 	// Set of chunks currently being generated asynchronously.  We use
-    // ChunkKey pairs to avoid scheduling the same chunk multiple times.
+	// ChunkKey pairs to avoid scheduling the same chunk multiple times.
 
 	std::size_t processed = 0;
 	for (auto it = generationFutures.begin(); it != generationFutures.end(); ) {
@@ -239,8 +261,9 @@ void World::updateVisibleChunks(const glm::vec3& cameraPos, const glm::vec3& cam
 		
 		if (fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
 			auto result = fut.get();
-			generatingChunks.insert(result.first); //race condition?
+			// generatingChunks.insert(result.first);
 			chunks[result.first] = result.second;
+			plannedChunks.erase(result.first);
 
 			it = generationFutures.erase(it);
 			processed++;
@@ -249,75 +272,12 @@ void World::updateVisibleChunks(const glm::vec3& cameraPos, const glm::vec3& cam
 			it++;
 		}
 	}
-
-	for (auto [chunkX, chunkZ] : generatingChunks) {
-		std::shared_ptr<Chunk> currChunk = getChunk(chunkX, chunkZ);
-		linkNeighbors(chunkX, chunkZ, currChunk);
-	}
-
-	std::vector<std::future<ChunkPos>> meshFutures;
-
-	std::unordered_set<ChunkPos> chunksToBuild;
-	for (auto [chunkX, chunkZ] : generatingChunks) {
-		std::shared_ptr<Chunk> currChunk = getChunk(chunkX, chunkZ);
-		chunksToBuild.merge(linkNeighbors(chunkX, chunkZ, currChunk));
-	}
-
-	for (auto [chunkX, chunkZ] : chunksToBuild) {
-		std::shared_ptr<Chunk> currChunk = getChunk(chunkX, chunkZ);
-
-		if (currChunk) 
-		{
-			meshFutures.push_back(std::async(std::launch::async, [chunkX, chunkZ, currChunk]() {
-				currChunk->buildMeshData();
-				return toKey(chunkX, chunkZ);
-			}));
-		}
-	}
-
-	for (auto it = meshFutures.begin(); it != meshFutures.end();) {
-		ChunkPos pos = it->get();
-		auto chunk = getChunk(pos.first, pos.second);
-		if (chunk) {
-			chunk->uploadMesh();
-		}
-		it = meshFutures.erase(it);
-	}
-
-    // Rebuild the renderedChunks list again after newly generated chunks may
-    // have been inserted.  This ensures that chunks created this frame are
-    // included in the rendering pass.  We simply iterate the same radius
-    // again and collect loaded chunks.
-    renderedChunks.clear();
-    for (int dx = -loadRadius; dx <= loadRadius; ++dx) {
-        for (int dz = -loadRadius; dz <= loadRadius; ++dz) {
-            if (dx * dx + dz * dz >= loadRadius * loadRadius) {
-                continue;
-            }
-            const int cx = currentChunkX + dx;
-            const int cz = currentChunkZ + dz;
-            std::shared_ptr<Chunk> chunk = getChunk(cx, cz);
-            if (chunk) {
-                renderedChunks.push_back(chunk);
-            }
-        }
-    }
-}
-
-void World::render(const std::shared_ptr<Shader> &shaderProgram) const {
-    int count = 0;
-	for (auto& weakChunk : renderedChunks) {
-		if (auto chunk = weakChunk.lock()) {
-			chunk->draw(shaderProgram);
-			count++;
-		}
-	}
 }
 
 // Return the number of chunks currently in the rendered list.
-std::size_t World::getRenderedChunkCount() const {
-    return renderedChunks.size();
-}
+// std::size_t World::getRenderedChunkCount() const {
+//     return renderedChunks.size();
+// }
 
 // Return the total number of chunks currently loaded in the world (in memory).
 std::size_t World::getTotalChunkCount() const {
@@ -383,7 +343,7 @@ void World::saveRegion(int regionX, int regionZ) {
 	for (int x = regionX * REGION_SIZE; x < (regionX + 1) * REGION_SIZE; x++) {
 		for (int z = regionZ * REGION_SIZE; z < (regionZ + 1) * REGION_SIZE; z++)
 		{
-			auto it = chunks.find(toKey(x, z));
+			auto it = chunks.find(Chunk::toKey(x, z));
 			if (it == chunks.end()) continue ;
 			
 			std::streampos currPos = out.tellp();
@@ -449,4 +409,77 @@ std::string World::getRegionFilename(int regionX, int regionZ) const {
     std::ostringstream ss;
     ss << regionDirName + "/r." << regionX << "." << regionZ << ".rg";
     return ss.str();
+}
+
+//TODO : put it on shared. maths or something and reuse it for camera and world. And maybe make it accept an std::function instead of a unique ptr?
+bool World::getTargetedBlock(const CPlayerInfo &player, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance) {
+    glm::vec3 rayOrigin = player.getPosition();
+    glm::vec3 rayDir = glm::normalize(player.getCameraDir());
+
+    glm::ivec3 blockPos = glm::floor(rayOrigin);
+
+    glm::vec3 deltaDist = glm::abs(glm::vec3(1.0f) / rayDir);
+    glm::ivec3 step;
+    glm::vec3 sideDist;
+
+    for (int i = 0; i < 3; ++i) {
+        if (rayDir[i] < 0) {
+            step[i] = -1;
+            sideDist[i] = (rayOrigin[i] - blockPos[i]) * deltaDist[i];
+        } else {
+            step[i] = 1;
+            sideDist[i] = (blockPos[i] + 1.0f - rayOrigin[i]) * deltaDist[i];
+        }
+    }
+
+    float distanceTraveled = 0.0f;
+    glm::ivec3 prevBlock = blockPos;
+
+    while (distanceTraveled < maxDistance) {
+        int axis;
+        if (sideDist.x < sideDist.y) {
+            if (sideDist.x < sideDist.z) axis = 0;
+            else                         axis = 2;
+        } else {
+            if (sideDist.y < sideDist.z) axis = 1;
+            else                         axis = 2;
+        }
+
+        blockPos[axis] += step[axis];
+        sideDist[axis] += deltaDist[axis];
+
+        // Track face direction
+        faceNormal = glm::ivec3(0);
+        faceNormal[axis] = -step[axis];
+
+		distanceTraveled = glm::min(glm::min(sideDist.x, sideDist.y), sideDist.z);
+
+        // Check if this block exists in your world
+        if (isBlockVisibleWorld(blockPos)) {
+            hitBlock = blockPos;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void World::removeTargettedBlock(const CPlayerInfo &player)
+{
+	glm::ivec3 blockPos, faceNormal;
+	if (getTargetedBlock(player, blockPos, faceNormal))
+		setBlockWorld(blockPos, std::nullopt, BlockType::AIR);
+}
+
+void World::setTargettedBlock(const CPlayerInfo &player)
+{
+	glm::ivec3 blockPos, faceNormal;
+	if (getTargetedBlock(player, blockPos, faceNormal))
+		setBlockWorld(blockPos, faceNormal, BlockType::DIRT);
+}
+
+void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
+{
+	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player);
+	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player);
 }

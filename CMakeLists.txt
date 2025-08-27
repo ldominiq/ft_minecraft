@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(ft_minecraft LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
@@ -45,11 +45,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(stb)
 
-if(ASAN)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g -O1")
-    set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
-endif()
-
 # imgui
 FetchContent_Declare(
   imgui
@@ -58,7 +53,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imgui)
 
-file(GLOB SRC "src/*.cpp")
+# ZSTD
+FetchContent_Declare(
+  zstd
+  GIT_REPOSITORY https://github.com/facebook/zstd.git
+  GIT_TAG v1.5.6   # stable release instead of dev
+  SOURCE_SUBDIR build/cmake
+)
+FetchContent_MakeAvailable(zstd)
+
+
+if(ASAN)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g -O1")
+    set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+endif()
 
 if(EXISTS ${CMAKE_SOURCE_DIR}/assets)
   file(COPY ${CMAKE_SOURCE_DIR}/assets DESTINATION ${CMAKE_BINARY_DIR})
@@ -68,12 +76,10 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/shaders)
   file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${CMAKE_BINARY_DIR})
 endif()
 
-
-
-
 # ---------------------------------------------------------------------------
 # ImGui integration
 # ---------------------------------------------------------------------------
+
 set(IMGUI_DIR   ${imgui_SOURCE_DIR})
 
 set(IMGUI_SOURCES
@@ -98,67 +104,85 @@ target_include_directories(imgui PUBLIC
 # Also link against dl on Linux for dynamic loading (glad/glfw handle OpenGL loader)
 target_link_libraries(imgui PUBLIC glfw ${CMAKE_DL_LIBS})
 
-add_executable(${PROJECT_NAME} ${SRC}
-        include/TerrainParams.hpp)
+# ---------------------------------------------------------------------------
+# Copy shaders so they also get added to build directory
+# ---------------------------------------------------------------------------
 
-# Modified shader files are now always copied to build folder now when modified
 file(GLOB_RECURSE SHADER_FILES
-        "${CMAKE_SOURCE_DIR}/shaders/*.vert"
-        "${CMAKE_SOURCE_DIR}/shaders/*.frag"
+    "${CMAKE_SOURCE_DIR}/shaders/*.vert"
+    "${CMAKE_SOURCE_DIR}/shaders/*.frag"
 )
 
 add_custom_target(update_shaders DEPENDS ${SHADER_FILES})
 
-add_dependencies(${PROJECT_NAME} update_shaders)
-
 add_custom_command(
-        OUTPUT ${CMAKE_BINARY_DIR}/shaders_timestamp
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/shaders
-        ${CMAKE_BINARY_DIR}/shaders
-        COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/shaders_timestamp
-        DEPENDS ${SHADER_FILES}
-        COMMENT "Force copy shaders if any were modified"
+    OUTPUT ${CMAKE_BINARY_DIR}/shaders_timestamp
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/shaders
+            ${CMAKE_BINARY_DIR}/shaders
+    COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/shaders_timestamp
+    DEPENDS ${SHADER_FILES}
+    COMMENT "Force copy shaders if any were modified"
 )
 
 add_custom_target(copy_shaders ALL DEPENDS ${CMAKE_BINARY_DIR}/shaders_timestamp)
-add_dependencies(${PROJECT_NAME} copy_shaders)
+
+# ---------------------------------------------------------------------------
+# Glad
+# ---------------------------------------------------------------------------
 
 add_library(glad STATIC
   ${glad_SOURCE_DIR}/src/glad.c
 )
-
 target_include_directories(glad PUBLIC
   ${glad_SOURCE_DIR}/include
 )
-
 set_target_properties(glad PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-
-
-target_link_libraries(${PROJECT_NAME} PRIVATE glad)
-
-target_include_directories(${PROJECT_NAME} PRIVATE
-  include
-  ${glm_SOURCE_DIR}
-  ${fastnoise_SOURCE_DIR}/Cpp
-  ${glad_SOURCE_DIR}/include
-  ${stb_SOURCE_DIR}
-  ${imgui_SOURCE_DIR}
+# ---------------------------------------------------------------------------
+# Source & Include setup for Client and Server
+# ---------------------------------------------------------------------------
+file(GLOB_RECURSE CLIENT_SRC
+    "${CMAKE_SOURCE_DIR}/src/client/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/shared/*.cpp"
 )
 
-find_package(OpenGL REQUIRED)
+file(GLOB_RECURSE SERVER_SRC
+    "${CMAKE_SOURCE_DIR}/src/server/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/shared/*.cpp"
+)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE
-  glfw
-  glad
-  imgui
-  OpenGL::GL
-  dl
-  pthread
-  X11
-  Xi
-  Xrandr
-  Xxf86vm
-  z
+# Client executable
+add_executable(ft_minecraft ${CLIENT_SRC})
+target_include_directories(ft_minecraft PRIVATE
+    ${CMAKE_SOURCE_DIR}/include/client
+    ${CMAKE_SOURCE_DIR}/include/shared
+    ${glm_SOURCE_DIR}
+    ${fastnoise_SOURCE_DIR}/Cpp
+    ${glad_SOURCE_DIR}/include
+    ${stb_SOURCE_DIR}
+	${zstd_SOURCE_DIR}/lib
+    ${imgui_SOURCE_DIR}
+)
+find_package(OpenGL REQUIRED)
+target_link_libraries(ft_minecraft PRIVATE
+    glfw glad imgui OpenGL::GL
+    dl pthread X11 Xi Xrandr Xxf86vm z
+	libzstd
+)
+add_dependencies(ft_minecraft update_shaders copy_shaders)
+
+# Server executable
+add_executable(ft_minecraft_server ${SERVER_SRC})
+target_include_directories(ft_minecraft_server PRIVATE
+    ${CMAKE_SOURCE_DIR}/include/server
+    ${CMAKE_SOURCE_DIR}/include/shared
+    ${glm_SOURCE_DIR}
+    ${fastnoise_SOURCE_DIR}/Cpp
+	${zstd_SOURCE_DIR}/lib
+	${glad_SOURCE_DIR}/include
+)
+# Should look into restructure stuff so we can remove glad from server
+target_link_libraries(ft_minecraft_server PRIVATE
+	libzstd glad
 )
