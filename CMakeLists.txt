@@ -3,15 +3,17 @@ project(ft_minecraft LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include(FetchContent)
 
 # Glad
 FetchContent_Declare(
   glad
-  GIT_REPOSITORY git@github.com:ldominiq/GLAD-4.6.git
+  GIT_REPOSITORY https://github.com/ldominiq/GLAD-4.6.git
   GIT_TAG main
 )
 FetchContent_MakeAvailable(glad)
+
 
 # GLFW
 FetchContent_Declare(
@@ -79,7 +81,6 @@ endif()
 # ---------------------------------------------------------------------------
 # ImGui integration
 # ---------------------------------------------------------------------------
-
 set(IMGUI_DIR   ${imgui_SOURCE_DIR})
 
 set(IMGUI_SOURCES
@@ -107,22 +108,21 @@ target_link_libraries(imgui PUBLIC glfw ${CMAKE_DL_LIBS})
 # ---------------------------------------------------------------------------
 # Copy shaders so they also get added to build directory
 # ---------------------------------------------------------------------------
-
 file(GLOB_RECURSE SHADER_FILES
-    "${CMAKE_SOURCE_DIR}/shaders/*.vert"
-    "${CMAKE_SOURCE_DIR}/shaders/*.frag"
+        "${CMAKE_SOURCE_DIR}/shaders/*.vert"
+        "${CMAKE_SOURCE_DIR}/shaders/*.frag"
 )
 
 add_custom_target(update_shaders DEPENDS ${SHADER_FILES})
 
 add_custom_command(
-    OUTPUT ${CMAKE_BINARY_DIR}/shaders_timestamp
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/shaders
-            ${CMAKE_BINARY_DIR}/shaders
-    COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/shaders_timestamp
-    DEPENDS ${SHADER_FILES}
-    COMMENT "Force copy shaders if any were modified"
+        OUTPUT ${CMAKE_BINARY_DIR}/shaders_timestamp
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/shaders
+        ${CMAKE_BINARY_DIR}/shaders
+        COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/shaders_timestamp
+        DEPENDS ${SHADER_FILES}
+        COMMENT "Force copy shaders if any were modified"
 )
 
 add_custom_target(copy_shaders ALL DEPENDS ${CMAKE_BINARY_DIR}/shaders_timestamp)
@@ -134,9 +134,11 @@ add_custom_target(copy_shaders ALL DEPENDS ${CMAKE_BINARY_DIR}/shaders_timestamp
 add_library(glad STATIC
   ${glad_SOURCE_DIR}/src/glad.c
 )
+
 target_include_directories(glad PUBLIC
   ${glad_SOURCE_DIR}/include
 )
+
 set_target_properties(glad PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---------------------------------------------------------------------------
@@ -152,6 +154,7 @@ file(GLOB_RECURSE SERVER_SRC
     "${CMAKE_SOURCE_DIR}/src/shared/*.cpp"
 )
 
+
 # Client executable
 add_executable(ft_minecraft ${CLIENT_SRC})
 target_include_directories(ft_minecraft PRIVATE
@@ -164,7 +167,9 @@ target_include_directories(ft_minecraft PRIVATE
 	${zstd_SOURCE_DIR}/lib
     ${imgui_SOURCE_DIR}
 )
+
 find_package(OpenGL REQUIRED)
+
 target_link_libraries(ft_minecraft PRIVATE
     glfw glad imgui OpenGL::GL
     dl pthread X11 Xi Xrandr Xxf86vm z
