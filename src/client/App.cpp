@@ -84,6 +84,7 @@ void App::init() {
         // Honour ImGui’s mouse capture: if the UI is being interacted with
         // (e.g. hovering/clicking in a window), do not rotate the camera.
         ImGuiIO& io = ImGui::GetIO();
+
         if (io.WantCaptureMouse || app->uiInteractive) {
             return;
         }
@@ -97,6 +98,8 @@ void App::init() {
         app->lastX = xpos;
         app->lastY = ypos;
         app->camera->processMouseMovement(xoffset, yoffset);
+
+		app->keyPressedRecently = true;
     });
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -121,8 +124,16 @@ void App::init() {
 		uint16_t bit = mapKeyToBit(key);
 		if (!bit) return; // not an input we care about
 
-		app->keyPressedRecently = true;
+		if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+			app->inputMask |= bit;              // set bit
+			app->keyPressedRecently = true;
+		} 
+		else if (action == GLFW_RELEASE) {
+			app->inputMask &= ~bit;             // clear bit
+			app->keyPressedRecently = (app->inputMask != 0);
+		}
 	});
+
 
 	glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int button, int action, int mods) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
@@ -240,8 +251,11 @@ void App::render() {
 
 		//sending/receiving packets and stuff
 		udpClient->receivePacket();
-		NetPlayerInputs inputs = buildPlayerInputsPacket();
-		udpClient->sendPacket(inputs);
+		if (keyPressedRecently)
+		{
+			NetPlayerInputs inputs = buildPlayerInputsPacket();
+			udpClient->sendPacket(inputs);
+		}
 
 
         // Calculate delta time for frame rate
@@ -547,6 +561,10 @@ void App::cleanup() {
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
     glDeleteTextures(1, &texture);
+
+	NetDisconnect pkt;
+	pkt.username = "Steve";
+	udpClient->sendPacket(pkt);
 
     glfwTerminate();
     saveControls();

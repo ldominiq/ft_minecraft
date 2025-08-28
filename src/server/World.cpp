@@ -364,6 +364,7 @@ void World::updatePlannedChunks(CPlayerInfo &player)
 	std::vector<std::tuple<int, int, float, float>> candidates;
 
 	setCandidates(candidates, player);
+
 	for (auto [cx, cz, dist, distCore] : candidates)
 	{
 		ChunkPos key = Chunk::toKey(cx, cz);
@@ -376,6 +377,8 @@ void World::updatePlannedChunks(CPlayerInfo &player)
 		{
 			player.loadedChunks.insert(key);
 			player.rdyChunks.push_back(key);
+			amountOfChunksSentThisTick++;
+			if (amountOfChunksSentThisTick > MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK) return ;
 		}
 	}
 }

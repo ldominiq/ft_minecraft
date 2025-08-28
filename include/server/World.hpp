@@ -24,7 +24,7 @@
 #include "Protocol.hpp"
 #include "PlayerInfo.hpp"
 
-
+static constexpr int MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK = 40;
 static constexpr int REGION_SIZE = 32;
 
 struct RegionFileMetadata {
@@ -80,10 +80,11 @@ class World {
 
     ~World();
 
+	int amountOfChunksSentThisTick = 0;
+	std::vector<std::weak_ptr<Chunk>> getRenderedChunks();
+
     void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
     void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
-
-	std::vector<std::weak_ptr<Chunk>> getRenderedChunks();
 
     void updateVisibleChunks(CPlayerInfo &player);
 

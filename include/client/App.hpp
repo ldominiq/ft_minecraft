@@ -87,6 +87,7 @@ private:
 
     GLFWwindow* window;
 
+	uint16_t inputMask = 0;
     bool keyPressedRecently = false;
 
     unsigned int VAO, VBO, EBO, shaderProgram, texture;
