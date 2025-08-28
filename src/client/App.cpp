@@ -63,7 +63,7 @@ void App::init() {
 	udpClient = std::make_unique<UDPClient>("127.0.0.1");
 	setUdpClientPacketCallback();
 
-	rendering = std::make_unique<Rendering>();
+	renderer = std::make_unique<Renderer>();
 
     
     glEnable(GL_DEPTH_TEST);
@@ -194,14 +194,14 @@ void App::setUdpClientPacketCallback()
 			case PacketType::CHUNK_HEADER: {
 				auto& p = static_cast<NetChunkHeader&>(*pkt);
 				// handle chunk data (append to buffer, etc.)
-				rendering->prepareChunk(p);
+				renderer->prepareChunk(p);
 				break;
 			}
 
 			case PacketType::CHUNK_DATA: {
 				auto& p = static_cast<NetChunkData&>(*pkt);
 				// handle chunk data (append to buffer, etc.)
-				rendering->receiveChunk(p);
+				renderer->receiveChunk(p);
 				break;
 			}
 
@@ -213,7 +213,7 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::MODIFIED_BLOCK_DATA: {
 				auto& p = static_cast<NetModifiedBlockData&>(*pkt);
-				rendering->updateChunk(p);
+				renderer->updateChunk(p);
 				break;
 			}
 
@@ -325,13 +325,13 @@ void App::render() {
 		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
 		const int currentChunkZ = static_cast<int>(std::floor(camera->Position.z / Chunk::DEPTH));
 
-		rendering->buildChunks();
-		rendering->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
-		rendering->render(activeShader);
+		renderer->buildChunks();
+		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
+		renderer->render(activeShader);
 
 
         skybox->draw(camera->getViewMatrix(), projection);
-        camera->drawWireframeSelectedBlockFace(rendering, view, projection);
+        camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         if (showDebugWindow) {
             //ImGui::ShowDemoWindow();
@@ -666,7 +666,7 @@ void App::processInput() {
 	//reload chunk. F3 + A;
 	if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS &&
     	glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-		for (auto &chunkPtr : rendering->getRenderedChunks())
+		for (auto &chunkPtr : renderer->getRenderedChunks())
 		{
 			if (auto chunk = chunkPtr.lock())
 				chunk->buildMesh();

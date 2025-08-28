@@ -2,13 +2,12 @@
 #define CAMERA_HPP
 
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <memory>
 
-#include "Chunk.hpp"
+#include "ChunkRenderer.hpp"
 #include "Shader.hpp"
 #include "Protocol.hpp"
-#include "Rendering.hpp"
+#include "Renderer.hpp"
 
 class Camera {
 
@@ -18,7 +17,7 @@ class Camera {
 	std::unique_ptr<Shader> blockWireframeShader = nullptr;
 
 	//""Temporarily"" put some chunks in Camera.
-	std::unordered_map<ChunkPos, std::shared_ptr<Chunk>> chunks;
+	std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks;
 
 public:
     glm::vec3 Position;
@@ -45,8 +44,8 @@ public:
 	inline const uint8_t getLoadRadius() const { return loadRadius; }
 
 	
-	bool getTargetedBlock(std::unique_ptr<Rendering> &rendering, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100); //faceNormal is currently unused
-	void drawWireframeSelectedBlockFace(std::unique_ptr<Rendering> &rendering, glm::mat4 &view, glm::mat4 &projection);
+	bool getTargetedBlock(std::unique_ptr<Renderer> &Renderer, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100); //faceNormal is currently unused
+	void drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 };
 
 

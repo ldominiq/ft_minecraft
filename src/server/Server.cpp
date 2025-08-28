@@ -196,7 +196,7 @@ void Server::sendChunk(CPlayerInfo &player) {
 	readyChunks.swap(player.rdyChunks);
 
     for (auto& chunkPos : readyChunks) {
-        Chunk& chunk = *world->getChunk(chunkPos.first, chunkPos.second);
+        ChunkGeneration& chunk = *world->getChunk(chunkPos.first, chunkPos.second);
 
         // 1. Serialize chunk into memory
         std::ostringstream oss(std::ios::binary);

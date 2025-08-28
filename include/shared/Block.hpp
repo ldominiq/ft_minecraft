@@ -2,10 +2,6 @@
 #define BLOCK_HPP
 #include <cstdint>
 
-struct BlockPos {
-    int x, y, z;
-};
-
 enum class BlockType : uint8_t{
     AIR,
     GRASS,

@@ -5,7 +5,6 @@
 #ifndef WORLD_HPP
 #define WORLD_HPP
 
-#include "Chunk.hpp"
 #include <unordered_map>
 #include <cmath>
 #include <algorithm>
@@ -23,6 +22,7 @@
 #include "TerrainParams.hpp"
 #include "Protocol.hpp"
 #include "PlayerInfo.hpp"
+#include "ChunkGeneration.hpp"
 
 static constexpr int MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK = 40;
 static constexpr int REGION_SIZE = 32;
@@ -49,11 +49,11 @@ class World {
 		return (value - divisor + 1) / divisor; // floor division for negatives
 	}
 
-    std::unordered_map<ChunkPos, std::shared_ptr<Chunk>> chunks;
+    std::unordered_map<ChunkPos, std::shared_ptr<ChunkGeneration>> chunks;
 	std::unordered_set<ChunkPos> plannedChunks;
 
     // Pending futures representing asynchronous chunk generation tasks.
-    std::vector<std::future<std::pair<ChunkPos, std::shared_ptr<Chunk>>>> generationFutures;
+    std::vector<std::future<std::pair<ChunkPos, std::shared_ptr<ChunkGeneration>>>> generationFutures;
 
     mutable std::mutex chunkMutex;
 	bool outOfMemory = false;
@@ -81,7 +81,7 @@ class World {
     ~World();
 
 	int amountOfChunksSentThisTick = 0;
-	std::vector<std::weak_ptr<Chunk>> getRenderedChunks();
+	std::vector<std::weak_ptr<ChunkGeneration>> getRenderedChunks();
 
     void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
     void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
@@ -98,7 +98,7 @@ class World {
     void setMaxConcurrentGeneration(std::size_t n) { maxConcurrentGeneration = std::max<std::size_t>(1, n); }
 
 	void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ);
-    std::shared_ptr<Chunk> getChunk(int chunkX, int chunkZ);
+    std::shared_ptr<ChunkGeneration> getChunk(int chunkX, int chunkZ);
 	BlockType getBlockWorld(glm::ivec3 globalCoords); //unused for now
 	void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
 	bool isBlockVisibleWorld(glm::ivec3 globalCoords);

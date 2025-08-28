@@ -1,11 +1,10 @@
+
 #ifndef CHUNK_HPP
 #define CHUNK_HPP
 
 #include <vector>
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
-#include <glad/glad.h>
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
@@ -19,13 +18,16 @@
 
 #include "Block.hpp"
 #include "BitPackedArray.hpp"
-#include "TerrainParams.hpp"
-#include "Noise.hpp"
-#include <GLFW/glfw3.h>
 
-
-class World;
 class BlockStorage;
+
+enum Direction {
+	NORTH = 0,
+	SOUTH,
+	EAST,
+	WEST,
+	NONE
+};
 
 using ChunkPos = std::pair<int32_t, int32_t>;
 
@@ -44,139 +46,48 @@ struct IVec3Hash {
     }
 };
 
-struct Worm {
-    glm::vec3 pos;
-	float radius = 2.0f;
-	int steps = 120;
-
-	Worm() : pos(0.0f), radius(0.0f), steps(0) {}
-	
-	Worm(const glm::vec3& p, float r, int s)
-		: pos(p), radius(r), steps(s) {}
-
-};
-
-enum Direction {
-	NORTH = 0,
-	SOUTH,
-	EAST,
-	WEST,
-	NONE
-};
-
-enum class BiomeType {
-    PLAINS,
-    DESERT,
-    FOREST,
-    TUNDRA,
-	SWAMP,
-	OCEAN,
-	MOUNTAIN
-};
-
 class Chunk {
 
-	TerrainGenerationParams currentParams;//unused on client - Maybe move generation to World
+	protected:
+		int originX; // X coordinate of the chunck origin
+		int originZ; // Z coordinate of the chunck origin
 
-	glm::ivec3 getGlobalCoords() const { return glm::ivec3(originX, 0, originZ); }
+		std::vector<BlockType> palette; // Index -> BlockType
+		std::unordered_map<BlockType, uint32_t> paletteMap; // BlockType -> Index
+		BitPackedArray blockIndices;
+		
+		std::weak_ptr<Chunk> adjacentChunks[4] = {};
 
-	int sourceChunkX; // X coordinate of the chunk in the world
-	int sourceChunkZ; // Z coordinate of the chunk in the world
-
-	std::weak_ptr<Chunk> adjacentChunks[4] = {};
-
-	std::vector<BlockType> palette; // Index -> BlockType
-	std::unordered_map<BlockType, uint32_t> paletteMap; // BlockType -> Index
-    BitPackedArray blockIndices;
-	
-    int originX; // X coordinate of the chunck origin
-    int originZ; // Z coordinate of the chunck origin
-    GLuint VAO = 0;
-    GLuint VBO = 0;
-	uint meshVerticesSize;
-    std::vector<float> meshVertices; // Vertices for the mesh
-
-    void addFace(int x, int y, int z, int face); // Add a face to the mesh vertices
-public:
-	static constexpr int WIDTH = 16; // Size of the chunck in blocks
-	static constexpr int HEIGHT = 256; // Height of the chunck in blocks
-	static constexpr int DEPTH = 16; // Depth of the chunck in blocks
-    static constexpr int BLOCK_COUNT = WIDTH * HEIGHT * DEPTH;
-	const int ATLAS_COLS = 10;
-	const int ATLAS_ROWS = 1;
-
-    Chunk(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
-	Chunk(std::istream& in);
-	~Chunk();
-
-    // Release GL resources
-    void releaseGL();
-
-    void carveWorm(Worm& worm, BlockStorage &blocks);
-    void generate(const TerrainGenerationParams& terrainParams);
-	void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
-
-    BlockType getBlock(int x, int y, int z) const;
-	void setBlock(int x, int y, int z, BlockType block);
-
-	bool isBlockVisible(glm::ivec3 blockPos);
-
-
-	void setAdjacentChunks(int direction, std::shared_ptr<Chunk> &chunk);
-	bool hasAllAdjacentChunkLoaded() const;
-
-	void saveToStream(std::ostream& out) const;
-	void loadFromStream(std::istream& in);
-
-	void buildMesh(); // Build the mesh for rendering
-	void buildMeshData();
-	void uploadMesh();
-
-	inline const std::pair<int32_t, int32_t> getCoords() const {return std::make_pair(originX, originZ);}
-	inline const GLuint getVao() const {return VAO;}
-	inline const uint getMeshVerticesSize() const {return meshVerticesSize;}
-	inline const std::weak_ptr<Chunk>(&getAdjacentChunks() const)[4] { return adjacentChunks;}
-
-
-	static inline ChunkPos toKey(int32_t chunkX, int32_t chunkZ) {
-		return std::make_pair(chunkX, chunkZ);
-	}
-
-	bool preGenerated = false;
-
-
-	static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
-
-	static float getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz);
-	static float getErosion(const TerrainGenerationParams& terrainParams, float wx, float wz);
-	static float getPV(const TerrainGenerationParams& terrainParams, float wx, float wz);
-
-	static float getTemperature(const TerrainGenerationParams& terrainParams, float wx, float wz);
-	static float getHumidity(const TerrainGenerationParams& terrainParams, float wx, float wz);
-
-	static float surfaceNoiseTransformation(float noise, int splineIndex);
-
-	static int computeTerrainHeight(const TerrainGenerationParams& terrainParams, float worldX, float worldZ);
-	static BiomeType computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height);
-};
-
-class BlockStorage {
 	public:
-		BlockStorage() : data(Chunk::WIDTH * Chunk::HEIGHT * Chunk::DEPTH, BlockType::AIR) {}
 
-		BlockType& at(int x, int y, int z) {
-			return data[x + Chunk::WIDTH * (y + Chunk::HEIGHT * z)];
-		}
-		const BlockType& at(int x, int y, int z) const {
-			return data[x + Chunk::WIDTH * (y + Chunk::HEIGHT * z)];
-		}
+		Chunk(int chunkX, int chunkZ, int bitsPerEntry = 4)
+        : originX(chunkX * WIDTH),
+          originZ(chunkZ * DEPTH),
+          blockIndices(WIDTH * HEIGHT * DEPTH, bitsPerEntry) {}
+		Chunk(std::istream& in);
+		virtual ~Chunk() = 0; // pure virtual destructor
 
-		const std::vector<BlockType> &getData() const {
-			return data;
-		}
+		static constexpr int WIDTH = 16; // Size of the chunck in blocks
+		static constexpr int HEIGHT = 256; // Height of the chunck in blocks
+		static constexpr int DEPTH = 16; // Depth of the chunck in blocks
 
-	private:
-		std::vector<BlockType> data;
+		static constexpr int BLOCK_COUNT = WIDTH * HEIGHT * DEPTH;
+
+		BlockType getBlock(int x, int y, int z) const;
+		void setBlock(int x, int y, int z, BlockType block);
+
+		bool isBlockVisible(glm::ivec3 blockPos);
+
+		void saveToStream(std::ostream& out) const; // only server? Still great to have it here.
+		void loadFromStream(std::istream& in);
+
+		inline const std::weak_ptr<Chunk>(&getAdjacentChunks() const)[4] { return adjacentChunks;}
+
+		static inline ChunkPos toKey(int32_t chunkX, int32_t chunkZ) { //boff
+			return std::make_pair(chunkX, chunkZ);
+		}
 };
+
+inline Chunk::~Chunk() {}
 
 #endif
