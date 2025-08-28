@@ -206,6 +206,13 @@ void App::setUdpClientPacketCallback()
 				break;
 			}
 
+            case PacketType::NET_IMGUI: {
+                auto& p = static_cast<NetImGui&>(*pkt);
+                // handle ImGui data (e.g., update UI state)
+                currentBiome = p.currentBiome;
+                break;
+            }
+
 			// case PacketType::UPDATE_WORLD: {
 			//     auto& p = static_cast<UpdateWorld&>(*pkt);
 			//     // handle movement/world updates
@@ -342,7 +349,6 @@ void App::debugWindow() {
         // visible.  When uiInteractive is true the window captures input and
         // the mouse is released.
         {
-            // auto& params = world->getTerrainParams();
 
             glm::vec3 pos = camera->Position;
             int wx = static_cast<int>(std::floor(pos.x));
@@ -369,17 +375,17 @@ void App::debugWindow() {
             // ImGui::Text("Temperature: %.3f", Chunk::getTemperature(params, wx, wz));
             // ImGui::Text("Humidity: %.3f", Chunk::getHumidity(params, wx, wz));
 
-            // BiomeType biome = Chunk::computeBiome(params, wx, wz, Chunk::computeTerrainHeight(params, wx, wz));
-            // const char* biomeName =
-            //     (biome == BiomeType::PLAINS) ? "PLAINS" :
-            //     (biome == BiomeType::DESERT) ? "DESERT" :
-            //     (biome == BiomeType::FOREST) ? "FOREST" :
-            //     (biome == BiomeType::TUNDRA) ? "TUNDRA" :
-            //     (biome == BiomeType::SWAMP)  ? "SWAMP"  :
-            //     (biome == BiomeType::OCEAN)  ? "OCEAN"  :
-            //     (biome == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
-            //                                    "UNKNOWN";
-            // ImGui::Text("BIOME: %s", biomeName);
+            uint8_t biome = currentBiome;
+            const char* biomeName =
+                (static_cast<BiomeType>(biome) == BiomeType::PLAINS) ? "PLAINS" :
+                (static_cast<BiomeType>(biome) == BiomeType::DESERT) ? "DESERT" :
+                (static_cast<BiomeType>(biome) == BiomeType::FOREST) ? "FOREST" :
+                (static_cast<BiomeType>(biome) == BiomeType::TUNDRA) ? "TUNDRA" :
+                (static_cast<BiomeType>(biome) == BiomeType::SWAMP)  ? "SWAMP"  :
+                (static_cast<BiomeType>(biome) == BiomeType::OCEAN)  ? "OCEAN"  :
+                (static_cast<BiomeType>(biome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
+                                               "UNKNOWN";
+            ImGui::Text("BIOME: %s", biomeName);
 
 
             // Additional metrics: number of loaded chunks and approximate memory usage
@@ -493,15 +499,16 @@ void App::debugWindow() {
             }
             // Changing this will update the far clipping plane.
             // ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
-            // // Adjust the chunk loading radius.  Casting to int and back avoids
-            // // accidental type issues in the setter.  We clamp the range to a
-            // // reasonable minimum and maximum.
-            // if (world) {
-            //     int radius = static_cast<int>(world->getLoadRadius());
-            //     if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-            //         world->setLoadRadius(radius);
-            //     }
-            // }
+            
+            // Adjust the chunk loading radius.  Casting to int and back avoids
+            // accidental type issues in the setter.  We clamp the range to a
+            // reasonable minimum and maximum.
+            if (rendering) {
+                int radius = static_cast<int>(rendering->getLoadRadius());
+                if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
+                    rendering->setLoadRadius(radius);
+                }
+            }
 
             // Adjust the maximum number of chunks being generated at the same time.
             // Lower values produce smoother frame rates but slower world loading.

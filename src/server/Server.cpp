@@ -149,6 +149,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 
 	player->lastPktRecvTick = currTick;
 	player->updatePosition(pkt, deltaTime);
+	player->loadRadius = pkt.loadRadius;
 }
 
 void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &cliaddr)
@@ -172,10 +173,20 @@ void Server::sendAll()
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
 		sendNewlyUpdatedBlocks(p, newlyUpdatedBlocks);
+		sendImGuiData(p);
 		//send player position
 		//hit/dmg ..
 	}
 	newlyUpdatedBlocks.clear();
+}
+
+void Server::sendImGuiData(CPlayerInfo &player) {
+    NetImGui pkt;
+	float wx = player.getPosition().x;
+	float wz = player.getPosition().z;
+	TerrainGenerationParams params = world->getTerrainParams();
+    pkt.currentBiome = static_cast<uint8_t>(Chunk::computeBiome(params, wx, wz, Chunk::computeTerrainHeight(params, wx, wz)));
+    sendPacketTo(pkt, player.addr);
 }
 
 void Server::sendChunk(CPlayerInfo &player) {

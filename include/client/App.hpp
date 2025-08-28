@@ -111,6 +111,8 @@ private:
 
 	std::optional<int> seed;
 
+    u_int8_t currentBiome;
+
     float lastX = 400, lastY = 300;
     bool firstMouse = true;
     float deltaTime = 0.0f;

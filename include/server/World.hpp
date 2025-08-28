@@ -74,8 +74,8 @@ class World {
 	std::string getRegionFilename(int regionX, int regionZ) const;
 	std::string regionDirName;
 	
-	public:
-	    World();
+public:
+	World();
 	World(int seed);
 
     ~World();

@@ -53,7 +53,8 @@ private:
 	void sendAll();
 	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
 	void sendAccept(const sockaddr_in &cliaddr);
-	
+	void sendImGuiData(CPlayerInfo &player);
+
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player, std::vector<std::pair<glm::ivec3, BlockType>> &newlyUpdatedBlocks);
