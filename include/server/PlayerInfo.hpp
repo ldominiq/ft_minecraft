@@ -10,7 +10,8 @@
 #include "Protocol.hpp"
 #include <chrono>
 
-#define ACCEL 100
+#define FLY_SPEED 50.0f
+#define DEFAULT_SPEED 5.0f
 
 class CPlayerInfo
 {

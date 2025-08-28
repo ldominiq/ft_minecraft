@@ -95,7 +95,7 @@ private:
         Windowed,
         Fullscreen
     };
-    DisplayMode displayMode = DisplayMode::Windowed;
+    DisplayMode displayMode = DisplayMode::Fullscreen;
 
     std::unique_ptr<Camera> camera;
 	GLFWmonitor* monitor;

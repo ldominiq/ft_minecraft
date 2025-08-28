@@ -1,8 +1,8 @@
 
 #include "PlayerInfo.hpp"
 
-CPlayerInfo::CPlayerInfo(): position(glm::vec3(0,0,0)), WorldUp(0.0f, 1.0f, 0.0f),
-      yaw(45.0f), pitch(0.0f), movementSpeed(5.0f), loadRadius(12)
+CPlayerInfo::CPlayerInfo(): position(glm::vec3(0,150,0)), WorldUp(0.0f, 1.0f, 0.0f),
+      yaw(0.0f), pitch(0.0f), movementSpeed(DEFAULT_SPEED), loadRadius(12)
 {
     Front = glm::vec3(0.0f, 0.0f, -1.0f);
 }
@@ -14,7 +14,9 @@ void CPlayerInfo::updatePosition(NetPlayerInputs &inputs, float &deltaTime)
 	loadRadius = inputs.loadRadius;
 	updateCameraVectors();
 
-	float velocity = movementSpeed * deltaTime * ((inputs.keys & IN_RUN) ? ACCEL : 1.0f);
+    movementSpeed = (inputs.keys & IN_RUN) ? FLY_SPEED : DEFAULT_SPEED;
+
+	float velocity = movementSpeed * deltaTime;
 
     // Minecraft'ish camera. Doens't move along the Y axis
     glm::vec3 horizontalFront = glm::normalize(glm::vec3(Front.x, 0.0f, Front.z));
@@ -31,9 +33,9 @@ void CPlayerInfo::updatePosition(NetPlayerInputs &inputs, float &deltaTime)
 
 	// Up and Down
 	if (inputs.keys & IN_UP)
-		position.y += 1.0f;
+		position.y += WorldUp.y * velocity;
 	if (inputs.keys & IN_DOWN)
-		position.y -= 1.0f;
+		position.y -= WorldUp.y * velocity; 
 }
 
 void CPlayerInfo::updateCameraVectors() {
