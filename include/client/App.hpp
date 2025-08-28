@@ -155,7 +155,7 @@ private:
     bool uiInteractive = false;
     // Internal flag to handle key debounce for toggling the interactive mode.
     bool uiToggleHeld = false;
-	bool showDebugWindow = false;
+	bool showDebugWindow = true;
 
 	//keeps track of control GLFW values
     int controlsArray[CONTROL_COUNT];

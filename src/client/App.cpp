@@ -321,7 +321,7 @@ void App::render() {
 
         if (showDebugWindow) {
             //ImGui::ShowDemoWindow();
-            // debugWindow();
+            debugWindow();
         }
 
         // Finalize the ImGui frame and draw it.  Even if the overlay is
@@ -335,200 +335,200 @@ void App::render() {
     }
 }
 
-// void App::debugWindow() {
-//         // Build the ImGui UI.  We always draw the debug overlay.  When
-//         // uiInteractive is false we disable input on the window, allowing
-//         // the player to interact with the game while the overlay remains
-//         // visible.  When uiInteractive is true the window captures input and
-//         // the mouse is released.
-//         {
-//             auto& params = world->getTerrainParams();
+void App::debugWindow() {
+        // Build the ImGui UI.  We always draw the debug overlay.  When
+        // uiInteractive is false we disable input on the window, allowing
+        // the player to interact with the game while the overlay remains
+        // visible.  When uiInteractive is true the window captures input and
+        // the mouse is released.
+        {
+            // auto& params = world->getTerrainParams();
 
-//             glm::vec3 pos = camera->Position;
-//             int wx = static_cast<int>(std::floor(pos.x));
-//             int wz = static_cast<int>(std::floor(pos.z));
-//             int wy = static_cast<int>(std::floor(pos.y));
+            glm::vec3 pos = camera->Position;
+            int wx = static_cast<int>(std::floor(pos.x));
+            int wz = static_cast<int>(std::floor(pos.z));
+            int wy = static_cast<int>(std::floor(pos.y));
 
-//             ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
-//             if (!uiInteractive) {
-//                 flags |= ImGuiWindowFlags_NoInputs;
-//                 // Make the overlay slightly transparent when not interactive
-//                 ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
-//             }
-//             ImGui::Begin("Debug Window", nullptr, flags);
-//             // Display smoothed FPS and frame time
-//             ImGui::Text("FPS: %.1f (%.3f ms)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
-//             // Display camera coordinates
-//             ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
+            ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
+            if (!uiInteractive) {
+                flags |= ImGuiWindowFlags_NoInputs;
+                // Make the overlay slightly transparent when not interactive
+                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+            }
+            ImGui::Begin("Debug Window", nullptr, flags);
+            // Display smoothed FPS and frame time
+            ImGui::Text("FPS: %.1f (%.3f ms)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
+            // Display camera coordinates
+            ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
 
-//             ImGui::Text("World SEED: %i", params.seed);
+            // ImGui::Text("World SEED: %i", params.seed);
 
-//             ImGui::Text("Continentalness: %.3f", Chunk::getContinentalness(params, wx, wz));
-//             ImGui::Text("Erosion: %.3f", Chunk::getErosion(params, wx, wz));
-//             ImGui::Text("Peak/Valley: %.3f", Chunk::getPV(params, wx, wz));
-//             ImGui::Text("Temperature: %.3f", Chunk::getTemperature(params, wx, wz));
-//             ImGui::Text("Humidity: %.3f", Chunk::getHumidity(params, wx, wz));
+            // ImGui::Text("Continentalness: %.3f", Chunk::getContinentalness(params, wx, wz));
+            // ImGui::Text("Erosion: %.3f", Chunk::getErosion(params, wx, wz));
+            // ImGui::Text("Peak/Valley: %.3f", Chunk::getPV(params, wx, wz));
+            // ImGui::Text("Temperature: %.3f", Chunk::getTemperature(params, wx, wz));
+            // ImGui::Text("Humidity: %.3f", Chunk::getHumidity(params, wx, wz));
 
-//             BiomeType biome = Chunk::computeBiome(params, wx, wz, Chunk::computeTerrainHeight(params, wx, wz));
-//             const char* biomeName =
-//                 (biome == BiomeType::PLAINS) ? "PLAINS" :
-//                 (biome == BiomeType::DESERT) ? "DESERT" :
-//                 (biome == BiomeType::FOREST) ? "FOREST" :
-//                 (biome == BiomeType::TUNDRA) ? "TUNDRA" :
-//                 (biome == BiomeType::SWAMP)  ? "SWAMP"  :
-//                 (biome == BiomeType::OCEAN)  ? "OCEAN"  :
-//                 (biome == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
-//                                                "UNKNOWN";
-//             ImGui::Text("BIOME: %s", biomeName);
+            // BiomeType biome = Chunk::computeBiome(params, wx, wz, Chunk::computeTerrainHeight(params, wx, wz));
+            // const char* biomeName =
+            //     (biome == BiomeType::PLAINS) ? "PLAINS" :
+            //     (biome == BiomeType::DESERT) ? "DESERT" :
+            //     (biome == BiomeType::FOREST) ? "FOREST" :
+            //     (biome == BiomeType::TUNDRA) ? "TUNDRA" :
+            //     (biome == BiomeType::SWAMP)  ? "SWAMP"  :
+            //     (biome == BiomeType::OCEAN)  ? "OCEAN"  :
+            //     (biome == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
+            //                                    "UNKNOWN";
+            // ImGui::Text("BIOME: %s", biomeName);
 
 
-//             // Additional metrics: number of loaded chunks and approximate memory usage
-//             if (world) {
-//                 const size_t visibleChunks = world->getRenderedChunkCount();
-//                 const size_t totalChunks   = world->getTotalChunkCount();
-//                 ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
-//             }
-//             // Display memory usage in megabytes.  We call a static helper to
-//             // obtain the current resident set size (RSS).
-//             {
-//                 const size_t memBytes = getCurrentRSS();
-//                 const double memMB = memBytes / (1024.0 * 1024.0);
-//                 ImGui::Text("Memory: %.2f MB", memMB);
-//             }
+            // Additional metrics: number of loaded chunks and approximate memory usage
+            if (rendering) {
+                const size_t visibleChunks = rendering->getVisibleChunkCount();
+                const size_t totalChunks   = rendering->getTotalChunkInMemoryCount();
+                ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
+            }
+            // Display memory usage in megabytes.  We call a static helper to
+            // obtain the current resident set size (RSS).
+            {
+                const size_t memBytes = getCurrentRSS();
+                const double memMB = memBytes / (1024.0 * 1024.0);
+                ImGui::Text("Memory: %.2f MB", memMB);
+            }
 
-//             ImGui::Separator();
+            ImGui::Separator();
 
-//             if (ImGui::CollapsingHeader("Teleportation")) {
-//                 // Teleport player
-//                 ImGui::Text("Teleport Player");
-//                 static float tmpX = 0;
-//                 static float tmpY = 100;
-//                 static float tmpZ = 0;
-//                 ImGui::InputFloat("X", &tmpX);
-//                 ImGui::InputFloat("Y", &tmpY);
-//                 ImGui::InputFloat("Z", &tmpZ);
-//                 if (ImGui::Button("Teleport")) {
-//                     camera->Position = glm::vec3(tmpX, tmpY, tmpZ);
-//                 }
-//             }
+            if (ImGui::CollapsingHeader("Teleportation")) {
+                // Teleport player
+                ImGui::Text("Teleport Player");
+                static float tmpX = 0;
+                static float tmpY = 100;
+                static float tmpZ = 0;
+                ImGui::InputFloat("X", &tmpX);
+                ImGui::InputFloat("Y", &tmpY);
+                ImGui::InputFloat("Z", &tmpZ);
+                if (ImGui::Button("Teleport")) {
+                    camera->Position = glm::vec3(tmpX, tmpY, tmpZ);
+                }
+            }
 
-//             ImGui::Separator();
+            ImGui::Separator();
 
-//             if (ImGui::CollapsingHeader("Noise Generation")) {
-//                 if (ImGui::CollapsingHeader("Continentalness Parameters")) {
-//                     ImGui::SliderFloat("frequency", &params.continentalnessFrequency, 0.001f, 0.01f);
-//                     ImGui::SliderInt("octaves", &params.continentalnessOctaves, 1, 10);
-//                     ImGui::SliderFloat("persistence", &params.continentalnessPersistence, 0.0f, 1.0f);
-//                     ImGui::SliderFloat("lacunarity", &params.continentalnessLacunarity, 1.0f, 4.0f);
-//                     ImGui::SliderFloat("scaling factor", &params.continentalnessScalingFactor, 1.0f, 5.0f);
-//                 }
+            // if (ImGui::CollapsingHeader("Noise Generation")) {
+            //     if (ImGui::CollapsingHeader("Continentalness Parameters")) {
+            //         ImGui::SliderFloat("frequency", &params.continentalnessFrequency, 0.001f, 0.01f);
+            //         ImGui::SliderInt("octaves", &params.continentalnessOctaves, 1, 10);
+            //         ImGui::SliderFloat("persistence", &params.continentalnessPersistence, 0.0f, 1.0f);
+            //         ImGui::SliderFloat("lacunarity", &params.continentalnessLacunarity, 1.0f, 4.0f);
+            //         ImGui::SliderFloat("scaling factor", &params.continentalnessScalingFactor, 1.0f, 5.0f);
+            //     }
 
-//                 if (ImGui::CollapsingHeader("Erosion Parameters")) {
-//                     ImGui::SliderFloat("#frequency", &params.erosionFrequency, 0.001f, 0.02f);
-//                     ImGui::SliderInt("#octaves", &params.erosionOctaves, 1, 10);
-//                     ImGui::SliderFloat("#persistence", &params.erosionPersistence, 0.0f, 1.0f);
-//                     ImGui::SliderFloat("#lacunarity", &params.erosionLacunarity, 1.0f, 4.0f);
-//                     ImGui::SliderFloat("#scaling factor", &params.erosionScalingFactor, 1.0f, 5.0f);
-//                 }
+            //     if (ImGui::CollapsingHeader("Erosion Parameters")) {
+            //         ImGui::SliderFloat("#frequency", &params.erosionFrequency, 0.001f, 0.02f);
+            //         ImGui::SliderInt("#octaves", &params.erosionOctaves, 1, 10);
+            //         ImGui::SliderFloat("#persistence", &params.erosionPersistence, 0.0f, 1.0f);
+            //         ImGui::SliderFloat("#lacunarity", &params.erosionLacunarity, 1.0f, 4.0f);
+            //         ImGui::SliderFloat("#scaling factor", &params.erosionScalingFactor, 1.0f, 5.0f);
+            //     }
 
-//                 if (ImGui::CollapsingHeader("Peak/Valley Parameters")) {
-//                     ImGui::SliderFloat("-frequency", &params.peakValleyFrequency, 0.001f, 0.09f);
-//                     ImGui::SliderInt("-octaves", &params.peakValleyOctaves, 1, 10);
-//                     ImGui::SliderFloat("-persistence", &params.peakValleyPersistence, 0.0f, 1.0f);
-//                     ImGui::SliderFloat("-lacunarity", &params.peakValleyLacunarity, 1.0f, 4.0f);
-//                     ImGui::SliderFloat("-scaling factor", &params.peakValleyScalingFactor, 1.0f, 5.0f);
-//                 }
+            //     if (ImGui::CollapsingHeader("Peak/Valley Parameters")) {
+            //         ImGui::SliderFloat("-frequency", &params.peakValleyFrequency, 0.001f, 0.09f);
+            //         ImGui::SliderInt("-octaves", &params.peakValleyOctaves, 1, 10);
+            //         ImGui::SliderFloat("-persistence", &params.peakValleyPersistence, 0.0f, 1.0f);
+            //         ImGui::SliderFloat("-lacunarity", &params.peakValleyLacunarity, 1.0f, 4.0f);
+            //         ImGui::SliderFloat("-scaling factor", &params.peakValleyScalingFactor, 1.0f, 5.0f);
+            //     }
 
-//                 if (ImGui::CollapsingHeader("Temperature Parameters")) {
-//                     ImGui::SliderFloat("--frequency", &params.temperatureFrequency, 0.0001f, 0.0012f);
-//                     ImGui::SliderInt("--octaves", &params.temperatureOctaves, 1, 10);
-//                     ImGui::SliderFloat("--persistence", &params.temperaturePersistence, 0.0f, 1.0f);
-//                     ImGui::SliderFloat("--lacunarity", &params.temperatureLacunarity, 1.0f, 4.0f);
-//                     ImGui::SliderFloat("--scaling factor", &params.temperatureScalingFactor, 1.0f, 5.0f);
-//                 }
+            //     if (ImGui::CollapsingHeader("Temperature Parameters")) {
+            //         ImGui::SliderFloat("--frequency", &params.temperatureFrequency, 0.0001f, 0.0012f);
+            //         ImGui::SliderInt("--octaves", &params.temperatureOctaves, 1, 10);
+            //         ImGui::SliderFloat("--persistence", &params.temperaturePersistence, 0.0f, 1.0f);
+            //         ImGui::SliderFloat("--lacunarity", &params.temperatureLacunarity, 1.0f, 4.0f);
+            //         ImGui::SliderFloat("--scaling factor", &params.temperatureScalingFactor, 1.0f, 5.0f);
+            //     }
 
-//                 if (ImGui::CollapsingHeader("Humidity Parameters")) {
-//                     ImGui::SliderFloat("---frequency", &params.humidityFrequency, 0.0005f, 0.0015f);
-//                     ImGui::SliderInt("---octaves", &params.humidityOctaves, 1, 10);
-//                     ImGui::SliderFloat("---persistence", &params.humidityPersistence, 0.0f, 1.0f);
-//                     ImGui::SliderFloat("---lacunarity", &params.humidityLacunarity, 1.0f, 4.0f);
-//                     ImGui::SliderFloat("---scaling factor", &params.humidityScalingFactor, 1.0f, 5.0f);
-//                 }
-//             }
+            //     if (ImGui::CollapsingHeader("Humidity Parameters")) {
+            //         ImGui::SliderFloat("---frequency", &params.humidityFrequency, 0.0005f, 0.0015f);
+            //         ImGui::SliderInt("---octaves", &params.humidityOctaves, 1, 10);
+            //         ImGui::SliderFloat("---persistence", &params.humidityPersistence, 0.0f, 1.0f);
+            //         ImGui::SliderFloat("---lacunarity", &params.humidityLacunarity, 1.0f, 4.0f);
+            //         ImGui::SliderFloat("---scaling factor", &params.humidityScalingFactor, 1.0f, 5.0f);
+            //     }
+            // }
             
 
-//             ImGui::Separator();
+            ImGui::Separator();
 
-//             if (ImGui::CollapsingHeader("Heightmap")) {
-//                 // Create heightmap image
-//                 ImGui::Text("Heightmap Generation");
-//                 ImGui::InputInt("Size (ex. 100)", &params.genSize);
-//                 ImGui::InputInt("Downsample (ex. 8)", &params.downsample);
-//                 if (ImGui::Button("Generate Noises")) {
-//                     if (world) {
-//                         world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 1);
-//                     }
-//                 }
-//                 if (ImGui::Button("Generate Heightmaps")) {
-//                     if (world) {
-//                         world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 0);
-//                     }
-//                 }
-//                 if (ImGui::Button("Generate Biome Map")) {
-//                     if (world) {
-//                         world->dumpBiomeMap(0, 0, params.genSize, params.genSize, params.downsample);
-//                     }
-//                 }
-//             }
+            // if (ImGui::CollapsingHeader("Heightmap")) {
+            //     // Create heightmap image
+            //     ImGui::Text("Heightmap Generation");
+            //     ImGui::InputInt("Size (ex. 100)", &params.genSize);
+            //     ImGui::InputInt("Downsample (ex. 8)", &params.downsample);
+            //     if (ImGui::Button("Generate Noises")) {
+            //         if (world) {
+            //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 1);
+            //         }
+            //     }
+            //     if (ImGui::Button("Generate Heightmaps")) {
+            //         if (world) {
+            //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 0);
+            //         }
+            //     }
+            //     if (ImGui::Button("Generate Biome Map")) {
+            //         if (world) {
+            //             world->dumpBiomeMap(0, 0, params.genSize, params.genSize, params.downsample);
+            //         }
+            //     }
+            // }
 
-//             ImGui::Separator();
+            ImGui::Separator();
 
-//             // Wireframe toggle
-//             if (ImGui::Checkbox("Wireframe", &wireframe)) {
-//                 glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-//             }
-//             // Shader toggle (texture vs gradient).  We update activeShader accordingly.
-//             if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
-//                 activeShader = useGradientShader ? gradientShader : textureShader;
-//             }
-//             // Changing this will update the far clipping plane.
-//             ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
-//             // Adjust the chunk loading radius.  Casting to int and back avoids
-//             // accidental type issues in the setter.  We clamp the range to a
-//             // reasonable minimum and maximum.
-//             if (world) {
-//                 int radius = static_cast<int>(world->getLoadRadius());
-//                 if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-//                     world->setLoadRadius(radius);
-//                 }
-//             }
+            // Wireframe toggle
+            if (ImGui::Checkbox("Wireframe", &wireframe)) {
+                glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
+            }
+            // Shader toggle (texture vs gradient).  We update activeShader accordingly.
+            if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
+                activeShader = useGradientShader ? gradientShader : textureShader;
+            }
+            // Changing this will update the far clipping plane.
+            // ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
+            // // Adjust the chunk loading radius.  Casting to int and back avoids
+            // // accidental type issues in the setter.  We clamp the range to a
+            // // reasonable minimum and maximum.
+            // if (world) {
+            //     int radius = static_cast<int>(world->getLoadRadius());
+            //     if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
+            //         world->setLoadRadius(radius);
+            //     }
+            // }
 
-//             // Adjust the maximum number of chunks being generated at the same time.
-//             // Lower values produce smoother frame rates but slower world loading.
-//             if (world) {
-//                 int maxGen = static_cast<int>(world->getMaxConcurrentGeneration());
-//                 if (ImGui::SliderInt("Generation Concurrency", &maxGen, 1, 8)) {
-//                     world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
-//                 }
-//             }
+            // Adjust the maximum number of chunks being generated at the same time.
+            // Lower values produce smoother frame rates but slower world loading.
+            // if (world) {
+            //     int maxGen = static_cast<int>(world->getMaxConcurrentGeneration());
+            //     if (ImGui::SliderInt("Generation Concurrency", &maxGen, 1, 8)) {
+            //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
+            //     }
+            // }
 
-//             // Lighting controls: direction and colours.  The direction vector
-//             // components are clamped to [-1,1]; colours use a colour picker.
-//             ImGui::Separator();
-//             if (ImGui::CollapsingHeader("Lighting")) {
-//                 ImGui::Text("Lighting Controls");
-//                 ImGui::SliderFloat3("Light Direction", &lightDir.x, -1.0f, 1.0f);
-//                 ImGui::ColorEdit3("Light Colour", &lightColor.x);
-//                 ImGui::ColorEdit3("Ambient Colour", &ambientColor.x);
-//             }
+            // Lighting controls: direction and colours.  The direction vector
+            // components are clamped to [-1,1]; colours use a colour picker.
+            ImGui::Separator();
+            if (ImGui::CollapsingHeader("Lighting")) {
+                ImGui::Text("Lighting Controls");
+                ImGui::SliderFloat3("Light Direction", &lightDir.x, -1.0f, 1.0f);
+                ImGui::ColorEdit3("Light Colour", &lightColor.x);
+                ImGui::ColorEdit3("Ambient Colour", &ambientColor.x);
+            }
 
 
-//             ImGui::End();
-//             if (!uiInteractive) {
-//                 ImGui::PopStyleVar();
-//             }
-//         }
-// }
+            ImGui::End();
+            if (!uiInteractive) {
+                ImGui::PopStyleVar();
+            }
+        }
+}
 
 void App::run() {
     init();
