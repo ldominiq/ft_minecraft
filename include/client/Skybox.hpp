@@ -1,14 +1,15 @@
 #ifndef SKYBOX_HPP
 #define SKYBOX_HPP
 
-#include "Shader.hpp"
-#include "stb_image.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include <string>
 #include <memory>
+
+#include "Shader.hpp"
+#include "stb_image.h"
 
 class Skybox {
 public:

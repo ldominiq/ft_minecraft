@@ -28,6 +28,21 @@ struct NetConnect final : public Packet {
 };
 inline AutoRegister<NetConnect> _reg_NetConnect;
 
+struct NetDisconnect final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_DISCONNECT;
+    std::string username;
+
+    NetDisconnect() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+        w.write_string(username);
+    }
+    void decode(BufferReader& r) override {
+        username = r.read_string();
+    }
+};
+inline AutoRegister<NetDisconnect> _reg_NetDisconnect;
+
 struct NetAccept final : public Packet {
     static constexpr PacketType ID = PacketType::NET_ACCEPT;
     uint32_t clientId = 0;

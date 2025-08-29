@@ -47,6 +47,7 @@ private:
 
 	void dispatch(const uint8_t *data, int n, sockaddr_in &clidarr);
 	void receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr);
+	void receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr);
 	void receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &clieaddr);
 	void receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &clieddr);
 
@@ -56,7 +57,7 @@ private:
 	
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
-	void sendNewlyUpdatedBlocks(CPlayerInfo &player, std::vector<std::pair<glm::ivec3, BlockType>> &newlyUpdatedBlocks);
+	void sendNewlyUpdatedBlocks(CPlayerInfo &player);
 
 	void saveWorldOnExit();
 
@@ -68,15 +69,17 @@ public:
 
 namespace NetUtils {
 
-	// Returns a pointer to the player, or nullptr if not found
-	inline CPlayerInfo* findPlayerByAddr(std::vector<CPlayerInfo>& players, const sockaddr_in& addrToFind) {
-		auto it = std::find_if(players.begin(), players.end(),
-			[&](const CPlayerInfo& p) {
-				return p.addr.sin_addr.s_addr == addrToFind.sin_addr.s_addr &&
-					p.addr.sin_port == addrToFind.sin_port;
-			});
-		return it != players.end() ? &(*it) : nullptr;
-	}
+    // Returns an iterator to the player, or players.end() if not found
+    inline std::vector<CPlayerInfo>::iterator findPlayerByAddr(
+        std::vector<CPlayerInfo>& players,
+        const sockaddr_in& addrToFind )
+	{
+        return std::find_if(players.begin(), players.end(),
+            [&](CPlayerInfo& p) {
+                return p.addr.sin_addr.s_addr == addrToFind.sin_addr.s_addr &&
+                       p.addr.sin_port == addrToFind.sin_port;
+            });
+    }
 
 } // namespace NetUtils
 

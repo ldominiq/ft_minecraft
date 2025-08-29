@@ -8,14 +8,14 @@
 #include <iostream>
 #include <vector>
 
-#include "Protocol.hpp"
-#include "Chunk.hpp"
-
 #include <fcntl.h>
 #include <zstd.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <sstream>
+
+#include "Protocol.hpp"
+#include "ChunkRenderer.hpp"
 
 #define PORT 1234
 

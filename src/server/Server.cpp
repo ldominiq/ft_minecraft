@@ -96,9 +96,15 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 {
     auto pkt = decodePacket(data, n); // now returns unique_ptr<Packet>
     switch (pkt->type) {
-        case PacketType::NET_CONNECT: {
+		case PacketType::NET_CONNECT: {
 			auto& p = static_cast<NetConnect&>(*pkt);
 			receiveConnect(p, cliaddr);
+            break;
+		}
+
+        case PacketType::NET_DISCONNECT: {
+			auto& p = static_cast<NetDisconnect&>(*pkt);
+			receiveDisconnect(p, cliaddr);
             break;
 		}
 
@@ -141,10 +147,19 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	sendAccept(cliaddr);
 }
 
+void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
+{
+	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (player == players.end())
+		return ;
+
+	players.erase(player);
+}
+
 void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliaddr)
 {
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
-	if (!player)
+	if (player == players.end())
 		return ;
 
 	player->lastPktRecvTick = currTick;
@@ -154,7 +169,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &cliaddr)
 {
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
-	if (!player)
+	if (player == players.end())
 		return ;
 
 	player->lastPktRecvTick = currTick;
@@ -163,24 +178,25 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 
 void Server::sendAll()
 {
-	std::vector<std::pair<glm::ivec3, BlockType>> newlyUpdatedBlocks;
-	newlyUpdatedBlocks.swap(world->updatedBlocks);
-
+	world->amountOfChunksSentThisTick = 0;
 	for (CPlayerInfo &p : players)
 	{
 		world->updateVisibleChunks(p);
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
-		sendNewlyUpdatedBlocks(p, newlyUpdatedBlocks);
+		sendNewlyUpdatedBlocks(p);
 		//send player position
 		//hit/dmg ..
 	}
-	newlyUpdatedBlocks.clear();
 }
 
 void Server::sendChunk(CPlayerInfo &player) {
-    for (auto& chunkPos : player.rdyChunks) {
-        Chunk& chunk = *world->getChunk(chunkPos.first, chunkPos.second);
+
+	std::vector<ChunkPos> readyChunks;
+	readyChunks.swap(player.rdyChunks);
+
+    for (auto& chunkPos : readyChunks) {
+        ChunkGeneration& chunk = *world->getChunk(chunkPos.first, chunkPos.second);
 
         // 1. Serialize chunk into memory
         std::ostringstream oss(std::ios::binary);
@@ -226,7 +242,6 @@ void Server::sendChunk(CPlayerInfo &player) {
             sendPacketTo(CD, player.addr);
         }
     }
-    player.rdyChunks.clear(); // sent all
 }
 
 // TODO : delta compression
@@ -241,8 +256,11 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	// std::cout << "sending positions: " << pkt.positionX << " " << pkt.positionY << " " << pkt.positionZ << std::endl;
 }
 
-void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player, std::vector<std::pair<glm::ivec3, BlockType>> &newlyUpdatedBlocks)
+void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)
 {
+	std::vector<std::pair<glm::ivec3, BlockType>> newlyUpdatedBlocks;
+	newlyUpdatedBlocks.swap(world->updatedBlocks);
+
 	for (auto &block : newlyUpdatedBlocks)
 	{
 		NetModifiedBlockData pkt;

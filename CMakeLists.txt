@@ -185,9 +185,8 @@ target_include_directories(ft_minecraft_server PRIVATE
     ${glm_SOURCE_DIR}
     ${fastnoise_SOURCE_DIR}/Cpp
 	${zstd_SOURCE_DIR}/lib
-	${glad_SOURCE_DIR}/include
 )
 # Should look into restructure stuff so we can remove glad from server
 target_link_libraries(ft_minecraft_server PRIVATE
-	libzstd glad
+	libzstd
 )

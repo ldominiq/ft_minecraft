@@ -1,7 +1,6 @@
-#include "Rendering.hpp"
+#include "Renderer.hpp"
 
-
-void Rendering::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ)
+void Renderer::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ)
 {
 	x = (globalX % Chunk::WIDTH + Chunk::WIDTH) % Chunk::WIDTH;
 	z = (globalZ % Chunk::DEPTH + Chunk::DEPTH) % Chunk::DEPTH;
@@ -16,7 +15,7 @@ void Rendering::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, i
 		chunkZ--;
 }
 
-// BlockType Rendering::getBlockWorld(glm::ivec3 globalCoords)
+// BlockType Renderer::getBlockWorld(glm::ivec3 globalCoords)
 // {
 // 	int x, y, z;
 // 	int chunkX, chunkZ;
@@ -30,7 +29,7 @@ void Rendering::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, i
 // 	return currChunk->getBlock(x, y, z);
 // }
 
-void Rendering::setBlockWorld(glm::vec3 &targetCoords, BlockType type)
+void Renderer::setBlockWorld(glm::vec3 &targetCoords, BlockType type)
 {
     int x, y, z;
     int chunkX, chunkZ;
@@ -42,35 +41,46 @@ void Rendering::setBlockWorld(glm::vec3 &targetCoords, BlockType type)
     if (it == chunks.end())
         return;
 
-    std::shared_ptr<Chunk> currChunk = it->second;
+    std::shared_ptr<ChunkRenderer> currChunk = it->second;
 
     currChunk->setBlock(x, y, z, type);
 	currChunk->buildMesh();
 
 	// //update possible neighbour
 	if (x == 0) {
-		if (auto westChunk = currChunk->getAdjacentChunks()[WEST].lock()) {
-			westChunk->buildMesh();
+		if (auto westChunkBase = currChunk->getAdjacentChunks()[WEST].lock()) {
+			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
+				westChunk->buildMesh();
+			}
 		}
 	}
+
 	if (x == Chunk::WIDTH - 1) {
-		if (auto eastChunk = currChunk->getAdjacentChunks()[EAST].lock()) {
-			eastChunk->buildMesh();
+		if (auto eastChunkBase = currChunk->getAdjacentChunks()[EAST].lock()) {
+			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
+				eastChunk->buildMesh();
+			}
 		}
 	}
+
 	if (z == 0) {
-		if (auto southChunk = currChunk->getAdjacentChunks()[SOUTH].lock()) {
-			southChunk->buildMesh();
+		if (auto southChunkBase = currChunk->getAdjacentChunks()[SOUTH].lock()) {
+			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
+				southChunk->buildMesh();
+			}
 		}
 	}
+
 	if (z == Chunk::DEPTH - 1) {
-		if (auto northChunk = currChunk->getAdjacentChunks()[NORTH].lock()) {
-			northChunk->buildMesh();
+		if (auto northChunkBase = currChunk->getAdjacentChunks()[NORTH].lock()) {
+			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
+				northChunk->buildMesh();
+			}
 		}
 	}
 }
 
-bool Rendering::isBlockVisibleWorld(glm::ivec3 globalCoords)
+bool Renderer::isBlockVisibleWorld(glm::ivec3 globalCoords)
 {
 	int x, y, z;
 	int chunkX, chunkZ;
@@ -81,11 +91,11 @@ bool Rendering::isBlockVisibleWorld(glm::ivec3 globalCoords)
 		return false;
 	}
 
-	std::shared_ptr<Chunk> currChunk = it->second;
+	std::shared_ptr<ChunkRenderer> currChunk = it->second;
 	return currChunk->isBlockVisible(glm::vec3(x, y ,z));
 }
 
-std::shared_ptr<Chunk> Rendering::getChunk(int chunkX, int chunkZ) {
+std::shared_ptr<ChunkRenderer> Renderer::getChunk(int chunkX, int chunkZ) {
     const ChunkPos key = Chunk::toKey(chunkX, chunkZ);
     auto it = chunks.find(key);
     if (it == chunks.end())
@@ -93,7 +103,7 @@ std::shared_ptr<Chunk> Rendering::getChunk(int chunkX, int chunkZ) {
     return it->second;
 }
 
-void Rendering::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<Chunk> &chunk) {
+void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk) {
 
     const int dirX[] = { 0, 0, 1, -1 };
     const int dirZ[] = { 1, -1, 0, 0 };
@@ -103,7 +113,7 @@ void Rendering::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<Chunk> &ch
         int nx = chunkX + dirX[dir];
         int nz = chunkZ + dirZ[dir];
 
-        std::shared_ptr<Chunk> neighbor = getChunk(nx, nz);
+        std::shared_ptr<ChunkRenderer> neighbor = getChunk(nx, nz);
 
         chunk->setAdjacentChunks(static_cast<Direction>(dir), neighbor);
 		if (chunk->hasAllAdjacentChunkLoaded())
@@ -118,23 +128,23 @@ void Rendering::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<Chunk> &ch
     }
 }
 
-std::vector<std::weak_ptr<Chunk>> Rendering::getRenderedChunks()
+std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
 {
 	return renderedChunks;
 }
 
-void Rendering::updateChunk(const NetModifiedBlockData &pkt)
+void Renderer::updateChunk(const NetModifiedBlockData &pkt)
 {
 	glm::vec3 targetCoords = glm::vec3(pkt.x, pkt.y, pkt.z);
 	setBlockWorld(targetCoords, static_cast<BlockType>(pkt.blockType));
 }
 
-void Rendering::buildChunks()
+void Renderer::buildChunks()
 {
 	std::vector<std::future<ChunkPos>> meshFutures;
 
 	for (auto [chunkX, chunkZ] : chunksToBuild) {
-		std::shared_ptr<Chunk> currChunk = getChunk(chunkX, chunkZ);
+		std::shared_ptr<ChunkRenderer> currChunk = getChunk(chunkX, chunkZ);
 		meshFutures.push_back(std::async(std::launch::async, [chunkX, chunkZ, currChunk]() {
 			currChunk->buildMeshData();
 			return Chunk::toKey(chunkX, chunkZ);
@@ -154,7 +164,7 @@ void Rendering::buildChunks()
 }
 
 //sets rendered chunks and unloads far away chunks
-void Rendering::organizeChunks(const std::pair<int, int> pos)
+void Renderer::organizeChunks(const std::pair<int, int> pos)
 {
     // Clear renderedChunks first
     renderedChunks.clear();
@@ -188,7 +198,7 @@ void Rendering::organizeChunks(const std::pair<int, int> pos)
     }
 }
 
-void Rendering::prepareChunk(const NetChunkHeader& pkt) {
+void Renderer::prepareChunk(const NetChunkHeader& pkt) {
 	chunkData data;
 	data.compressedSize = pkt.compressedSize;
 	data.uncompressedSize = pkt.uncompressedSize;
@@ -197,7 +207,7 @@ void Rendering::prepareChunk(const NetChunkHeader& pkt) {
 }
 
 // TODO : Make this function great. could be fucked up packet > MAXLINE and 1 packet gets lost
-void Rendering::receiveChunk(const NetChunkData& pkt) {
+void Renderer::receiveChunk(const NetChunkData& pkt) {
 	auto data = chunksData.find(std::make_pair(pkt.X, pkt.Z));
 	if (data == chunksData.end()) // Will never not find an element because of chunk 0, 0. And X and Z initialise to 0. TODO : fix this
 		return ;
@@ -222,7 +232,7 @@ void Rendering::receiveChunk(const NetChunkData& pkt) {
         // Deserialize into BitPackedArray
         std::istringstream iss(std::string(decompressed.begin(), decompressed.end()), std::ios::binary);
 
-        std::shared_ptr<Chunk> newChunk = std::make_shared<Chunk>(iss);
+        std::shared_ptr<ChunkRenderer> newChunk = std::make_shared<ChunkRenderer>(iss);
 		linkNeighbors(pkt.X, pkt.Z, newChunk);
 		chunks[{pkt.X, pkt.Z}] = newChunk;
 		// newChunk->buildMesh();
@@ -231,13 +241,13 @@ void Rendering::receiveChunk(const NetChunkData& pkt) {
 }
 
 //I dislike having VAO here. TODO : MAYBE MAYBE change it
-void Rendering::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, const uint &meshVerticesSize) const {
+void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, const uint &meshVerticesSize) const {
     shader->use();
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 9);
 }
 
-void Rendering::render(const std::shared_ptr<Shader> &shaderProgram) const {
+void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 	for (auto& weakChunk : renderedChunks) {
 		if (auto chunk = weakChunk.lock())
 			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());

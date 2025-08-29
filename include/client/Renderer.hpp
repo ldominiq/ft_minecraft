@@ -1,6 +1,6 @@
 
-#ifndef RENDERING_HPP
-#define RENDERING_HPP
+#ifndef RENDERER_HPP
+#define RENDERER_HPP
 
 #include <vector>
 #include <unordered_set>
@@ -12,7 +12,7 @@
 #include <optional>
 
 #include "Shader.hpp"
-#include "Chunk.hpp"
+#include "ChunkRenderer.hpp"
 #include "Protocol.hpp"
 
 
@@ -25,21 +25,21 @@ struct chunkData {
 	// size_t receivedBytes = 0;
 };
 
-class Rendering {
+class Renderer {
 
 	int loadRadius = 16;
 	int unloadRadius = loadRadius + 16;
 
-	std::unordered_map<ChunkPos, std::shared_ptr<Chunk>> chunks; // TODO : maybe change it for a vector for better perfs
+	std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks; // TODO : maybe change it for a vector for better perfs
 	std::unordered_map<ChunkPos, chunkData> chunksData; //building chunk
 	std::unordered_set<ChunkPos> chunksToBuild; // chunk to build and upload mesh
-	std::vector<std::weak_ptr<Chunk>> renderedChunks;
+	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
 
-	std::shared_ptr<Chunk> getChunk(int chunkX, int chunkZ);
-	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<Chunk> &chunk);
+	std::shared_ptr<ChunkRenderer> getChunk(int chunkX, int chunkZ);
+	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
 
 	public:
-		std::vector<std::weak_ptr<Chunk>> getRenderedChunks();
+		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
 
 		void render(const std::shared_ptr<Shader> &shaderProgram) const ;
 
