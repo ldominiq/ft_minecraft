@@ -66,21 +66,6 @@ glm::vec2 ChunkRenderer::getTextureOffset(const BlockType type, const int face) 
     return glm::vec2(col, row);
 }
 
-// Save a simple RGB PPM where each pixel is an sRGB color representing the biome
-// static void saveBiomePPM(const std::string &path, const std::vector<glm::u8vec3> &img, int w, int h) {
-//     std::ofstream f(path, std::ios::binary);
-//     f << "P6\n" << w << " " << h << "\n255\n";
-//     for (int j = 0; j < h; ++j) {
-//         for (int i = 0; i < w; ++i) {
-//             const glm::u8vec3 &c = img[i + j * w];
-//             f.put(static_cast<char>(c.r));
-//             f.put(static_cast<char>(c.g));
-//             f.put(static_cast<char>(c.b));
-//         }
-//     }
-//     f.close();
-// }
-
 void ChunkRenderer::addFace(int x, int y, int z, int face) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);

@@ -6,6 +6,8 @@ Chunk::Chunk(std::istream& in) : blockIndices(WIDTH * HEIGHT * DEPTH, 4)
     loadFromStream(in);
 }
 
+Chunk::~Chunk() {}
+
 BlockType Chunk::getBlock(int x, int y, int z) const {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH) {
         return BlockType::AIR; // Out of bounds returns air

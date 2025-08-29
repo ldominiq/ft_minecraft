@@ -69,7 +69,6 @@ public:
 
 namespace NetUtils {
 
-	// Returns a pointer to the player, or nullptr if not found
     // Returns an iterator to the player, or players.end() if not found
     inline std::vector<CPlayerInfo>::iterator findPlayerByAddr(
         std::vector<CPlayerInfo>& players,

@@ -41,7 +41,7 @@ struct NetDisconnect final : public Packet {
         username = r.read_string();
     }
 };
-inline AutoRegister<NetDisconnect> _reg_NetDisonnect;
+inline AutoRegister<NetDisconnect> _reg_NetDisconnect;
 
 struct NetAccept final : public Packet {
     static constexpr PacketType ID = PacketType::NET_ACCEPT;

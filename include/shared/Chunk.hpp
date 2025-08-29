@@ -88,6 +88,4 @@ class Chunk {
 		}
 };
 
-inline Chunk::~Chunk() {}
-
 #endif

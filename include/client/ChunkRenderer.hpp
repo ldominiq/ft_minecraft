@@ -33,7 +33,6 @@ class ChunkRenderer : public Chunk {
 		void buildMeshData();
 		void uploadMesh();
 
-		// inline const std::pair<int32_t, int32_t> getCoords() const {return std::make_pair(originX, originZ);} //unused
 		inline const GLuint getVao() const {return VAO;}
 		inline const uint getMeshVerticesSize() const {return meshVerticesSize;}
 };
