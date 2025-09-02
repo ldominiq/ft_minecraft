@@ -108,6 +108,7 @@ private:
     std::unique_ptr<Skybox> skybox;
     std::shared_ptr<Shader> textureShader;
     std::shared_ptr<Shader> gradientShader;
+    std::shared_ptr<Shader> skyShader;
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
 
 	std::optional<int> seed;

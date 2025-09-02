@@ -47,6 +47,11 @@ void App::init() {
     glfwMakeContextCurrent(window);
     gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
 
+    // VAO for fullscreen triangle (no attributes needed)
+    glGenVertexArrays(1, &VAO);
+    glBindVertexArray(VAO);
+    glBindVertexArray(0);
+
     glfwGetFramebufferSize(window, &windowedWidth, &windowedHeight);
 
     const std::vector<std::string> faces = {
@@ -244,6 +249,7 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/simple.vert", "shaders/simple.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
+    skyShader = std::make_shared<Shader>("shaders/sky.vert", "shaders/sky.frag");
     texture = loadTexture("assets/textures/textures.png");
 
     activeShader = textureShader;
@@ -305,17 +311,32 @@ void App::render() {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        activeShader->use();
-
-        // window aspect ratio
+        // --- Draw sky background first ---
+        skyShader->use();
+        // window aspect / uniforms
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
         const float aspect = static_cast<float>(width) / static_cast<float>(height);
 
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
+        skyShader->setVec2("resolution", glm::vec2(width, height));
+        skyShader->setFloat("time", glfwGetTime());
+        skyShader->setMat4("view", view);
+        skyShader->setMat4("projection", projection);
+
+        // Disable depth test and writes for background
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glBindVertexArray(VAO);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindVertexArray(0);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        activeShader->use();
 
         // Set the uniform matrices in the shader
         activeShader->setMat4("view", view);
@@ -337,8 +358,10 @@ void App::render() {
 		renderer->render(activeShader);
 
 
-        skybox->draw(camera->getViewMatrix(), projection);
+        // skybox->draw(camera->getViewMatrix(), projection);
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+        
+        glBindVertexArray(0);
 
         if (showDebugWindow) {
             //ImGui::ShowDemoWindow();
