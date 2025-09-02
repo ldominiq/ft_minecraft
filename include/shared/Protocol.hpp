@@ -206,4 +206,20 @@ struct NetModifiedBlockData final : public Packet {
 };
 inline AutoRegister<NetModifiedBlockData> _reg_NetModifiedBlockData;
 
+//used in chat
+struct NetMessage final : public Packet {
+	static constexpr PacketType ID = PacketType::NET_MESSAGE;
+	std::string message;
+	
+	NetMessage() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+		w.write_string(message);
+    }
+    void decode(BufferReader& r) override {
+		message = r.read_string();
+    }
+};
+inline AutoRegister<NetMessage> _reg_NetServerMessage;
+
 #endif

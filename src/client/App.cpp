@@ -65,7 +65,8 @@ void App::init() {
 
 	renderer = std::make_unique<Renderer>();
 
-    
+    chat = std::make_unique<Chat>(windowedWidth, windowedHeight);
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -103,10 +104,22 @@ void App::init() {
     });
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
+	glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int codepoint) {
+		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
+		if (!app) return;
+		if (app->menuManager != app->chat) return ;
+
+		app->chat->addCharToCurrMsg(static_cast<char>(codepoint));
+	});
 
 	glfwSetKeyCallback(window, [](GLFWwindow* w, int key, int scancode, int action, int mods) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		if (!app->menuManager && app->controlsArray[CLOSE_WINDOW] == key && action == GLFW_PRESS) glfwSetWindowShouldClose(w, true);
+
+		app->processInputsMenus(key, action);
+		if (app->menuManager) return ;
 
 		auto mapKeyToBit = [](int key) -> uint16_t {
 			switch (key) {
@@ -217,6 +230,12 @@ void App::setUdpClientPacketCallback()
 				break;
 			}
 
+			case PacketType::NET_MESSAGE: {
+				auto& p = static_cast<NetMessage&>(*pkt);
+				chat->updateChatlog(p.message);
+				break;
+			}
+
 			// case PacketType::UPDATE_WORLD: {
 			//     auto& p = static_cast<UpdateWorld&>(*pkt);
 			//     // handle movement/world updates
@@ -249,14 +268,13 @@ void App::render() {
 
     while (!glfwWindowShouldClose(window)) {
 
-		//sending/receiving packets and stuff
+		// sending/receiving packets and stuff
 		udpClient->receivePacket();
-		if (keyPressedRecently)
+		if (keyPressedRecently && !menuManager)
 		{
 			NetPlayerInputs inputs = buildPlayerInputsPacket();
 			udpClient->sendPacket(inputs);
 		}
-
 
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
@@ -293,8 +311,9 @@ void App::render() {
         ImGui::NewFrame();
 
         updateWindowTitle();
-		
-        processInput();
+
+		if (menuManager != chat)
+        	processInput();
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -321,16 +340,14 @@ void App::render() {
         activeShader->setVec3("lightColor", lightColor);
         activeShader->setVec3("ambientColor", ambientColor);
 
-
 		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
 		const int currentChunkZ = static_cast<int>(std::floor(camera->Position.z / Chunk::DEPTH));
 
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
 		renderer->render(activeShader);
-
-
-        skybox->draw(camera->getViewMatrix(), projection);
+		
+        skybox->draw(camera->getViewMatrix(), projection);	
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         if (showDebugWindow) {
@@ -343,6 +360,11 @@ void App::render() {
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
+		// render menus last
+		if (menuManager) {
+			menuManager->render();
+		}
+			
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -654,6 +676,40 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	return inputs;
 }
 
+void App::char_callback(GLFWwindow* window, unsigned int codepoint) {
+    std::cout << "a";
+}
+
+// TODO: make menus managed by a pointer or container later
+void App::processInputsMenus(int key, int action) {
+
+	// HANDLE EVENTS WHEN CHAT OPEN
+	if (menuManager == chat)
+	{
+		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+		{
+			if (chat->currMsg.empty()) return ; //will this return be safe in the future?
+			NetMessage pkt;
+			pkt.message = chat->currMsg;
+			udpClient->sendPacket(pkt);
+			chat->currMsg.clear();
+		}
+		if (key == GLFW_KEY_BACKSPACE && action == GLFW_PRESS)
+			chat->removeCharFromCurrMsg();
+		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			menuManager.reset();
+	}
+
+	// CHOSE MENU (order here IS important. must do after handling events)
+	if (!menuManager)
+	{
+		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+			menuManager = chat;
+	}
+}
+
+
+// TODO : put actions in corresponding functions for clarity
 void App::processInput() {
     static bool f11Held = false;
     static bool f1Held  = false;
@@ -663,7 +719,7 @@ void App::processInput() {
     static bool leftMousePressedLastFrame = false;
 	static bool rightMousePressedLastFrame = false;
 
-	//reload chunk. F3 + A;
+	//reload chunk. F3 + A; TODO : also add the neighbours logic. Otherwise some "walls" could be rendered
 	if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS &&
     	glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
 		for (auto &chunkPtr : renderer->getRenderedChunks())
@@ -755,8 +811,8 @@ void App::processInput() {
     }
 
     // Exit (ESC).  Allow closing window even when ImGui doesn’t want keyboard.
-    if (glfwGetKey(window, controlsArray[CLOSE_WINDOW]) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
+    // if (glfwGetKey(window, controlsArray[CLOSE_WINDOW]) == GLFW_PRESS)
+    //     glfwSetWindowShouldClose(window, true);
 }
 
 
@@ -777,7 +833,6 @@ void App::updateWindowTitle() {
         lastTitleUpdate = currentFrame;
         frameCount = 0;
     }
-
 }
 
 void App::toggleDisplayMode() {
