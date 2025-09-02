@@ -57,6 +57,7 @@ private:
 	void sendAccept(const sockaddr_in &cliaddr);
 	
 	void sendMessage(CPlayerInfo &player);
+	void sendImGuiData(CPlayerInfo &player);
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player);

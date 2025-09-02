@@ -222,4 +222,21 @@ struct NetMessage final : public Packet {
 };
 inline AutoRegister<NetMessage> _reg_NetServerMessage;
 
+struct NetImGui final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_IMGUI;
+
+	uint8_t currentBiome;
+
+    NetImGui() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+        w.write_u8(currentBiome);
+    }
+
+    void decode(BufferReader& r) override {
+        currentBiome = r.read_u8();
+    }
+};
+inline AutoRegister<NetImGui> _reg_NetImGui;
+
 #endif

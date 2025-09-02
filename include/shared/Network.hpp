@@ -25,7 +25,8 @@ enum class PacketType : uint8_t {
 	CHUNK_DATA,			// S2C
 	MODIFIED_BLOCK_DATA,// S2C
 	NET_DISCONNECT,		// C2S
-	NET_MESSAGE			// S2C && C2S
+	NET_MESSAGE,		// S2C && C2S
+    NET_IMGUI,          // S2C
 };
 
 enum class PacketFlags : uint8_t {

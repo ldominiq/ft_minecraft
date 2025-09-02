@@ -7,16 +7,6 @@
 
 #include "Chunk.hpp"
 
-enum class BiomeType {
-    PLAINS,
-    DESERT,
-    FOREST,
-    TUNDRA,
-	SWAMP,
-	OCEAN,
-	MOUNTAIN
-};
-
 class ChunkGeneration : public Chunk {
 
 	TerrainGenerationParams currentParams;
