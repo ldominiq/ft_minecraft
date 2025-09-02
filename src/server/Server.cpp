@@ -188,6 +188,7 @@ void Server::sendAll()
 		//send player position
 		//hit/dmg ..
 	}
+	world->updatedBlocks.clear();
 }
 
 void Server::sendChunk(CPlayerInfo &player) {
@@ -258,10 +259,7 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 
 void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)
 {
-	std::vector<std::pair<glm::ivec3, BlockType>> newlyUpdatedBlocks;
-	newlyUpdatedBlocks.swap(world->updatedBlocks);
-
-	for (auto &block : newlyUpdatedBlocks)
+	for (auto &block : world->updatedBlocks)
 	{
 		NetModifiedBlockData pkt;
 		pkt.x = block.first.x;
