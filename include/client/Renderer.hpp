@@ -61,11 +61,11 @@ class Renderer {
 		// BlockType getBlockWorld(glm::ivec3 globalCoords);
 		void setBlockWorld(glm::vec3 &targetCoords, BlockType type);
 
-		inline const size_t getVisibleChunkCount() const {
+		inline size_t getVisibleChunkCount() const {
 			return renderedChunks.size();
 		}
 
-		inline const size_t getTotalChunkInMemoryCount() const {
+		inline size_t getTotalChunkInMemoryCount() const {
 			return chunks.size();
 		}
 
