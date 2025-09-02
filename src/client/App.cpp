@@ -403,9 +403,9 @@ void App::debugWindow() {
 
 
             // Additional metrics: number of loaded chunks and approximate memory usage
-            if (rendering) {
-                const size_t visibleChunks = rendering->getVisibleChunkCount();
-                const size_t totalChunks   = rendering->getTotalChunkInMemoryCount();
+            if (renderer) {
+                const size_t visibleChunks = renderer->getVisibleChunkCount();
+                const size_t totalChunks   = renderer->getTotalChunkInMemoryCount();
                 ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
             }
             // Display memory usage in megabytes.  We call a static helper to
@@ -517,10 +517,10 @@ void App::debugWindow() {
             // Adjust the chunk loading radius.  Casting to int and back avoids
             // accidental type issues in the setter.  We clamp the range to a
             // reasonable minimum and maximum.
-            if (rendering) {
-                int radius = static_cast<int>(rendering->getLoadRadius());
+            if (renderer) {
+                int radius = static_cast<int>(renderer->getLoadRadius());
                 if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-                    rendering->setLoadRadius(radius);
+                    renderer->setLoadRadius(radius);
                 }
             }
 

@@ -198,7 +198,7 @@ void Server::sendImGuiData(CPlayerInfo &player) {
 	float wx = player.getPosition().x;
 	float wz = player.getPosition().z;
 	TerrainGenerationParams params = world->getTerrainParams();
-    pkt.currentBiome = static_cast<uint8_t>(Chunk::computeBiome(params, wx, wz, Chunk::computeTerrainHeight(params, wx, wz)));
+    pkt.currentBiome = static_cast<uint8_t>(ChunkGeneration::computeBiome(params, wx, wz, ChunkGeneration::computeTerrainHeight(params, wx, wz)));
     sendPacketTo(pkt, player.addr);
 }
 
