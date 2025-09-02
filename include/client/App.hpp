@@ -119,6 +119,8 @@ private:
 
 	std::optional<int> seed;
 
+    u_int8_t currentBiome;
+
     float lastX = 400, lastY = 300;
     bool firstMouse = true;
     float deltaTime = 0.0f;
@@ -163,7 +165,7 @@ private:
     bool uiInteractive = false;
     // Internal flag to handle key debounce for toggling the interactive mode.
     bool uiToggleHeld = false;
-	bool showDebugWindow = false;
+	bool showDebugWindow = true;
 
 	//keeps track of control GLFW values
     int controlsArray[CONTROL_COUNT];
