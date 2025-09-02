@@ -9,7 +9,6 @@
 #include <iostream>
 #include <string>
 
-
 class Shader {
 public:
     GLuint ID;

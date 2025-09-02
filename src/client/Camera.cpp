@@ -1,5 +1,4 @@
 #include "Camera.hpp"
-#include "App.hpp"
 
 Camera::Camera(glm::vec3 position)
     : Position(position), WorldUp(0.0f, 1.0f, 0.0f),
@@ -41,7 +40,7 @@ void Camera::updateCameraVectors() {
     Up    = glm::normalize(glm::cross(Right, Front));
 }
 
-bool Camera::getTargetedBlock(std::unique_ptr<Rendering> &rendering, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance) {
+bool Camera::getTargetedBlock(std::unique_ptr<Renderer> &Renderer, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance) {
     glm::vec3 rayOrigin = Position;
     glm::vec3 rayDir = glm::normalize(Front);
 
@@ -84,7 +83,7 @@ bool Camera::getTargetedBlock(std::unique_ptr<Rendering> &rendering, glm::ivec3&
 		distanceTraveled = glm::min(glm::min(sideDist.x, sideDist.y), sideDist.z);
 
         // Check if this block exists in your world
-        if (rendering && rendering->isBlockVisibleWorld(blockPos)) {
+        if (Renderer && Renderer->isBlockVisibleWorld(blockPos)) {
             hitBlock = blockPos;
             return true;
         }
@@ -147,10 +146,10 @@ void Camera::initWireframeCube() {
 	blockWireframeShader = std::make_unique<Shader>("shaders/simpleWireframe.vert", "shaders/simpleWireframe.frag");
 }
 
-void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<Rendering> &rendering, glm::mat4 &view, glm::mat4 &projection) {
+void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection) {
 
 	glm::ivec3 blockPos, faceNormal;
-	if (!getTargetedBlock(rendering, blockPos, faceNormal))
+	if (!getTargetedBlock(Renderer, blockPos, faceNormal))
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));

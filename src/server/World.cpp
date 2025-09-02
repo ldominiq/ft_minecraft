@@ -59,13 +59,13 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
             const auto worldX = static_cast<float>(startX + ox);
             const auto worldZ = static_cast<float>(startZ + oz);
 
-        	const float continentalness = Chunk::getContinentalness(terrainParams, worldX, worldZ);
-        	const float erosion = Chunk::getErosion(terrainParams, worldX, worldZ);
-        	const float pv = Chunk::getPV(terrainParams, worldX, worldZ);
+        	const float continentalness = ChunkGeneration::getContinentalness(terrainParams, worldX, worldZ);
+        	const float erosion = ChunkGeneration::getErosion(terrainParams, worldX, worldZ);
+        	const float pv = ChunkGeneration::getPV(terrainParams, worldX, worldZ);
 
             if (image == 0) {
 
-                const int surfaceY = Chunk::computeTerrainHeight(terrainParams, worldX, worldZ);
+                const int surfaceY = ChunkGeneration::computeTerrainHeight(terrainParams, worldX, worldZ);
                 
                 img[wx + wz * outW] = surfaceY;
                 // imgCont[wx + wz * outW] = baseHeight;
@@ -75,8 +75,8 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
                 imgCont[wx + wz * outW] = continentalness;
                 imgEro[wx + wz * outW] = erosion;
                 imgPV[wx + wz * outW] = pv;
-            	imgHumidity[wx + wz * outW] = Chunk::getHumidity(terrainParams, worldX, worldZ);
-            	imgTemperature[wx + wz * outW] = Chunk::getTemperature(terrainParams, worldX, worldZ);
+            	imgHumidity[wx + wz * outW] = ChunkGeneration::getHumidity(terrainParams, worldX, worldZ);
+            	imgTemperature[wx + wz * outW] = ChunkGeneration::getTemperature(terrainParams, worldX, worldZ);
 
             }
             
@@ -138,8 +138,8 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
             const float wz = static_cast<float>(startWorldZ + z);
 
             // Sample your biome function (replace with your logic)
-            const int height = Chunk::computeTerrainHeight(terrainParams, wx, wz);
-            const BiomeType biome = Chunk::computeBiome(terrainParams, wx, wz, height);
+            const int height = ChunkGeneration::computeTerrainHeight(terrainParams, wx, wz);
+            const BiomeType biome = ChunkGeneration::computeBiome(terrainParams, wx, wz, height);
 
             glm::u8vec3 color;
             switch (biome) {
@@ -192,7 +192,7 @@ World::World(int seed) {
 World::~World() {
 }
 
-std::shared_ptr<Chunk> World::getChunk(int chunkX, int chunkZ) {
+std::shared_ptr<ChunkGeneration> World::getChunk(int chunkX, int chunkZ) {
     const ChunkPos key = Chunk::toKey(chunkX, chunkZ);
     auto it = chunks.find(key);
     if (it == chunks.end())
@@ -225,7 +225,7 @@ BlockType World::getBlockWorld(glm::ivec3 globalCoords)
 	if (it == chunks.end()) {
 		return BlockType::AIR;
 	}
-	std::shared_ptr<Chunk> currChunk = it->second;
+	std::shared_ptr<ChunkGeneration> currChunk = it->second;
 	return currChunk->getBlock(x, y, z);
 }
 
@@ -247,7 +247,7 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
     if (it == chunks.end())
         return;
 
-    std::shared_ptr<Chunk> currChunk = it->second;
+    std::shared_ptr<ChunkGeneration> currChunk = it->second;
 
 	updatedBlocks.push_back({glm::ivec3(targetCoords.x, targetCoords.y, targetCoords.z), type});
     currChunk->setBlock(x, y, z, type);
@@ -264,7 +264,7 @@ bool World::isBlockVisibleWorld(glm::ivec3 globalCoords)
 		return false;
 	}
 
-	std::shared_ptr<Chunk> currChunk = it->second;
+	std::shared_ptr<ChunkGeneration> currChunk = it->second;
 	return currChunk->isBlockVisible(glm::vec3(x, y ,z));
 }
 
@@ -364,10 +364,11 @@ void World::updatePlannedChunks(CPlayerInfo &player)
 	std::vector<std::tuple<int, int, float, float>> candidates;
 
 	setCandidates(candidates, player);
+
 	for (auto [cx, cz, dist, distCore] : candidates)
 	{
 		ChunkPos key = Chunk::toKey(cx, cz);
-		std::shared_ptr<Chunk> chunk = getChunk(cx, cz);
+		std::shared_ptr<ChunkGeneration> chunk = getChunk(cx, cz);
 		if (!chunk && !plannedChunks.contains(key)) { // contains is c++ 20
 			plannedChunks.insert(key);
 		}
@@ -376,6 +377,8 @@ void World::updatePlannedChunks(CPlayerInfo &player)
 		{
 			player.loadedChunks.insert(key);
 			player.rdyChunks.push_back(key);
+			amountOfChunksSentThisTick++;
+			if (amountOfChunksSentThisTick > MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK) return ;
 		}
 	}
 }
@@ -399,11 +402,11 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 	
 	for (const auto& [cx, cz] : plannedChunks) {
 		ChunkPos key = Chunk::toKey(cx, cz);
-        std::shared_ptr<Chunk> chunk = getChunk(cx, cz);
+        std::shared_ptr<ChunkGeneration> chunk = getChunk(cx, cz);
 
         if (!chunk && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) {
 			generationFutures.push_back(std::async(std::launch::async, [=, this]() {
-                std::shared_ptr<Chunk> newChunk = std::make_shared<Chunk>(cx, cz, terrainParams);
+                std::shared_ptr<ChunkGeneration> newChunk = std::make_shared<ChunkGeneration>(cx, cz, terrainParams);
                 return std::make_pair(key, newChunk);
             }));
             amountOfConcurrentChunksBeingGenerated++;
@@ -427,7 +430,7 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 
 	std::size_t processed = 0;
 	for (auto it = generationFutures.begin(); it != generationFutures.end(); ) {
-		std::future<std::pair<ChunkPos, std::shared_ptr<Chunk>>>& fut = *it;
+		std::future<std::pair<ChunkPos, std::shared_ptr<ChunkGeneration>>>& fut = *it;
 		
 		if (fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
 			auto result = fut.get();
@@ -561,7 +564,7 @@ void World::loadRegion(int regionX, int regionZ) {
 
         // Seek to the chunk data
         in.seekg(entry.offset);
-        auto chunk = std::make_shared<Chunk>(entry.X, entry.Z, terrainParams, false);
+        auto chunk = std::make_shared<ChunkGeneration>(entry.X, entry.Z, terrainParams, false);
         chunk->loadFromStream(in);
 
         // Insert into chunk map

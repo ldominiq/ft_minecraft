@@ -6,9 +6,10 @@
 #include <string>
 #include <vector>
 #include <glm/vec3.hpp>
-#include "Chunk.hpp"
-#include "Protocol.hpp"
 #include <chrono>
+
+#include "ChunkGeneration.hpp"
+#include "Protocol.hpp"
 
 #define FLY_SPEED 50.0f
 #define DEFAULT_SPEED 5.0f

@@ -9,11 +9,11 @@
 #include <GLFW/glfw3.h>
 
 #include "Camera.hpp"
-#include "Chunk.hpp"
+#include "ChunkRenderer.hpp"
 #include "Skybox.hpp"
 #include "Shader.hpp"
 #include "stb_image.h"
-#include "Rendering.hpp"
+#include "Renderer.hpp"
 #include "UDPClient.hpp"
 
 #include <fstream>
@@ -87,6 +87,7 @@ private:
 
     GLFWwindow* window;
 
+	uint16_t inputMask = 0;
     bool keyPressedRecently = false;
 
     unsigned int VAO, VBO, EBO, shaderProgram, texture;
@@ -101,7 +102,7 @@ private:
 	GLFWmonitor* monitor;
     const GLFWvidmode* mode;
 
-	std::unique_ptr<Rendering> rendering;
+	std::unique_ptr<Renderer> renderer;
 	std::unique_ptr<UDPClient> udpClient;
 
     std::unique_ptr<Skybox> skybox;
