@@ -15,6 +15,16 @@ enum class BlockType : uint8_t{
     LEAVES
 };
 
+enum class BiomeType {
+    PLAINS,
+    DESERT,
+    FOREST,
+    TUNDRA,
+	SWAMP,
+	OCEAN,
+	MOUNTAIN
+};
+
 struct Voxel {
     BlockType type;
     uint8_t skyLight; // 0-15, sunlight propagated from sky
