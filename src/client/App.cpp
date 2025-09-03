@@ -321,9 +321,17 @@ void App::render() {
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
         skyShader->setVec2("resolution", glm::vec2(width, height));
-        skyShader->setFloat("time", glfwGetTime());
+        if (skyTimePaused == false)
+            skyTimeOffset += deltaTime * 0.05f; // Speed of sun movement
+        skyShader->setFloat("time", skyTimeOffset);
         skyShader->setMat4("view", view);
         skyShader->setMat4("projection", projection);
+        skyShader->setVec3("cameraPosWorld", camera->Position);
+        skyShader->setFloat("seaLevel", 64.0f);
+        skyShader->setFloat("exposure", skyExposure);
+        skyShader->setFloat("atmDensity", skyAtmDensity);      // 1.0 = Earth-like
+        skyShader->setFloat("atmThickness", skyAtmThickness);  // 1.0 = Earth-like
+        skyShader->setFloat("planetScale", planetScale);
 
         // Disable depth test and writes for background
         glDisable(GL_DEPTH_TEST);
@@ -564,6 +572,18 @@ void App::debugWindow() {
                 ImGui::SliderFloat3("Light Direction", &lightDir.x, -1.0f, 1.0f);
                 ImGui::ColorEdit3("Light Colour", &lightColor.x);
                 ImGui::ColorEdit3("Ambient Colour", &ambientColor.x);
+            }
+
+            ImGui::Separator();
+            if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
+                ImGui::Text("Sky Controls");
+                ImGui::Checkbox("Pause Sun Animation", &skyTimePaused);
+                ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f");
+                ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f");
+                ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f");
+                ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f");
+                ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f");
+                ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
             }
 
 

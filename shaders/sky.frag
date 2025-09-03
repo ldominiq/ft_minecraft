@@ -1,4 +1,17 @@
 #version 460 core
+
+/*
+The two most common forms of scattering in the atmosphere are Rayleigh scattering and Mie scattering.
+
+Rayleigh scattering is caused by small molecules in the air, and it scatters light more heavily at the shorter wavelengths
+(blue first, then green, and then red).
+
+Mie scattering is caused by larger particles in the air called aerosols (such as dust and pollution),
+and it tends to scatter all wavelengths of light equally. On a hazy day, Mie scattering causes the sky to look a bit gray and
+causes the sun to have a large white halo around it. Mie scattering can also be used to simulate light scattered from small
+particles of water and ice in the air, to produce effects like rainbows
+*/
+
 out vec4 FragColor;
 
 // Uniforms for OpenGL
@@ -6,11 +19,19 @@ uniform vec2 resolution;
 uniform float time;
 uniform mat4 view;       // camera view
 uniform mat4 projection; // camera projection
+uniform vec3 cameraPosWorld;
+uniform float seaLevel;
+uniform float exposure;  // exposure for simple tone mapping (1 - exp(-exposure * color))
+uniform float atmDensity;    // 1.0 = Earth-like, lower -> closer to space
+uniform float atmThickness;  // scales HR/HM (1.0 = Earth-like)
+uniform float planetScale;
 
 // -----------------------------
 // Constants (O'Neil/GPU Gems 2)
 // -----------------------------
 const float PI = 3.14159265359;
+
+
 
 // Normalized planet radii (center at 0)
 const float innerRadius = 1.0;      // ground/surface radius
@@ -21,8 +42,8 @@ const float HR = 0.25;              // Rayleigh scale height
 const float HM = 0.10;              // Mie scale height
 
 // Scattering constants
-const float Kr = 1.0025;            // Rayleigh scattering constant
-const float Km = 1.0010;            // Mie scattering constant
+const float Kr = 0.0025;            // Rayleigh scattering constant
+const float Km = 0.0010;            // Mie scattering constant
 const float ESun = 40.0;            // Sun intensity
 const float G = 0.76;               // Mie phase asymmetry
 
@@ -45,7 +66,7 @@ vec3 Uncharted2ToneMapping(vec3 color) {
     float E = 0.02;
     float F = 0.30;
     float W = 11.2;
-    float exposure = 2.0;
+    //float exposure = 2.0;
     color *= exposure;
     color = ((color * (A * color + C * B) + D * E) / (color * (A * color + B) + D * F)) - E / F;
     float white = ((W * (A * W + C * B) + D * E) / (W * (A * W + B) + D * F)) - E / F;
@@ -112,13 +133,17 @@ vec3 getSkyColor(vec3 eye, vec3 dir, vec3 sunDir) {
     vec3 sumR = vec3(0.0);
     vec3 sumM = vec3(0.0);
 
+    // Effective scale heights
+    float HR_eff = max(1e-4, HR * atmThickness);
+    float HM_eff = max(1e-4, HM * atmThickness);
+
     for (int i = 0; i < SAMPLES; ++i) {
         float t = (float(i) + 0.5) * segment;
         vec3 pos = eye + dir * t;
         float height = length(pos);
         float alt = max(height - innerRadius, 0.0);
-        float localR = exp(-alt / HR);
-        float localM = exp(-alt / HM);
+        float localR = atmDensity * exp(-alt / HR_eff);
+        float localM = atmDensity * exp(-alt / HM_eff);
         optR += localR * segment;
         optM += localM * segment;
 
@@ -134,13 +159,13 @@ vec3 getSkyColor(vec3 eye, vec3 dir, vec3 sunDir) {
                 sPos += sunDir * segSun;
                 float hSun = length(sPos);
                 float aSun = max(hSun - innerRadius, 0.0);
-                odRsun += exp(-aSun / HR) * segSun;
-                odMsun += exp(-aSun / HM) * segSun;
+                odRsun += (atmDensity * exp(-aSun / HR_eff)) * segSun;
+                odMsun += (atmDensity * exp(-aSun / HM_eff)) * segSun;
             }
         }
 
-        vec3 tauR = Kr * invWavelength4 * (optR + odRsun);
-        float tauM = Km * (optM + odMsun);
+        vec3 tauR = (Kr * atmDensity) * invWavelength4 * (optR + odRsun);
+        float tauM = (Km * atmDensity) * (optM + odMsun);
         vec3 atten = exp(-(tauR + vec3(tauM)));
 
         sumR += localR * atten * segment;
@@ -148,8 +173,8 @@ vec3 getSkyColor(vec3 eye, vec3 dir, vec3 sunDir) {
     }
 
     float mu = clamp(dot(dir, sunDir), -1.0, 1.0);
-    vec3 col = sumR * (Kr * invWavelength4) * ESun * rayleighPhase(mu)
-             + sumM * (Km) * ESun * miePhase(mu);
+    vec3 col = sumR * ((Kr * atmDensity) * invWavelength4) * ESun * rayleighPhase(mu)
+             + sumM * ((Km * atmDensity)) * ESun * miePhase(mu);
 
     return col;
 }
@@ -170,7 +195,11 @@ void main() {
     vec3 sunDir = normalize(vec3(sin(t), cos(t), 0.0));
 
     // Eye is just above the ground in planet space (decoupled from world translation)
-    vec3 eye = vec3(0.0, innerRadius + 0.001, 0.0);
+    //vec3 eye = vec3(0.0, innerRadius + 0.001, 0.0);
+
+    float heightWorld = max(cameraPosWorld.y - seaLevel, 0.0);
+    float heightPlanet = heightWorld / planetScale;
+    vec3 eye = vec3(0.0, innerRadius + heightPlanet, 0.0);
 
     vec3 col = getSkyColor(eye, r, sunDir);
 
@@ -197,7 +226,11 @@ void main() {
     vec3 sunCol = vec3(1.0, 0.98, 0.90) * 30.0;
     col += (disk + halo) * sunCol;
 
+    // Simple exposure: 1 - exp(-exposure * color)
+    vec3 mapped = vec3(1.0) - exp(-exposure * col);
+
     vec3 tone = Uncharted2ToneMapping(col);
-    FragColor = vec4(tone, 1.0);
+
+    FragColor = vec4(mapped, 1.0);
 }
 

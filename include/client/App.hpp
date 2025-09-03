@@ -169,6 +169,17 @@ private:
 		CONTROL_LIST
 	#undef X
 	};
+
+    // --- Sky controls ---
+    // Control sun position over time
+    float skyTimeOffset = 0.0f;
+    bool skyTimePaused = false;
+    // Simple tone-mapping exposure for sky shader
+    float skyExposure = 1.2f;
+    // Atmospheric density and thickness scalars (1.0 ~ Earth-like)
+    float skyAtmDensity = 19.0f;
+    float skyAtmThickness = 1.0f;
+    float planetScale = 6360000.0f;
 };
 
 #endif //APP_HPP
