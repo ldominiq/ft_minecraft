@@ -676,10 +676,6 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	return inputs;
 }
 
-void App::char_callback(GLFWwindow* window, unsigned int codepoint) {
-    std::cout << "a";
-}
-
 // TODO: make menus managed by a pointer or container later
 void App::processInputsMenus(int key, int action) {
 

@@ -86,7 +86,7 @@ Typer::~Typer() {
 void Typer::setProjection(int width, int height) {
     glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(width), 0.0f, static_cast<float>(height));
     shader.use();
-    glUniformMatrix4fv(glGetUniformLocation(shader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+	shader.setMat4("projection", projection);
 }
 
 uint Typer::getPixelSizeOfString(const std::string &str)
@@ -105,8 +105,8 @@ void Typer::renderText(const std::string &text, float x, float y, const glm::vec
 {
     // activate corresponding render state	
     shader.use();
+	shader.setFloat3("textColor", color.x, color.y, color.z);
 
-    glUniform3f(glGetUniformLocation(shader.ID, "textColor"), color.x, color.y, color.z);
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(VAO);
 
