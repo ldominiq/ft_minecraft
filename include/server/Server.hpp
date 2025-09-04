@@ -31,7 +31,7 @@ private:
 	std::chrono::_V2::steady_clock::time_point currTick;
 
 	std::vector<CPlayerInfo> players;
-
+	std::deque<std::string> messages;
 	std::unique_ptr<World> world;
 
 	bool running = false;
@@ -50,12 +50,14 @@ private:
 	void receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr);
 	void receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &clieaddr);
 	void receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &clieddr);
+	void receiveMessage(NetMessage &pkt);
 
 	void sendAll();
 	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
 	void sendAccept(const sockaddr_in &cliaddr);
+	
+	void sendMessage(CPlayerInfo &player);
 	void sendImGuiData(CPlayerInfo &player);
-
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player);
