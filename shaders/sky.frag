@@ -1,6 +1,7 @@
 #version 460 core
 
 /*
+Accr=rate Atmospherical Scattering from GPUgems 2
 The two most common forms of scattering in the atmosphere are Rayleigh scattering and Mie scattering.
 
 Rayleigh scattering is caused by small molecules in the air, and it scatters light more heavily at the shorter wavelengths
@@ -108,16 +109,7 @@ vec3 getSkyColor(vec3 eye, vec3 dir, vec3 sunDir) {
         // Ray misses the atmosphere; return space blue
         return vec3(0.25, 0.35, 0.6);
     }
-    // Clip far distance by inner sphere if looking into the ground
     float farDist = t1o; // far intersection with outer sphere
-    float t0i, t1i;
-    /*
-    if (intersectSphere(eye, dir, innerRadius, t0i, t1i)) {
-        if (t0i > 0.0) {
-            // Looking into ground; integrate only until we hit the surface
-            farDist = min(farDist, t0i);
-        }
-    }*/
     if (farDist <= 0.0) {
         // We're inside and looking away; give a faint blue
         return vec3(0.25, 0.35, 0.6) * 0.2;
@@ -199,24 +191,14 @@ void main() {
 
     float heightWorld = max(cameraPosWorld.y - seaLevel, 0.0);
     float heightPlanet = heightWorld / planetScale;
+
+    // Clamp so the eye never exits the atmosphere shell
+    float maxAlt = (outerRadius - innerRadius) - 1e-4;
+    heightPlanet = min(heightPlanet, maxAlt);
+
     vec3 eye = vec3(0.0, innerRadius + heightPlanet, 0.0);
 
     vec3 col = getSkyColor(eye, r, sunDir);
-
-    // Below-horizon fallback: mirror sky and blend a ground-tinted gradient
-    /*
-    if (r.y < 0.0) {
-        vec3 rMir = normalize(vec3(r.x, -r.y, r.z));
-        vec3 colMir = getSkyColor(eye, rMir, sunDir);
-        float k = smoothstep(0.0, 0.3, -r.y);
-        vec3 groundH = vec3(0.62, 0.78, 0.95);
-        vec3 groundZ = vec3(0.20, 0.28, 0.35);
-        float gy = clamp(1.0 + r.y, 0.0, 1.0); // 0 deep down, 1 at horizon
-        vec3 base = mix(groundZ, groundH, gy);
-        col = mix(col, colMir, 0.8 * k);
-        col = mix(col, base, 0.4 * k);
-    }
-    */
 
     // Sun disk + soft halo for visibility
     float sunCos = clamp(dot(r, sunDir), -1.0, 1.0);

@@ -179,7 +179,7 @@ private:
     // Atmospheric density and thickness scalars (1.0 ~ Earth-like)
     float skyAtmDensity = 19.0f;
     float skyAtmThickness = 1.0f;
-    float planetScale = 6360000.0f;
+    float planetScale = 7900.0f;
 };
 
 #endif //APP_HPP
