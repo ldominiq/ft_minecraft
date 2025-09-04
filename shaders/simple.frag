@@ -11,8 +11,12 @@ uniform vec3 lightDir;
 uniform vec3 lightColor;
 uniform vec3 ambientColor;
 
+uniform vec3 viewPos;
+
 float near = 0.1;
 float far  = 100.0;
+
+float specularStrength = 0.5;
 
 float LinearizeDepth(float depth)
 {
@@ -24,9 +28,23 @@ void main() {
     vec4 texColor = texture(atlas, TexCoord);
 
     vec3 norm = normalize(Normal);
-    float diff = max(dot(norm, -lightDir), 0.0);
+    float diff = max(dot(norm, lightDir), 0.0);
 
-    vec3 lighting = texColor.rgb * (ambientColor + lightColor * diff);
+    vec3 diffuse = diff * lightColor;
+
+    
+
+    // View direction vector and corresponding reflect vector along normal axis.
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+
+    // Specular component calc
+    // shininess value of the highlight
+    int shininess = 32;
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
+    vec3 specular = specularStrength * spec * lightColor;
+
+    vec3 lighting = texColor.rgb * (ambientColor + diffuse + specular);
 
     //FragColor = texColor;
     FragColor = vec4(lighting, texColor.a); // Lighting
