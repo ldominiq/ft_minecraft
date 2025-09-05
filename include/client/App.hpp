@@ -109,6 +109,7 @@ private:
     std::shared_ptr<Shader> textureShader;
     std::shared_ptr<Shader> gradientShader;
     std::shared_ptr<Shader> skyShader;
+    std::shared_ptr<Shader> lightCubeShader;
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
 
 	std::optional<int> seed;
@@ -138,9 +139,11 @@ private:
 
     // Lighting parameters that can be tweaked via ImGui.  The direction
     // should be normalised each frame; colours are in [0,1].
-    glm::vec3 lightDir  = glm::vec3(-0.5f, -1.0f, -0.3f);
+    glm::vec3 lightDir  = glm::vec3(0.5f, 1.0f, 0.3f);
     glm::vec3 lightColor = glm::vec3(1.0f);
     glm::vec3 ambientColor = glm::vec3(0.3f);
+    float flashlightCutoff = 12.5f; // spotlight cutoff angle in degrees
+    float flashlightOuterCutoff = 17.5f; // spotlight outer cutoff angle in degrees
 
     // Variables for smoothing the FPS shown in the debug UI.  We maintain a
     // moving average of frame times over a sample buffer to reduce jitter.

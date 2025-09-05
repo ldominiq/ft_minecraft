@@ -250,6 +250,7 @@ void App::loadResources() {
     textureShader = std::make_shared<Shader>("shaders/simple.vert", "shaders/simple.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
     skyShader = std::make_shared<Shader>("shaders/sky.vert", "shaders/sky.frag");
+    // lightCubeShader = std::make_shared<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
     texture = loadTexture("assets/textures/textures.png");
 
     activeShader = textureShader;
@@ -259,6 +260,15 @@ void App::loadResources() {
 }
 
 void App::render() {
+
+    unsigned int lightCubeVAO;
+    glGenVertexArrays(1, &lightCubeVAO);
+    glBindVertexArray(lightCubeVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    // note that we update the lamp's position attribute's stride to reflect the updated buffer data
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
 
     while (!glfwWindowShouldClose(window)) {
 
@@ -346,16 +356,89 @@ void App::render() {
         glBindTexture(GL_TEXTURE_2D, texture);
         activeShader->use();
 
+        // Directional light (sun) properties
+        // ====================================
+        glm::vec3 pointLightPositions[] = {
+            glm::vec3( 0.7f,  0.2f,  2.0f),
+            glm::vec3( 2.3f, -3.3f, -4.0f),
+            glm::vec3(-4.0f,  2.0f, -12.0f),
+            glm::vec3( 0.0f,  0.0f, -3.0f)
+        };
+
+        activeShader->setVec3("viewPos", camera->Position);
+
+        activeShader->setFloat("material.shininess", 32.0f);
+
+
+        activeShader->setVec3("dirLight.direction", -lightDir);
+        activeShader->setVec3("dirLight.ambient", ambientColor);
+        activeShader->setVec3("dirLight.diffuse", lightColor);
+        activeShader->setVec3("dirLight.specular", glm::vec3(0.5f));
+        // point light 1
+        activeShader->setVec3("pointLights[0].position", pointLightPositions[0]);
+        activeShader->setVec3("pointLights[0].ambient", glm::vec3(0.05f));
+        activeShader->setVec3("pointLights[0].diffuse", glm::vec3(0.8f));
+        activeShader->setVec3("pointLights[0].specular", glm::vec3(1.0f));
+        activeShader->setFloat("pointLights[0].constant", 1.0f);
+        activeShader->setFloat("pointLights[0].linear", 0.09f);
+        activeShader->setFloat("pointLights[0].quadratic", 0.032f);
+        // point light 2
+        activeShader->setVec3("pointLights[1].position", pointLightPositions[1]);
+        activeShader->setVec3("pointLights[1].ambient", glm::vec3(0.05f));
+        activeShader->setVec3("pointLights[1].diffuse", glm::vec3(0.8f));
+        activeShader->setVec3("pointLights[1].specular", glm::vec3(1.0f));
+        activeShader->setFloat("pointLights[1].constant", 1.0f);
+        activeShader->setFloat("pointLights[1].linear", 0.09f);
+        activeShader->setFloat("pointLights[1].quadratic", 0.032f);
+        // point light 3
+        activeShader->setVec3("pointLights[2].position", pointLightPositions[2]);
+        activeShader->setVec3("pointLights[2].ambient", glm::vec3(0.05f));
+        activeShader->setVec3("pointLights[2].diffuse", glm::vec3(0.8f));
+        activeShader->setVec3("pointLights[2].specular", glm::vec3(1.0f));
+        activeShader->setFloat("pointLights[2].constant", 1.0f);
+        activeShader->setFloat("pointLights[2].linear", 0.09f);
+        activeShader->setFloat("pointLights[2].quadratic", 0.032f);
+        // point light 4
+        activeShader->setVec3("pointLights[3].position", pointLightPositions[3]);
+        activeShader->setVec3("pointLights[3].ambient", glm::vec3(0.05f));
+        activeShader->setVec3("pointLights[3].diffuse", glm::vec3(0.8f));
+        activeShader->setVec3("pointLights[3].specular", glm::vec3(1.0f));
+        activeShader->setFloat("pointLights[3].constant", 1.0f);
+        activeShader->setFloat("pointLights[3].linear", 0.09f);
+        activeShader->setFloat("pointLights[3].quadratic", 0.032f);
+        // spotLight
+        activeShader->setVec3("spotLight.position", camera->Position);
+        activeShader->setVec3("spotLight.direction", camera->Front);
+        activeShader->setVec3("spotLight.ambient", glm::vec3(0.0f));
+        activeShader->setVec3("spotLight.diffuse", glm::vec3(1.0f));
+        activeShader->setVec3("spotLight.specular", glm::vec3(1.0f));
+        activeShader->setFloat("spotLight.constant", 1.0f);
+        activeShader->setFloat("spotLight.linear", 0.09f);
+        activeShader->setFloat("spotLight.quadratic", 0.032f);
+        activeShader->setFloat("spotLight.cutOff", flashlightCutoff);
+        activeShader->setFloat("spotLight.outerCutOff", flashlightOuterCutoff);
+
+
         // Set the uniform matrices in the shader
         activeShader->setMat4("view", view);
         activeShader->setMat4("projection", projection);
 
-        // Update lighting uniforms from the adjustable state.  Normalize the
-        // direction so that it remains a unit vector after editing.
-        glm::vec3 dirNorm = glm::normalize(lightDir);
-        activeShader->setVec3("lightDir", dirNorm);
-        activeShader->setVec3("lightColor", lightColor);
-        activeShader->setVec3("ambientColor", ambientColor);
+        // also draw the lamp object(s)
+        // lightCubeShader->use();
+        // lightCubeShader->setMat4("projection", projection);
+        // lightCubeShader->setMat4("view", view);
+
+        // glm::mat4 model = glm::mat4(1.0f);
+        // // we now draw as many light bulbs as we have point lights.
+        // glBindVertexArray(lightCubeVAO);
+        // for (unsigned int i = 0; i < 4; i++)
+        // {
+        //     model = glm::mat4(1.0f);
+        //     model = glm::translate(model, pointLightPositions[i]);
+        //     model = glm::scale(model, glm::vec3(0.2f)); // Make it a smaller cube
+        //     lightCubeShader->setMat4("model", model);
+        //     glDrawArrays(GL_TRIANGLES, 0, 36);
+        // }
 
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
@@ -583,9 +666,11 @@ void App::debugWindow() {
                     ImGui::Separator();
                     if (ImGui::CollapsingHeader("Lighting")) {
                         ImGui::Text("Lighting Controls");
-                        ImGui::SliderFloat3("Light Direction", &lightDir.x, -1.0f, 1.0f);
+                        ImGui::SliderFloat3("Light Direction", &lightDir.x, 0.0f, 1.0f);
                         ImGui::ColorEdit3("Light Colour", &lightColor.x);
                         ImGui::ColorEdit3("Ambient Colour", &ambientColor.x);
+                        ImGui::SliderFloat("Flashlight Cutoff", &flashlightCutoff, 1.0f, 90.0f);
+                        ImGui::SliderFloat("Flashlight Outer Cutoff", &flashlightOuterCutoff, 1.0f, 90.0f);
                     }
 
                     ImGui::Separator();
