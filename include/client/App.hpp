@@ -90,7 +90,7 @@ private:
 	uint16_t inputMask = 0;
     bool keyPressedRecently = false;
 
-    unsigned int VAO, VBO, EBO, shaderProgram, texture;
+    unsigned int VAO, VBO, EBO, shaderProgram, texture, lightCubeVAO, lightCubeVBO;
 
     enum class DisplayMode {
         Windowed,
@@ -139,11 +139,55 @@ private:
 
     // Lighting parameters that can be tweaked via ImGui.  The direction
     // should be normalised each frame; colours are in [0,1].
-    glm::vec3 lightDir  = glm::vec3(0.5f, 1.0f, 0.3f);
-    glm::vec3 lightColor = glm::vec3(1.0f);
-    glm::vec3 ambientColor = glm::vec3(0.3f);
+    
+    
+    // Directional light (sun)
+    bool directionalLightOn = true;
+    glm::vec3 directionalLightDir  = glm::vec3(0.5f, 1.0f, 0.3f);
+    glm::vec3 directionalAmbientColor = glm::vec3(0.3f);
+    glm::vec3 directionalDiffuseColor = glm::vec3(1.0f);
+    glm::vec3 directionalSpecularColor = glm::vec3(1.0f);
+
+    // Point light (lamp)
+    std::vector<bool> pointLightsOn = {true, true, true, true};
+    glm::vec3 pointLightPositions[4] = {
+        glm::vec3( 0.7f,  86.0f,  2.0f),
+        glm::vec3( 2.3f, 85.3f, -4.0f),
+        glm::vec3(-4.0f,  84.0f, -12.0f),
+        glm::vec3( 0.0f,  83.0f, -3.0f)
+    };
+    glm::vec3 pointLightAmbient[4] = {
+        glm::vec3(0.05f),
+        glm::vec3(0.05f),
+        glm::vec3(0.05f),
+        glm::vec3(0.05f)
+    };
+    glm::vec3 pointLightDiffuse[4] = {
+        glm::vec3(0.8f),
+        glm::vec3(0.8f),
+        glm::vec3(0.8f),
+        glm::vec3(0.8f)
+    };
+    glm::vec3 pointLightSpecular[4] = {
+        glm::vec3(1.0f),
+        glm::vec3(1.0f),
+        glm::vec3(1.0f),
+        glm::vec3(1.0f)
+    };
+    float pointLightConstant[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float pointLightLinear[4] = { 0.09f, 0.09f, 0.09f, 0.09f };
+    float pointLightQuadratic[4] = { 0.032f, 0.032f, 0.032f, 0.032f };
+
+    // Flashlight
+    bool flashlightOn = true;
+    float spotLightConstant = 1.0f;
+    float spotLightLinear = 0.09f;
+    float spotLightQuadratic = 0.032f;
     float flashlightCutoff = 12.5f; // spotlight cutoff angle in degrees
     float flashlightOuterCutoff = 17.5f; // spotlight outer cutoff angle in degrees
+
+    float materialShininess = 32.0f; // material shininess factor
+
 
     // Variables for smoothing the FPS shown in the debug UI.  We maintain a
     // moving average of frame times over a sample buffer to reduce jitter.

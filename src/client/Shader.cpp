@@ -1,21 +1,41 @@
 #include "Shader.hpp"
+#include <unistd.h> // getcwd
 
 Shader::Shader(const char* vertexPath, const char* fragmentPath) {
-    std::ifstream vFile(vertexPath), fFile(fragmentPath);
-    std::stringstream vStream, fStream;
-    std::string vCode, fCode;
+    std::string vCode;
+    std::string fCode;
     int success;
     char infoLog[512];
 
-    vFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    fFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    try {
-        vStream << vFile.rdbuf();
-        fStream << fFile.rdbuf();
-        vCode = vStream.str();
-        fCode = fStream.str();
-    } catch (std::ifstream::failure& e) {
-        std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ: " << e.what() << std::endl;
+    // Robust file loading without throwing iostream exceptions (avoids std::__ios_failure)
+    {
+        std::ifstream vFile(vertexPath, std::ios::in | std::ios::binary);
+        if (!vFile.is_open()) {
+            std::cerr << "ERROR::SHADER::VERTEX_FILE_OPEN_FAILED: '" << vertexPath << "'\n";
+        } else {
+            std::stringstream vStream;
+            vStream << vFile.rdbuf();
+            vCode = vStream.str();
+        }
+    }
+
+    {
+        std::ifstream fFile(fragmentPath, std::ios::in | std::ios::binary);
+        if (!fFile.is_open()) {
+            std::cerr << "ERROR::SHADER::FRAGMENT_FILE_OPEN_FAILED: '" << fragmentPath << "'\n";
+        } else {
+            std::stringstream fStream;
+            fStream << fFile.rdbuf();
+            fCode = fStream.str();
+        }
+    }
+
+    if (vCode.empty() || fCode.empty()) {
+        // Provide extra diagnostics about current working directory to help locate path issues
+        char cwdBuf[1024] = {0};
+        if (getcwd(cwdBuf, sizeof(cwdBuf) - 1)) {
+            std::cerr << "ERROR::SHADER::EMPTY_SOURCE after read. CWD='" << cwdBuf << "'\n";
+        }
     }
     const char* vShaderCode = vCode.c_str();
     const char* fShaderCode = fCode.c_str();
