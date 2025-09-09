@@ -184,34 +184,7 @@ glm::vec3 CPlayerInfo::getDesiredMove()
         jumpBoostApplied = true;
     }
 
-    glm::vec2 newV = momentum +1234
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	 + sprintBoost;
+    glm::vec2 newV = momentum + sprintBoost;
     velocity.x = newV.x;
     velocity.z = newV.y;
 
