@@ -26,6 +26,7 @@ uniform float exposure;  // exposure for simple tone mapping (1 - exp(-exposure 
 uniform float atmDensity;    // 1.0 = Earth-like, lower -> closer to space
 uniform float atmThickness;  // scales HR/HM (1.0 = Earth-like)
 uniform float planetScale;
+uniform vec3 sunDir;
 
 // -----------------------------
 // Constants (O'Neil/GPU Gems 2)
@@ -182,9 +183,9 @@ void main() {
     vec3 r = normalize((inverse(view) * vec4(rayView, 0.0)).xyz);
 
     // Sun direction in world space (vertical plane motion)
-    float timeScale = 0.2;
-    float t = time * timeScale;
-    vec3 sunDir = normalize(vec3(sin(t), cos(t), 0.0));
+    //float timeScale = 0.2;
+    //float t = time * timeScale;
+    //vec3 sunDir = normalize(vec3(sin(t), cos(t), 0.0));
 
     // Eye is just above the ground in planet space (decoupled from world translation)
     //vec3 eye = vec3(0.0, innerRadius + 0.001, 0.0);

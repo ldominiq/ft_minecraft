@@ -382,18 +382,29 @@ void App::render() {
 
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
-        skyShader->setVec2("resolution", glm::vec2(width, height));
+
+        // Time management for sky shader
         if (skyTimePaused == false)
             skyTimeOffset += deltaTime * 0.05f; // Speed of sun movement
+
+        const float timeScale = 0.2f;
+        const float t = skyTimeOffset * timeScale;
+        glm::vec3 sunDir = glm::normalize(glm::vec3(
+            std::sin(t), // x (azimuth)
+            std::cos(t), // y (elevation)
+            0.0f));     // z
+
+        skyShader->setVec2("resolution", glm::vec2(width, height));
         skyShader->setFloat("time", skyTimeOffset);
         skyShader->setMat4("view", view);
         skyShader->setMat4("projection", projection);
         skyShader->setVec3("cameraPosWorld", camera->Position);
         skyShader->setFloat("seaLevel", 64.0f);
         skyShader->setFloat("exposure", skyExposure);
-        skyShader->setFloat("atmDensity", skyAtmDensity);      // 1.0 = Earth-like
-        skyShader->setFloat("atmThickness", skyAtmThickness);  // 1.0 = Earth-like
+        skyShader->setFloat("atmDensity", skyAtmDensity);
+        skyShader->setFloat("atmThickness", skyAtmThickness);
         skyShader->setFloat("planetScale", planetScale);
+        skyShader->setVec3("sunDir", sunDir);
 
         // Disable depth test and writes for background
         glDisable(GL_DEPTH_TEST);
@@ -408,7 +419,7 @@ void App::render() {
         glBindTexture(GL_TEXTURE_2D, texture);
         activeShader->use();
 
-        // Directional light (sun) properties
+        // Lighting uniforms
         // ====================================
         
 
@@ -418,28 +429,29 @@ void App::render() {
 
         // directional light
         if (directionalLightOn) {
-            // Recalculate directional light direction based on time of day
-            /*  float timeScale = 0.2;
-                float t = time * timeScale;
-                vec3 sunDir = normalize(vec3(sin(t), cos(t), 0.0));
-            */
-            // Map the passage of time to the sun's direction in the sky: 
-            // The cosine controls elevation (y), the sine controls azimuth (x), and z is fixed at 0.
-            // This orbits the sun in the X-Y plane, simulating a day-night cycle.
-            directionalLightDir = glm::normalize(glm::vec3(
-                std::cos(skyTimeOffset * 0.2f * glm::pi<float>()), // y (elevation)
-                std::sin(skyTimeOffset * 0.2f * glm::pi<float>()), // x (azimuth)
-                0.0f));                                             // z
-            activeShader->setVec3("dirLight.direction", -directionalLightDir);
-            activeShader->setVec3("dirLight.ambient", directionalAmbientColor);
-            activeShader->setVec3("dirLight.diffuse", directionalDiffuseColor);
-            activeShader->setVec3("dirLight.specular", directionalSpecularColor);
+            
+            directionalLightDir = -sunDir; // Direction from which the light is coming (sun direction)
+
+            // day/night factror based on sun elevation
+            float day = glm::clamp(sunDir.y * 0.7f, 0.0f, 1.0f);
+            // smooth transition near sunset/sunrise
+            day = glm::smoothstep(0.0f, 1.0f, day);
+
+            // small ambiant light at night
+            const float nightAmbientMin = 0.3f;
+            glm::vec3 ambientColor = directionalAmbientColor * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
+            glm::vec3 diffuseColor = directionalDiffuseColor * day;
+            glm::vec3 specularColor = directionalSpecularColor * day;
+            activeShader->setVec3("dirLight.direction", directionalLightDir);
+            activeShader->setVec3("dirLight.ambient", ambientColor);
+            activeShader->setVec3("dirLight.diffuse", diffuseColor);
+            activeShader->setVec3("dirLight.specular", specularColor);
         } else {
             activeShader->setVec3("dirLight.ambient", glm::vec3(0.0f));
             activeShader->setVec3("dirLight.diffuse", glm::vec3(0.0f));
             activeShader->setVec3("dirLight.specular", glm::vec3(0.0f));
         }
-        // point light 1
+        // point lights
         for ( int i=0; i < 4; i++ ) {
             if (!pointLightsOn[i]) {
                 activeShader->setVec3("pointLights[" + std::to_string(i) + "].ambient", glm::vec3(0.0f));
@@ -455,7 +467,7 @@ void App::render() {
             activeShader->setFloat("pointLights[" + std::to_string(i) + "].linear", pointLightLinear[i]);
             activeShader->setFloat("pointLights[" + std::to_string(i) + "].quadratic", pointLightQuadratic[i]);
         }
-        // spotLight
+        // spotLight (flashlight)
         if (flashlightOn) {
             activeShader->setVec3("spotLight.position", camera->Position);
             activeShader->setVec3("spotLight.direction", camera->Front);

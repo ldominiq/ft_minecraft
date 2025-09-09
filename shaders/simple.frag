@@ -95,41 +95,12 @@ void main()
     
     FragColor = vec4(result, 1.0);
 
-
-
-
-    /* =============================================
-
-    vec4 texColor = texture(atlas, TexCoord);
-
-    vec3 norm = normalize(Normal);
-    float diff = max(dot(norm, lightDir), 0.0);
-
-    vec3 diffuse = diff * lightColor;
-
-    
-
-    // View direction vector and corresponding reflect vector along normal axis.
-    vec3 viewDir = normalize(viewPos - FragPos);
-    vec3 reflectDir = reflect(-lightDir, norm);
-
-    // Specular component calc
-    // shininess value of the highlight
-    int shininess = 32;
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
-    vec3 specular = specularStrength * spec * lightColor;
-
-    vec3 lighting = texColor.rgb * (ambientColor + diffuse + specular);
-
-    //FragColor = texColor;
-    FragColor = vec4(lighting, texColor.a); // Lighting
+    //FragColor = vec4(lighting, texColor.a); // Lighting
     //FragColor = vec4(normalize(Normal) * 0.5 + 0.5, 1.0); // Visualize normals
     //FragColor = vec4(TexCoord, 0.0, 1.0); // Visualize texture coordinates
 
     //float depth = LinearizeDepth(gl_FragCoord.z) / far; // Visualize depth buffer
     //FragColor = vec4(vec3(depth), 1.0);
-
-    ============================================== */
 }
 
 // calculates the color when using a directional light.
