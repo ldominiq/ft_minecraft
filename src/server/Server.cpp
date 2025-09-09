@@ -163,7 +163,8 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	player->lastPktRecvTick = currTick;
-	player->updatePosition(pkt, deltaTime);
+	player->updateCameraVectors(pkt.yaw, pkt.pitch);
+	player->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
 }
 
@@ -182,6 +183,7 @@ void Server::sendAll()
 	world->amountOfChunksSentThisTick = 0;
 	for (CPlayerInfo &p : players)
 	{
+		p.calculateNewPosition(world);
 		world->updateVisibleChunks(p);
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now

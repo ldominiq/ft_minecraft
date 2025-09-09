@@ -10,24 +10,31 @@
 
 #include "ChunkGeneration.hpp"
 #include "Protocol.hpp"
+#include "LivingEntity.hpp"
 
 #define FLY_SPEED 50.0f
 #define DEFAULT_SPEED 5.0f
 
-class CPlayerInfo
+enum class GAMEMODES {
+	SURVIVAL = 0,
+	SPECTATOR,
+};
+
+class CPlayerInfo final : public LivingEntity
 {
-	//camera
-	glm::vec3 position;
-    glm::vec3 Front;
-    glm::vec3 Up;
-    glm::vec3 Right;
-    glm::vec3 WorldUp;
-
+	bool jumpBoostApplied = true;
+	
+	NetPlayerInputs lastInputsPktRecvd;
+	GAMEMODES gamemode = GAMEMODES::SURVIVAL;
 	float yaw, pitch;
-	float movementSpeed;
 
-	void updateCameraVectors();
+	glm::vec3 getDesiredMove() override;
+	void doJump(const std::unique_ptr<World> &world) override;
 
+	void updatePosition();
+
+	//TEST
+	int number = 0;
 	public:
 
 		CPlayerInfo();
@@ -47,9 +54,12 @@ class CPlayerInfo
 
 		bool connected; //unused
 
-		void updatePosition(NetPlayerInputs &inputs, float &deltaTime);
 		inline const glm::vec3 getPosition() const { return position; }
 		inline const glm::vec3 getCameraDir() const { return Front; }
+		inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {lastInputsPktRecvd = pkt; }
+
+		void updateCameraVectors(float yaw, float pitch);
+		void calculateNewPosition(const std::unique_ptr<World> &world) override;
 };
 
 #endif

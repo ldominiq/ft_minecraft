@@ -23,7 +23,7 @@ void Renderer::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, in
 
 // 	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
 // 	if (it == chunks.end()) {
-// 		return BlockType::AIR;
+// 		return BlockType::END;
 // 	}
 // 	std::shared_ptr<Chunk> currChunk = it->second;
 // 	return currChunk->getBlock(x, y, z);
