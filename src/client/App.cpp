@@ -652,7 +652,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 
 	if (glfwGetKey(window, controlsArray[MOVE_FAST]) == GLFW_PRESS)
 		keys |= IN_RUN;
-
+	
 	inputs.keys = keys;
 	inputs.pitch = camera->getPitch();
 	inputs.yaw = camera->getYaw();

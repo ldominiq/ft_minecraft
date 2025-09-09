@@ -141,18 +141,9 @@ void Entity::calculateNewYPosition(const std::unique_ptr<World> &world)
 	}
 
 	// apply gravity
-	// verticalVelocity -= GRAVITY; //gravity
-	// verticalVelocity *= DRAG;
-	// if (std::abs(verticalVelocity) < 0.003) verticalVelocity = 0;
-
-	int tps = 60;
-    float baseTPS = 20.0f;
-    float tickScale = baseTPS / float(tps);   // e.g. 20/60 = 0.333...
-    // apply gravity (scale by tick length)
-    verticalVelocity -= GRAVITY * tickScale;
-    // apply drag (raise to tickScale)
-    verticalVelocity *= std::pow(DRAG, tickScale);
-    if (std::abs(verticalVelocity) < 0.003f) verticalVelocity = 0.0f;
+	verticalVelocity -= GRAVITY; //gravity
+	verticalVelocity *= DRAG;
+	if (std::abs(verticalVelocity) < 0.003) verticalVelocity = 0;
 
 	// Apply final position
 	position = newPos;
