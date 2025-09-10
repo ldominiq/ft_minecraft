@@ -698,35 +698,57 @@ void App::debugWindow() {
 
                     ImGui::Separator();
 
-                    // Wireframe toggle
-                    if (ImGui::Checkbox("Wireframe", &wireframe)) {
-                        glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-                    }
-                    // Shader toggle (texture vs gradient).  We update activeShader accordingly.
-                    if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
-                        activeShader = useGradientShader ? gradientShader : textureShader;
-                    }
-                    // Changing this will update the far clipping plane.
-                    // ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
-                    
-                    // Adjust the chunk loading radius.  Casting to int and back avoids
-                    // accidental type issues in the setter.  We clamp the range to a
-                    // reasonable minimum and maximum.
-                    if (renderer) {
-                        int radius = static_cast<int>(renderer->getLoadRadius());
-                        if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-                            renderer->setLoadRadius(radius);
+                    if (ImGui::CollapsingHeader("Rendering")) {
+                        ImGui::Text("Rendering Options");
+                        // Wireframe toggle
+                        if (ImGui::Checkbox("Wireframe", &wireframe)) {
+                            glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
                         }
-                    }
+                        // Shader toggle (texture vs gradient).  We update activeShader accordingly.
+                        if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
+                            activeShader = useGradientShader ? gradientShader : textureShader;
+                        }
+                        static int renderType = 0;
+                        ImGui::RadioButton("Lighting render", &renderType, 0); ImGui::SameLine();
+                        ImGui::RadioButton("Normals render",  &renderType, 1); ImGui::SameLine();
+                        ImGui::RadioButton("Depth render",    &renderType, 2);
 
-                    // Adjust the maximum number of chunks being generated at the same time.
-                    // Lower values produce smoother frame rates but slower world loading.
-                    // if (world) {
-                    //     int maxGen = static_cast<int>(world->getMaxConcurrentGeneration());
-                    //     if (ImGui::SliderInt("Generation Concurrency", &maxGen, 1, 8)) {
-                    //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
-                    //     }
-                    // }
+                        // Ensure the uniform is applied to the intended program(s),
+                        // not whatever was last bound (e.g., selected-face wireframe).
+                        auto applyRenderType = [&](const std::shared_ptr<Shader>& s) {
+                            if (!s) return;
+                            s->use();
+                            s->setInt("renderType", renderType);
+                        };
+                        applyRenderType(textureShader);
+
+                        static bool useBlinnPhong = true;
+                        if (ImGui::Checkbox("Blinn-Phong", &useBlinnPhong)) {
+                            textureShader->use();
+                            textureShader->setInt("blinn", useBlinnPhong);
+                        }
+                        // Changing this will update the far clipping plane.
+                        // ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
+                        
+                        // Adjust the chunk loading radius.  Casting to int and back avoids
+                        // accidental type issues in the setter.  We clamp the range to a
+                        // reasonable minimum and maximum.
+                        if (renderer) {
+                            int radius = static_cast<int>(renderer->getLoadRadius());
+                            if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
+                                renderer->setLoadRadius(radius);
+                            }
+                        }
+    
+                        // Adjust the maximum number of chunks being generated at the same time.
+                        // Lower values produce smoother frame rates but slower world loading.
+                        // if (world) {
+                        //     int maxGen = static_cast<int>(world->getMaxConcurrentGeneration());
+                        //     if (ImGui::SliderInt("Generation Concurrency", &maxGen, 1, 8)) {
+                        //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
+                        //     }
+                        // }
+                    }
 
                     // Lighting controls: direction and colours.  The direction vector
                     // components are clamped to [-1,1]; colours use a colour picker.
