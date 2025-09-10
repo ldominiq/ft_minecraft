@@ -38,12 +38,12 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
     blockIndices.set(index, paletteIndex);
 }
 
+// TODO, change if (!neighbor) return BlockType::AIR; to if (!neighbor) return BlockType::END;
 bool Chunk::isBlockVisible(glm::ivec3 pos) {
     int x = pos.x, y = pos.y, z = pos.z;
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH)
         return false;
 
-    int idx = x + WIDTH * (y + HEIGHT * z);
     if (getBlock(x,y,z) == BlockType::AIR)
         return false;
 
@@ -51,11 +51,11 @@ bool Chunk::isBlockVisible(glm::ivec3 pos) {
         if (x + dx < 0 || x + dx >= WIDTH ||
             z + dz < 0 || z + dz >= DEPTH) 
         {
-            auto neighbor = adjacentChunks[dir].lock();
-            if (!neighbor) return BlockType::AIR;
-            int nx = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : x));
-            int nz = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : z));
-            return neighbor->getBlock(nx, y + dy, nz);
+            // auto neighbor = adjacentChunks[dir].lock();
+            // if (!neighbor) return BlockType::AIR;
+            // int nx = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : x));
+            // int nz = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : z));
+            // return neighbor->getBlock(nx, y + dy, nz);
         }
         if (y + dy < 0 || y + dy >= HEIGHT)
             return BlockType::AIR;
