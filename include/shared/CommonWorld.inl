@@ -108,6 +108,7 @@ bool CommonWorld<ChunkT>::getTargetedBlock(const glm::vec3 &rayOrigin, const glm
     return false;
 }
 
+#include "iostream"
 template <typename ChunkT>
 void CommonWorld<ChunkT>::removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir)
 {
