@@ -43,7 +43,7 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
     if (it == chunks.end())
         return;
 
-    std::shared_ptr<ChunkRenderer> currChunk = std::dynamic_pointer_cast<ChunkRenderer>(it->second);
+    std::shared_ptr<ChunkRenderer> currChunk = it->second;
 
     currChunk->setBlock(x, y, z, type);
 	currChunk->buildMesh();
