@@ -21,7 +21,7 @@ class LivingEntity : public Entity
 		bool jump = false;
 
 		float movementSpeed = WALKING_SPEED; //deprecated?
-		glm::vec3 velocity;
+		glm::vec3 velocity;	//maybe only needed in player? Or should mobs also have momentum
 		
 		glm::vec3 Front;
 		glm::vec3 Up;
