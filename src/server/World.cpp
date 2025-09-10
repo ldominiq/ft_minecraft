@@ -4,7 +4,6 @@
 
 #include "World.hpp"
 
-
 // helper to write PPM
 static void saveHeightmapPPM(const std::string &path, const std::vector<float> &heightmap, int w, int h) {
     float minH = std::numeric_limits<float>::infinity();
@@ -192,82 +191,6 @@ World::World(int seed) {
 World::~World() {
 }
 
-std::shared_ptr<ChunkGeneration> World::getChunk(int chunkX, int chunkZ) {
-    const ChunkPos key = Chunk::toKey(chunkX, chunkZ);
-    auto it = chunks.find(key);
-    if (it == chunks.end())
-        return nullptr;
-    return it->second;
-}
-
-void World::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ)
-{
-	x = (globalX % Chunk::WIDTH + Chunk::WIDTH) % Chunk::WIDTH;
-	z = (globalZ % Chunk::DEPTH + Chunk::DEPTH) % Chunk::DEPTH;
-	y = globalY;
-
-	chunkX = globalX / Chunk::WIDTH;
-	if (globalX < 0 && globalX % Chunk::WIDTH != 0)
-		chunkX--;
-
-	chunkZ = globalZ / Chunk::DEPTH;
-	if (globalZ < 0 && globalZ % Chunk::DEPTH != 0)
-		chunkZ--;
-}
-
-BlockType World::getBlockWorld(glm::ivec3 globalCoords)
-{
-	int x, y, z;
-	int chunkX, chunkZ;
-	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
-
-	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-	if (it == chunks.end()) {
-		return BlockType::END;
-	}
-	std::shared_ptr<ChunkGeneration> currChunk = it->second;
-	return currChunk->getBlock(x, y, z);
-}
-
-void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
-{
-    // Offset the global coordinates in the direction of the face normal
-    glm::ivec3 targetCoords = globalCoords;
-    if (faceNormal.has_value()) {
-        targetCoords += *faceNormal;
-    }
-
-    int x, y, z;
-    int chunkX, chunkZ;
-    globalCoordsToLocalCoords(x, y, z, 
-        targetCoords.x, targetCoords.y, targetCoords.z, 
-        chunkX, chunkZ);
-
-    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-    if (it == chunks.end())
-        return;
-
-    std::shared_ptr<ChunkGeneration> currChunk = it->second;
-
-	updatedBlocks.push_back({glm::ivec3(targetCoords.x, targetCoords.y, targetCoords.z), type});
-    currChunk->setBlock(x, y, z, type);
-}
-
-bool World::isBlockVisibleWorld(glm::ivec3 globalCoords)
-{
-	int x, y, z;
-	int chunkX, chunkZ;
-	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
-
-	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-	if (it == chunks.end()) {
-		return false;
-	}
-
-	std::shared_ptr<ChunkGeneration> currChunk = it->second;
-	return currChunk->isBlockVisible(glm::vec3(x, y ,z));
-}
-
 //TODO change it. removing from memory based on player loadRadius makes no sense
 void World::handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadius) {
 	if (!outOfMemory) {
@@ -447,12 +370,6 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 	}
 }
 
-
-// Return the total number of chunks currently loaded in the world (in memory).
-std::size_t World::getTotalChunkCount() const {
-    return chunks.size();
-}
-
 void World::saveRegionsOnExit()
 {
     for (auto it = loadedRegions.begin(); it != loadedRegions.end();) {
@@ -580,75 +497,32 @@ std::string World::getRegionFilename(int regionX, int regionZ) const {
     return ss.str();
 }
 
-//TODO : put it on shared. maths or something and reuse it for camera and world. And maybe make it accept an std::function instead of a unique ptr?
-bool World::getTargetedBlock(const CPlayerInfo &player, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance) {
-    glm::vec3 rayOrigin = player.getPosition();
-    glm::vec3 rayDir = glm::normalize(player.getCameraDir());
-
-    glm::ivec3 blockPos = glm::floor(rayOrigin);
-
-    glm::vec3 deltaDist = glm::abs(glm::vec3(1.0f) / rayDir);
-    glm::ivec3 step;
-    glm::vec3 sideDist;
-
-    for (int i = 0; i < 3; ++i) {
-        if (rayDir[i] < 0) {
-            step[i] = -1;
-            sideDist[i] = (rayOrigin[i] - blockPos[i]) * deltaDist[i];
-        } else {
-            step[i] = 1;
-            sideDist[i] = (blockPos[i] + 1.0f - rayOrigin[i]) * deltaDist[i];
-        }
+void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
+{
+    // Offset the global coordinates in the direction of the face normal
+    glm::ivec3 targetCoords = globalCoords;
+    if (faceNormal.has_value()) {
+        targetCoords += *faceNormal;
     }
 
-    float distanceTraveled = 0.0f;
-    glm::ivec3 prevBlock = blockPos;
+    int x, y, z;
+    int chunkX, chunkZ;
+    globalCoordsToLocalCoords(x, y, z, 
+        targetCoords.x, targetCoords.y, targetCoords.z, 
+        chunkX, chunkZ);
 
-    while (distanceTraveled < maxDistance) {
-        int axis;
-        if (sideDist.x < sideDist.y) {
-            if (sideDist.x < sideDist.z) axis = 0;
-            else                         axis = 2;
-        } else {
-            if (sideDist.y < sideDist.z) axis = 1;
-            else                         axis = 2;
-        }
+    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
+    if (it == chunks.end())
+        return;
 
-        blockPos[axis] += step[axis];
-        sideDist[axis] += deltaDist[axis];
+    std::shared_ptr<Chunk> currChunk = it->second;
 
-        // Track face direction
-        faceNormal = glm::ivec3(0);
-        faceNormal[axis] = -step[axis];
-
-		distanceTraveled = glm::min(glm::min(sideDist.x, sideDist.y), sideDist.z);
-
-        // Check if this block exists in your world
-        if (isBlockVisibleWorld(blockPos)) {
-            hitBlock = blockPos;
-            return true;
-        }
-    }
-
-    return false;
-}
-
-void World::removeTargettedBlock(const CPlayerInfo &player)
-{
-	glm::ivec3 blockPos, faceNormal;
-	if (getTargetedBlock(player, blockPos, faceNormal))
-		setBlockWorld(blockPos, std::nullopt, BlockType::AIR);
-}
-
-void World::setTargettedBlock(const CPlayerInfo &player)
-{
-	glm::ivec3 blockPos, faceNormal;
-	if (getTargetedBlock(player, blockPos, faceNormal))
-		setBlockWorld(blockPos, faceNormal, BlockType::DIRT);
+	updatedBlocks.push_back({glm::ivec3(targetCoords.x, targetCoords.y, targetCoords.z), type});
+    currChunk->setBlock(x, y, z, type);
 }
 
 void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
 {
-	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player);
-	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player);
+	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.getPosition(), player.getCameraDir());
+	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.getPosition(), player.getCameraDir());
 }

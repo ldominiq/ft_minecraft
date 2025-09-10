@@ -17,8 +17,10 @@ public:
     void use() const;
 
     void setInt(const std::string& name, int value) const;
+	void setFloat3(const std::string& name, const float &v1, const float &v2, const float &v3) const;
     void setMat4(const std::string& name, const glm::mat4& mat) const;
-    void setVec3(const std::string& name, const glm::vec3& vec) const;
+    void setVec3(const std::string& name, const glm::vec3& vec3) const;
+	void setVec4(const std::string& name, const glm::vec4& vec4) const;
 };
 
 #endif
