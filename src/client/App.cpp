@@ -496,6 +496,11 @@ void App::render() {
         lightCubeShader->setMat4("view", view);
 
         glm::mat4 model = glm::mat4(1.0f);
+        // also draw the lamp object(s)
+        lightCubeShader->use();
+        lightCubeShader->setMat4("projection", projection);
+        lightCubeShader->setMat4("view", view);
+
         // we now draw as many light bulbs as we have point lights.
         glBindVertexArray(lightCubeVAO);
         for (unsigned int i = 0; i < 4; i++)
@@ -503,6 +508,9 @@ void App::render() {
             model = glm::mat4(1.0f);
             model = glm::translate(model, pointLightPositions[i]);
             model = glm::scale(model, glm::vec3(0.2f)); // Make it a smaller cube
+            // Set per-cube color here so each light uses its own color
+            glm::vec3 cubeCol = pointLightsOn[i] ? pointLightDiffuse[i] : glm::vec3(0.0f);
+            lightCubeShader->setVec3("cubeColor", cubeCol);
             lightCubeShader->setMat4("model", model);
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
