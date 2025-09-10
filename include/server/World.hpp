@@ -22,7 +22,7 @@
 #include "TerrainParams.hpp"
 #include "Protocol.hpp"
 #include "PlayerInfo.hpp"
-#include "ChunkGeneration.hpp"
+#include "CommonWorld.hpp"
 
 static constexpr int MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK = 40;
 static constexpr int REGION_SIZE = 32;
@@ -40,8 +40,8 @@ struct ChunkEntry {
     std::uint32_t size;
 };
 
-class World {
-
+class World final : public CommonWorld<ChunkGeneration>
+{
     TerrainGenerationParams terrainParams;
 
 	inline int floorDiv(int value, int divisor) {
@@ -49,7 +49,6 @@ class World {
 		return (value - divisor + 1) / divisor; // floor division for negatives
 	}
 
-    std::unordered_map<ChunkPos, std::shared_ptr<ChunkGeneration>> chunks;
 	std::unordered_set<ChunkPos> plannedChunks;
 
     // Pending futures representing asynchronous chunk generation tasks.
@@ -88,20 +87,11 @@ public:
 
     void updateVisibleChunks(CPlayerInfo &player);
 
-    // Return the total number of chunks currently loaded in the world.
-    std::size_t getTotalChunkCount() const;
-
     // Get or set the maximum number of chunk generation tasks that can run
     // simultaneously.  Lower values reduce CPU spikes at the cost of slower
     // world loading.  Must be at least 1.
     std::size_t getMaxConcurrentGeneration() const { return maxConcurrentGeneration; }
     void setMaxConcurrentGeneration(std::size_t n) { maxConcurrentGeneration = std::max<std::size_t>(1, n); }
-
-	void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ);
-    std::shared_ptr<ChunkGeneration> getChunk(int chunkX, int chunkZ);
-	BlockType getBlockWorld(glm::ivec3 globalCoords); //unused for now
-	void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
-	bool isBlockVisibleWorld(glm::ivec3 globalCoords);
 
 	void saveRegionsOnExit();
     // Terrain params for ImGui
@@ -111,10 +101,10 @@ public:
 	void updatePlannedChunks(CPlayerInfo &player);
 
 	std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
-	bool getTargetedBlock(const CPlayerInfo &player, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100);
-	void removeTargettedBlock(const CPlayerInfo &player);
-	void setTargettedBlock(const CPlayerInfo &player);
+
 	void processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt);
+	
+	void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 };
 
 #endif //WORLD_HPP

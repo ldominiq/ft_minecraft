@@ -405,7 +405,7 @@ void App::debugWindow() {
             // Additional metrics: number of loaded chunks and approximate memory usage
             if (renderer) {
                 const size_t visibleChunks = renderer->getVisibleChunkCount();
-                const size_t totalChunks   = renderer->getTotalChunkInMemoryCount();
+                const size_t totalChunks   = renderer->getTotalChunkCount();
                 ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
             }
             // Display memory usage in megabytes.  We call a static helper to

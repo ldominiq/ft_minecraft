@@ -40,72 +40,6 @@ void Camera::updateCameraVectors() {
     Up    = glm::normalize(glm::cross(Right, Front));
 }
 
-bool Camera::getTargetedBlock(std::unique_ptr<Renderer> &Renderer, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance) {
-    glm::vec3 rayOrigin = Position;
-    glm::vec3 rayDir = glm::normalize(Front);
-
-    glm::ivec3 blockPos = glm::floor(rayOrigin);
-
-    glm::vec3 deltaDist = glm::abs(glm::vec3(1.0f) / rayDir);
-    glm::ivec3 step;
-    glm::vec3 sideDist;
-
-    for (int i = 0; i < 3; ++i) {
-        if (rayDir[i] < 0) {
-            step[i] = -1;
-            sideDist[i] = (rayOrigin[i] - blockPos[i]) * deltaDist[i];
-        } else {
-            step[i] = 1;
-            sideDist[i] = (blockPos[i] + 1.0f - rayOrigin[i]) * deltaDist[i];
-        }
-    }
-
-    float distanceTraveled = 0.0f;
-    glm::ivec3 prevBlock = blockPos;
-
-    while (distanceTraveled < maxDistance) {
-        int axis;
-        if (sideDist.x < sideDist.y) {
-            if (sideDist.x < sideDist.z) axis = 0;
-            else                         axis = 2;
-        } else {
-            if (sideDist.y < sideDist.z) axis = 1;
-            else                         axis = 2;
-        }
-
-        blockPos[axis] += step[axis];
-        sideDist[axis] += deltaDist[axis];
-
-        // Track face direction
-        faceNormal = glm::ivec3(0);
-        faceNormal[axis] = -step[axis];
-
-		distanceTraveled = glm::min(glm::min(sideDist.x, sideDist.y), sideDist.z);
-
-        // Check if this block exists in your world
-        if (Renderer && Renderer->isBlockVisibleWorld(blockPos)) {
-            hitBlock = blockPos;
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// void Camera::removeTargettedBlock(std::unique_ptr<World> &world)
-// {
-// 	glm::ivec3 blockPos, faceNormal;
-// 	if (getTargetedBlock(world, blockPos, faceNormal))
-// 		world->setBlockWorld(blockPos, std::nullopt, BlockType::AIR);
-// }
-
-// void Camera::setTargettedBlock(std::unique_ptr<World> &world)
-// {
-// 	glm::ivec3 blockPos, faceNormal;
-// 	if (getTargetedBlock(world, blockPos, faceNormal))
-// 		world->setBlockWorld(blockPos, faceNormal, BlockType::DIRT);
-// }
-
 void Camera::initWireframeCube() {
 
     glm::vec3 vertices[8] = {
@@ -149,7 +83,7 @@ void Camera::initWireframeCube() {
 void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection) {
 
 	glm::ivec3 blockPos, faceNormal;
-	if (!getTargetedBlock(Renderer, blockPos, faceNormal))
+	if (!Renderer->getTargetedBlock(Position, glm::normalize(Front), blockPos, faceNormal))
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));
