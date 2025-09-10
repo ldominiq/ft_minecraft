@@ -91,6 +91,8 @@ private:
     bool keyPressedRecently = false;
 
     unsigned int VAO, VBO, EBO, shaderProgram, texture, lightCubeVAO, lightCubeVBO;
+    unsigned int depthMapFBO, depthMap;
+    const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
 
     enum class DisplayMode {
         Windowed,
@@ -111,6 +113,8 @@ private:
     std::shared_ptr<Shader> skyShader;
     std::shared_ptr<Shader> lightCubeShader;
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
+    std::shared_ptr<Shader> simpleDepthShader;
+    std::shared_ptr<Shader> debugDepthQuad;
 
 	std::optional<int> seed;
 
