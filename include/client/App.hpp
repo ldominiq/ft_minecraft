@@ -93,6 +93,8 @@ private:
     unsigned int VAO, VBO, EBO, shaderProgram, texture, lightCubeVAO, lightCubeVBO;
     unsigned int depthMapFBO, depthMap;
     const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+    unsigned int quadVAO = 0;
+    unsigned int quadVBO;
 
     enum class DisplayMode {
         Windowed,

@@ -139,10 +139,13 @@ void App::init() {
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
 
-    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+    // virus
+    //glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
     // SHADOW MAPPING
-    glGenFramebuffers(1, &depthMapFBO);
+    // ===============================================================
+
+    // Create a 2D texture that we'll use as the framebuffer's depth buffer
     glGenTextures(1, &depthMap);
     glBindTexture(GL_TEXTURE_2D, depthMap);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, 
@@ -152,6 +155,7 @@ void App::init() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
+    // With the generated depth texture we can attach it as the framebuffer's depth buffer
     glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
     glDrawBuffer(GL_NONE);
@@ -340,9 +344,7 @@ void App::loadResources() {
 }
 
 void App::render() {
-    glm::vec3 lightPos(-2.0f, 4.0f, -1.0f);
-    unsigned int quadVAO = 0;
-    unsigned int quadVBO;
+    
 
     while (!glfwWindowShouldClose(window)) {
 
@@ -394,6 +396,7 @@ void App::render() {
         processInput();
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
 
         // --- Draw sky background first ---
         skyShader->use();
@@ -404,6 +407,84 @@ void App::render() {
 
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
+
+
+        // Shadow mapping
+        // ====================================
+        // 1. render depth of scene to texture (from light's perspective)
+        // --------------------------------------------------------------
+        glm::vec3 lightPos(0.0f, 60.0f, 0.0f); // bigger area
+        float orthoSize = 120.0f;
+        float near_plane = 1.0f, far_plane = 300.0f;
+        glm::mat4 lightProjection = glm::ortho(-orthoSize, orthoSize,
+                                               -orthoSize, orthoSize,
+                                               near_plane, far_plane);
+        glm::mat4 lightView = glm::lookAt(lightPos,
+                                          lightPos + directionalLightDir,
+                                          glm::vec3(0,1,0));
+        glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+        // 1. Depth pass
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glCullFace(GL_FRONT); // reduce peter-panning
+        simpleDepthShader->use();
+        simpleDepthShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        simpleDepthShader->setMat4("model", glm::mat4(1.0f));
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        renderer->render(simpleDepthShader); // ensure it sets model if needed
+        glCullFace(GL_BACK);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // Restore viewport
+        glViewport(0, 0, width, height);
+
+        // 2. Sky (as you already do) then 3. World pass:
+        activeShader->use();
+        activeShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        activeShader->setMat4("model", glm::mat4(1.0f));
+        activeShader->setInt("shadowMap", 1);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+
+        renderer->render(activeShader);
+        
+
+        if (quadVAO == 0)
+        {
+            float quadVertices[] = {
+                // positions        // texture Coords
+                -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+                -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+                1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+                1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+            };
+            // setup plane VAO
+            glGenVertexArrays(1, &quadVAO);
+            glGenBuffers(1, &quadVBO);
+            glBindVertexArray(quadVAO);
+            glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+        }
+        glBindVertexArray(quadVAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);
+
+        // If you want to visualize something (e.g., depth) bind the proper shader/texture here.
+        debugDepthQuad->use();
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+        debugDepthQuad->setInt("depthMap", 0);
+        glBindVertexArray(quadVAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);
+
+        // ====================================
 
         // Time management for sky shader
         if (skyTimePaused == false)
@@ -544,63 +625,7 @@ void App::render() {
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
 
-        // 1. render depth of scene to texture (from light's perspective)
-        // --------------------------------------------------------------
-        glm::mat4 lightProjection, lightView;
-        glm::mat4 lightSpaceMatrix;
-        float near_plane = 1.0f, far_plane = 7.5f;
-        lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
-        lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
-        lightSpaceMatrix = lightProjection * lightView;
-        // render scene from light's point of view
-        simpleDepthShader->use();
-        simpleDepthShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-            glClear(GL_DEPTH_BUFFER_BIT);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texture);
-            renderer->render(simpleDepthShader);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        // reset viewport
-        glViewport(0, 0, width, height);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        // render Depth map to quad for visual debugging
-        // ---------------------------------------------
-        debugDepthQuad->use();
-        debugDepthQuad->setFloat("near_plane", near_plane);
-        debugDepthQuad->setFloat("far_plane", far_plane);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
-        
-
-        if (quadVAO == 0)
-        {
-            float quadVertices[] = {
-                // positions        // texture Coords
-                -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-                -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-                1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-                1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-            };
-            // setup plane VAO
-            glGenVertexArrays(1, &quadVAO);
-            glGenBuffers(1, &quadVBO);
-            glBindVertexArray(quadVAO);
-            glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-            glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-            glEnableVertexAttribArray(0);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-            glEnableVertexAttribArray(1);
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-        }
-        glBindVertexArray(quadVAO);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        glBindVertexArray(0);
-
+        renderer->render(activeShader);
 
 
         // skybox->draw(camera->getViewMatrix(), projection);
