@@ -95,6 +95,7 @@ private:
     const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
     unsigned int quadVAO = 0;
     unsigned int quadVBO;
+    unsigned int planeVAO;
 
     enum class DisplayMode {
         Windowed,
