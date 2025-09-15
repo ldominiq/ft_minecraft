@@ -61,9 +61,29 @@ uniform Material material;
 uniform sampler2D diffuseTexture;
 uniform sampler2D shadowMap;
 
+uniform vec3 lightPos;
 uniform vec3 viewPos;
 uniform int renderType;
 uniform bool blinn;
+
+vec2 poissonDisk[16] = vec2[]( 
+   vec2( -0.94201624, -0.39906216 ), 
+   vec2( 0.94558609, -0.76890725 ), 
+   vec2( -0.094184101, -0.92938870 ), 
+   vec2( 0.34495938, 0.29387760 ), 
+   vec2( -0.91588581, 0.45771432 ), 
+   vec2( -0.81544232, -0.87912464 ), 
+   vec2( -0.38277543, 0.27676845 ), 
+   vec2( 0.97484398, 0.75648379 ), 
+   vec2( 0.44323325, -0.97511554 ), 
+   vec2( 0.53742981, -0.47373420 ), 
+   vec2( -0.26496911, -0.41893023 ), 
+   vec2( 0.79197514, 0.19090188 ), 
+   vec2( -0.24188840, 0.99706507 ), 
+   vec2( -0.81409955, 0.91437590 ), 
+   vec2( 0.19984126, 0.78641367 ), 
+   vec2( 0.14383161, -0.14100790 ) 
+);
 
 float near = 0.1;
 float far  = 100.0;
@@ -74,6 +94,13 @@ float LinearizeDepth(float depth)
 {
     float z = depth * 2.0 - 1.0; // back to NDC
     return (2.0 * near * far) / (far + near - z * (far - near));
+}
+
+// Returns a random number based on a vec3 and an int.
+float random(vec3 seed, int i){
+	vec4 seed4 = vec4(seed,i);
+	float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
+	return fract(sin(dot_product) * 43758.5453);
 }
 
 // function prototypes
@@ -120,24 +147,68 @@ void main()
 
 }
 
+const int PCF_RADIUS = 1;          // 1 = 3x3;
+const float MIN_BIAS = 0.00035;
+const float MAX_BIAS = 0.0010;
+
+const int   POISSON_SAMPLES = 16;
+const float POISSON_RADIUS_BASE = 1.75;   // start radius in texels
+const float POISSON_RADIUS_SCALE = 1.0;   // extra scale factor
+
+// Fast hash -> angle (radians)
+float hash12(vec2 p) {
+    vec3 p3  = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+vec2 rotate(vec2 v, float a) {
+    float s = sin(a);
+    float c = cos(a);
+    return vec2(c*v.x - s*v.y, s*v.x + c*v.y);
+}
+
+
 float ShadowCalculation(vec4 fragPosLightSpace)
 {
-    // TODO: fix
-    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
+    // calculate bias (based on depth map resolution and slope)
+    vec3 normal = normalize(fs_in.Normal);
+    vec3 lightDir = normalize(-dirLight.direction);
+
     // perform perspective divide
-    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    vec3 projCoords = fragPosLightSpace.xyz / max(fragPosLightSpace.w, 0.00001);
     // transform to [0,1] range
     projCoords = projCoords * 0.5 + 0.5;
-    // get closest depth value from light's perspective (using [0,1] range fragPosLight as coords)
-    float closestDepth = texture(shadowMap, projCoords.xy).r; 
-    // get depth of current fragment from light's perspective
-    float currentDepth = projCoords.z;
-    // check whether current frag pos is in shadow
-    float shadow = currentDepth - bias > closestDepth  ? 1.0 : 0.0;
 
-    if (projCoords.z > 1.0)
-        shadow = 0.0;
-        
+    // Outside shadow map -> no shadow
+    if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0 ||
+        projCoords.z > 1.0)
+        return 0.0;
+
+    float currentDepth = projCoords.z;
+
+    // Slope‑scale bias (receiver plane)
+    float ndotl = max(dot(normal, lightDir), 0.0);
+    float bias = mix(MAX_BIAS, MIN_BIAS, ndotl); // back-face culled depth → small bias
+
+    // PCF
+    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
+    float radius = POISSON_RADIUS_BASE * POISSON_RADIUS_SCALE;
+
+    // Random rotation per fragment (stable in world or light space)
+    float ang = hash12(projCoords.xy * 1024.0) * 6.2831853;
+    float depthFade = smoothstep(0.0, 1.0, currentDepth); // enlarge radius a bit with distance
+    float sampleRadius = radius * (0.6 + depthFade * 0.4);
+
+    float shadow = 0.0;
+    for (int i = 0; i < POISSON_SAMPLES; ++i) {
+        vec2 rotated = rotate(poissonDisk[i], ang);
+        vec2 offset = rotated * texelSize * sampleRadius;
+        float closestDepth = texture(shadowMap, projCoords.xy + offset).r;
+        shadow += (currentDepth - bias > closestDepth) ? 1.0 : 0.0;
+    }
+    shadow /= float(POISSON_SAMPLES);
     return shadow;
 }
 

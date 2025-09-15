@@ -92,7 +92,7 @@ private:
 
     unsigned int VAO, VBO, EBO, shaderProgram, texture, lightCubeVAO, lightCubeVBO;
     unsigned int depthMapFBO, depthMap;
-    const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+    const unsigned int SHADOW_WIDTH = 4096, SHADOW_HEIGHT = 4096;
     unsigned int quadVAO = 0;
     unsigned int quadVBO;
     unsigned int planeVAO;
@@ -144,6 +144,17 @@ private:
 
     float renderDistance = 1000.0f; // Distance of the far clipping plane
 
+
+    glm::vec3 lightPos = -directionalLightDir * 200.0f;
+    glm::mat4 lightSpaceMatrix {1.0f};
+    glm::vec3 cachedShadowLightDir {0.0f, -1.0f, 0.0f};
+    int shadowFrameCounter = 0;
+    int shadowUpdateInterval = 30;
+
+    float shadowOrthoRange = 96.0f;
+    bool forceShadowUpdate = true;
+
+
     // Lighting parameters that can be tweaked via ImGui.  The direction
     // should be normalised each frame; colours are in [0,1].
     
@@ -194,7 +205,6 @@ private:
     float flashlightOuterCutoff = 17.5f; // spotlight outer cutoff angle in degrees
 
     float materialShininess = 32.0f; // material shininess factor
-
 
     // Variables for smoothing the FPS shown in the debug UI.  We maintain a
     // moving average of frame times over a sample buffer to reduce jitter.

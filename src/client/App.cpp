@@ -429,7 +429,6 @@ void App::render() {
 		
         processInput();
 
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 
@@ -446,12 +445,14 @@ void App::render() {
         if (skyTimePaused == false)
             skyTimeOffset += deltaTime * 0.05f; // Speed of sun movement
 
-        const float timeScale = 0.2f;
+        const float timeScale = 0.1f;
         const float t = skyTimeOffset * timeScale;
         glm::vec3 sunDir = glm::normalize(glm::vec3(
             std::sin(t), // x (azimuth)
             std::cos(t), // y (elevation)
             0.0f));     // z
+
+        directionalLightDir = -sunDir;
 
         // --- Draw sky background first ---
         skyShader->use();
@@ -481,44 +482,63 @@ void App::render() {
         // ====================================
         // 1. render depth of scene to texture (from light's perspective)
         // --------------------------------------------------------------
-        
+
         glm::mat4 lightProjection, lightView;
-        glm::mat4 lightSpaceMatrix;
         float near_plane = 0.1f, far_plane = 400.0f;
-        const float orthoRange = 150.0f;
-        lightProjection = glm::ortho(-orthoRange, orthoRange, -orthoRange, orthoRange, near_plane, far_plane);
-        glm::vec3 lightPos = -directionalLightDir * 200.0f;
-        lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
-        lightSpaceMatrix = lightProjection * lightView;
+        const float orthoRange = shadowOrthoRange; // how far from center to render shadows
+
         
+        
+        bool doUpdate = forceShadowUpdate || (shadowFrameCounter % shadowUpdateInterval) == 0;
 
-        // render scene from light's point of view
-        simpleDepthShader->use();
-        simpleDepthShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        
+        if (doUpdate) {
+            forceShadowUpdate = false;
+            cachedShadowLightDir = directionalLightDir;
 
-        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glClear(GL_DEPTH_BUFFER_BIT);
+            lightProjection = glm::ortho(-orthoRange, orthoRange, -orthoRange, orthoRange, near_plane, far_plane);
+            lightPos = -directionalLightDir * 200.0f;
+            lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+            lightSpaceMatrix = lightProjection * lightView;
 
-        // Optional: reduce peter panning
-        glCullFace(GL_FRONT);
+            // render scene from light's point of view
+            simpleDepthShader->use();
+            simpleDepthShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        renderer->render(simpleDepthShader); // ensure it sets model if needed
-        // floor
-        glm::mat4 model = glm::mat4(1.0f);
-        simpleDepthShader->setMat4("model", model);
-        glBindVertexArray(planeVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+            glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+            glClear(GL_DEPTH_BUFFER_BIT);
 
-        // Restore culling
-        glCullFace(GL_BACK);
+            glDisable(GL_CULL_FACE);
+            glCullFace(GL_BACK);          // keep consistent
+            glEnable(GL_POLYGON_OFFSET_FILL); // start off; add small offset only if acne
+            glPolygonOffset(1.5f, 2.0f); // factor, units
+
+            
+            // Optional: reduce peter panning
+            glCullFace(GL_FRONT);
+
+
+            renderer->render(simpleDepthShader); // ensure it sets model if needed
+            // floor
+            glm::mat4 model = glm::mat4(1.0f);
+            simpleDepthShader->setMat4("model", model);
+            glBindVertexArray(planeVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            // Restore culling
+            glDisable(GL_POLYGON_OFFSET_FILL);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_BACK);
+            
+
+        }
+        shadowFrameCounter++;
 
         // reset viewport
         glViewport(0, 0, width, height);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
 
         // 2. render scene as normal using the generated depth/shadow map  
@@ -530,58 +550,6 @@ void App::render() {
         textureShader->setVec3("viewPos", camera->Position);
         textureShader->setVec3("lightPos", lightPos);
         textureShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
-        renderer->render(textureShader);
-
-        // floor
-        textureShader->setMat4("model", model);
-        glBindVertexArray(planeVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
-
-        debugDepthQuad->use();
-        debugDepthQuad->setFloat("near_plane", near_plane);
-        debugDepthQuad->setFloat("far_plane", far_plane);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
-
-
-        // if (quadVAO == 0)
-        // {
-        //     float quadVertices[] = {
-        //         // positions        // texture Coords
-        //         -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-        //         -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-        //         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-        //         1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-        //     };
-        //     // setup plane VAO
-        //     glGenVertexArrays(1, &quadVAO);
-        //     glGenBuffers(1, &quadVBO);
-        //     glBindVertexArray(quadVAO);
-        //     glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-        //     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-        //     glEnableVertexAttribArray(0);
-        //     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-        //     glEnableVertexAttribArray(1);
-        //     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-        // }
-        // glBindVertexArray(quadVAO);
-        // glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        // glBindVertexArray(0);
-
-        
-
-        // ====================================
-
-        
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        activeShader->use();
 
         // Lighting uniforms
         // ====================================
@@ -593,11 +561,9 @@ void App::render() {
 
         // directional light
         if (directionalLightOn) {
-            
-            directionalLightDir = -sunDir; // Direction from which the light is coming (sun direction)
 
             // day/night factror based on sun elevation
-            float day = glm::clamp(sunDir.y * 0.7f, 0.0f, 1.0f);
+            float day = glm::clamp(-cachedShadowLightDir.y * 2.0f, 0.0f, 1.0f);
             // smooth transition near sunset/sunrise
             day = glm::smoothstep(0.0f, 1.0f, day);
 
@@ -606,7 +572,7 @@ void App::render() {
             glm::vec3 ambientColor = directionalAmbientColor * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
             glm::vec3 diffuseColor = directionalDiffuseColor * day;
             glm::vec3 specularColor = directionalSpecularColor * day;
-            activeShader->setVec3("dirLight.direction", directionalLightDir);
+            activeShader->setVec3("dirLight.direction", cachedShadowLightDir);
             activeShader->setVec3("dirLight.ambient", ambientColor);
             activeShader->setVec3("dirLight.diffuse", diffuseColor);
             activeShader->setVec3("dirLight.specular", specularColor);
@@ -665,6 +631,57 @@ void App::render() {
         lightCubeShader->setMat4("projection", projection);
         lightCubeShader->setMat4("view", view);
 
+        activeShader->use();
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+        renderer->render(activeShader);
+
+        // floor
+        activeShader->setMat4("model", glm::mat4(1.0f));
+        glBindVertexArray(planeVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+
+        debugDepthQuad->use();
+        debugDepthQuad->setFloat("near_plane", near_plane);
+        debugDepthQuad->setFloat("far_plane", far_plane);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+
+
+        // Render Depth map to quad for visual debugging
+        // if (quadVAO == 0)
+        // {
+        //     float quadVertices[] = {
+        //         // positions        // texture Coords
+        //         -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+        //         -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+        //         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+        //         1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+        //     };
+        //     // setup plane VAO
+        //     glGenVertexArrays(1, &quadVAO);
+        //     glGenBuffers(1, &quadVBO);
+        //     glBindVertexArray(quadVAO);
+        //     glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+        //     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+        //     glEnableVertexAttribArray(0);
+        //     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        //     glEnableVertexAttribArray(1);
+        //     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+        // }
+        // glBindVertexArray(quadVAO);
+        // glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        // glBindVertexArray(0);
+
+        
+
+        // ====================================
+
+        
+
         // we now draw as many light bulbs as we have point lights.
         // glBindVertexArray(lightCubeVAO);
         // for (unsigned int i = 0; i < 4; i++)
@@ -686,7 +703,6 @@ void App::render() {
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
 
-        renderer->render(activeShader);
 
 
         // skybox->draw(camera->getViewMatrix(), projection);
