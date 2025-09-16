@@ -92,7 +92,16 @@ private:
 
     unsigned int VAO, VBO, EBO, shaderProgram, texture, lightCubeVAO, lightCubeVBO;
     unsigned int depthMapFBO, depthMap;
-    const unsigned int SHADOW_WIDTH = 4096, SHADOW_HEIGHT = 4096;
+    enum class ShadowQuality {
+        Low = 1024,
+        Medium = 2048,
+        High = 4096,
+        Ultra = 8192
+    };
+
+    ShadowQuality shadowQuality = ShadowQuality::High;
+    unsigned int SHADOW_WIDTH = static_cast<unsigned int>(shadowQuality);
+    unsigned int SHADOW_HEIGHT = static_cast<unsigned int>(shadowQuality);
     unsigned int quadVAO = 0;
     unsigned int quadVBO;
     unsigned int planeVAO;
@@ -143,16 +152,14 @@ private:
     bool useGradientShader = false;
 
     float renderDistance = 1000.0f; // Distance of the far clipping plane
-
-
-    glm::vec3 lightPos = -directionalLightDir * 200.0f;
+    glm::mat4 lightProjection, lightView;
     glm::mat4 lightSpaceMatrix {1.0f};
     glm::vec3 cachedShadowLightDir {0.0f, -1.0f, 0.0f};
     int shadowFrameCounter = 0;
-    int shadowUpdateInterval = 30;
+    int shadowUpdateInterval = 4;
 
-    float shadowOrthoRange = 96.0f;
-    bool forceShadowUpdate = true;
+    float shadowOrthoRange = 200.0f;
+    bool forceShadowUpdate = false;
 
 
     // Lighting parameters that can be tweaked via ImGui.  The direction
@@ -162,9 +169,13 @@ private:
     // Directional light (sun)
     bool directionalLightOn = true;
     glm::vec3 directionalLightDir  = glm::vec3(0.5f, 1.0f, 0.3f);
+    glm::vec3 lightPos = -directionalLightDir * 200.0f;
     glm::vec3 directionalAmbientColor = glm::vec3(0.3f);
     glm::vec3 directionalDiffuseColor = glm::vec3(1.0f);
     glm::vec3 directionalSpecularColor = glm::vec3(1.0f);
+
+    float sunYawDeg = 45.0f;   // horizontal rotation of the sun path (0 = along +X, 90 = along +Z)
+
 
     // Point light (lamp)
     std::vector<bool> pointLightsOn = {true, true, true, true};

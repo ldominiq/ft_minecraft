@@ -4,6 +4,61 @@
 
 #include "App.hpp"
 
+// Draws a small textured quad (preview of an FBO texture) in the top-right corner.
+void DisplayFramebufferTexture(unsigned int textureID)
+{
+    if (textureID == 0) return;
+
+    static std::shared_ptr<Shader> debugFBOShader;
+    static GLuint vao = 0;
+    static GLuint vbo = 0;
+
+    if (!debugFBOShader) {
+        debugFBOShader = std::make_shared<Shader>(
+            "shaders/debugRenderer.vert",
+            "shaders/debugRenderer.frag"
+        );
+        debugFBOShader->use();
+        debugFBOShader->setInt("texCoords", 0);
+    }
+
+    if (vao == 0) {
+        // NDC quad in top-right corner
+        float verts[] = {
+            //  pos.xy    uv
+             0.40f, 0.90f, 1.0f, 1.0f,
+             0.40f, 0.40f, 1.0f, 0.0f,
+             0.90f, 0.40f, 0.0f, 0.0f,
+
+             0.40f, 0.90f, 1.0f, 1.0f,
+             0.90f, 0.40f, 0.0f, 0.0f,
+             0.90f, 0.90f, 0.0f, 1.0f
+        };
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0); // position
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1); // uv
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glBindVertexArray(0);
+    }
+
+    GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
+    if (depthEnabled) glDisable(GL_DEPTH_TEST);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+
+    debugFBOShader->use();
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+
+    if (depthEnabled) glEnable(GL_DEPTH_TEST);
+}
 
 App::App(): VAO(0),
 			VBO(0),
@@ -354,7 +409,7 @@ void App::setUdpClientPacketCallback()
 void App::loadResources() {
     // Load shaders and textures
 
-    textureShader = std::make_shared<Shader>("shaders/simple.vert", "shaders/simple.frag");
+    textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
     skyShader = std::make_shared<Shader>("shaders/sky.vert", "shaders/sky.frag");
     lightCubeShader = std::make_shared<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
@@ -447,10 +502,20 @@ void App::render() {
 
         const float timeScale = 0.1f;
         const float t = skyTimeOffset * timeScale;
-        glm::vec3 sunDir = glm::normalize(glm::vec3(
+
+        glm::vec3 sunDirLocal = glm::normalize(glm::vec3(
             std::sin(t), // x (azimuth)
             std::cos(t), // y (elevation)
             0.0f));     // z
+
+        // Sun direction based on time of day
+        // Sun moves in a circle in the sky, with yaw adjustment
+        float sunYawRad = glm::radians(sunYawDeg);
+        glm::vec3 sunDir = glm::normalize(glm::vec3(
+            sunDirLocal.x * std::cos(sunYawRad) - sunDirLocal.z * std::sin(sunYawRad),
+            sunDirLocal.y,
+            sunDirLocal.x * std::sin(sunYawRad) + sunDirLocal.z * std::cos(sunYawRad)
+        ));
 
         directionalLightDir = -sunDir;
 
@@ -483,12 +548,9 @@ void App::render() {
         // 1. render depth of scene to texture (from light's perspective)
         // --------------------------------------------------------------
 
-        glm::mat4 lightProjection, lightView;
         float near_plane = 0.1f, far_plane = 400.0f;
         const float orthoRange = shadowOrthoRange; // how far from center to render shadows
 
-        
-        
         bool doUpdate = forceShadowUpdate || (shadowFrameCounter % shadowUpdateInterval) == 0;
 
         
@@ -496,9 +558,18 @@ void App::render() {
             forceShadowUpdate = false;
             cachedShadowLightDir = directionalLightDir;
 
-            lightProjection = glm::ortho(-orthoRange, orthoRange, -orthoRange, orthoRange, near_plane, far_plane);
-            lightPos = -directionalLightDir * 200.0f;
-            lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+
+            // Center the shadow (orthographic) frustum around the player instead of world origin
+            glm::vec3 center = camera->Position;
+
+            lightPos = center - directionalLightDir * 200.0f;
+            lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 1.0f, 0.0f));
+
+            // Ortho volume still symmetric, but now relative to player-centered lightView
+            lightProjection = glm::ortho(-orthoRange, orthoRange,
+                                         -orthoRange, orthoRange,
+                                         near_plane,  far_plane);
+
             lightSpaceMatrix = lightProjection * lightView;
 
             // render scene from light's point of view
@@ -510,16 +581,16 @@ void App::render() {
             glClear(GL_DEPTH_BUFFER_BIT);
 
             glDisable(GL_CULL_FACE);
-            glCullFace(GL_BACK);          // keep consistent
-            glEnable(GL_POLYGON_OFFSET_FILL); // start off; add small offset only if acne
+            glCullFace(GL_BACK);
+            glEnable(GL_POLYGON_OFFSET_FILL); // to reduce shadow acne
             glPolygonOffset(1.5f, 2.0f); // factor, units
 
             
-            // Optional: reduce peter panning
+            // reduce peter panning
             glCullFace(GL_FRONT);
 
 
-            renderer->render(simpleDepthShader); // ensure it sets model if needed
+            renderer->render(simpleDepthShader);
             // floor
             glm::mat4 model = glm::mat4(1.0f);
             simpleDepthShader->setMat4("model", model);
@@ -625,7 +696,7 @@ void App::render() {
         lightCubeShader->setMat4("projection", projection);
         lightCubeShader->setMat4("view", view);
 
-        // glm::mat4 model = glm::mat4(1.0f);
+        
         // also draw the lamp object(s)
         lightCubeShader->use();
         lightCubeShader->setMat4("projection", projection);
@@ -639,9 +710,9 @@ void App::render() {
         renderer->render(activeShader);
 
         // floor
-        activeShader->setMat4("model", glm::mat4(1.0f));
-        glBindVertexArray(planeVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+        // activeShader->setMat4("model", glm::mat4(1.0f));
+        // glBindVertexArray(planeVAO);
+        // glDrawArrays(GL_TRIANGLES, 0, 6);
 
 
         debugDepthQuad->use();
@@ -676,12 +747,12 @@ void App::render() {
         // glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         // glBindVertexArray(0);
 
-        
+        DisplayFramebufferTexture(depthMap);
 
         // ====================================
 
         
-
+        glm::mat4 model = glm::mat4(1.0f);
         // we now draw as many light bulbs as we have point lights.
         // glBindVertexArray(lightCubeVAO);
         // for (unsigned int i = 0; i < 4; i++)
@@ -945,6 +1016,25 @@ void App::debugWindow() {
                     if (ImGui::CollapsingHeader("Lighting")) {
                         if (ImGui::BeginTabBar("Lighting", tab_bar_flags))
                         {
+                            if (ImGui::BeginTabItem("Shadows"))
+                            {
+                                ImGui::Text("Shadow Controls");
+                                ImGui::Checkbox("Force Shadow Update", &forceShadowUpdate);
+                                ImGui::SliderInt("Shadow Update Interval (frames)", &shadowUpdateInterval, 1, 60);
+                                ImGui::SliderFloat("Shadow Ortho Range", &shadowOrthoRange, 20.0f, 200.0f);
+                                ImGui::Text("Shadow Quality");
+                                
+                                ShadowQuality oldQuality = shadowQuality;
+                                ShadowQuality newQuality = shadowQuality;
+                                ImGui::RadioButton("Low (1024x1024)",    (int*)&newQuality, (int)ShadowQuality::Low); ImGui::SameLine();
+                                ImGui::RadioButton("Medium (2048x2048)", (int*)&newQuality, (int)ShadowQuality::Medium); ImGui::SameLine();
+                                ImGui::RadioButton("High (4096x4096)",   (int*)&newQuality, (int)ShadowQuality::High); ImGui::SameLine();
+                                ImGui::RadioButton("Ultra (8192x8192)",  (int*)&newQuality, (int)ShadowQuality::Ultra);
+                                if (oldQuality != newQuality) {
+                                    shadowQuality = newQuality;
+                                }
+                                ImGui::EndTabItem();
+                            }
                             if (ImGui::BeginTabItem("Directional Light"))
                             {
                                 ImGui::Text("Directional Light Controls");
@@ -994,6 +1084,7 @@ void App::debugWindow() {
                         ImGui::Text("Sky Controls");
                         ImGui::Checkbox("Pause Sun Animation", &skyTimePaused);
                         ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f");
+                        ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f");
                         ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f");
                         ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f");
                         ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f");
