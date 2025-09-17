@@ -50,7 +50,19 @@ struct SpotLight {
     vec3 specular;       
 };
 
-#define NR_POINT_LIGHTS 4
+struct Shadows {
+    int PCF_RADIUS;
+    float MIN_BIAS;
+    float MAX_BIAS;
+
+    int   POISSON_SAMPLES;
+    float POISSON_RADIUS_BASE;
+    float POISSON_RADIUS_SCALE;
+
+    float CONTACT_OFFSET;
+};
+
+#define NR_POINT_LIGHTS 3
 
 uniform sampler2D atlas;
 uniform DirLight dirLight;
@@ -65,6 +77,8 @@ uniform vec3 lightPos;
 uniform vec3 viewPos;
 uniform int renderType;
 uniform bool blinn;
+
+uniform Shadows shadows;
 
 vec2 poissonDisk[16] = vec2[]( 
    vec2( -0.94201624, -0.39906216 ), 
@@ -107,7 +121,7 @@ float random(vec3 seed, int i){
 vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir);
 vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
 vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
-float ShadowCalculation(vec4 fragPosLightSpace);
+float ShadowCalculation(Shadows shadows, vec4 fragPosLightSpace);
 
 void main()
 {    
@@ -147,13 +161,7 @@ void main()
 
 }
 
-const int PCF_RADIUS = 1;          // 1 = 3x3;
-const float MIN_BIAS = 0.00035;
-const float MAX_BIAS = 0.0010;
 
-const int   POISSON_SAMPLES = 16;
-const float POISSON_RADIUS_BASE = 1.75;   // start radius in texels
-const float POISSON_RADIUS_SCALE = 1.0;   // extra scale factor
 
 // Fast hash -> angle (radians)
 float hash12(vec2 p) {
@@ -169,9 +177,8 @@ vec2 rotate(vec2 v, float a) {
 }
 
 
-float ShadowCalculation(vec4 fragPosLightSpace)
+float ShadowCalculation(Shadows shadows, vec4 fragPosLightSpace)
 {
-    // calculate bias (based on depth map resolution and slope)
     vec3 normal = normalize(fs_in.Normal);
     vec3 lightDir = normalize(-dirLight.direction);
 
@@ -188,13 +195,16 @@ float ShadowCalculation(vec4 fragPosLightSpace)
 
     float currentDepth = projCoords.z;
 
+    currentDepth = currentDepth - shadows.CONTACT_OFFSET;
+
     // Slope‑scale bias (receiver plane)
     float ndotl = max(dot(normal, lightDir), 0.0);
-    float bias = mix(MAX_BIAS, MIN_BIAS, ndotl); // back-face culled depth → small bias
-
+    float bias = mix(shadows.MAX_BIAS, shadows.MIN_BIAS, ndotl); // back-face culled depth → small bias
+    bias = clamp(bias, shadows.MIN_BIAS, shadows.MAX_BIAS);
+    
     // PCF
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
-    float radius = POISSON_RADIUS_BASE * POISSON_RADIUS_SCALE;
+    float radius = shadows.POISSON_RADIUS_BASE * shadows.POISSON_RADIUS_SCALE;
 
     // Random rotation per fragment (stable in world or light space)
     float ang = hash12(projCoords.xy * 1024.0) * 6.2831853;
@@ -202,13 +212,13 @@ float ShadowCalculation(vec4 fragPosLightSpace)
     float sampleRadius = radius * (0.6 + depthFade * 0.4);
 
     float shadow = 0.0;
-    for (int i = 0; i < POISSON_SAMPLES; ++i) {
+    for (int i = 0; i < shadows.POISSON_SAMPLES; ++i) {
         vec2 rotated = rotate(poissonDisk[i], ang);
         vec2 offset = rotated * texelSize * sampleRadius;
         float closestDepth = texture(shadowMap, projCoords.xy + offset).r;
         shadow += (currentDepth - bias > closestDepth) ? 1.0 : 0.0;
     }
-    shadow /= float(POISSON_SAMPLES);
+    shadow /= float(shadows.POISSON_SAMPLES);
     return shadow;
 }
 
@@ -239,7 +249,7 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     vec3 specular = light.specular * spec * vec3(texture(atlas, fs_in.TexCoord));
 
     // calculate shadow
-    float shadow = ShadowCalculation(fs_in.FragPosLightSpace);       
+    float shadow = ShadowCalculation(shadows, fs_in.FragPosLightSpace);       
     vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular));    
     return (lighting);
 }

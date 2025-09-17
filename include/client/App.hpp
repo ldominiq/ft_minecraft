@@ -85,6 +85,8 @@ private:
 
     void debugWindow();
 
+    void updateShadowResolution();
+
     GLFWwindow* window;
 
 	uint16_t inputMask = 0;
@@ -100,11 +102,15 @@ private:
     };
 
     ShadowQuality shadowQuality = ShadowQuality::High;
-    unsigned int SHADOW_WIDTH = static_cast<unsigned int>(shadowQuality);
-    unsigned int SHADOW_HEIGHT = static_cast<unsigned int>(shadowQuality);
+    int SHADOW_WIDTH = static_cast<int>(shadowQuality);
+    int SHADOW_HEIGHT = static_cast<int>(shadowQuality);
     unsigned int quadVAO = 0;
     unsigned int quadVBO;
     unsigned int planeVAO;
+
+    // Default shadow map near/far plane values
+    float shadowNearPlane = 0.1f;
+    float shadowFarPlane = 400.0f;
 
     enum class DisplayMode {
         Windowed,
@@ -161,6 +167,15 @@ private:
     float shadowOrthoRange = 200.0f;
     bool forceShadowUpdate = false;
 
+    int PCF_RADIUS = 1;          // 1 = 3x3;
+    float MIN_BIAS = 0.00035;
+    float MAX_BIAS = 0.0010;
+    float shadowContactOffset = 0.00050f;
+
+    int   POISSON_SAMPLES = 16;
+    float POISSON_RADIUS_BASE = 1.75;   // start radius in texels
+    float POISSON_RADIUS_SCALE = 1.0;   // extra scale factor
+
 
     // Lighting parameters that can be tweaked via ImGui.  The direction
     // should be normalised each frame; colours are in [0,1].
@@ -178,37 +193,33 @@ private:
 
 
     // Point light (lamp)
-    std::vector<bool> pointLightsOn = {true, true, true, true};
-    glm::vec3 pointLightPositions[4] = {
-        glm::vec3( 0.7f,  86.0f,  2.0f),
-        glm::vec3( 2.3f, 85.3f, -4.0f),
-        glm::vec3(-4.0f,  84.0f, -12.0f),
-        glm::vec3( 0.0f,  83.0f, -3.0f)
+    std::vector<bool> pointLightsOn = {true, true, true};
+    glm::vec3 pointLightPositions[3] = {
+        glm::vec3( 0.0f, 90.0f, 0.0f),
+        glm::vec3( 4.0f, 90.0f, 0.0f),
+        glm::vec3( 8.0f, 90.0f, 0.0f)
     };
-    glm::vec3 pointLightAmbient[4] = {
-        glm::vec3(0.05f),
-        glm::vec3(0.05f),
-        glm::vec3(0.05f),
-        glm::vec3(0.05f)
+    glm::vec3 pointLightAmbient[3] = {
+        glm::vec3(1.0, 0.0, 0.0),
+        glm::vec3(0.0, 1.0, 0.0),
+        glm::vec3(0.0, 0.0, 1.0)
     };
-    glm::vec3 pointLightDiffuse[4] = {
-        glm::vec3(0.8f),
-        glm::vec3(0.8f),
-        glm::vec3(0.8f),
-        glm::vec3(0.8f)
+    glm::vec3 pointLightDiffuse[3] = {
+        glm::vec3(1.0, 0.0, 0.0),
+        glm::vec3(0.0, 1.0, 0.0),
+        glm::vec3(0.0, 0.0, 1.0)
     };
-    glm::vec3 pointLightSpecular[4] = {
-        glm::vec3(1.0f),
-        glm::vec3(1.0f),
-        glm::vec3(1.0f),
-        glm::vec3(1.0f)
+    glm::vec3 pointLightSpecular[3] = {
+        glm::vec3(1.0, 0.0, 0.0),
+        glm::vec3(0.0, 1.0, 0.0),
+        glm::vec3(0.0, 0.0, 1.0)
     };
-    float pointLightConstant[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    float pointLightLinear[4] = { 0.09f, 0.09f, 0.09f, 0.09f };
-    float pointLightQuadratic[4] = { 0.032f, 0.032f, 0.032f, 0.032f };
+    float pointLightConstant[3] = { 1.0f, 1.0f, 1.0f };
+    float pointLightLinear[3] = { 0.09f, 0.09f, 0.09f };
+    float pointLightQuadratic[3] = { 0.032f, 0.032f, 0.032f };
 
     // Flashlight
-    bool flashlightOn = true;
+    bool flashlightOn = false;
     float spotLightConstant = 1.0f;
     float spotLightLinear = 0.09f;
     float spotLightQuadratic = 0.032f;

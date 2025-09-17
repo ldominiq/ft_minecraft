@@ -218,6 +218,7 @@ void App::init() {
 
     // configure depth map FBO
     // -----------------------
+    updateShadowResolution(); // Ensure shadowWidth/shadowHeight are set according to shadowQuality
     glGenFramebuffers(1, &depthMapFBO);
     // create depth texture
     glGenTextures(1, &depthMap);
@@ -545,15 +546,41 @@ void App::render() {
 
         // Shadow mapping
         // ====================================
-        // 1. render depth of scene to texture (from light's perspective)
+        // 1. Render the depth of the scene to a texture from the light's perspective.
+        //    This generates a shadow map, which will be sampled in the main render pass
+        //    to determine which fragments are in shadow and apply realistic lighting.
         // --------------------------------------------------------------
-
-        float near_plane = 0.1f, far_plane = 400.0f;
+        
         const float orthoRange = shadowOrthoRange; // how far from center to render shadows
 
         bool doUpdate = forceShadowUpdate || (shadowFrameCounter % shadowUpdateInterval) == 0;
 
-        
+        // If shadow quality changed, update shadow resolution and re-create depth texture/FBO
+        static ShadowQuality lastShadowQuality = shadowQuality;
+        if (lastShadowQuality != shadowQuality) {
+            lastShadowQuality = shadowQuality;
+            updateShadowResolution();
+
+            glDeleteTextures(1, &depthMap);
+            glDeleteFramebuffers(1, &depthMapFBO);
+
+            glGenFramebuffers(1, &depthMapFBO);
+            glGenTextures(1, &depthMap);
+            glBindTexture(GL_TEXTURE_2D, depthMap);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+            float borderColor[] = {1.0f,1.0f,1.0f,1.0f};
+            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+            glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+
         if (doUpdate) {
             forceShadowUpdate = false;
             cachedShadowLightDir = directionalLightDir;
@@ -568,7 +595,7 @@ void App::render() {
             // Ortho volume still symmetric, but now relative to player-centered lightView
             lightProjection = glm::ortho(-orthoRange, orthoRange,
                                          -orthoRange, orthoRange,
-                                         near_plane,  far_plane);
+                                         shadowNearPlane,  shadowFarPlane);
 
             lightSpaceMatrix = lightProjection * lightView;
 
@@ -580,15 +607,7 @@ void App::render() {
             glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
             glClear(GL_DEPTH_BUFFER_BIT);
 
-            glDisable(GL_CULL_FACE);
-            glCullFace(GL_BACK);
-            glEnable(GL_POLYGON_OFFSET_FILL); // to reduce shadow acne
-            glPolygonOffset(1.5f, 2.0f); // factor, units
-
-            
-            // reduce peter panning
-            glCullFace(GL_FRONT);
-
+            glCullFace(GL_FRONT); // required so shadows don't bug through mountains
 
             renderer->render(simpleDepthShader);
             // floor
@@ -598,22 +617,16 @@ void App::render() {
             glDrawArrays(GL_TRIANGLES, 0, 6);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-            // Restore culling
-            glDisable(GL_POLYGON_OFFSET_FILL);
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glEnable(GL_CULL_FACE);
             glCullFace(GL_BACK);
-            
 
+            // Immediately restore viewport after unbinding framebuffer
+            glViewport(0, 0, width, height);
         }
         shadowFrameCounter++;
-
-        // reset viewport
-        glViewport(0, 0, width, height);
     
 
-        // 2. render scene as normal using the generated depth/shadow map  
-        // --------------------------------------------------------------
+        // 2. Render the scene normally, using the generated shadow map to determine shadowed fragments.
+        // The following code implements both steps each frame.
         textureShader->use();
         textureShader->setMat4("projection", projection);
         textureShader->setMat4("view", view);
@@ -621,6 +634,15 @@ void App::render() {
         textureShader->setVec3("viewPos", camera->Position);
         textureShader->setVec3("lightPos", lightPos);
         textureShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        // textureShader->setInt("shadows", shadowsEnabled ? 1 : 0); // enable/disable shadows by pressing 'SPACE'
+        textureShader->setFloat("shadows.MIN_BIAS", MIN_BIAS);
+        textureShader->setFloat("shadows.MAX_BIAS", MAX_BIAS);
+        textureShader->setInt("shadows.PCF_RADIUS", PCF_RADIUS);
+        textureShader->setInt("shadows.POISSON_SAMPLES", POISSON_SAMPLES);
+        textureShader->setFloat("shadows.POISSON_RADIUS_BASE", POISSON_RADIUS_BASE);
+        textureShader->setFloat("shadows.POISSON_RADIUS_SCALE", POISSON_RADIUS_SCALE);
+        // textureShader->setFloat("shadows.AMBIENT_OCCLUSION", ambientOcclusion);
+        textureShader->setFloat("shadows.CONTACT_OFFSET", shadowContactOffset);
 
         // Lighting uniforms
         // ====================================
@@ -681,9 +703,16 @@ void App::render() {
             activeShader->setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
             activeShader->setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
         } else {
+            activeShader->setVec3("spotLight.position", camera->Position);
+            activeShader->setVec3("spotLight.direction", camera->Front);
             activeShader->setVec3("spotLight.ambient", glm::vec3(0.0f));
             activeShader->setVec3("spotLight.diffuse", glm::vec3(0.0f));
             activeShader->setVec3("spotLight.specular", glm::vec3(0.0f));
+            activeShader->setFloat("spotLight.constant", spotLightConstant);
+            activeShader->setFloat("spotLight.linear", spotLightLinear);
+            activeShader->setFloat("spotLight.quadratic", spotLightQuadratic);
+            activeShader->setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
+            activeShader->setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
         }
 
 
@@ -716,8 +745,8 @@ void App::render() {
 
 
         debugDepthQuad->use();
-        debugDepthQuad->setFloat("near_plane", near_plane);
-        debugDepthQuad->setFloat("far_plane", far_plane);
+        debugDepthQuad->setFloat("near_plane", shadowNearPlane);
+        debugDepthQuad->setFloat("far_plane", shadowFarPlane);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, depthMap);
 
@@ -793,6 +822,16 @@ void App::render() {
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
         glfwSwapBuffers(window);
         glfwPollEvents();
+    }
+}
+
+void App::updateShadowResolution() {
+    switch (shadowQuality) {
+        case ShadowQuality::Low:    SHADOW_WIDTH = 1024;  SHADOW_HEIGHT = 1024;  break;
+        case ShadowQuality::Medium: SHADOW_WIDTH = 2048;  SHADOW_HEIGHT = 2048;  break;
+        case ShadowQuality::High:   SHADOW_WIDTH = 4096;  SHADOW_HEIGHT = 4096;  break;
+        case ShadowQuality::Ultra:  SHADOW_WIDTH = 8192;  SHADOW_HEIGHT = 8192;  break;
+        default:                    SHADOW_WIDTH = 4096;  SHADOW_HEIGHT = 4096;  break;
     }
 }
 
@@ -1021,7 +1060,16 @@ void App::debugWindow() {
                                 ImGui::Text("Shadow Controls");
                                 ImGui::Checkbox("Force Shadow Update", &forceShadowUpdate);
                                 ImGui::SliderInt("Shadow Update Interval (frames)", &shadowUpdateInterval, 1, 60);
-                                ImGui::SliderFloat("Shadow Ortho Range", &shadowOrthoRange, 20.0f, 200.0f);
+                                ImGui::SliderFloat("Shadow Ortho Range", &shadowOrthoRange, 20.0f, 200.0f, "%.1f");
+                                ImGui::SliderFloat("Shadow Near Plane", &shadowNearPlane, 0.001f, 1.0f, "%.2f");
+                                ImGui::SliderFloat("Shadow Far Plane", &shadowFarPlane, 50.0f, 2000.0f, "%.1f");
+                                ImGui::SliderFloat("Shadow min Bias", &MIN_BIAS, 0.0f, 0.00035f, "%.5f");
+                                ImGui::SliderFloat("Shadow max Bias", &MAX_BIAS, 0.0f, 0.0010f, "%.4f");
+                                ImGui::SliderFloat("Shadow Contact Offset", &shadowContactOffset, 0.0f, 0.0015f, "%.5f");
+                                ImGui::SliderInt("Shadow PCF Radius", &PCF_RADIUS, 1, 5);
+                                ImGui::SliderInt("Shadow Poisson Samples", &POISSON_SAMPLES, 1, 64);
+                                ImGui::SliderFloat("Shadow Poisson Radius Base", &POISSON_RADIUS_BASE, 0.1f, 5.0f, "%.2f");
+                                ImGui::SliderFloat("Shadow Poisson Radius Scale", &POISSON_RADIUS_SCALE, 0.1f, 5.0f, "%.2f");
                                 ImGui::Text("Shadow Quality");
                                 
                                 ShadowQuality oldQuality = shadowQuality;
