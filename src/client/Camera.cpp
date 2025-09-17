@@ -18,27 +18,28 @@ void Camera::lerpToNextPosition(float time)
 	movement.setPosition(renderPos);
 }
 
+// Remove prediction for now. 
 void Camera::predictNTicks(const Renderer &world)
 {
-	previousPosition = predictedPosition;
-	static int diff;
-	diff = serverCurrTick ? tickDiff(currTick, serverCurrTick) : diff; //assumes ping remains constant... this whole logic is... frail
-	serverCurrTick = currTick - diff;
+	// previousPosition = predictedPosition;
+	// static int diff;
+	// diff = serverCurrTick ? tickDiff(currTick, serverCurrTick) : diff; //assumes ping remains constant... this whole logic is... frail
+	// serverCurrTick = currTick - diff;
 
-	for(auto itr = inputsList.cbegin(); itr != inputsList.cend();) {
-	if (itr->tick < serverCurrTick) {
-		itr = inputsList.erase(itr);
-	} else
-		++itr;
-	}
+	// for(auto itr = inputsList.cbegin(); itr != inputsList.cend();) {
+	// if (itr->tick < serverCurrTick) {
+	// 	itr = inputsList.erase(itr);
+	// } else
+	// 	++itr;
+	// }
 
-	for(int i = 0; i < 1; i++)	// Remove prediction for now. for(int i = 0; i < diff - 1; i++)
-	{
-		if (inputsList.size() > i)
-			movement.lastInputsPktRecvd = inputsList[i];
-	}
-	predictedPosition = movement.getPosition();
-	movement.setPosition(previousPosition);
+	// for(int i = 0; i < diff - 1; i++)
+	// {
+	// 	if (inputsList.size() > i)
+	// 		movement.lastInputsPktRecvd = inputsList[i];
+	// }
+	// predictedPosition = movement.getPosition();
+	// movement.setPosition(previousPosition);
 }
 
 void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
@@ -61,7 +62,10 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 	float verticalVelocity = pkt.verticalVelocity;
 	movement.setVerticalVelocity(verticalVelocity);
 
-	movement.setPosition(position);
+	// movement.setPosition(position);
+	previousPosition = predictedPosition;
+	predictedPosition = position;
+
 	predictNTicks(world);
 }
 
