@@ -121,54 +121,54 @@ void App::init() {
     glBindBuffer(GL_ARRAY_BUFFER, lightCubeVBO);
     static const float lightCubeVertices[] = {
         // positions only (36 vertices -> 12 triangles)
-        -0.5f, -0.5f, -0.5f, // Front face
-         0.5f, -0.5f, -0.5f, 
-         0.5f,  0.5f, -0.5f,
-         0.5f,  0.5f, -0.5f,
-        -0.5f,  0.5f, -0.5f,
-        -0.5f, -0.5f, -0.5f,
 
-        -0.5f, -0.5f,  0.5f, // Back face
-         0.5f, -0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-        -0.5f,  0.5f,  0.5f,
+        // Front face (+Z)
         -0.5f, -0.5f,  0.5f,
+         0.5f, -0.5f,  0.5f,
+         0.5f,  0.5f,  0.5f,
+        -0.5f, -0.5f,  0.5f,
+         0.5f,  0.5f,  0.5f,
+        -0.5f,  0.5f,  0.5f,
 
-        -0.5f,  0.5f,  0.5f, // Left face
-        -0.5f,  0.5f, -0.5f,
+        // Back face (-Z)
         -0.5f, -0.5f, -0.5f,
+        -0.5f,  0.5f, -0.5f,
+         0.5f,  0.5f, -0.5f,
+        -0.5f, -0.5f, -0.5f,
+         0.5f,  0.5f, -0.5f,
+         0.5f, -0.5f, -0.5f,
+
+        // Left face (-X)
         -0.5f, -0.5f, -0.5f,
         -0.5f, -0.5f,  0.5f,
         -0.5f,  0.5f,  0.5f,
-
-         0.5f,  0.5f,  0.5f, // Right face
-         0.5f,  0.5f, -0.5f,
-         0.5f, -0.5f, -0.5f,
-         0.5f, -0.5f, -0.5f,
-         0.5f, -0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-
-        -0.5f, -0.5f, -0.5f, // Bottom face
-         0.5f, -0.5f, -0.5f,
-         0.5f, -0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-        -0.5f,  0.5f,  0.5f,
         -0.5f, -0.5f, -0.5f,
-
-        -0.5f,  0.5f, -0.5f, // Top face
-         0.5f,  0.5f, -0.5f,
-         0.5f,  0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
         -0.5f,  0.5f,  0.5f,
         -0.5f,  0.5f, -0.5f,
 
-        -0.5f, -0.5f, -0.5f, 
+        // Right face (+X)
+         0.5f, -0.5f, -0.5f,
+         0.5f,  0.5f,  0.5f,
+         0.5f, -0.5f,  0.5f,
+         0.5f, -0.5f, -0.5f,
+         0.5f,  0.5f, -0.5f,
+         0.5f,  0.5f,  0.5f,
+
+        // Bottom face (-Y)
+        -0.5f, -0.5f, -0.5f,
          0.5f, -0.5f, -0.5f,
          0.5f, -0.5f,  0.5f,
+        -0.5f, -0.5f, -0.5f,
          0.5f, -0.5f,  0.5f,
         -0.5f, -0.5f,  0.5f,
-        -0.5f, -0.5f, -0.5f
+
+        // Top face (+Y)
+        -0.5f,  0.5f, -0.5f,
+        -0.5f,  0.5f,  0.5f,
+         0.5f,  0.5f,  0.5f,
+         0.5f,  0.5f,  0.5f,
+         0.5f,  0.5f, -0.5f,
+        -0.5f,  0.5f, -0.5f
     };
     glBufferData(GL_ARRAY_BUFFER, sizeof(lightCubeVertices), lightCubeVertices, GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
@@ -752,20 +752,20 @@ void App::render() {
         // ====================================
 
         
-        glm::mat4 model = glm::mat4(1.0f);
+        lightCubeShader->use();
         // we now draw as many light bulbs as we have point lights.
-        // glBindVertexArray(lightCubeVAO);
-        // for (unsigned int i = 0; i < 4; i++)
-        // {
-        //     model = glm::mat4(1.0f);
-        //     model = glm::translate(model, pointLightPositions[i]);
-        //     model = glm::scale(model, glm::vec3(0.2f)); // Make it a smaller cube
-        //     // Set per-cube color here so each light uses its own color
-        //     glm::vec3 cubeCol = pointLightsOn[i] ? pointLightDiffuse[i] : glm::vec3(0.0f);
-        //     lightCubeShader->setVec3("cubeColor", cubeCol);
-        //     lightCubeShader->setMat4("model", model);
-        //     glDrawArrays(GL_TRIANGLES, 0, 36);
-        // }
+        glBindVertexArray(lightCubeVAO);
+        for (unsigned int i = 0; i < 4; i++)
+        {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, pointLightPositions[i]);
+            model = glm::scale(model, glm::vec3(0.2f)); // Make it a smaller cube
+            // Set per-cube color here so each light uses its own color
+            glm::vec3 cubeCol = pointLightsOn[i] ? pointLightDiffuse[i] : glm::vec3(0.0f);
+            lightCubeShader->setVec3("cubeColor", cubeCol);
+            lightCubeShader->setMat4("model", model);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
 
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
