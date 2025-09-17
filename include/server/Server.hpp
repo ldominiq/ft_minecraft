@@ -57,12 +57,12 @@ private:
 	void sendPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player);
 
-	void saveWorldOnExit();
-
 public:
     Server();
     ~Server();
-    void run(); // start server
+    void run(std::optional<int> &seed); // start server
+
+	void saveWorldOnExit();
 };
 
 namespace NetUtils {

@@ -10,10 +10,13 @@ Server::~Server() {
     close(sockfd);
 }
 
-void Server::run() {
+void Server::run(std::optional<int> &seed) {
     std::cout << "Server running on port " << PORT << "..." << std::endl;
 
-	world = std::make_unique<World>(); //No seed for now;
+	if (seed.has_value())
+		world = std::make_unique<World>(seed.value());
+	else
+		world = std::make_unique<World>();
 
 	running = true;
 

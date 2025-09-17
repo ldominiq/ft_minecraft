@@ -62,7 +62,6 @@ bool Chunk::isBlockVisible(glm::ivec3 pos) {
             z + dz < 0 || z + dz >= DEPTH) 
         {
             auto neighbor = adjacentChunks[dir].lock();
-			std::cout << neighbor << std::endl;
             if (!neighbor) return BlockType::END;
             int nx = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : x));
             int nz = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : z));
