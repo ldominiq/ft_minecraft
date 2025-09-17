@@ -51,6 +51,7 @@ struct SpotLight {
 };
 
 struct Shadows {
+    bool enabled;
     int PCF_RADIUS;
     float MIN_BIAS;
     float MAX_BIAS;
@@ -249,7 +250,9 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     vec3 specular = light.specular * spec * vec3(texture(atlas, fs_in.TexCoord));
 
     // calculate shadow
-    float shadow = ShadowCalculation(shadows, fs_in.FragPosLightSpace);       
+    float shadow = 0.0;
+    if (shadows.enabled)
+        shadow = ShadowCalculation(shadows, fs_in.FragPosLightSpace);       
     vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular));    
     return (lighting);
 }

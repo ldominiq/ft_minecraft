@@ -643,6 +643,7 @@ void App::render() {
         textureShader->setFloat("shadows.POISSON_RADIUS_SCALE", POISSON_RADIUS_SCALE);
         // textureShader->setFloat("shadows.AMBIENT_OCCLUSION", ambientOcclusion);
         textureShader->setFloat("shadows.CONTACT_OFFSET", shadowContactOffset);
+        textureShader->setFloat("shadows.enabled", shadowsEnabled);
 
         // Lighting uniforms
         // ====================================
@@ -1026,6 +1027,7 @@ void App::debugWindow() {
                             textureShader->use();
                             textureShader->setInt("blinn", useBlinnPhong);
                         }
+                        ImGui::Checkbox("Shadows Enabled", &shadowsEnabled);
                         // Changing this will update the far clipping plane.
                         // ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
                         

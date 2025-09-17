@@ -166,6 +166,7 @@ private:
 
     float shadowOrthoRange = 200.0f;
     bool forceShadowUpdate = false;
+    bool shadowsEnabled = true;
 
     int PCF_RADIUS = 1;          // 1 = 3x3;
     float MIN_BIAS = 0.00035;
