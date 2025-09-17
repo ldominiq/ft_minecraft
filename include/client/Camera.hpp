@@ -3,31 +3,36 @@
 
 #include <glm/glm.hpp>
 #include <memory>
+#include <ranges>
 
 #include "ChunkRenderer.hpp"
 #include "Shader.hpp"
 #include "Protocol.hpp"
 #include "Renderer.hpp"
+#include "PlayerMovement.hpp"
 
 class Camera {
 
 	GLuint wireframeVAO, wireframeVBO, wireframeEBO;
 
 	void initWireframeCube();
+	void predictNTicks(const Renderer &world);
 	std::unique_ptr<Shader> blockWireframeShader = nullptr;
 
-	//""Temporarily"" put some chunks in Camera.
-	std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks;
+	// //""Temporarily"" put some chunks in Camera.
+	// std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks;
+
+	PlayerMovement<Renderer> movement;
+	int32_t currTick = 0;
+	int32_t serverCurrTick = 0;
+
+	int64_t amountOfSnapshotsReceived = 0;
+	glm::vec3 predictedPosition;
+	glm::vec3 previousPosition;
 
 public:
-    glm::vec3 Position;
-    glm::vec3 Front;
-    glm::vec3 Up;
-    glm::vec3 Right;
-    glm::vec3 WorldUp;
+	std::vector<NetPlayerInputs> inputsList;
 
-    float Yaw, Pitch;
-    float MovementSpeed;
     float MouseSensitivity;
 
 	uint8_t loadRadius = 12; // 4 - 32
@@ -36,12 +41,21 @@ public:
 
     glm::mat4 getViewMatrix() const;
     void processMouseMovement(float xoffset, float yoffset);
-    void updateCameraVectors();
-	void updatePosition(NetPlayerMove &pkt);
+	void onSnapshot(NetPlayerMove &pkt, const Renderer &world);
+	void lerpToNextPosition(float time);
+	// void updatePosition(NetPlayerMove &pkt);
 
-	inline const float getYaw() const { return Yaw; }
-	inline const float getPitch() const { return Pitch; }
+	inline const float getYaw() const { return movement.yaw; }
+	inline const float getPitch() const { return movement.pitch; }
 	inline const uint8_t getLoadRadius() const { return loadRadius; }
+	inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
+	inline void tick() {currTick++; }
+	inline int32_t getTick() const { return currTick; }
+
+	inline const glm::vec3 getPosition() const { return movement.getPosition(); }
+	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
+	// inline void updateCameraVectors(float yaw, float pitch) {movement.updateCameraVectors(yaw, pitch); }
+	// inline void calculateNewPosition(const Renderer &world) {movement.calculateNewPosition(world); }
 
 	void drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 };

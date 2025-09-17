@@ -1,43 +1,81 @@
 #include "Camera.hpp"
 
 Camera::Camera(glm::vec3 position)
-    : Position(position), WorldUp(0.0f, 1.0f, 0.0f),
-      Yaw(0.0f), Pitch(0.0f), MovementSpeed(5.0f), MouseSensitivity(0.1f) {
-    Front = glm::vec3(0.0f, 0.0f, -1.0f);
-    updateCameraVectors();
+    : MouseSensitivity(0.1f) {
+    // movement.updateCameraVectors();
 	initWireframeCube();
 }
 
 glm::mat4 Camera::getViewMatrix() const {
-    return glm::lookAt(Position, Position + Front, Up);
+    return glm::lookAt(getPosition(), getPosition() + movement.Front, movement.Up);
 }
 
-void Camera::updatePosition(NetPlayerMove &pkt)
+void Camera::lerpToNextPosition(float time)
 {
-	Position = glm::vec3(pkt.positionX, pkt.positionY, pkt.positionZ);
+	glm::vec3 currentPosition;
+	if (amountOfSnapshotsReceived < 2) return ;
+	glm::vec3 renderPos = previousPosition + (predictedPosition - previousPosition) * time;
+	movement.setPosition(renderPos);
+}
+
+void Camera::predictNTicks(const Renderer &world)
+{
+	previousPosition = predictedPosition;
+	static int diff;
+	diff = serverCurrTick ? tickDiff(currTick, serverCurrTick) : diff; //assumes ping remains constant... this whole logic is... frail
+	serverCurrTick = currTick - diff;
+
+	for(auto itr = inputsList.cbegin(); itr != inputsList.cend();) {
+	if (itr->tick < serverCurrTick) {
+		itr = inputsList.erase(itr);
+	} else
+		++itr;
+	}
+
+	for(int i = 0; i < 1; i++)	// Remove prediction for now. for(int i = 0; i < diff - 1; i++)
+	{
+		if (inputsList.size() > i)
+			movement.lastInputsPktRecvd = inputsList[i];
+	}
+	predictedPosition = movement.getPosition();
+	movement.setPosition(previousPosition);
+}
+
+void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
+{
+	amountOfSnapshotsReceived++;
+
+	serverCurrTick = pkt.inputRecvTick;
+
+	glm::vec3 position;
+	position.x = pkt.positionX;
+	position.y = pkt.positionY;
+	position.z = pkt.positionZ;
+
+	glm::vec3 velocity;
+	velocity.x = pkt.velocityX;
+	velocity.y = 0;
+	velocity.z = pkt.velocityZ;
+	movement.setVelocity(velocity);
+
+	float verticalVelocity = pkt.verticalVelocity;
+	movement.setVerticalVelocity(verticalVelocity);
+
+	movement.setPosition(position);
+	predictNTicks(world);
 }
 
 void Camera::processMouseMovement(float xoffset, float yoffset) {
     xoffset *= MouseSensitivity;
     yoffset *= MouseSensitivity;
 
-    Yaw   += xoffset;
-    Pitch += yoffset;
+    movement.yaw   += xoffset;
+    movement.pitch += yoffset;
 
-    if (Pitch > 89.0f)  Pitch = 89.0f;
-    if (Pitch < -89.0f) Pitch = -89.0f;
+    if (movement.pitch > 89.0f)  movement.pitch = 89.0f;
+    if (movement.pitch < -89.0f) movement.pitch = -89.0f;
 
-    updateCameraVectors();
-}
-
-void Camera::updateCameraVectors() {
-    glm::vec3 front;
-    front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-    front.y = sin(glm::radians(Pitch));
-    front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-    Front = glm::normalize(front);
-    Right = glm::normalize(glm::cross(Front, WorldUp));
-    Up    = glm::normalize(glm::cross(Right, Front));
+	movement.updateCameraVectors();
 }
 
 void Camera::initWireframeCube() {
@@ -83,7 +121,7 @@ void Camera::initWireframeCube() {
 void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection) {
 
 	glm::ivec3 blockPos, faceNormal;
-	if (!Renderer->getTargetedBlock(Position, glm::normalize(Front), blockPos, faceNormal))
+	if (!Renderer->getTargetedBlock(getPosition(), glm::normalize(movement.Front), blockPos, faceNormal))
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));

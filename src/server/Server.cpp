@@ -89,6 +89,8 @@ void Server::loop() {
             std::cerr << "⚠️ Server tick lagging behind!\n";
             nextTick = std::chrono::steady_clock::now(); // resync
         }
+
+		tick++; //assumes it will wrap around. meaning INT32_MAX + 1 = INT32_MIN
 	}
 }
 
@@ -122,7 +124,7 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 
 		case PacketType::NET_MESSAGE: {
 			auto& p = static_cast<NetMessage&>(*pkt);
-			receiveMessage(p);
+			receiveMessage(p, cliaddr);
 			break;
 		}
 
@@ -169,9 +171,10 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	player->lastPktRecvTick = currTick;
-	player->updateCameraVectors(pkt.yaw, pkt.pitch);
 	player->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
+	player->setYawAndPitch(pkt.yaw, pkt.pitch);
+	player->updateCameraVectors();	//order is vital. updateCameraVectors uses pkt.
 }
 
 void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &cliaddr)
@@ -184,18 +187,41 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	world->processPlayerMouseInputs(*player, pkt);
 }
 
-void Server::receiveMessage(NetMessage &pkt)
+void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 {
-	messages.push_back(pkt.message);
+	static const std::unordered_map<std::string, GAMEMODES> gamemodeMap = {
+		{"spectator", GAMEMODES::SPECTATOR},
+		{"survival",  GAMEMODES::SURVIVAL},
+	};
+
+	if (pkt.message.starts_with("/"))
+	{
+		pkt.message.erase(0, 1); // strip leading '/'
+
+		if (pkt.message.starts_with("gamemode "))
+		{
+			std::string mode = pkt.message.substr(strlen("gamemode "));
+
+			if (auto itMode = gamemodeMap.find(mode); itMode != gamemodeMap.end())
+			{
+				auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+				player->setGamemode(itMode->second);
+			}
+		}
+	}
+	else
+		messages.push_back(pkt.message);
 }
 
+// TODO : Multythread
 void Server::sendAll()
 {
 	world->amountOfChunksSentThisTick = 0;
 	for (CPlayerInfo &p : players)
 	{
-		p.calculateNewPosition(world);
+		p.calculateNewPosition(*world);
 		world->updateVisibleChunks(p);
+
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
 		sendImGuiData(p);
@@ -276,11 +302,19 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 {
 	player.lastPositionSent = player.getPosition();
 	NetPlayerMove pkt;
+	pkt.snapshotTick = tick;
+	pkt.inputRecvTick = player.getTick();
+
 	pkt.positionX = player.getPosition().x;
 	pkt.positionY = player.getPosition().y;
 	pkt.positionZ = player.getPosition().z;
+
+	pkt.velocityX = player.getVelocity().x;
+	pkt.velocityZ = player.getVelocity().z;
+
+	pkt.verticalVelocity = player.getVerticalVelocity();
+
 	sendPacketTo(pkt, player.addr);
-	// std::cout << "sending positions: " << pkt.positionX << " " << pkt.positionY << " " << pkt.positionZ << std::endl;
 }
 
 void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)

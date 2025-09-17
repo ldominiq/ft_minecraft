@@ -72,13 +72,13 @@ private:
     void loadResources();
     static unsigned int loadTexture(const char* path);
     void render();
+	void gameTick();
 
     void cleanup();
     void setUdpClientPacketCallback();
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
 	void processInputsMenus(int key, int action);
-	static void char_callback(GLFWwindow* window, unsigned int codepoint) ;
     void updateWindowTitle();
     void toggleDisplayMode();
 
@@ -92,6 +92,8 @@ private:
 
 	uint16_t inputMask = 0;
     bool keyPressedRecently = false;
+	bool mouseMovedRecently = false;
+	float lastMouseMoveTime = 0;
 
     unsigned int VAO, VBO, EBO, shaderProgram, texture;
 

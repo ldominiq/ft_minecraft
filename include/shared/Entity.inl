@@ -1,19 +1,23 @@
 
 #include "Entity.hpp"
-#include "World.hpp"
+#include "CommonWorld.hpp"
 
-Entity::Entity(glm::vec3 position): position(position) {}
+template <typename WorldT>
+Entity<WorldT>::Entity(glm::vec3 position): position(position) {}
 
-Entity::~Entity() {}
+template <typename WorldT>
+Entity<WorldT>::~Entity() {}
 
-    // Build a current-player AABB (min at feet)
-AABB Entity::constructAABB(const glm::vec3 &pos) {
+// Build a current-player AABB (min at feet)
+template <typename WorldT>
+AABB Entity<WorldT>::constructAABB(const glm::vec3 &pos) {
 	glm::vec3 mn(pos.x - entityWidth * 0.5f, pos.y,				pos.z - entityWidth * 0.5f);
 	glm::vec3 mx(pos.x + entityWidth * 0.5f, pos.y + entityHeight, pos.z + entityWidth * 0.5f);
 	return AABB(mn, mx);
 };
 
-bool Entity::aabbCollidesWithWorld(const AABB &box, const std::unique_ptr<World> &world) {
+template <typename WorldT>
+bool Entity<WorldT>::aabbCollidesWithWorld(const AABB &box, const WorldT &world) {
     // compute block search bounds (floor)
     int minX = (int)std::floor(box.min.x + EPS);
     int maxX = (int)std::floor(box.max.x - EPS);
@@ -25,7 +29,7 @@ bool Entity::aabbCollidesWithWorld(const AABB &box, const std::unique_ptr<World>
     for (int x = minX; x <= maxX; ++x)
 	for (int y = minY; y <= maxY; ++y)
 	for (int z = minZ; z <= maxZ; ++z) {
-		BlockType b = world->getBlockWorld({x, y, z});
+		BlockType b = world.getBlockWorld({x, y, z});
 		if (isSolidBlock(b)) {
 			// block occupies AABB {x..x+1, y..y+1, z..z+1} -> any overlap is collision
 			// we already limited the loop to candidate blocks, so we can early return
@@ -36,7 +40,8 @@ bool Entity::aabbCollidesWithWorld(const AABB &box, const std::unique_ptr<World>
     return false;
 }
 
-void Entity::calculateNewXZPosition(const std::unique_ptr<World> &world, glm::vec3 &desiredMove)
+template <typename WorldT>
+void Entity<WorldT>::calculateNewXZPosition(const WorldT &world, glm::vec3 &desiredMove)
 {
     glm::vec3 newPos = position;
     AABB currentBox = constructAABB(position);
@@ -64,7 +69,8 @@ void Entity::calculateNewXZPosition(const std::unique_ptr<World> &world, glm::ve
 	position = newPos;
 }
 
-void Entity::calculateNewYPosition(const std::unique_ptr<World> &world)
+template <typename WorldT>
+void Entity<WorldT>::calculateNewYPosition(const WorldT &world)
 {
 	glm::vec3 newPos = position;
 	AABB currentBox = constructAABB(position);
@@ -90,7 +96,7 @@ void Entity::calculateNewYPosition(const std::unique_ptr<World> &world)
 					int maxBZ = (int)std::floor(currentBox.max.z - EPS);
 					for (int bx = minBX; bx <= maxBX && !stopped; ++bx) {
 						for (int bz = minBZ; bz <= maxBZ && !stopped; ++bz) {
-							if (isSolidBlock(world->getBlockWorld({bx, by, bz}))) {
+							if (isSolidBlock(world.getBlockWorld({bx, by, bz}))) {
 								float headBefore = currentBox.max.y;
 								float headAfter  = currentBox.max.y + dy;
 
@@ -117,7 +123,7 @@ void Entity::calculateNewYPosition(const std::unique_ptr<World> &world)
 					int maxBZ = (int)std::floor(currentBox.max.z - EPS);
 					for (int bx = minBX; bx <= maxBX && !landed; ++bx) {
 						for (int bz = minBZ; bz <= maxBZ && !landed; ++bz) {
-							if (isSolidBlock(world->getBlockWorld({bx, by, bz}))) {
+							if (isSolidBlock(world.getBlockWorld({bx, by, bz}))) {
 								float feetBefore = currentBox.min.y;
 								float feetAfter  = currentBox.min.y + dy;
 

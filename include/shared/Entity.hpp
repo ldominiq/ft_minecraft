@@ -21,8 +21,6 @@ constexpr float EPS = 1e-5f;
 #define GRAVITY			0.08f
 #define DRAG			0.98f
 
-class World;
-
 struct AABB {
     glm::vec3 min;
     glm::vec3 max;
@@ -41,31 +39,34 @@ struct AABB {
     }
 };
 
+template <typename WorldT>
 class Entity {
 
 	protected:
 		float entityWidth;
 		float entityHeight;
 
-		float verticalVelocity;
+		float verticalVelocity = 0;
 
 		glm::vec3 position;
 
 		bool onGround = true;
 
-		inline bool isSolidBlock(BlockType b) { return b != BlockType::AIR; }
+		inline bool isSolidBlock(const BlockType &b) { return b != BlockType::AIR; }
 
 		AABB constructAABB(const glm::vec3 &pos);
-		bool aabbCollidesWithWorld(const AABB &box, const std::unique_ptr<World> &world);
+		bool aabbCollidesWithWorld(const AABB &box, const WorldT &world);
 
-		virtual void calculateNewPosition(const std::unique_ptr<World> &world) = 0;
-		void calculateNewXZPosition(const std::unique_ptr<World> &world, glm::vec3 &desiredMove);
-		void calculateNewYPosition(const std::unique_ptr<World> &world);
+		virtual void calculateNewPosition(const WorldT &world) = 0;
+		void calculateNewXZPosition(const WorldT &world, glm::vec3 &desiredMove);
+		void calculateNewYPosition(const WorldT &world);
 
 	public:
 
 		Entity(glm::vec3 position);
 		virtual ~Entity() = 0;
 };
+
+#include "Entity.inl"
 
 #endif

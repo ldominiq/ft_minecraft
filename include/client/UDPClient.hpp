@@ -17,8 +17,6 @@
 #include "Protocol.hpp"
 #include "ChunkRenderer.hpp"
 
-#define PORT 1234
-
 class UDPClient {
 private:
     int sockfd;

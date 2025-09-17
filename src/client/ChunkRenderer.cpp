@@ -151,19 +151,6 @@ void ChunkRenderer::addFace(int x, int y, int z, int face) {
     }
 }
 
-void ChunkRenderer::setAdjacentChunks(const int direction, std::shared_ptr<ChunkRenderer> &chunk){
-    adjacentChunks[direction] = chunk;
-}
-
-bool ChunkRenderer::hasAllAdjacentChunkLoaded() const {
-    for (const auto& adj : adjacentChunks) {
-        if (adj.expired()) {
-            return false;
-        }
-    }
-    return true;
-}
-
 void ChunkRenderer::buildMesh() {
 	buildMeshData();
 	uploadMesh();

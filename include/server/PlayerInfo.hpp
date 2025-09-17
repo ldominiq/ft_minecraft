@@ -9,32 +9,14 @@
 #include <chrono>
 
 #include "ChunkGeneration.hpp"
-#include "Protocol.hpp"
-#include "LivingEntity.hpp"
+#include "PlayerMovement.hpp"
 
-#define FLY_SPEED 50.0f
-#define DEFAULT_SPEED 5.0f
+class World;
 
-enum class GAMEMODES {
-	SURVIVAL = 0,
-	SPECTATOR,
-};
-
-class CPlayerInfo final : public LivingEntity
+class CPlayerInfo
 {
-	bool jumpBoostApplied = true;
-	
-	NetPlayerInputs lastInputsPktRecvd;
-	GAMEMODES gamemode = GAMEMODES::SURVIVAL;
-	float yaw, pitch;
+	PlayerMovement<World> movement;
 
-	glm::vec3 getDesiredMove() override;
-	void doJump(const std::unique_ptr<World> &world) override;
-
-	void updatePosition();
-
-	//TEST
-	int number = 0;
 	public:
 
 		CPlayerInfo();
@@ -44,7 +26,7 @@ class CPlayerInfo final : public LivingEntity
 		std::chrono::_V2::steady_clock::time_point lastPktRecvTick;
 
 		std::string name;
-		uint8_t loadRadius;
+		uint8_t loadRadius; // TODO : set setter on new packet
 
 		glm::vec3 lastPositionSent;
 		int health; //unused
@@ -54,12 +36,18 @@ class CPlayerInfo final : public LivingEntity
 
 		bool connected; //unused
 
-		inline const glm::vec3 getPosition() const { return position; }
-		inline const glm::vec3 getCameraDir() const { return Front; }
-		inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {lastInputsPktRecvd = pkt; }
+		inline const glm::vec3 getPosition() const { return movement.getPosition(); }
+		inline const glm::vec3 getVelocity() const { return movement.getVelocity(); }
+		inline const int32_t getTick() const { return movement.getTick(); }
+		inline const float getVerticalVelocity() const { return movement.getVerticalVelocity(); }
 
-		void updateCameraVectors(float yaw, float pitch);
-		void calculateNewPosition(const std::unique_ptr<World> &world) override;
+		inline const glm::vec3 getCameraDir() const { return movement.getCameraDir(); }
+		inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {movement.lastInputsPktRecvd = pkt; }
+		inline void setGamemode(GAMEMODES gamemode) {movement.gamemode = gamemode; }
+
+		inline void updateCameraVectors() {movement.updateCameraVectors(); }
+		inline void setYawAndPitch(float yaw, float pitch) {movement.setYawAndPitch(yaw, pitch); }
+		inline void calculateNewPosition(const World &world) {movement.calculateNewPosition(world); }
 };
 
 #endif

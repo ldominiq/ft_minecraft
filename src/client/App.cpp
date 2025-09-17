@@ -100,7 +100,8 @@ void App::init() {
         app->lastY = ypos;
         app->camera->processMouseMovement(xoffset, yoffset);
 
-		app->keyPressedRecently = true;
+		app->mouseMovedRecently = true;
+		app->lastMouseMoveTime = glfwGetTime();
     });
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -220,7 +221,7 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
-				camera->updatePosition(p);
+				camera->onSnapshot(p, *renderer);
 				break;
 			}
 
@@ -264,22 +265,49 @@ void App::loadResources() {
     activeShader->setInt("atlas", 0);
 }
 
+void App::gameTick()
+{
+	// sending/receiving packets and stuff
+
+	udpClient->receivePacket();
+	if ((keyPressedRecently || mouseMovedRecently) && !menuManager)
+	{
+		NetPlayerInputs inputs = buildPlayerInputsPacket();
+		udpClient->sendPacket(inputs);
+	}
+	
+	camera->tick();
+}
+
 void App::render() {
 
     while (!glfwWindowShouldClose(window)) {
-
-		// sending/receiving packets and stuff
-		udpClient->receivePacket();
-		if (keyPressedRecently && !menuManager)
-		{
-			NetPlayerInputs inputs = buildPlayerInputsPacket();
-			udpClient->sendPacket(inputs);
-		}
 
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+		//Tick logic
+		float tickDuration = 1.0f / TPS; // 0.05s per tick
+		static float accumulator = 0.0f;
+		accumulator += deltaTime;
+
+		while (accumulator >= tickDuration) //should never be more than 1 tick...
+		{
+			// Advance one tick
+			gameTick();
+			accumulator -= tickDuration;
+		}
+
+
+		const double mouseIdleThreshold = 0.2; // seconds, tweak to taste
+		if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
+			mouseMovedRecently = false;
+
+		// alpha is between 0 and 1, representing interpolation factor
+		float alpha = accumulator / tickDuration;
+		camera->lerpToNextPosition(alpha);
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -340,8 +368,8 @@ void App::render() {
         activeShader->setVec3("lightColor", lightColor);
         activeShader->setVec3("ambientColor", ambientColor);
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->Position.z / Chunk::DEPTH));
+		const int currentChunkX = static_cast<int>(std::floor(camera->getPosition().x / Chunk::WIDTH));
+		const int currentChunkZ = static_cast<int>(std::floor(camera->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
@@ -379,7 +407,7 @@ void App::debugWindow() {
         // the mouse is released.
         {
 
-            glm::vec3 pos = camera->Position;
+            glm::vec3 pos = camera->getPosition();
             int wx = static_cast<int>(std::floor(pos.x));
             int wz = static_cast<int>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
@@ -443,7 +471,7 @@ void App::debugWindow() {
                 ImGui::InputFloat("Y", &tmpY);
                 ImGui::InputFloat("Z", &tmpZ);
                 if (ImGui::Button("Teleport")) {
-                    camera->Position = glm::vec3(tmpX, tmpY, tmpZ);
+                    // camera->Position = glm::vec3(tmpX, tmpY, tmpZ);
                 }
             }
 
@@ -557,6 +585,24 @@ void App::debugWindow() {
                 ImGui::ColorEdit3("Light Colour", &lightColor.x);
                 ImGui::ColorEdit3("Ambient Colour", &ambientColor.x);
             }
+
+			static bool spectator = false;
+			ImGui::Separator();
+			if (ImGui::Checkbox("Suvival", &spectator))
+			{
+				if (spectator)
+				{
+					NetMessage pkt;
+					pkt.message = "/gamemode survival";
+					udpClient->sendPacket(pkt);
+				}
+				else
+				{
+					NetMessage pkt;
+					pkt.message = "/gamemode spectator";
+					udpClient->sendPacket(pkt);
+				}
+			}
 
 
             ImGui::End();
@@ -672,6 +718,9 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	inputs.pitch = camera->getPitch();
 	inputs.yaw = camera->getYaw();
 	inputs.loadRadius = camera->getLoadRadius();
+	inputs.tick = camera->getTick();
+
+	camera->inputsList.push_back(inputs);
 
 	return inputs;
 }

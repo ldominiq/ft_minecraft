@@ -220,6 +220,24 @@ void World::handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadi
 	}
 }
 
+void World::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneration> &chunk) {
+
+    const int dirX[] = { 0, 0, 1, -1 };
+    const int dirZ[] = { 1, -1, 0, 0 };
+    const int opp[]  = { SOUTH, NORTH, WEST, EAST };
+
+    for (int dir = 0; dir < 4; ++dir) {
+        int nx = chunkX + dirX[dir];
+        int nz = chunkZ + dirZ[dir];
+
+        std::shared_ptr<ChunkGeneration> neighbor = getChunk(nx, nz);
+
+        chunk->setAdjacentChunks(static_cast<Direction>(dir), neighbor);
+        if (neighbor) {
+            neighbor->setAdjacentChunks(opp[dir], chunk);
+        }
+    }
+}
 
 void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
 {
@@ -359,6 +377,7 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 			auto result = fut.get();
 			// generatingChunks.insert(result.first);
 			chunks[result.first] = result.second;
+			linkNeighbors(result.first.first, result.first.second, result.second);
 			plannedChunks.erase(result.first);
 
 			it = generationFutures.erase(it);

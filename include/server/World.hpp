@@ -66,6 +66,8 @@ class World final : public CommonWorld<ChunkGeneration>
 	void handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadius);
 	void removeLoadedChunksFromPlayer(CPlayerInfo &player);
 
+	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneration> &chunk); // TODO : consider moving to shared?
+
 	std::unordered_set<ChunkPos> loadedRegions;
 	void updateRegionStreaming(int currentChunkX, int currentChunkZ);
 	void saveRegion(int regionX, int regionZ);
