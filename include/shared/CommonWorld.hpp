@@ -28,6 +28,8 @@ class CommonWorld {
 		inline std::size_t getTotalChunkCount() const {
 			return chunks.size();
 		}
+
+		// std::vector<LivingEntity> LivingEntities;
 };
 
 #include "CommonWorld.inl"

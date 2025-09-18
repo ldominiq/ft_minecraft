@@ -65,6 +65,7 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 	// movement.setPosition(position);
 	previousPosition = predictedPosition;
 	predictedPosition = position;
+	std::cout << position.x << " " << position.y << " " << position.z << std::endl;
 
 	predictNTicks(world);
 }

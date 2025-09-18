@@ -39,6 +39,7 @@ struct AABB {
     }
 };
 
+//was it really necessary to template it instead of using CommonWorld
 template <typename WorldT>
 class Entity {
 
