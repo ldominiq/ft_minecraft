@@ -22,7 +22,7 @@ class Camera {
 	// //""Temporarily"" put some chunks in Camera.
 	// std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks;
 
-	PlayerMovement<Renderer> movement;
+	PlayerMovement<ChunkRenderer> movement;
 	int32_t currTick = 0;
 	int32_t serverCurrTick = 0;
 

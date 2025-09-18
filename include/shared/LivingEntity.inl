@@ -1,11 +1,11 @@
 
 #include "LivingEntity.hpp"
 
-template <typename WorldT>
-LivingEntity<WorldT>::LivingEntity(glm::vec3 position) : Entity<WorldT>(position)
+template <typename ChunkT>
+LivingEntity<ChunkT>::LivingEntity(glm::vec3 position) : Entity<ChunkT>(position)
 {}
 
-template <typename WorldT>
-LivingEntity<WorldT>::~LivingEntity()
+template <typename ChunkT>
+LivingEntity<ChunkT>::~LivingEntity()
 {}
 

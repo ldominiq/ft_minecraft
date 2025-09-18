@@ -11,11 +11,9 @@
 #include "ChunkGeneration.hpp"
 #include "PlayerMovement.hpp"
 
-class World;
-
 class CPlayerInfo
 {
-	PlayerMovement<World> movement;
+	PlayerMovement<ChunkGeneration> movement;
 
 	public:
 
@@ -47,7 +45,7 @@ class CPlayerInfo
 
 		inline void updateCameraVectors() {movement.updateCameraVectors(); }
 		inline void setYawAndPitch(float yaw, float pitch) {movement.setYawAndPitch(yaw, pitch); }
-		inline void calculateNewPosition(const World &world) {movement.calculateNewPosition(world); }
+		inline void calculateNewPosition(const CommonWorld<ChunkGeneration> &world) {movement.calculateNewPosition(world); }
 };
 
 #endif

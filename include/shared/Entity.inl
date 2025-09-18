@@ -2,22 +2,22 @@
 #include "Entity.hpp"
 #include "CommonWorld.hpp"
 
-template <typename WorldT>
-Entity<WorldT>::Entity(glm::vec3 position): position(position) {}
+template <typename ChunkT>
+Entity<ChunkT>::Entity(glm::vec3 position): position(position) {}
 
-template <typename WorldT>
-Entity<WorldT>::~Entity() {}
+template <typename ChunkT>
+Entity<ChunkT>::~Entity() {}
 
 // Build a current-player AABB (min at feet)
-template <typename WorldT>
-AABB Entity<WorldT>::constructAABB(const glm::vec3 &pos) {
+template <typename ChunkT>
+AABB Entity<ChunkT>::constructAABB(const glm::vec3 &pos) {
 	glm::vec3 mn(pos.x - entityWidth * 0.5f, pos.y,				pos.z - entityWidth * 0.5f);
 	glm::vec3 mx(pos.x + entityWidth * 0.5f, pos.y + entityHeight, pos.z + entityWidth * 0.5f);
 	return AABB(mn, mx);
 };
 
-template <typename WorldT>
-bool Entity<WorldT>::aabbCollidesWithWorld(const AABB &box, const WorldT &world) {
+template <typename ChunkT>
+bool Entity<ChunkT>::aabbCollidesWithWorld(const AABB &box, const CommonWorld<ChunkT> &world) {
     // compute block search bounds (floor)
     int minX = (int)std::floor(box.min.x + EPS);
     int maxX = (int)std::floor(box.max.x - EPS);
@@ -40,8 +40,8 @@ bool Entity<WorldT>::aabbCollidesWithWorld(const AABB &box, const WorldT &world)
     return false;
 }
 
-template <typename WorldT>
-void Entity<WorldT>::calculateNewXZPosition(const WorldT &world, glm::vec3 &desiredMove)
+template <typename ChunkT>
+void Entity<ChunkT>::calculateNewXZPosition(const CommonWorld<ChunkT> &world, glm::vec3 &desiredMove)
 {
     glm::vec3 newPos = position;
     AABB currentBox = constructAABB(position);
@@ -69,8 +69,8 @@ void Entity<WorldT>::calculateNewXZPosition(const WorldT &world, glm::vec3 &desi
 	position = newPos;
 }
 
-template <typename WorldT>
-void Entity<WorldT>::calculateNewYPosition(const WorldT &world)
+template <typename ChunkT>
+void Entity<ChunkT>::calculateNewYPosition(const CommonWorld<ChunkT> &world)
 {
 	glm::vec3 newPos = position;
 	AABB currentBox = constructAABB(position);

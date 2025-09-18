@@ -18,8 +18,8 @@
 
 #define JUMP_VELOCITY	0.42f
 
-template <typename WorldT>
-class LivingEntity : public Entity<WorldT>
+template <typename ChunkT>
+class LivingEntity : public Entity<ChunkT>
 {
 	protected :
 		bool jump = false;
@@ -31,7 +31,7 @@ class LivingEntity : public Entity<WorldT>
 		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
 		virtual glm::vec3 getDesiredMove() = 0;
-		virtual void doJump(const WorldT &world) = 0;
+		virtual void doJump(const CommonWorld<ChunkT> &world) = 0;
 
 	public:
 		glm::vec3 Front = glm::vec3(0, 0, 0);

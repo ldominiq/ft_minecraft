@@ -1,8 +1,8 @@
 
 #include "PlayerMovement.hpp"
 
-template <typename WorldT>
-PlayerMovement<WorldT>::PlayerMovement():	LivingEntity<WorldT>(glm::vec3(0, 150, 0))
+template <typename ChunkT>
+PlayerMovement<ChunkT>::PlayerMovement():	LivingEntity<ChunkT>(glm::vec3(0, 150, 0))
 {
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;
@@ -12,14 +12,14 @@ PlayerMovement<WorldT>::PlayerMovement():	LivingEntity<WorldT>(glm::vec3(0, 150,
 	pitch = 0;
 }
 
-template <typename WorldT>
-PlayerMovement<WorldT>::~PlayerMovement()
+template <typename ChunkT>
+PlayerMovement<ChunkT>::~PlayerMovement()
 {
 }
 
 //for creative
-template <typename WorldT>
-void PlayerMovement<WorldT>::updatePosition()
+template <typename ChunkT>
+void PlayerMovement<ChunkT>::updatePosition()
 {
 	NetPlayerInputs inputs = lastInputsPktRecvd;
 
@@ -48,8 +48,8 @@ void PlayerMovement<WorldT>::updatePosition()
 		this->position.y -= this->WorldUp.y * velocity; 
 }
 
-template <typename WorldT>
-void PlayerMovement<WorldT>::updateCameraVectors() {
+template <typename ChunkT>
+void PlayerMovement<ChunkT>::updateCameraVectors() {
     glm::vec3 front;
     front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
     front.y = sin(glm::radians(pitch));
@@ -59,8 +59,8 @@ void PlayerMovement<WorldT>::updateCameraVectors() {
     this->Up    = glm::normalize(glm::cross(this->Right, this->Front));
 }
 
-template <typename WorldT>
-void PlayerMovement<WorldT>::doJump(const WorldT &world)
+template <typename ChunkT>
+void PlayerMovement<ChunkT>::doJump(const CommonWorld<ChunkT> &world)
 {
 	// Determine if on ground by testing a tiny epsilon below feet
 	AABB boxFeetProbe = this->constructAABB(glm::vec3(this->position.x, this->position.y -EPS - 0.01f, this->position.z));
@@ -76,8 +76,8 @@ void PlayerMovement<WorldT>::doJump(const WorldT &world)
 	}
 }
 
-template <typename WorldT>
-glm::vec3 PlayerMovement<WorldT>::getDesiredMove()
+template <typename ChunkT>
+glm::vec3 PlayerMovement<ChunkT>::getDesiredMove()
 {
     NetPlayerInputs inputs = lastInputsPktRecvd;
 
@@ -130,8 +130,8 @@ glm::vec3 PlayerMovement<WorldT>::getDesiredMove()
     return glm::vec3(this->velocity.x, 0.0f, this->velocity.z);
 }
 
-template <typename WorldT>
-void PlayerMovement<WorldT>::calculateNewPosition(const WorldT &world)
+template <typename ChunkT>
+void PlayerMovement<ChunkT>::calculateNewPosition(const CommonWorld<ChunkT> &world)
 {
 	float headHeight = this->entityHeight - 0.3f; // TODO: rethink this
 	this->position.y -= headHeight;

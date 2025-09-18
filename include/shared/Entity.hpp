@@ -39,8 +39,11 @@ struct AABB {
     }
 };
 
+template <typename ChunkT>
+class CommonWorld;
+
 //was it really necessary to template it instead of using CommonWorld
-template <typename WorldT>
+template <typename ChunkT>
 class Entity {
 
 	protected:
@@ -56,11 +59,11 @@ class Entity {
 		inline bool isSolidBlock(const BlockType &b) { return b != BlockType::AIR; }
 
 		AABB constructAABB(const glm::vec3 &pos);
-		bool aabbCollidesWithWorld(const AABB &box, const WorldT &world);
+		bool aabbCollidesWithWorld(const AABB &box, const CommonWorld<ChunkT> &world);
 
-		virtual void calculateNewPosition(const WorldT &world) = 0;
-		void calculateNewXZPosition(const WorldT &world, glm::vec3 &desiredMove);
-		void calculateNewYPosition(const WorldT &world);
+		virtual void calculateNewPosition(const CommonWorld<ChunkT> &world) = 0;
+		void calculateNewXZPosition(const CommonWorld<ChunkT> &world, glm::vec3 &desiredMove);
+		void calculateNewYPosition(const CommonWorld<ChunkT> &world);
 
 	public:
 
