@@ -7,8 +7,25 @@
 
 #include "Chunk.hpp"
 
+template <typename WorldT>
+class LivingEntity;
+
+class ICommonWorld {
+public:
+    virtual void something() = 0;
+    virtual ~ICommonWorld() = default;
+};
+
 template <typename ChunkT>
-class CommonWorld {
+class CommonWorld : public ICommonWorld {
+public:
+    void something() override {
+        // implementation using ChunkT
+    }
+};
+
+template <typename ChunkT>
+class CommonWorld : ICommonWorld{
 
 	protected:
 		std::unordered_map<ChunkPos, std::shared_ptr<ChunkT>> chunks;
@@ -29,7 +46,7 @@ class CommonWorld {
 			return chunks.size();
 		}
 
-		// std::vector<LivingEntity> LivingEntities;
+		std::vector<std::shared_ptr<LivingEntity<ChunkT>>> livingEntities;
 };
 
 #include "CommonWorld.inl"

@@ -15,6 +15,7 @@ void Camera::lerpToNextPosition(float time)
 	glm::vec3 currentPosition;
 	if (amountOfSnapshotsReceived < 2) return ;
 	glm::vec3 renderPos = previousPosition + (predictedPosition - previousPosition) * time;
+
 	movement.setPosition(renderPos);
 }
 
@@ -65,7 +66,6 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 	// movement.setPosition(position);
 	previousPosition = predictedPosition;
 	predictedPosition = position;
-	std::cout << position.x << " " << position.y << " " << position.z << std::endl;
 
 	predictNTicks(world);
 }

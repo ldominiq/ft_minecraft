@@ -13,8 +13,6 @@
 
 class CPlayerInfo
 {
-	PlayerMovement<ChunkGeneration> movement;
-
 	public:
 
 		CPlayerInfo();
@@ -29,23 +27,25 @@ class CPlayerInfo
 		glm::vec3 lastPositionSent;
 		int health; //unused
 
+		std::shared_ptr<PlayerMovement<ChunkGeneration>> movement = std::make_shared<PlayerMovement<ChunkGeneration>>();
+
 		std::unordered_set<ChunkPos> loadedChunks;
 		std::vector<ChunkPos> rdyChunks;
 
 		bool connected; //unused
 
-		inline const glm::vec3 getPosition() const { return movement.getPosition(); }
-		inline const glm::vec3 getVelocity() const { return movement.getVelocity(); }
-		inline const int32_t getTick() const { return movement.getTick(); }
-		inline const float getVerticalVelocity() const { return movement.getVerticalVelocity(); }
+		inline const glm::vec3 getPosition() const { return movement->getPosition(); }
+		inline const glm::vec3 getVelocity() const { return movement->getVelocity(); }
+		inline const int32_t getTick() const { return movement->getTick(); }
+		inline const float getVerticalVelocity() const { return movement->getVerticalVelocity(); }
 
-		inline const glm::vec3 getCameraDir() const { return movement.getCameraDir(); }
-		inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {movement.lastInputsPktRecvd = pkt; }
-		inline void setGamemode(GAMEMODES gamemode) {movement.gamemode = gamemode; }
+		inline const glm::vec3 getCameraDir() const { return movement->getCameraDir(); }
+		inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {movement->lastInputsPktRecvd = pkt; }
+		inline void setGamemode(GAMEMODES gamemode) {movement->gamemode = gamemode; }
 
-		inline void updateCameraVectors() {movement.updateCameraVectors(); }
-		inline void setYawAndPitch(float yaw, float pitch) {movement.setYawAndPitch(yaw, pitch); }
-		inline void calculateNewPosition(const CommonWorld<ChunkGeneration> &world) {movement.calculateNewPosition(world); }
+		inline void updateCameraVectors() {movement->updateCameraVectors(); }
+		inline void setYawAndPitch(float yaw, float pitch) {movement->setYawAndPitch(yaw, pitch); }
+		inline void calculateNewPosition(const CommonWorld<ChunkGeneration> &world) {movement->calculateNewPosition(world); }
 };
 
 #endif

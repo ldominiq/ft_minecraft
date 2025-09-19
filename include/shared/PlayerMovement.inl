@@ -133,7 +133,7 @@ glm::vec3 PlayerMovement<ChunkT>::getDesiredMove()
 template <typename ChunkT>
 void PlayerMovement<ChunkT>::calculateNewPosition(const CommonWorld<ChunkT> &world)
 {
-	float headHeight = this->entityHeight - 0.3f; // TODO: rethink this
+	float headHeight = this->entityHeight - 0.3f;
 	this->position.y -= headHeight;
 
 	if (gamemode == GAMEMODES::SURVIVAL)

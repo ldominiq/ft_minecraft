@@ -154,6 +154,8 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.connected = true;
 
 	players.push_back(p);
+	world->livingEntities.push_back(p.movement);
+
 	
 	sendAccept(cliaddr);
 }
