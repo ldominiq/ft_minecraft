@@ -2,22 +2,18 @@
 #include "Entity.hpp"
 #include "CommonWorld.hpp"
 
-template <typename ChunkT>
-Entity<ChunkT>::Entity(glm::vec3 position): position(position) {}
+Entity::Entity(glm::vec3 position): position(position) {}
 
-template <typename ChunkT>
-Entity<ChunkT>::~Entity() {}
+Entity::~Entity() {}
 
 // Build a current-player AABB (min at feet)
-template <typename ChunkT>
-AABB Entity<ChunkT>::constructAABB(const glm::vec3 &pos) {
+AABB Entity::constructAABB(const glm::vec3 &pos) {
 	glm::vec3 mn(pos.x - entityWidth * 0.5f, pos.y,				pos.z - entityWidth * 0.5f);
 	glm::vec3 mx(pos.x + entityWidth * 0.5f, pos.y + entityHeight, pos.z + entityWidth * 0.5f);
 	return AABB(mn, mx);
 };
 
-template <typename ChunkT>
-bool Entity<ChunkT>::aabbCollidesWithWorld(const AABB &box, const CommonWorld<ChunkT> &world) {
+bool Entity::aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world) {
     // compute block search bounds (floor)
     int minX = (int)std::floor(box.min.x + EPS);
     int maxX = (int)std::floor(box.max.x - EPS);
@@ -40,8 +36,7 @@ bool Entity<ChunkT>::aabbCollidesWithWorld(const AABB &box, const CommonWorld<Ch
 	return false;
 }
 
-template <typename WorldT>
-bool Entity<WorldT>::entityCollidesWithBlock(const glm::vec3 blockPos) {
+bool Entity::entityCollidesWithBlock(const glm::vec3 blockPos) {
 	glm::vec3 tmpPos = position;
 	tmpPos.y = tmpPos.y - entityHeight + 0.3; //ugly hack for player
     AABB box = constructAABB(tmpPos);
@@ -68,8 +63,7 @@ bool Entity<WorldT>::entityCollidesWithBlock(const glm::vec3 blockPos) {
     return false;
 }
 
-template <typename ChunkT>
-void Entity<ChunkT>::calculateNewXZPosition(const CommonWorld<ChunkT> &world, glm::vec3 &desiredMove)
+void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove)
 {
     glm::vec3 newPos = position;
     AABB currentBox = constructAABB(position);
@@ -97,8 +91,7 @@ void Entity<ChunkT>::calculateNewXZPosition(const CommonWorld<ChunkT> &world, gl
 	position = newPos;
 }
 
-template <typename ChunkT>
-void Entity<ChunkT>::calculateNewYPosition(const CommonWorld<ChunkT> &world)
+void Entity::calculateNewYPosition(const ICommonWorld &world)
 {
 	glm::vec3 newPos = position;
 	AABB currentBox = constructAABB(position);

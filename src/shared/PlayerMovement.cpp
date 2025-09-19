@@ -1,8 +1,7 @@
 
 #include "PlayerMovement.hpp"
 
-template <typename ChunkT>
-PlayerMovement<ChunkT>::PlayerMovement():	LivingEntity<ChunkT>(glm::vec3(0, 150, 0))
+PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0, 150, 0))
 {
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;
@@ -12,14 +11,12 @@ PlayerMovement<ChunkT>::PlayerMovement():	LivingEntity<ChunkT>(glm::vec3(0, 150,
 	pitch = 0;
 }
 
-template <typename ChunkT>
-PlayerMovement<ChunkT>::~PlayerMovement()
+PlayerMovement::~PlayerMovement()
 {
 }
 
 //for creative
-template <typename ChunkT>
-void PlayerMovement<ChunkT>::updatePosition()
+void PlayerMovement::updatePosition()
 {
 	NetPlayerInputs inputs = lastInputsPktRecvd;
 
@@ -48,8 +45,7 @@ void PlayerMovement<ChunkT>::updatePosition()
 		this->position.y -= this->WorldUp.y * velocity; 
 }
 
-template <typename ChunkT>
-void PlayerMovement<ChunkT>::updateCameraVectors() {
+void PlayerMovement::updateCameraVectors() {
     glm::vec3 front;
     front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
     front.y = sin(glm::radians(pitch));
@@ -59,8 +55,7 @@ void PlayerMovement<ChunkT>::updateCameraVectors() {
     this->Up    = glm::normalize(glm::cross(this->Right, this->Front));
 }
 
-template <typename ChunkT>
-void PlayerMovement<ChunkT>::doJump(const CommonWorld<ChunkT> &world)
+void PlayerMovement::doJump(const ICommonWorld &world)
 {
 	// Determine if on ground by testing a tiny epsilon below feet
 	AABB boxFeetProbe = this->constructAABB(glm::vec3(this->position.x, this->position.y -EPS - 0.01f, this->position.z));
@@ -76,8 +71,7 @@ void PlayerMovement<ChunkT>::doJump(const CommonWorld<ChunkT> &world)
 	}
 }
 
-template <typename ChunkT>
-glm::vec3 PlayerMovement<ChunkT>::getDesiredMove()
+glm::vec3 PlayerMovement::getDesiredMove()
 {
     NetPlayerInputs inputs = lastInputsPktRecvd;
 
@@ -130,8 +124,7 @@ glm::vec3 PlayerMovement<ChunkT>::getDesiredMove()
     return glm::vec3(this->velocity.x, 0.0f, this->velocity.z);
 }
 
-template <typename ChunkT>
-void PlayerMovement<ChunkT>::calculateNewPosition(const CommonWorld<ChunkT> &world)
+void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 {
 	float headHeight = this->entityHeight - 0.3f;
 	this->position.y -= headHeight;

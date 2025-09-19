@@ -27,7 +27,7 @@ class CPlayerInfo
 		glm::vec3 lastPositionSent;
 		int health; //unused
 
-		std::shared_ptr<PlayerMovement<ChunkGeneration>> movement = std::make_shared<PlayerMovement<ChunkGeneration>>();
+		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>();
 
 		std::unordered_set<ChunkPos> loadedChunks;
 		std::vector<ChunkPos> rdyChunks;
@@ -45,7 +45,7 @@ class CPlayerInfo
 
 		inline void updateCameraVectors() {movement->updateCameraVectors(); }
 		inline void setYawAndPitch(float yaw, float pitch) {movement->setYawAndPitch(yaw, pitch); }
-		inline void calculateNewPosition(const CommonWorld<ChunkGeneration> &world) {movement->calculateNewPosition(world); }
+		inline void calculateNewPosition(const ICommonWorld &world) {movement->calculateNewPosition(world); }
 };
 
 #endif

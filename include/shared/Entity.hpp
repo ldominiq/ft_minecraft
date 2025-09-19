@@ -6,6 +6,7 @@
 
 #include "Network.hpp" // For inputs. Maybe should do it in some other way
 #include "Block.hpp"
+// #include "CommonWorld.hpp"
 
 constexpr float EPS = 1e-5f;
 
@@ -39,11 +40,9 @@ struct AABB {
     }
 };
 
-template <typename ChunkT>
-class CommonWorld;
+class ICommonWorld;
 
 //was it really necessary to template it instead of using CommonWorld
-template <typename ChunkT>
 class Entity {
 
 	protected:
@@ -59,11 +58,11 @@ class Entity {
 		inline bool isSolidBlock(const BlockType &b) { return b != BlockType::AIR; }
 
 		AABB constructAABB(const glm::vec3 &pos);
-		bool aabbCollidesWithWorld(const AABB &box, const CommonWorld<ChunkT> &world);
+		bool aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world);
 
-		virtual void calculateNewPosition(const CommonWorld<ChunkT> &world) = 0;
-		void calculateNewXZPosition(const CommonWorld<ChunkT> &world, glm::vec3 &desiredMove);
-		void calculateNewYPosition(const CommonWorld<ChunkT> &world);
+		virtual void calculateNewPosition(const ICommonWorld &world) = 0;
+		void calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove);
+		void calculateNewYPosition(const ICommonWorld &world);
 
 	public:
 
@@ -76,7 +75,5 @@ class Entity {
 		inline const float getEntityWitdth() const { return entityWidth; }
 		inline const float getEntityHeight() const { return entityHeight; }
 };
-
-#include "Entity.inl"
 
 #endif

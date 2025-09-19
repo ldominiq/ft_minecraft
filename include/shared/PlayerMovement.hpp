@@ -13,8 +13,7 @@ enum class GAMEMODES {
 	SPECTATOR,
 };
 
-template <typename ChunkT>
-struct PlayerMovement final : public LivingEntity<ChunkT> {
+struct PlayerMovement final : public LivingEntity {
 
 	NetPlayerInputs lastInputsPktRecvd = {};
 
@@ -25,12 +24,12 @@ struct PlayerMovement final : public LivingEntity<ChunkT> {
 	int32_t tick;
 
 	glm::vec3 getDesiredMove() override;
-	void doJump(const CommonWorld<ChunkT> &world) override;
+	void doJump(const ICommonWorld &world) override;
 
 	void updatePosition();
 
 	void updateCameraVectors();
-	void calculateNewPosition(const CommonWorld<ChunkT> &world) override;
+	void calculateNewPosition(const ICommonWorld &world) override;
 
 	inline const glm::vec3 getPosition() const { return this->position; }
 	inline const glm::vec3 getVelocity() const { return this->velocity; }
@@ -46,7 +45,5 @@ struct PlayerMovement final : public LivingEntity<ChunkT> {
 	PlayerMovement();
 	~PlayerMovement();
 };
-
-#include "PlayerMovement.inl"
 
 #endif
