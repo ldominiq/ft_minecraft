@@ -442,53 +442,6 @@ void World::updateRegionStreaming(int currentChunkX, int currentChunkZ) {
     }
 }
 
-// void World::saveRegion(int regionX, int regionZ) {
-//     std::string filename = getRegionFilename(regionX, regionZ);
-//     std::ofstream out(filename, std::ios::binary | std::ios::trunc);
-//     if (!out) throw std::runtime_error("Cannot open region file for writing: " + filename);
-
-//     // --- Write metadata ---
-//     RegionFileMetadata metadata;
-//     out.write(reinterpret_cast<const char*>(&metadata), sizeof(metadata));
-
-//     // --- Reserve header space ---
-//     std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE); // all zeroed
-//     out.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
-
-//     // --- Write chunks ---
-// 	for (int x = regionX * REGION_SIZE; x < (regionX + 1) * REGION_SIZE; x++) {
-// 		for (int z = regionZ * REGION_SIZE; z < (regionZ + 1) * REGION_SIZE; z++)
-// 		{
-// 			auto it = chunks.find(Chunk::toKey(x, z));
-// 			if (it == chunks.end()) continue ;
-			
-// 			std::streampos currPos = out.tellp();
-// 			it->second->saveToStream(out);
-// 			std::streampos newPos = out.tellp();
-
-// 			ChunkEntry entry;
-// 			entry.X = it->first.first;
-// 			entry.Z = it->first.second;
-// 			entry.offset = static_cast<std::uint32_t>(currPos);
-// 			entry.size   = static_cast<std::uint32_t>(newPos - currPos);
-
-// 			//int idx = (x % REGION_SIZE) * REGION_SIZE + z;
-// 			int localX = x - regionX * REGION_SIZE;
-// 			int localZ = z - regionZ * REGION_SIZE;
-// 			int idx = localZ * REGION_SIZE + localX;
-
-// 			header[idx] = entry;
-
-// 			chunks.erase(it);
-// 		}
-// 	}
-
-
-//     // --- Rewrite header with correct entries ---
-//     out.seekp(sizeof(metadata));
-//     out.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
-// }
-
 void World::saveRegion(int regionX, int regionZ) {
 	std::string filename = getRegionFilename(regionX, regionZ);
 
@@ -551,36 +504,6 @@ void World::saveRegion(int regionX, int regionZ) {
 
 	out.write(reinterpret_cast<const char*>(compressed.data()), compressed.size());
 }
-
-// void World::loadRegion(int regionX, int regionZ) {
-//     std::string filename = getRegionFilename(regionX, regionZ);
-//     std::ifstream in(filename, std::ios::binary);
-//     if (!in) return ;
-
-//     // --- Read metadata ---
-//     RegionFileMetadata metadata;
-//     in.read(reinterpret_cast<char*>(&metadata), sizeof(metadata));
-//     if (std::strncmp(metadata.magic, "RGN1", 4) != 0)
-//         throw std::runtime_error("Invalid region file magic in " + filename);
-
-//     // --- Read header ---
-//     std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE);
-//     in.read(reinterpret_cast<char*>(header.data()), header.size() * sizeof(ChunkEntry));
-
-//     // --- Load each chunk ---
-//     for (const auto& entry : header) {
-//         if (entry.size == 0 || entry.offset == 0) continue; // empty slot
-
-//         // Seek to the chunk data
-//         in.seekg(entry.offset);
-//         auto chunk = std::make_shared<ChunkGeneration>(entry.X, entry.Z, terrainParams, false);
-//         chunk->loadFromStream(in);
-
-//         // Insert into chunk map
-//         ChunkPos pos(entry.X, entry.Z);
-//         chunks[pos] = chunk;
-//     }
-// }
 
 void World::loadRegion(int regionX, int regionZ) {
 	std::string filename = getRegionFilename(regionX, regionZ);
