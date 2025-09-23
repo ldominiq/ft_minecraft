@@ -16,14 +16,4 @@ enum class BlockType : uint8_t{
 	END
 };
 
-enum class BiomeType {
-    PLAINS,
-    DESERT,
-    FOREST,
-    TUNDRA,
-	SWAMP,
-	OCEAN,
-	MOUNTAIN
-};
-
 #endif

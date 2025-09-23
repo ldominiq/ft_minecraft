@@ -16,7 +16,7 @@
 #include <queue>
 #include <memory>
 
-#include "Block.hpp"
+#include "Item.hpp"
 #include "BitPackedArray.hpp"
 
 class BlockStorage;

@@ -11,6 +11,16 @@
 // using ItemID = uint8_t;   // for world storage/networking
 using ItemID  = uint16_t;  // for inventory/items
 
+enum class BiomeType {
+    PLAINS,
+    DESERT,
+    FOREST,
+    TUNDRA,
+	SWAMP,
+	OCEAN,
+	MOUNTAIN
+};
+
 enum class BlockType : ItemID {
 	BEGIN = 0,
     AIR,
@@ -95,15 +105,15 @@ public:
 		ItemDef{ makeWeapon((ItemID)WeaponType::SWORD, "Sword", "", 4) }
 	};
 
-	static inline std::vector<ItemData> items = [] {
-		std::vector<ItemData> v;
+	static inline std::vector<ItemDef> items = [] {
+		std::vector<ItemDef> v;
 		v.insert(v.end(), blocks.begin(), blocks.end());
 		v.insert(v.end(), liquids.begin(), liquids.end());
 		v.insert(v.end(), weapons.begin(), weapons.end());
 		return v;
 	}();
 
-    static const ItemData& get(uint16_t id) { return items[id]; }
+    static const ItemDef& get(uint16_t id) { return items[id]; }
 	static const ItemDef& getBlock(uint16_t id) { return blocks[id]; }
 	static const ItemDef& getLiquid(uint16_t id) { return liquids[id]; }
 	static const ItemDef& getWeapon(uint16_t id) { return weapons[id]; }

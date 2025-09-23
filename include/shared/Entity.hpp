@@ -5,7 +5,7 @@
 #include <cmath>
 
 #include "Network.hpp" // For inputs. Maybe should do it in some other way
-#include "Block.hpp"
+#include "Item.hpp"
 // #include "CommonWorld.hpp"
 
 constexpr float EPS = 1e-5f;

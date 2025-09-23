@@ -9,7 +9,7 @@
 #include <limits>
 #include <fstream>
 #include <unordered_map>
-#include "Block.hpp"
+#include "Item.hpp"
 
 //TODO ADD RLE COMPRESSION
 class BitPackedArray {
