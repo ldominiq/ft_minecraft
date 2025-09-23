@@ -65,7 +65,8 @@ void App::init() {
 
 	renderer = std::make_unique<Renderer>();
 
-    
+    chat = std::make_unique<Chat>(windowedWidth, windowedHeight);
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -99,14 +100,27 @@ void App::init() {
         app->lastY = ypos;
         app->camera->processMouseMovement(xoffset, yoffset);
 
-		app->keyPressedRecently = true;
+		app->mouseMovedRecently = true;
+		app->lastMouseMoveTime = glfwGetTime();
     });
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
+	glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int codepoint) {
+		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
+		if (!app) return;
+		if (app->menuManager != app->chat) return ;
+
+		app->chat->addCharToCurrMsg(static_cast<char>(codepoint));
+	});
 
 	glfwSetKeyCallback(window, [](GLFWwindow* w, int key, int scancode, int action, int mods) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		if (!app->menuManager && app->controlsArray[CLOSE_WINDOW] == key && action == GLFW_PRESS) glfwSetWindowShouldClose(w, true);
+
+		app->processInputsMenus(key, action);
+		if (app->menuManager) return ;
 
 		auto mapKeyToBit = [](int key) -> uint16_t {
 			switch (key) {
@@ -207,7 +221,7 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
-				camera->updatePosition(p);
+				camera->onSnapshot(p, *renderer);
 				break;
 			}
 
@@ -217,19 +231,18 @@ void App::setUdpClientPacketCallback()
 				break;
 			}
 
+			case PacketType::NET_MESSAGE: {
+				auto& p = static_cast<NetMessage&>(*pkt);
+				chat->updateChatlog(p.message);
+				break;
+			}
+
             case PacketType::NET_IMGUI: {
                 auto& p = static_cast<NetImGui&>(*pkt);
                 // handle ImGui data (e.g., update UI state)
                 currentBiome = p.currentBiome;
                 break;
             }
-
-			// case PacketType::UPDATE_WORLD: {
-			//     auto& p = static_cast<UpdateWorld&>(*pkt);
-			//     // handle movement/world updates
-			//     applyWorldUpdate(p);
-			//     break;
-			// }
 
 			default:
 				std::cout << "Unknown packet type: " << static_cast<int>(pkt->type) << "\n";
@@ -252,23 +265,49 @@ void App::loadResources() {
     activeShader->setInt("atlas", 0);
 }
 
+void App::gameTick()
+{
+	// sending/receiving packets and stuff
+
+	udpClient->receivePacket();
+	if ((keyPressedRecently || mouseMovedRecently) && !menuManager)
+	{
+		NetPlayerInputs inputs = buildPlayerInputsPacket();
+		udpClient->sendPacket(inputs);
+	}
+	
+	camera->tick();
+}
+
 void App::render() {
 
     while (!glfwWindowShouldClose(window)) {
-
-		//sending/receiving packets and stuff
-		udpClient->receivePacket();
-		if (keyPressedRecently)
-		{
-			NetPlayerInputs inputs = buildPlayerInputsPacket();
-			udpClient->sendPacket(inputs);
-		}
-
 
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+		//Tick logic
+		float tickDuration = 1.0f / TPS; // 0.05s per tick
+		static float accumulator = 0.0f;
+		accumulator += deltaTime;
+
+		while (accumulator >= tickDuration) //should never be more than 1 tick...
+		{
+			// Advance one tick
+			gameTick();
+			accumulator -= tickDuration;
+		}
+
+
+		const double mouseIdleThreshold = 0.2; // seconds, tweak to taste
+		if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
+			mouseMovedRecently = false;
+
+		// alpha is between 0 and 1, representing interpolation factor
+		float alpha = accumulator / tickDuration;
+		camera->lerpToNextPosition(alpha);
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -300,8 +339,9 @@ void App::render() {
         ImGui::NewFrame();
 
         updateWindowTitle();
-		
-        processInput();
+
+		if (menuManager != chat)
+        	processInput();
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -328,16 +368,14 @@ void App::render() {
         activeShader->setVec3("lightColor", lightColor);
         activeShader->setVec3("ambientColor", ambientColor);
 
-
-		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->Position.z / Chunk::DEPTH));
+		const int currentChunkX = static_cast<int>(std::floor(camera->getPosition().x / Chunk::WIDTH));
+		const int currentChunkZ = static_cast<int>(std::floor(camera->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
 		renderer->render(activeShader);
-
-
-        skybox->draw(camera->getViewMatrix(), projection);
+		
+        skybox->draw(camera->getViewMatrix(), projection);	
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         if (showDebugWindow) {
@@ -350,6 +388,11 @@ void App::render() {
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
+		// render menus last
+		if (menuManager) {
+			menuManager->render();
+		}
+			
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -364,7 +407,7 @@ void App::debugWindow() {
         // the mouse is released.
         {
 
-            glm::vec3 pos = camera->Position;
+            glm::vec3 pos = camera->getPosition();
             int wx = static_cast<int>(std::floor(pos.x));
             int wz = static_cast<int>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
@@ -405,7 +448,7 @@ void App::debugWindow() {
             // Additional metrics: number of loaded chunks and approximate memory usage
             if (renderer) {
                 const size_t visibleChunks = renderer->getVisibleChunkCount();
-                const size_t totalChunks   = renderer->getTotalChunkInMemoryCount();
+                const size_t totalChunks   = renderer->getTotalChunkCount();
                 ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
             }
             // Display memory usage in megabytes.  We call a static helper to
@@ -428,7 +471,7 @@ void App::debugWindow() {
                 ImGui::InputFloat("Y", &tmpY);
                 ImGui::InputFloat("Z", &tmpZ);
                 if (ImGui::Button("Teleport")) {
-                    camera->Position = glm::vec3(tmpX, tmpY, tmpZ);
+                    // camera->Position = glm::vec3(tmpX, tmpY, tmpZ);
                 }
             }
 
@@ -543,6 +586,24 @@ void App::debugWindow() {
                 ImGui::ColorEdit3("Ambient Colour", &ambientColor.x);
             }
 
+			static bool spectator = false;
+			ImGui::Separator();
+			if (ImGui::Checkbox("Suvival", &spectator))
+			{
+				if (spectator)
+				{
+					NetMessage pkt;
+					pkt.message = "/gamemode survival";
+					udpClient->sendPacket(pkt);
+				}
+				else
+				{
+					NetMessage pkt;
+					pkt.message = "/gamemode spectator";
+					udpClient->sendPacket(pkt);
+				}
+			}
+
 
             ImGui::End();
             if (!uiInteractive) {
@@ -652,15 +713,48 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 
 	if (glfwGetKey(window, controlsArray[MOVE_FAST]) == GLFW_PRESS)
 		keys |= IN_RUN;
-
+	
 	inputs.keys = keys;
 	inputs.pitch = camera->getPitch();
 	inputs.yaw = camera->getYaw();
 	inputs.loadRadius = camera->getLoadRadius();
+	inputs.tick = camera->getTick();
+
+	camera->inputsList.push_back(inputs);
 
 	return inputs;
 }
 
+// TODO: make menus managed by a pointer or container later
+void App::processInputsMenus(int key, int action) {
+
+	// HANDLE EVENTS WHEN CHAT OPEN
+	if (menuManager == chat)
+	{
+		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+		{
+			if (chat->currMsg.empty()) return ; //will this return be safe in the future?
+			NetMessage pkt;
+			pkt.message = chat->currMsg;
+			udpClient->sendPacket(pkt);
+			chat->currMsg.clear();
+		}
+		if (key == GLFW_KEY_BACKSPACE && action == GLFW_PRESS)
+			chat->removeCharFromCurrMsg();
+		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			menuManager.reset();
+	}
+
+	// CHOSE MENU (order here IS important. must do after handling events)
+	if (!menuManager)
+	{
+		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+			menuManager = chat;
+	}
+}
+
+
+// TODO : put actions in corresponding functions for clarity
 void App::processInput() {
     static bool f11Held = false;
     static bool f1Held  = false;
@@ -670,7 +764,7 @@ void App::processInput() {
     static bool leftMousePressedLastFrame = false;
 	static bool rightMousePressedLastFrame = false;
 
-	//reload chunk. F3 + A;
+	//reload chunk. F3 + A; TODO : also add the neighbours logic. Otherwise some "walls" could be rendered
 	if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS &&
     	glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
 		for (auto &chunkPtr : renderer->getRenderedChunks())
@@ -762,8 +856,8 @@ void App::processInput() {
     }
 
     // Exit (ESC).  Allow closing window even when ImGui doesn’t want keyboard.
-    if (glfwGetKey(window, controlsArray[CLOSE_WINDOW]) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
+    // if (glfwGetKey(window, controlsArray[CLOSE_WINDOW]) == GLFW_PRESS)
+    //     glfwSetWindowShouldClose(window, true);
 }
 
 
@@ -784,7 +878,6 @@ void App::updateWindowTitle() {
         lastTitleUpdate = currentFrame;
         frameCount = 0;
     }
-
 }
 
 void App::toggleDisplayMode() {

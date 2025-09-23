@@ -9,25 +9,10 @@
 #include <chrono>
 
 #include "ChunkGeneration.hpp"
-#include "Protocol.hpp"
-
-#define FLY_SPEED 50.0f
-#define DEFAULT_SPEED 5.0f
+#include "PlayerMovement.hpp"
 
 class CPlayerInfo
 {
-	//camera
-	glm::vec3 position;
-    glm::vec3 Front;
-    glm::vec3 Up;
-    glm::vec3 Right;
-    glm::vec3 WorldUp;
-
-	float yaw, pitch;
-	float movementSpeed;
-
-	void updateCameraVectors();
-
 	public:
 
 		CPlayerInfo();
@@ -37,19 +22,30 @@ class CPlayerInfo
 		std::chrono::_V2::steady_clock::time_point lastPktRecvTick;
 
 		std::string name;
-		uint8_t loadRadius;
+		uint8_t loadRadius; // TODO : set setter on new packet
 
 		glm::vec3 lastPositionSent;
 		int health; //unused
+
+		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>();
 
 		std::unordered_set<ChunkPos> loadedChunks;
 		std::vector<ChunkPos> rdyChunks;
 
 		bool connected; //unused
 
-		void updatePosition(NetPlayerInputs &inputs, float &deltaTime);
-		inline const glm::vec3 getPosition() const { return position; }
-		inline const glm::vec3 getCameraDir() const { return Front; }
+		inline const glm::vec3 getPosition() const { return movement->getPosition(); }
+		inline const glm::vec3 getVelocity() const { return movement->getVelocity(); }
+		inline const int32_t getTick() const { return movement->getTick(); }
+		inline const float getVerticalVelocity() const { return movement->getVerticalVelocity(); }
+
+		inline const glm::vec3 getCameraDir() const { return movement->getCameraDir(); }
+		inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {movement->lastInputsPktRecvd = pkt; }
+		inline void setGamemode(GAMEMODES gamemode) {movement->gamemode = gamemode; }
+
+		inline void updateCameraVectors() {movement->updateCameraVectors(); }
+		inline void setYawAndPitch(float yaw, float pitch) {movement->setYawAndPitch(yaw, pitch); }
+		inline void calculateNewPosition(const ICommonWorld &world) {movement->calculateNewPosition(world); }
 };
 
 #endif

@@ -26,9 +26,6 @@ class ChunkRenderer : public Chunk {
 		// Release GL resources
 		void releaseGL();
 
-		void setAdjacentChunks(int direction, std::shared_ptr<ChunkRenderer> &chunk);
-		bool hasAllAdjacentChunkLoaded() const;
-
 		void buildMesh(); // Build the mesh for Renderer
 		void buildMeshData();
 		void uploadMesh();

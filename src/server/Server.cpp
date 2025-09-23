@@ -10,10 +10,13 @@ Server::~Server() {
     close(sockfd);
 }
 
-void Server::run() {
+void Server::run(std::optional<int> &seed) {
     std::cout << "Server running on port " << PORT << "..." << std::endl;
 
-	world = std::make_unique<World>(); //No seed for now;
+	if (seed.has_value())
+		world = std::make_unique<World>(seed.value());
+	else
+		world = std::make_unique<World>();
 
 	running = true;
 
@@ -89,6 +92,8 @@ void Server::loop() {
             std::cerr << "⚠️ Server tick lagging behind!\n";
             nextTick = std::chrono::steady_clock::now(); // resync
         }
+
+		tick++; //assumes it will wrap around. meaning INT32_MAX + 1 = INT32_MIN
 	}
 }
 
@@ -120,6 +125,12 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::NET_MESSAGE: {
+			auto& p = static_cast<NetMessage&>(*pkt);
+			receiveMessage(p, cliaddr);
+			break;
+		}
+
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
@@ -143,6 +154,8 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.connected = true;
 
 	players.push_back(p);
+	world->livingEntities.push_back(p.movement);
+
 	
 	sendAccept(cliaddr);
 }
@@ -163,8 +176,10 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	player->lastPktRecvTick = currTick;
-	player->updatePosition(pkt, deltaTime);
+	player->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
+	player->setYawAndPitch(pkt.yaw, pkt.pitch);
+	player->updateCameraVectors();	//order is vital. updateCameraVectors uses pkt.
 }
 
 void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &cliaddr)
@@ -177,20 +192,51 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	world->processPlayerMouseInputs(*player, pkt);
 }
 
+void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
+{
+	static const std::unordered_map<std::string, GAMEMODES> gamemodeMap = {
+		{"spectator", GAMEMODES::SPECTATOR},
+		{"survival",  GAMEMODES::SURVIVAL},
+	};
+
+	if (pkt.message.starts_with("/"))
+	{
+		pkt.message.erase(0, 1); // strip leading '/'
+
+		if (pkt.message.starts_with("gamemode "))
+		{
+			std::string mode = pkt.message.substr(strlen("gamemode "));
+
+			if (auto itMode = gamemodeMap.find(mode); itMode != gamemodeMap.end())
+			{
+				auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+				player->setGamemode(itMode->second);
+			}
+		}
+	}
+	else
+		messages.push_back(pkt.message);
+}
+
+// TODO : Multythread
 void Server::sendAll()
 {
 	world->amountOfChunksSentThisTick = 0;
 	for (CPlayerInfo &p : players)
 	{
+		p.calculateNewPosition(*world);
 		world->updateVisibleChunks(p);
+
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
 		sendImGuiData(p);
 		sendNewlyUpdatedBlocks(p);
-		//send player position
+		sendMessage(p);
 		//hit/dmg ..
 	}
 	world->updatedBlocks.clear();
+	if (!messages.empty())
+		messages.pop_front();
 }
 
 void Server::sendImGuiData(CPlayerInfo &player) {
@@ -261,11 +307,19 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 {
 	player.lastPositionSent = player.getPosition();
 	NetPlayerMove pkt;
+	pkt.snapshotTick = tick;
+	pkt.inputRecvTick = player.getTick();
+
 	pkt.positionX = player.getPosition().x;
 	pkt.positionY = player.getPosition().y;
 	pkt.positionZ = player.getPosition().z;
+
+	pkt.velocityX = player.getVelocity().x;
+	pkt.velocityZ = player.getVelocity().z;
+
+	pkt.verticalVelocity = player.getVerticalVelocity();
+
 	sendPacketTo(pkt, player.addr);
-	// std::cout << "sending positions: " << pkt.positionX << " " << pkt.positionY << " " << pkt.positionZ << std::endl;
 }
 
 void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)
@@ -280,6 +334,14 @@ void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)
 
 		sendPacketTo(pkt, player.addr);
 	}
+}
+
+void Server::sendMessage(CPlayerInfo &player)
+{
+	if (messages.empty()) return ;
+	NetMessage pkt;
+	pkt.message = messages.front();
+	sendPacketTo(pkt, player.addr);
 }
 
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {

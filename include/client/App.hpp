@@ -15,6 +15,7 @@
 #include "stb_image.h"
 #include "Renderer.hpp"
 #include "UDPClient.hpp"
+#include "Chat.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -71,11 +72,13 @@ private:
     void loadResources();
     static unsigned int loadTexture(const char* path);
     void render();
+	void gameTick();
 
     void cleanup();
     void setUdpClientPacketCallback();
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
+	void processInputsMenus(int key, int action);
     void updateWindowTitle();
     void toggleDisplayMode();
 
@@ -89,6 +92,8 @@ private:
 
 	uint16_t inputMask = 0;
     bool keyPressedRecently = false;
+	bool mouseMovedRecently = false;
+	float lastMouseMoveTime = 0;
 
     unsigned int VAO, VBO, EBO, shaderProgram, texture;
 
@@ -109,6 +114,10 @@ private:
     std::shared_ptr<Shader> textureShader;
     std::shared_ptr<Shader> gradientShader;
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
+
+	//menus
+	std::shared_ptr<Menu> menuManager;
+	std::shared_ptr<Chat> chat;
 
 	std::optional<int> seed;
 

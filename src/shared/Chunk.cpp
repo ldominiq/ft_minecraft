@@ -8,6 +8,15 @@ Chunk::Chunk(std::istream& in) : blockIndices(WIDTH * HEIGHT * DEPTH, 4)
 
 Chunk::~Chunk() {}
 
+bool Chunk::hasAllAdjacentChunkLoaded() const {
+    for (const auto& adj : adjacentChunks) {
+        if (adj.expired()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 BlockType Chunk::getBlock(int x, int y, int z) const {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH) {
         return BlockType::AIR; // Out of bounds returns air
@@ -43,7 +52,8 @@ bool Chunk::isBlockVisible(glm::ivec3 pos) {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH)
         return false;
 
-    int idx = x + WIDTH * (y + HEIGHT * z);
+	if (!hasAllAdjacentChunkLoaded()) return false;
+
     if (getBlock(x,y,z) == BlockType::AIR)
         return false;
 
@@ -52,7 +62,7 @@ bool Chunk::isBlockVisible(glm::ivec3 pos) {
             z + dz < 0 || z + dz >= DEPTH) 
         {
             auto neighbor = adjacentChunks[dir].lock();
-            if (!neighbor) return BlockType::AIR;
+            if (!neighbor) return BlockType::END;
             int nx = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : x));
             int nz = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : z));
             return neighbor->getBlock(nx, y + dy, nz);

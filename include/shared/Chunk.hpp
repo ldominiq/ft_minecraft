@@ -73,6 +73,13 @@ class Chunk {
 
 		static constexpr int BLOCK_COUNT = WIDTH * HEIGHT * DEPTH;
 
+		template <typename ChunkT>
+		void setAdjacentChunks(int direction, std::shared_ptr<ChunkT> const& chunk) {
+			static_assert(std::is_base_of_v<Chunk, ChunkT>, "T must derive from Chunk");
+			adjacentChunks[direction] = chunk;
+		}
+		bool hasAllAdjacentChunkLoaded() const;
+
 		BlockType getBlock(int x, int y, int z) const;
 		void setBlock(int x, int y, int z, BlockType block);
 

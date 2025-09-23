@@ -1,108 +1,5 @@
 #include "Renderer.hpp"
 
-void Renderer::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ)
-{
-	x = (globalX % Chunk::WIDTH + Chunk::WIDTH) % Chunk::WIDTH;
-	z = (globalZ % Chunk::DEPTH + Chunk::DEPTH) % Chunk::DEPTH;
-	y = globalY;
-
-	chunkX = globalX / Chunk::WIDTH;
-	if (globalX < 0 && globalX % Chunk::WIDTH != 0)
-		chunkX--;
-
-	chunkZ = globalZ / Chunk::DEPTH;
-	if (globalZ < 0 && globalZ % Chunk::DEPTH != 0)
-		chunkZ--;
-}
-
-// BlockType Renderer::getBlockWorld(glm::ivec3 globalCoords)
-// {
-// 	int x, y, z;
-// 	int chunkX, chunkZ;
-// 	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
-
-// 	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-// 	if (it == chunks.end()) {
-// 		return BlockType::AIR;
-// 	}
-// 	std::shared_ptr<Chunk> currChunk = it->second;
-// 	return currChunk->getBlock(x, y, z);
-// }
-
-void Renderer::setBlockWorld(glm::vec3 &targetCoords, BlockType type)
-{
-    int x, y, z;
-    int chunkX, chunkZ;
-    globalCoordsToLocalCoords(x, y, z, 
-        targetCoords.x, targetCoords.y, targetCoords.z, 
-        chunkX, chunkZ);
-
-    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-    if (it == chunks.end())
-        return;
-
-    std::shared_ptr<ChunkRenderer> currChunk = it->second;
-
-    currChunk->setBlock(x, y, z, type);
-	currChunk->buildMesh();
-
-	// //update possible neighbour
-	if (x == 0) {
-		if (auto westChunkBase = currChunk->getAdjacentChunks()[WEST].lock()) {
-			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
-				westChunk->buildMesh();
-			}
-		}
-	}
-
-	if (x == Chunk::WIDTH - 1) {
-		if (auto eastChunkBase = currChunk->getAdjacentChunks()[EAST].lock()) {
-			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
-				eastChunk->buildMesh();
-			}
-		}
-	}
-
-	if (z == 0) {
-		if (auto southChunkBase = currChunk->getAdjacentChunks()[SOUTH].lock()) {
-			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
-				southChunk->buildMesh();
-			}
-		}
-	}
-
-	if (z == Chunk::DEPTH - 1) {
-		if (auto northChunkBase = currChunk->getAdjacentChunks()[NORTH].lock()) {
-			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
-				northChunk->buildMesh();
-			}
-		}
-	}
-}
-
-bool Renderer::isBlockVisibleWorld(glm::ivec3 globalCoords)
-{
-	int x, y, z;
-	int chunkX, chunkZ;
-	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
-
-	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-	if (it == chunks.end()) {
-		return false;
-	}
-
-	std::shared_ptr<ChunkRenderer> currChunk = it->second;
-	return currChunk->isBlockVisible(glm::vec3(x, y ,z));
-}
-
-std::shared_ptr<ChunkRenderer> Renderer::getChunk(int chunkX, int chunkZ) {
-    const ChunkPos key = Chunk::toKey(chunkX, chunkZ);
-    auto it = chunks.find(key);
-    if (it == chunks.end())
-        return nullptr;
-    return it->second;
-}
-
 void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk) {
 
     const int dirX[] = { 0, 0, 1, -1 };
@@ -128,6 +25,67 @@ void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRender
     }
 }
 
+void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
+{
+    // Offset the global coordinates in the direction of the face normal
+    glm::ivec3 targetCoords = globalCoords;
+    if (faceNormal.has_value()) {
+        targetCoords += *faceNormal;
+    }
+
+    int x, y, z;
+    int chunkX, chunkZ;
+    globalCoordsToLocalCoords(x, y, z, 
+        targetCoords.x, targetCoords.y, targetCoords.z, 
+        chunkX, chunkZ);
+
+    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
+    if (it == chunks.end())
+        return;
+
+    std::shared_ptr<ChunkRenderer> currChunk = it->second;
+
+    currChunk->setBlock(x, y, z, type);
+	currChunk->buildMesh();
+
+	// //update possible neighbour
+	if (x == 0) {
+		if (auto westChunkBase = currChunk->getAdjacentChunks()[WEST].lock()) {
+			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
+				if (westChunk->hasAllAdjacentChunkLoaded())
+					westChunk->buildMesh();
+			}
+		}
+	}
+
+	if (x == Chunk::WIDTH - 1) {
+		if (auto eastChunkBase = currChunk->getAdjacentChunks()[EAST].lock()) {
+			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
+				if (eastChunk->hasAllAdjacentChunkLoaded())
+					eastChunk->buildMesh();
+			}
+		}
+	}
+
+	if (z == 0) {
+		if (auto southChunkBase = currChunk->getAdjacentChunks()[SOUTH].lock()) {
+			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
+				if (southChunk->hasAllAdjacentChunkLoaded())
+					southChunk->buildMesh();
+			}
+		}
+	}
+
+	if (z == Chunk::DEPTH - 1) {
+		if (auto northChunkBase = currChunk->getAdjacentChunks()[NORTH].lock()) {
+			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
+				if (northChunk->hasAllAdjacentChunkLoaded())
+					northChunk->buildMesh();
+			}
+		}
+	}
+}
+
 std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
 {
 	return renderedChunks;
@@ -136,7 +94,7 @@ std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
 void Renderer::updateChunk(const NetModifiedBlockData &pkt)
 {
 	glm::vec3 targetCoords = glm::vec3(pkt.x, pkt.y, pkt.z);
-	setBlockWorld(targetCoords, static_cast<BlockType>(pkt.blockType));
+	setBlockWorld(targetCoords, std::nullopt, static_cast<BlockType>(pkt.blockType));
 }
 
 void Renderer::buildChunks()

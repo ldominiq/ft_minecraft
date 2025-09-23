@@ -56,6 +56,7 @@ inline AutoRegister<NetAccept> _reg_NetAccept;
 
 struct NetPlayerInputs final : public Packet {
     static constexpr PacketType ID = PacketType::PLAYER_INPUT;
+	int32_t tick = 0;
 
 	uint16_t keys = 0;	// bitfield
     float pitch = 0.0f;   // absolute rotation around X axis
@@ -65,6 +66,7 @@ struct NetPlayerInputs final : public Packet {
     NetPlayerInputs() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
+		w.write_i32(tick);
         w.write_u16(keys);
         w.write_f32(pitch);
         w.write_f32(yaw);
@@ -72,6 +74,7 @@ struct NetPlayerInputs final : public Packet {
     }
 
     void decode(BufferReader& r) override {
+		tick = r.read_i32();
         keys = r.read_u16();
         pitch = r.read_f32();
         yaw = r.read_f32();
@@ -98,24 +101,42 @@ struct NetPlayerMouseInputs final : public Packet {
 };
 inline AutoRegister<NetPlayerMouseInputs> _reg_NetPlayerMouseInput;
 
-// TODO : add delta compression
+// TODO : add delta compression & put inside of a new Snapshot packet
 struct NetPlayerMove final : public Packet {
 	static constexpr PacketType ID = PacketType::PLAYER_MOVE;
+	int32_t snapshotTick; // TODO : move to snapshot packet
+	int32_t inputRecvTick;
+
 	float positionX;
 	float positionY;
 	float positionZ;
 
+	float velocityX;
+	float velocityZ;
+
+	float verticalVelocity;
+
 	NetPlayerMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
+		w.write_i32(snapshotTick);
+		w.write_i32(inputRecvTick);
 		w.write_f32(positionX);
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
+		w.write_f32(velocityX);
+		w.write_f32(velocityZ);
+		w.write_f32(verticalVelocity);
     }
     void decode(BufferReader& r) override {
+		snapshotTick = r.read_i32();
+		inputRecvTick = r.read_i32();
 		positionX = r.read_f32();
 		positionY = r.read_f32();
 		positionZ = r.read_f32();
+		velocityX = r.read_f32();
+		velocityZ = r.read_f32();
+		verticalVelocity = r.read_f32();
     }
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;
@@ -205,6 +226,22 @@ struct NetModifiedBlockData final : public Packet {
     }
 };
 inline AutoRegister<NetModifiedBlockData> _reg_NetModifiedBlockData;
+
+//used in chat
+struct NetMessage final : public Packet {
+	static constexpr PacketType ID = PacketType::NET_MESSAGE;
+	std::string message;
+	
+	NetMessage() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+		w.write_string(message);
+    }
+    void decode(BufferReader& r) override {
+		message = r.read_string();
+    }
+};
+inline AutoRegister<NetMessage> _reg_NetServerMessage;
 
 struct NetImGui final : public Packet {
     static constexpr PacketType ID = PacketType::NET_IMGUI;

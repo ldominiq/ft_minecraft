@@ -12,7 +12,8 @@ enum class BlockType : uint8_t{
     WATER,
     BEDROCK,
     LOG,
-    LEAVES
+    LEAVES,
+	END
 };
 
 enum class BiomeType {
@@ -23,21 +24,6 @@ enum class BiomeType {
 	SWAMP,
 	OCEAN,
 	MOUNTAIN
-};
-
-struct Voxel {
-    BlockType type;
-    uint8_t skyLight; // 0-15, sunlight propagated from sky
-    uint8_t blockLight; // 0-15, emitted from torches, etc.
-};
-
-class Block {
-public:
-    explicit Block(BlockType type = BlockType::AIR);
-    BlockType getType() const;
-    bool isVisible() const;
-private:
-    BlockType type;
 };
 
 #endif
