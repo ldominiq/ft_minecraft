@@ -71,7 +71,7 @@ App::App(): VAO(0),
 			monitor(nullptr),
 			mode(nullptr),
 
-            skybox(nullptr),
+            lighting(nullptr),
             textureShader(nullptr),
             gradientShader(nullptr),
             activeShader(nullptr) {
@@ -101,12 +101,7 @@ void App::init() {
 
     glfwMakeContextCurrent(window);
     gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
-
-    // VAO for fullscreen triangle (no attributes needed)
-    glGenVertexArrays(1, &VAO);
-    glBindVertexArray(VAO);
-    glBindVertexArray(0);
-
+    
     glfwGetFramebufferSize(window, &windowedWidth, &windowedHeight);
 
 	udpClient = std::make_unique<UDPClient>("127.0.0.1");
@@ -114,67 +109,7 @@ void App::init() {
 
 	renderer = std::make_unique<Renderer>();
 
-    // Setup light cube geometry (a unit cube) for visualization of point lights
-    glGenVertexArrays(1, &lightCubeVAO);
-    glGenBuffers(1, &lightCubeVBO);
-    glBindVertexArray(lightCubeVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, lightCubeVBO);
-    static const float lightCubeVertices[] = {
-        // positions only (36 vertices -> 12 triangles)
-
-        // Front face (+Z)
-        -0.5f, -0.5f,  0.5f,
-         0.5f, -0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-        -0.5f, -0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-        -0.5f,  0.5f,  0.5f,
-
-        // Back face (-Z)
-        -0.5f, -0.5f, -0.5f,
-        -0.5f,  0.5f, -0.5f,
-         0.5f,  0.5f, -0.5f,
-        -0.5f, -0.5f, -0.5f,
-         0.5f,  0.5f, -0.5f,
-         0.5f, -0.5f, -0.5f,
-
-        // Left face (-X)
-        -0.5f, -0.5f, -0.5f,
-        -0.5f, -0.5f,  0.5f,
-        -0.5f,  0.5f,  0.5f,
-        -0.5f, -0.5f, -0.5f,
-        -0.5f,  0.5f,  0.5f,
-        -0.5f,  0.5f, -0.5f,
-
-        // Right face (+X)
-         0.5f, -0.5f, -0.5f,
-         0.5f,  0.5f,  0.5f,
-         0.5f, -0.5f,  0.5f,
-         0.5f, -0.5f, -0.5f,
-         0.5f,  0.5f, -0.5f,
-         0.5f,  0.5f,  0.5f,
-
-        // Bottom face (-Y)
-        -0.5f, -0.5f, -0.5f,
-         0.5f, -0.5f, -0.5f,
-         0.5f, -0.5f,  0.5f,
-        -0.5f, -0.5f, -0.5f,
-         0.5f, -0.5f,  0.5f,
-        -0.5f, -0.5f,  0.5f,
-
-        // Top face (+Y)
-        -0.5f,  0.5f, -0.5f,
-        -0.5f,  0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-         0.5f,  0.5f, -0.5f,
-        -0.5f,  0.5f, -0.5f
-    };
-    glBufferData(GL_ARRAY_BUFFER, sizeof(lightCubeVertices), lightCubeVertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glBindVertexArray(0);
-
+    lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
     
     glEnable(GL_DEPTH_TEST);
     
@@ -182,9 +117,6 @@ void App::init() {
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
-
-    // virus
-    //glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
     // vertex data plane
     // ===============================================================
@@ -237,9 +169,6 @@ void App::init() {
     glDrawBuffer(GL_NONE);
     glReadBuffer(GL_NONE);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-
-
     
 
     // Mouse movement event handling
@@ -412,11 +341,8 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
-    skyShader = std::make_shared<Shader>("shaders/sky.vert", "shaders/sky.frag");
-    lightCubeShader = std::make_shared<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
     simpleDepthShader = std::make_shared<Shader>("shaders/simpleDepthShader.vert", "shaders/simpleDepthShader.frag");
     debugDepthQuad = std::make_shared<Shader>("shaders/debugDepthQuad.vert", "shaders/debugDepthQuad.frag");
-    std::cout << "loadresources\n"; 
     texture = loadTexture("assets/textures/textures.png");
 
     activeShader = textureShader;
@@ -496,53 +422,11 @@ void App::render() {
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
 
+        lighting->setScreenDimensions(width, height);
+        lighting->updateSunDirection(deltaTime);
+        lighting->drawSky(view, projection, camera->Position);
 
-        // Time management for sky shader
-        if (skyTimePaused == false)
-            skyTimeOffset += deltaTime * 0.05f; // Speed of sun movement
-
-        const float timeScale = 0.1f;
-        const float t = skyTimeOffset * timeScale;
-
-        glm::vec3 sunDirLocal = glm::normalize(glm::vec3(
-            std::sin(t), // x (azimuth)
-            std::cos(t), // y (elevation)
-            0.0f));     // z
-
-        // Sun direction based on time of day
-        // Sun moves in a circle in the sky, with yaw adjustment
-        float sunYawRad = glm::radians(sunYawDeg);
-        glm::vec3 sunDir = glm::normalize(glm::vec3(
-            sunDirLocal.x * std::cos(sunYawRad) - sunDirLocal.z * std::sin(sunYawRad),
-            sunDirLocal.y,
-            sunDirLocal.x * std::sin(sunYawRad) + sunDirLocal.z * std::cos(sunYawRad)
-        ));
-
-        directionalLightDir = -sunDir;
-
-        // --- Draw sky background first ---
-        skyShader->use();
-
-        skyShader->setVec2("resolution", glm::vec2(width, height));
-        skyShader->setFloat("time", skyTimeOffset);
-        skyShader->setMat4("view", view);
-        skyShader->setMat4("projection", projection);
-        skyShader->setVec3("cameraPosWorld", camera->Position);
-        skyShader->setFloat("seaLevel", 64.0f);
-        skyShader->setFloat("exposure", skyExposure);
-        skyShader->setFloat("atmDensity", skyAtmDensity);
-        skyShader->setFloat("atmThickness", skyAtmThickness);
-        skyShader->setFloat("planetScale", planetScale);
-        skyShader->setVec3("sunDir", sunDir);
-
-        // Disable depth test and writes for background
-        glDisable(GL_DEPTH_TEST);
-        glDepthMask(GL_FALSE);
-        glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-        glBindVertexArray(0);
-        glDepthMask(GL_TRUE);
-        glEnable(GL_DEPTH_TEST);
+        
 
         // Shadow mapping
         // ====================================
@@ -583,14 +467,15 @@ void App::render() {
 
         if (doUpdate) {
             forceShadowUpdate = false;
-            cachedShadowLightDir = directionalLightDir;
+            cachedShadowLightDir = -lighting->getDirectionalLightDirection();
 
 
             // Center the shadow (orthographic) frustum around the player instead of world origin
             glm::vec3 center = camera->Position;
 
-            lightPos = center - directionalLightDir * 200.0f;
-            lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 1.0f, 0.0f));
+
+            lighting->setLightPos(center - -lighting->getDirectionalLightDirection() * 200.0f);
+            lightView = glm::lookAt(lighting->getLightPos(), center, glm::vec3(0.0f, 1.0f, 0.0f));
 
             // Ortho volume still symmetric, but now relative to player-centered lightView
             lightProjection = glm::ortho(-orthoRange, orthoRange,
@@ -632,7 +517,7 @@ void App::render() {
         textureShader->setMat4("view", view);
         // set light uniforms
         textureShader->setVec3("viewPos", camera->Position);
-        textureShader->setVec3("lightPos", lightPos);
+        textureShader->setVec3("lightPos", lighting->getLightPos());
         textureShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
         // textureShader->setInt("shadows", shadowsEnabled ? 1 : 0); // enable/disable shadows by pressing 'SPACE'
         textureShader->setFloat("shadows.MIN_BIAS", MIN_BIAS);
@@ -651,10 +536,10 @@ void App::render() {
 
         activeShader->setVec3("viewPos", camera->Position);
 
-        activeShader->setFloat("material.shininess", materialShininess);
+        activeShader->setFloat("material.shininess", lighting->getMaterialShininess());
 
         // directional light
-        if (directionalLightOn) {
+        if (lighting->isDirectionalLightOn()) {
 
             // day/night factror based on sun elevation
             float day = glm::clamp(-cachedShadowLightDir.y * 2.0f, 0.0f, 1.0f);
@@ -663,9 +548,9 @@ void App::render() {
 
             // small ambiant light at night
             const float nightAmbientMin = 0.3f;
-            glm::vec3 ambientColor = directionalAmbientColor * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
-            glm::vec3 diffuseColor = directionalDiffuseColor * day;
-            glm::vec3 specularColor = directionalSpecularColor * day;
+            glm::vec3 ambientColor = lighting->getDirectionalAmbientColor() * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
+            glm::vec3 diffuseColor = lighting->getDirectionalDiffuseColor() * day;
+            glm::vec3 specularColor = lighting->getDirectionalSpecularColor() * day;
             activeShader->setVec3("dirLight.direction", cachedShadowLightDir);
             activeShader->setVec3("dirLight.ambient", ambientColor);
             activeShader->setVec3("dirLight.diffuse", diffuseColor);
@@ -677,43 +562,43 @@ void App::render() {
         }
         // point lights
         for ( int i=0; i < 4; i++ ) {
-            if (!pointLightsOn[i]) {
+            if (!lighting->isPointLightOn(i)) {
                 activeShader->setVec3("pointLights[" + std::to_string(i) + "].ambient", glm::vec3(0.0f));
                 activeShader->setVec3("pointLights[" + std::to_string(i) + "].diffuse", glm::vec3(0.0f));
                 activeShader->setVec3("pointLights[" + std::to_string(i) + "].specular", glm::vec3(0.0f));
                 continue;
             }
-            activeShader->setVec3("pointLights[" + std::to_string(i) + "].position", pointLightPositions[i]);
-            activeShader->setVec3("pointLights[" + std::to_string(i) + "].ambient", pointLightAmbient[i]);
-            activeShader->setVec3("pointLights[" + std::to_string(i) + "].diffuse", pointLightDiffuse[i]);
-            activeShader->setVec3("pointLights[" + std::to_string(i) + "].specular", pointLightSpecular[i]);
-            activeShader->setFloat("pointLights[" + std::to_string(i) + "].constant", pointLightConstant[i]);
-            activeShader->setFloat("pointLights[" + std::to_string(i) + "].linear", pointLightLinear[i]);
-            activeShader->setFloat("pointLights[" + std::to_string(i) + "].quadratic", pointLightQuadratic[i]);
+            activeShader->setVec3("pointLights[" + std::to_string(i) + "].position", lighting->getPointLightPosition(i));
+            activeShader->setVec3("pointLights[" + std::to_string(i) + "].ambient", lighting->getPointLightAmbient(i));
+            activeShader->setVec3("pointLights[" + std::to_string(i) + "].diffuse", lighting->getPointLightDiffuse(i));
+            activeShader->setVec3("pointLights[" + std::to_string(i) + "].specular", lighting->getPointLightSpecular(i));
+            activeShader->setFloat("pointLights[" + std::to_string(i) + "].constant", lighting->getPointLightConstant(i));
+            activeShader->setFloat("pointLights[" + std::to_string(i) + "].linear", lighting->getPointLightLinear(i));
+            activeShader->setFloat("pointLights[" + std::to_string(i) + "].quadratic", lighting->getPointLightQuadratic(i));
         }
         // spotLight (flashlight)
-        if (flashlightOn) {
+        if (lighting->isSpotLightOn()) {
             activeShader->setVec3("spotLight.position", camera->Position);
             activeShader->setVec3("spotLight.direction", camera->Front);
             activeShader->setVec3("spotLight.ambient", glm::vec3(0.0f));
             activeShader->setVec3("spotLight.diffuse", glm::vec3(1.0f));
             activeShader->setVec3("spotLight.specular", glm::vec3(1.0f));
-            activeShader->setFloat("spotLight.constant", spotLightConstant);
-            activeShader->setFloat("spotLight.linear", spotLightLinear);
-            activeShader->setFloat("spotLight.quadratic", spotLightQuadratic);
-            activeShader->setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
-            activeShader->setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
+            activeShader->setFloat("spotLight.constant", lighting->getSpotLightConstant());
+            activeShader->setFloat("spotLight.linear", lighting->getSpotLightLinear());
+            activeShader->setFloat("spotLight.quadratic", lighting->getSpotLightQuadratic());
+            activeShader->setFloat("spotLight.cutOff", glm::cos(glm::radians(lighting->getFlashlightCutoff())));
+            activeShader->setFloat("spotLight.outerCutOff", glm::cos(glm::radians(lighting->getFlashlightOuterCutoff())));
         } else {
             activeShader->setVec3("spotLight.position", camera->Position);
             activeShader->setVec3("spotLight.direction", camera->Front);
             activeShader->setVec3("spotLight.ambient", glm::vec3(0.0f));
             activeShader->setVec3("spotLight.diffuse", glm::vec3(0.0f));
             activeShader->setVec3("spotLight.specular", glm::vec3(0.0f));
-            activeShader->setFloat("spotLight.constant", spotLightConstant);
-            activeShader->setFloat("spotLight.linear", spotLightLinear);
-            activeShader->setFloat("spotLight.quadratic", spotLightQuadratic);
-            activeShader->setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
-            activeShader->setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
+            activeShader->setFloat("spotLight.constant", lighting->getSpotLightConstant());
+            activeShader->setFloat("spotLight.linear", lighting->getSpotLightLinear());
+            activeShader->setFloat("spotLight.quadratic", lighting->getSpotLightQuadratic());
+            activeShader->setFloat("spotLight.cutOff", glm::cos(glm::radians(lighting->getFlashlightCutoff())));
+            activeShader->setFloat("spotLight.outerCutOff", glm::cos(glm::radians(lighting->getFlashlightOuterCutoff())));
         }
 
 
@@ -721,16 +606,7 @@ void App::render() {
         activeShader->setMat4("view", view);
         activeShader->setMat4("projection", projection);
 
-        // also draw the lamp object(s)
-        lightCubeShader->use();
-        lightCubeShader->setMat4("projection", projection);
-        lightCubeShader->setMat4("view", view);
-
         
-        // also draw the lamp object(s)
-        lightCubeShader->use();
-        lightCubeShader->setMat4("projection", projection);
-        lightCubeShader->setMat4("view", view);
 
         activeShader->use();
         glActiveTexture(GL_TEXTURE0);
@@ -738,11 +614,6 @@ void App::render() {
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, depthMap);
         renderer->render(activeShader);
-
-        // floor
-        // activeShader->setMat4("model", glm::mat4(1.0f));
-        // glBindVertexArray(planeVAO);
-        // glDrawArrays(GL_TRIANGLES, 0, 6);
 
 
         debugDepthQuad->use();
@@ -752,50 +623,12 @@ void App::render() {
         glBindTexture(GL_TEXTURE_2D, depthMap);
 
 
-        // Render Depth map to quad for visual debugging
-        // if (quadVAO == 0)
-        // {
-        //     float quadVertices[] = {
-        //         // positions        // texture Coords
-        //         -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-        //         -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-        //         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-        //         1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-        //     };
-        //     // setup plane VAO
-        //     glGenVertexArrays(1, &quadVAO);
-        //     glGenBuffers(1, &quadVBO);
-        //     glBindVertexArray(quadVAO);
-        //     glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-        //     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-        //     glEnableVertexAttribArray(0);
-        //     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-        //     glEnableVertexAttribArray(1);
-        //     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-        // }
-        // glBindVertexArray(quadVAO);
-        // glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        // glBindVertexArray(0);
-
         DisplayFramebufferTexture(depthMap);
 
         // ====================================
 
         
-        lightCubeShader->use();
-        // we now draw as many light bulbs as we have point lights.
-        glBindVertexArray(lightCubeVAO);
-        for (unsigned int i = 0; i < 4; i++)
-        {
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, pointLightPositions[i]);
-            model = glm::scale(model, glm::vec3(0.2f)); // Make it a smaller cube
-            // Set per-cube color here so each light uses its own color
-            glm::vec3 cubeCol = pointLightsOn[i] ? pointLightDiffuse[i] : glm::vec3(0.0f);
-            lightCubeShader->setVec3("cubeColor", cubeCol);
-            lightCubeShader->setMat4("model", model);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-        }
+        lighting->drawLightCubes(view, projection);
 
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
@@ -806,7 +639,7 @@ void App::render() {
 
 
 
-        // skybox->draw(camera->getViewMatrix(), projection);
+        // Lighting->draw(camera->getViewMatrix(), projection);
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
         glBindVertexArray(0);
 
@@ -1085,62 +918,62 @@ void App::debugWindow() {
                                 }
                                 ImGui::EndTabItem();
                             }
-                            if (ImGui::BeginTabItem("Directional Light"))
-                            {
-                                ImGui::Text("Directional Light Controls");
-                                ImGui::Checkbox("Light On", &directionalLightOn);
-                                ImGui::SliderFloat3("Light Direction", &directionalLightDir.x, -1.0f, 1.0f);
-                                ImGui::ColorEdit3("Light Colour", &directionalDiffuseColor.x);
-                                ImGui::ColorEdit3("Ambient Colour", &directionalAmbientColor.x);
-                                ImGui::ColorEdit3("Specular Colour", &directionalSpecularColor.x);
-                                ImGui::SliderFloat("Material Shininess", &materialShininess, 1.0f, 256.0f);
-                                ImGui::EndTabItem();
-                            }
-                            if (ImGui::BeginTabItem("Point Lights"))
-                            {
-                                ImGui::Text("Point Light Controls");
-                                for (int i = 0; i < pointLightsOn.size(); ++i)
-                                {
-                                    bool enabled = pointLightsOn[i];
-                                    if (ImGui::Checkbox(("Light " + std::to_string(i)).c_str(), &enabled)) {
-                                        pointLightsOn[i] = enabled;
-                                    }
-                                    ImGui::SliderFloat3(("Light " + std::to_string(i) + " Position").c_str(), &pointLightPositions[i].x, 0.0f, 90.0f);
-                                    ImGui::SliderFloat(("Light " + std::to_string(i) + " Constant").c_str(), &pointLightConstant[i], 0.0f, 2.0f);
-                                    ImGui::SliderFloat(("Light " + std::to_string(i) + " Linear").c_str(), &pointLightLinear[i], 0.0f, 0.2f);
-                                    ImGui::SliderFloat(("Light " + std::to_string(i) + " Quadratic").c_str(), &pointLightQuadratic[i], 0.0f, 0.1f);
-                                    ImGui::ColorEdit3(("Light " + std::to_string(i) + " Ambient").c_str(), &pointLightAmbient[i].x);
-                                    ImGui::ColorEdit3(("Light " + std::to_string(i) + " Diffuse").c_str(), &pointLightDiffuse[i].x);
-                                    ImGui::ColorEdit3(("Light " + std::to_string(i) + " Specular").c_str(), &pointLightSpecular[i].x);
-                                }
-                                ImGui::EndTabItem();
-                            }
-                            if (ImGui::BeginTabItem("Flashlight"))
-                            {
-                                ImGui::Text("Flashlight Controls");
-                                ImGui::Checkbox("Flashlight On", &flashlightOn);
-                                // ImGui::ColorEdit3("Flashlight Colour", &spotlightColor.x);
-                                // ImGui::SliderFloat("Flashlight Intensity", &spotlightIntensity, 0.0f, 5.0f);
-                                ImGui::SliderFloat("Flashlight Cutoff", &flashlightCutoff, 1.0f, 90.0f);
-                                ImGui::SliderFloat("Flashlight Outer Cutoff", &flashlightOuterCutoff, 1.0f, 90.0f);
-                                ImGui::EndTabItem();
-                            }
+                            // if (ImGui::BeginTabItem("Directional Light"))
+                            // {
+                            //     ImGui::Text("Directional Light Controls");
+                            //     ImGui::Checkbox("Light On", &directionalLightOn);
+                            //     ImGui::SliderFloat3("Light Direction", &directionalLightDir.x, -1.0f, 1.0f);
+                            //     ImGui::ColorEdit3("Light Colour", &directionalDiffuseColor.x);
+                            //     ImGui::ColorEdit3("Ambient Colour", &directionalAmbientColor.x);
+                            //     ImGui::ColorEdit3("Specular Colour", &directionalSpecularColor.x);
+                            //     ImGui::SliderFloat("Material Shininess", &materialShininess, 1.0f, 256.0f);
+                            //     ImGui::EndTabItem();
+                            // }
+                            // if (ImGui::BeginTabItem("Point Lights"))
+                            // {
+                            //     ImGui::Text("Point Light Controls");
+                            //     for (int i = 0; i < pointLightsOn.size(); ++i)
+                            //     {
+                            //         bool enabled = pointLightsOn[i];
+                            //         if (ImGui::Checkbox(("Light " + std::to_string(i)).c_str(), &enabled)) {
+                            //             pointLightsOn[i] = enabled;
+                            //         }
+                            //         ImGui::SliderFloat3(("Light " + std::to_string(i) + " Position").c_str(), &pointLightPositions[i].x, 0.0f, 90.0f);
+                            //         ImGui::SliderFloat(("Light " + std::to_string(i) + " Constant").c_str(), &pointLightConstant[i], 0.0f, 2.0f);
+                            //         ImGui::SliderFloat(("Light " + std::to_string(i) + " Linear").c_str(), &pointLightLinear[i], 0.0f, 0.2f);
+                            //         ImGui::SliderFloat(("Light " + std::to_string(i) + " Quadratic").c_str(), &pointLightQuadratic[i], 0.0f, 0.1f);
+                            //         ImGui::ColorEdit3(("Light " + std::to_string(i) + " Ambient").c_str(), &pointLightAmbient[i].x);
+                            //         ImGui::ColorEdit3(("Light " + std::to_string(i) + " Diffuse").c_str(), &pointLightDiffuse[i].x);
+                            //         ImGui::ColorEdit3(("Light " + std::to_string(i) + " Specular").c_str(), &pointLightSpecular[i].x);
+                            //     }
+                            //     ImGui::EndTabItem();
+                            // }
+                            // if (ImGui::BeginTabItem("Flashlight"))
+                            // {
+                            //     ImGui::Text("Flashlight Controls");
+                            //     ImGui::Checkbox("Flashlight On", &flashlightOn);
+                            //     // ImGui::ColorEdit3("Flashlight Colour", &spotlightColor.x);
+                            //     // ImGui::SliderFloat("Flashlight Intensity", &spotlightIntensity, 0.0f, 5.0f);
+                            //     ImGui::SliderFloat("Flashlight Cutoff", &flashlightCutoff, 1.0f, 90.0f);
+                            //     ImGui::SliderFloat("Flashlight Outer Cutoff", &flashlightOuterCutoff, 1.0f, 90.0f);
+                            //     ImGui::EndTabItem();
+                            // }
                         }
                         ImGui::EndTabBar();
                     }
 
                     ImGui::Separator();
-                    if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
-                        ImGui::Text("Sky Controls");
-                        ImGui::Checkbox("Pause Sun Animation", &skyTimePaused);
-                        ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f");
-                        ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f");
-                        ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f");
-                        ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f");
-                        ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f");
-                        ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f");
-                        ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
-                    }
+                    // if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
+                    //     ImGui::Text("Sky Controls");
+                    //     ImGui::Checkbox("Pause Sun Animation", &skyTimePaused);
+                    //     ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f");
+                    //     ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f");
+                    //     ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f");
+                    //     ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f");
+                    //     ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f");
+                    //     ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f");
+                    //     ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
+                    // }
 
                     ImGui::EndTabItem();
                 }
@@ -1178,8 +1011,6 @@ void App::cleanup() {
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
-    glDeleteVertexArrays(1, &lightCubeVAO);
-    glDeleteBuffers(1, &lightCubeVBO);
     glDeleteTextures(1, &texture);
 
 	NetDisconnect pkt;
