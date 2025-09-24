@@ -93,24 +93,7 @@ private:
     bool keyPressedRecently = false;
 
     unsigned int VAO, VBO, EBO, shaderProgram, texture;
-    unsigned int depthMapFBO, depthMap;
-    enum class ShadowQuality {
-        Low = 1024,
-        Medium = 2048,
-        High = 4096,
-        Ultra = 8192
-    };
 
-    ShadowQuality shadowQuality = ShadowQuality::High;
-    int SHADOW_WIDTH = static_cast<int>(shadowQuality);
-    int SHADOW_HEIGHT = static_cast<int>(shadowQuality);
-    unsigned int quadVAO = 0;
-    unsigned int quadVBO;
-    unsigned int planeVAO;
-
-    // Default shadow map near/far plane values
-    float shadowNearPlane = 0.1f;
-    float shadowFarPlane = 400.0f;
 
     enum class DisplayMode {
         Windowed,
@@ -130,8 +113,6 @@ private:
     std::shared_ptr<Shader> gradientShader;
     
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
-    std::shared_ptr<Shader> simpleDepthShader;
-    std::shared_ptr<Shader> debugDepthQuad;
 
 	std::optional<int> seed;
 
@@ -157,26 +138,6 @@ private:
     bool useGradientShader = false;
 
     float renderDistance = 1000.0f; // Distance of the far clipping plane
-    glm::mat4 lightProjection, lightView;
-    glm::mat4 lightSpaceMatrix {1.0f};
-    glm::vec3 cachedShadowLightDir {0.0f, -1.0f, 0.0f};
-    int shadowFrameCounter = 0;
-    int shadowUpdateInterval = 4;
-
-    float shadowOrthoRange = 200.0f;
-    bool forceShadowUpdate = false;
-    bool shadowsEnabled = true;
-
-    int PCF_RADIUS = 1;          // 1 = 3x3;
-    float MIN_BIAS = 0.00035;
-    float MAX_BIAS = 0.0010;
-    float shadowContactOffset = 0.00050f;
-
-    int   POISSON_SAMPLES = 16;
-    float POISSON_RADIUS_BASE = 1.75;   // start radius in texels
-    float POISSON_RADIUS_SCALE = 1.0;   // extra scale factor
-       
-   
 
     // Variables for smoothing the FPS shown in the debug UI.  We maintain a
     // moving average of frame times over a sample buffer to reduce jitter.

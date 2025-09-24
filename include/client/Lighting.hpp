@@ -2,15 +2,14 @@
 #define LIGHTING_HPP
 
 #include <glm/gtc/type_ptr.hpp>
-#include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <vector>
-#include <string>
 #include <memory>
 
 #include "Shader.hpp"
+#include "Renderer.hpp"
 
-static const float lightCubeVertices[] = {
+static constexpr float lightCubeVertices[] = {
     // positions only (36 vertices -> 12 triangles)
 
     // Front face (+Z)
@@ -62,6 +61,17 @@ static const float lightCubeVertices[] = {
     -0.5f,  0.5f, -0.5f
 };
 
+static constexpr float planeVertices[] = {
+    // positions            // normals         // texcoords
+    25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  25.0f,  0.0f,
+   -25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,   0.0f,  0.0f,
+   -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 25.0f,
+
+    25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  25.0f,  0.0f,
+   -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 25.0f,
+    25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,  25.0f, 25.0f
+};
+
 class Lighting {
 public:
     explicit Lighting(int screenWidth, int screenHeight);
@@ -72,32 +82,44 @@ public:
 
     void updateSunDirection(float deltaTime);
 
+    void uploadLightingUniforms(const Shader& shader, const glm::vec3& cameraPos, glm::vec3 cameraFront) const;
+
+    void updateShadowMap(const Renderer& renderer, const glm::vec3& cameraPos);
+    void refreshShadowResolution();
+
+    void initShadowGroundPlane();
+    void initShadowResources();
+    void drawShadowMapPreview();
+    void initShadowDebugShader() const;
+
+    void drawTexturePreviewQuad(unsigned int textureID);
+
     // GETTERS
-    inline glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; }; 
-    inline glm::vec3 getLightPos() const { return lightPos; };
-    inline bool isDirectionalLightOn() const { return directionalLightOn; };
-    inline glm::vec3 getDirectionalAmbientColor() const { return directionalAmbientColor; };
-    inline glm::vec3 getDirectionalDiffuseColor() const { return directionalDiffuseColor; };
-    inline glm::vec3 getDirectionalSpecularColor() const { return directionalSpecularColor; };
-    inline float getMaterialShininess() const { return materialShininess; };
-    inline bool isFlashlightOn() const { return flashlightOn; };
-    inline float getFlashlightConstant() const { return spotLightConstant; };
-    inline float getFlashlightLinear() const { return spotLightLinear; };
-    inline float getFlashlightQuadratic() const { return spotLightQuadratic; };
-    inline float getFlashlightCutoff() const { return flashlightCutoff; };
-    inline float getFlashlightOuterCutoff() const { return flashlightOuterCutoff; };
-    inline float getSkyExposure() const { return skyExposure; };
-    inline float getSkyAtmDensity() const { return skyAtmDensity; };
-    inline float getSkyAtmThickness() const { return skyAtmThickness; };
-    inline float getPlanetScale() const { return planetScale; };
-    inline bool isSkyTimePaused() const { return skyTimePaused; };
-    inline float getSkyTimeOffset() const { return skyTimeOffset; };
-    inline bool isSpotLightOn() const { return flashlightOn; };
-    inline float getSpotLightConstant() const { return spotLightConstant; };
-    inline float getSpotLightLinear() const { return spotLightLinear; };
-    inline float getSpotLightQuadratic() const { return spotLightQuadratic; };
-    inline float getFlashlightCutoffAngle() const { return flashlightCutoff; };
-    inline float getFlashlightOuterCutoffAngle() const { return flashlightOuterCutoff; };
+    glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; };
+    glm::vec3 getLightPos() const { return lightPos; };
+    bool isDirectionalLightOn() const { return directionalLightOn; };
+    glm::vec3 getDirectionalAmbientColor() const { return directionalAmbientColor; };
+    glm::vec3 getDirectionalDiffuseColor() const { return directionalDiffuseColor; };
+    glm::vec3 getDirectionalSpecularColor() const { return directionalSpecularColor; };
+    float getMaterialShininess() const { return materialShininess; };
+    bool isFlashlightOn() const { return flashlightOn; };
+    float getFlashlightConstant() const { return spotLightConstant; };
+    float getFlashlightLinear() const { return spotLightLinear; };
+    float getFlashlightQuadratic() const { return spotLightQuadratic; };
+    float getFlashlightCutoff() const { return flashlightCutoff; };
+    float getFlashlightOuterCutoff() const { return flashlightOuterCutoff; };
+    float getSkyExposure() const { return skyExposure; };
+    float getSkyAtmDensity() const { return skyAtmDensity; };
+    float getSkyAtmThickness() const { return skyAtmThickness; };
+    float getPlanetScale() const { return planetScale; };
+    bool isSkyTimePaused() const { return skyTimePaused; };
+    float getSkyTimeOffset() const { return skyTimeOffset; };
+    bool isSpotLightOn() const { return flashlightOn; };
+    float getSpotLightConstant() const { return spotLightConstant; };
+    float getSpotLightLinear() const { return spotLightLinear; };
+    float getSpotLightQuadratic() const { return spotLightQuadratic; };
+    float getFlashlightCutoffAngle() const { return flashlightCutoff; };
+    float getFlashlightOuterCutoffAngle() const { return flashlightOuterCutoff; };
     
     bool isPointLightOn(int index) const;
     glm::vec3 getPointLightPosition(int index) const;
@@ -110,15 +132,18 @@ public:
     
 
     // SETTERS
-    inline void setLightPos(const glm::vec3& pos) { lightPos = pos; };
-    inline void setScreenDimensions(int screenWidth, int screenHeight) { width = screenWidth; height = screenHeight; };
+     void setLightPos(const glm::vec3& pos) { lightPos = pos; };
+     void setViewportSize(const int screenWidth, const int screenHeight) { width = screenWidth; height = screenHeight; };
 
 private:
-    unsigned int skyVAO;
-    unsigned int skyVBO;
-    unsigned int lightCubeVAO, lightCubeVBO;
+    unsigned int skyVAO{};
+    unsigned int skyVBO{};
+    unsigned int lightCubeVAO{}, lightCubeVBO{};
+    unsigned int planeVAO{};
     std::unique_ptr<Shader> skyShader;
     std::unique_ptr<Shader> lightCubeShader;
+    std::shared_ptr<Shader> shadowDepthShader;
+    std::shared_ptr<Shader> shadowDebugShader;
 
     // Screen dimensions for sky shader
     int width;
@@ -135,7 +160,6 @@ private:
 
     // --- Sky controls ---
     // Control sun position over time
-    float deltaTime;
     float skyTimeOffset = 0.0f;
     bool skyTimePaused = false;
     // Simple tone-mapping exposure for sky shader
@@ -180,6 +204,42 @@ private:
     float flashlightOuterCutoff = 17.5f; // spotlight outer cutoff angle in degrees
 
     float materialShininess = 32.0f; // material shininess factor
+
+    // SHADOWS
+    glm::mat4 lightProjection, lightView;
+    glm::mat4 lightSpaceMatrix {1.0f};
+    glm::vec3 cachedShadowLightDir {0.0f, -1.0f, 0.0f};
+    int shadowFrameCounter = 0;
+    int shadowUpdateInterval = 4;
+
+    float shadowOrthoRange = 200.0f;
+    bool forceShadowUpdate = false;
+    bool shadowsEnabled = true;
+
+    unsigned int depthMapFBO, depthMap;
+    enum class ShadowQuality {
+        Low = 1024,
+        Medium = 2048,
+        High = 4096,
+        Ultra = 8192
+    };
+
+    ShadowQuality shadowQuality = ShadowQuality::High;
+    int SHADOW_WIDTH = static_cast<int>(shadowQuality);
+    int SHADOW_HEIGHT = static_cast<int>(shadowQuality);
+
+    // Default shadow map near/far plane values
+    float shadowNearPlane = 0.1f;
+    float shadowFarPlane = 400.0f;
+
+    int PCF_RADIUS = 1;          // 1 = 3x3;
+    float MIN_BIAS = 0.00035;
+    float MAX_BIAS = 0.0010;
+    float shadowContactOffset = 0.00050f;
+
+    int   POISSON_SAMPLES = 16;
+    float POISSON_RADIUS_BASE = 1.75;   // start radius in texels
+    float POISSON_RADIUS_SCALE = 1.0;   // extra scale factor
 };
 
 #endif
