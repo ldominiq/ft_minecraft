@@ -339,7 +339,8 @@ void App::render() {
 
         renderer->render(activeShader);
 
-    	lighting->drawShadowMapPreview();
+		if (lighting->isShadowMapEnabled())
+    		lighting->drawShadowMapPreview();
 
         lighting->drawLightCubes(view, projection);
 
@@ -567,6 +568,9 @@ void App::debugWindow() {
                     	bool shadowsEnabled = lighting->isShadowsEnabled();
                         if (ImGui::Checkbox("Shadows", &shadowsEnabled))
 							lighting->setShadowsEnabled(shadowsEnabled);
+                    	bool shadowMapEnabled = lighting->isShadowMapEnabled();
+                    	if (ImGui::Checkbox("Shadow Map (DEBUG)", &shadowMapEnabled))
+                    		lighting->setShowShadowMapEnabled(shadowMapEnabled);
 
                         // Changing this will update the far clipping plane.
                         ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);

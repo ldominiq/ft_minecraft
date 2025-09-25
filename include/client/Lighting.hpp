@@ -107,6 +107,7 @@ public:
     bool isSkyTimePaused() const { return skyTimePaused; };
     bool isSpotLightOn() const { return flashlightOn; };
     bool isShadowsEnabled() const { return shadowsEnabled; };
+    bool isShadowMapEnabled() const { return showShadowMap; };
 
     glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; };
     glm::vec3 getLightPos() const { return lightPos; };
@@ -148,6 +149,15 @@ public:
     
 
     // SETTERS
+    void setShowShadowMapEnabled(bool enabled) { showShadowMap = enabled; };
+    void setShadowMapResolution(int width, int height) { SHADOW_WIDTH = width; SHADOW_HEIGHT = height; };
+    void setShadowMapNearPlane(float nearPlane) { shadowNearPlane = nearPlane; };
+    void setShadowMapFarPlane(float farPlane) { shadowFarPlane = farPlane; };
+    void setShadowMapBias(float bias) { MIN_BIAS = bias; MAX_BIAS = bias; };
+    void setShadowMapContactOffset(float offset) { shadowContactOffset = offset; };
+    void setShadowMapPCFRadius(int radius) { PCF_RADIUS = radius; };
+    void setShadowMapPCF(bool enabled) { forceShadowUpdate = enabled; };
+    void setShadowMapDebug(bool enabled) { shadowsEnabled = enabled; };
     void setLightPos(const glm::vec3& pos) { lightPos = pos; };
     void setViewportSize(const int screenWidth, const int screenHeight) { width = screenWidth; height = screenHeight; };
 
@@ -196,6 +206,8 @@ private:
     GLuint planeVAO{};
     GLuint debugVAO{};
     GLuint debugVBO{};
+    GLuint depthMapFBO{}, depthMap{};
+
     std::unique_ptr<Shader> skyShader;
     std::unique_ptr<Shader> lightCubeShader;
     std::shared_ptr<Shader> shadowDepthShader;
@@ -273,9 +285,6 @@ private:
     bool shadowsEnabled = true;
     float shadowOrthoRange = 200.0f;
 
-    unsigned int depthMapFBO{}, depthMap{};
-
-
     ShadowQuality shadowQuality = ShadowQuality::High;
     int SHADOW_WIDTH = static_cast<int>(shadowQuality);
     int SHADOW_HEIGHT = static_cast<int>(shadowQuality);
@@ -292,6 +301,9 @@ private:
     int   POISSON_SAMPLES = 16;
     float POISSON_RADIUS_BASE = 1.75;   // start radius in texels
     float POISSON_RADIUS_SCALE = 1.0;   // extra scale factor
+
+    // DEBUG
+    bool showShadowMap = false;
 };
 
 #endif
