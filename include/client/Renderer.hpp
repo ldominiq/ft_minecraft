@@ -14,7 +14,7 @@
 #include "Shader.hpp"
 #include "ChunkRenderer.hpp"
 #include "Protocol.hpp"
-
+#include "CommonWorld.hpp"
 
 // previously half of World
 
@@ -23,19 +23,17 @@ struct chunkData {
 	uint32_t uncompressedSize;
 	std::vector<uint8_t> chunkBuffer;
 	// size_t receivedBytes = 0;
-};
+}; 
 
-class Renderer {
+class Renderer final : public CommonWorld<ChunkRenderer> {
 
 	int loadRadius = 16;
 	int unloadRadius = loadRadius + 16;
 
-	std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks; // TODO : maybe change it for a vector for better perfs
 	std::unordered_map<ChunkPos, chunkData> chunksData; //building chunk
 	std::unordered_set<ChunkPos> chunksToBuild; // chunk to build and upload mesh
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
 
-	std::shared_ptr<ChunkRenderer> getChunk(int chunkX, int chunkZ);
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
 
 	public:
@@ -56,19 +54,11 @@ class Renderer {
 		void prepareChunk(const NetChunkHeader& pkt);
 		void receiveChunk(const NetChunkData& pkt);
 
-		bool isBlockVisibleWorld(glm::ivec3 globalCoords);
-		void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ);
-		// BlockType getBlockWorld(glm::ivec3 globalCoords);
-		void setBlockWorld(glm::vec3 &targetCoords, BlockType type);
+		void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 
 		inline size_t getVisibleChunkCount() const {
 			return renderedChunks.size();
 		}
-
-		inline size_t getTotalChunkInMemoryCount() const {
-			return chunks.size();
-		}
-
 };
 
 #endif

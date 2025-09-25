@@ -120,6 +120,12 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::NET_MESSAGE: {
+			auto& p = static_cast<NetMessage&>(*pkt);
+			receiveMessage(p);
+			break;
+		}
+
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
@@ -177,6 +183,11 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	world->processPlayerMouseInputs(*player, pkt);
 }
 
+void Server::receiveMessage(NetMessage &pkt)
+{
+	messages.push_back(pkt.message);
+}
+
 void Server::sendAll()
 {
 	world->amountOfChunksSentThisTick = 0;
@@ -187,10 +198,12 @@ void Server::sendAll()
 		sendPositionDeltas(p); //not deltas for now
 		sendImGuiData(p);
 		sendNewlyUpdatedBlocks(p);
-		//send player position
+		sendMessage(p);
 		//hit/dmg ..
 	}
 	world->updatedBlocks.clear();
+	if (!messages.empty())
+		messages.pop_front();
 }
 
 void Server::sendImGuiData(CPlayerInfo &player) {
@@ -280,6 +293,14 @@ void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)
 
 		sendPacketTo(pkt, player.addr);
 	}
+}
+
+void Server::sendMessage(CPlayerInfo &player)
+{
+	if (messages.empty()) return ;
+	NetMessage pkt;
+	pkt.message = messages.front();
+	sendPacketTo(pkt, player.addr);
 }
 
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {

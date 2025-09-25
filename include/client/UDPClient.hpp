@@ -34,12 +34,10 @@ public:
 	void setCallback(std::function<void(const PacketPtr&)> cb) { onPacket = std::move(cb); }
 
 	void sendPacket(const Packet &pkt);
-    void sendMessage(const char* message);
 	void sendConnect();
 
 	void receivePacket();
 	void dispatch(const uint8_t* data, size_t n);
-	void receiveAccept();
 };
 
 #endif

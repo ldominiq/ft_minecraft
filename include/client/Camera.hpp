@@ -43,8 +43,6 @@ public:
 	inline const float getPitch() const { return Pitch; }
 	inline const uint8_t getLoadRadius() const { return loadRadius; }
 
-	
-	bool getTargetedBlock(std::unique_ptr<Renderer> &Renderer, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100); //faceNormal is currently unused
 	void drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 };
 

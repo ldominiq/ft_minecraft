@@ -45,7 +45,7 @@ void App::init() {
 
     glfwMakeContextCurrent(window);
     gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
-    
+
     glfwGetFramebufferSize(window, &windowedWidth, &windowedHeight);
 
 	udpClient = std::make_unique<UDPClient>("127.0.0.1");
@@ -54,7 +54,9 @@ void App::init() {
 	renderer = std::make_unique<Renderer>();
 
     lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
-    
+
+    chat = std::make_unique<Chat>(windowedWidth, windowedHeight);
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -64,7 +66,7 @@ void App::init() {
 
     lighting->initShadowGroundPlane();
 	lighting->initShadowResources();
-    
+
 
     // Mouse movement event handling
     camera = std::make_unique<Camera>(glm::vec3(0.0f, 128.0f, 0.0f));
@@ -94,10 +96,22 @@ void App::init() {
     });
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
+	glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int codepoint) {
+		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
+		if (!app) return;
+		if (app->menuManager != app->chat) return ;
+
+		app->chat->addCharToCurrMsg(static_cast<char>(codepoint));
+	});
 
 	glfwSetKeyCallback(window, [](GLFWwindow* w, int key, int scancode, int action, int mods) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		if (!app->menuManager && app->controlsArray[CLOSE_WINDOW] == key && action == GLFW_PRESS) glfwSetWindowShouldClose(w, true);
+
+		app->processInputsMenus(key, action);
+		if (app->menuManager) return ;
 
 		auto mapKeyToBit = [](int key) -> uint16_t {
 			switch (key) {
@@ -168,7 +182,6 @@ void App::init() {
     ImGui_ImplOpenGL3_Init("#version 460");
 
 	loadControlsFromFile();
-
 }
 
 void App::setUdpClientPacketCallback()
@@ -209,19 +222,18 @@ void App::setUdpClientPacketCallback()
 				break;
 			}
 
+			case PacketType::NET_MESSAGE: {
+				auto& p = static_cast<NetMessage&>(*pkt);
+				chat->updateChatlog(p.message);
+				break;
+			}
+
             case PacketType::NET_IMGUI: {
                 auto& p = static_cast<NetImGui&>(*pkt);
                 // handle ImGui data (e.g., update UI state)
                 currentBiome = p.currentBiome;
                 break;
             }
-
-			// case PacketType::UPDATE_WORLD: {
-			//     auto& p = static_cast<UpdateWorld&>(*pkt);
-			//     // handle movement/world updates
-			//     applyWorldUpdate(p);
-			//     break;
-			// }
 
 			default:
 				std::cout << "Unknown packet type: " << static_cast<int>(pkt->type) << "\n";
@@ -252,18 +264,16 @@ void App::loadResources() {
 }
 
 void App::render() {
-    
 
     while (!glfwWindowShouldClose(window)) {
 
-		//sending/receiving packets and stuff
+		// sending/receiving packets and stuff
 		udpClient->receivePacket();
-		if (keyPressedRecently)
+		if (keyPressedRecently && !menuManager)
 		{
 			NetPlayerInputs inputs = buildPlayerInputsPacket();
 			udpClient->sendPacket(inputs);
 		}
-
 
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
@@ -300,8 +310,9 @@ void App::render() {
         ImGui::NewFrame();
 
         updateWindowTitle();
-		
-        processInput();
+
+		if (menuManager != chat)
+        	processInput();
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -333,7 +344,7 @@ void App::render() {
         renderer->render(activeShader);
 
     	lighting->drawShadowMapPreview();
-        
+
         lighting->drawLightCubes(view, projection);
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
@@ -354,6 +365,11 @@ void App::render() {
         // non-interactive the draw data will be present, so draw it always.
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+		// render menus last
+		if (menuManager) {
+			menuManager->render();
+		}
 
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
         glfwSwapBuffers(window);
@@ -389,7 +405,7 @@ void App::debugWindow() {
                 ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
             }
             ImGui::Begin("Debug Window", nullptr, flags);
-            
+
             ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
             if (ImGui::BeginTabBar("Tabs", tab_bar_flags))
             {
@@ -421,19 +437,19 @@ void App::debugWindow() {
                     ImGui::Text("BIOME: %s", biomeName);
 
 
-                    // Additional metrics: number of loaded chunks and approximate memory usage
-                    if (renderer) {
-                        const size_t visibleChunks = renderer->getVisibleChunkCount();
-                        const size_t totalChunks   = renderer->getTotalChunkInMemoryCount();
-                        ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
-                    }
-                    // Display memory usage in megabytes.  We call a static helper to
-                    // obtain the current resident set size (RSS).
-                    {
-                        const size_t memBytes = getCurrentRSS();
-                        const double memMB = memBytes / (1024.0 * 1024.0);
-                        ImGui::Text("Memory: %.2f MB", memMB);
-                    }
+            // Additional metrics: number of loaded chunks and approximate memory usage
+            if (renderer) {
+                const size_t visibleChunks = renderer->getVisibleChunkCount();
+                const size_t totalChunks   = renderer->getTotalChunkCount();
+                ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
+            }
+            // Display memory usage in megabytes.  We call a static helper to
+            // obtain the current resident set size (RSS).
+            {
+                const size_t memBytes = getCurrentRSS();
+                const double memMB = memBytes / (1024.0 * 1024.0);
+                ImGui::Text("Memory: %.2f MB", memMB);
+            }
 
 
                     ImGui::Separator();
@@ -495,7 +511,7 @@ void App::debugWindow() {
                     //         ImGui::SliderFloat("---scaling factor", &params.humidityScalingFactor, 1.0f, 5.0f);
                     //     }
                     // }
-                    
+
 
                     ImGui::Separator();
 
@@ -558,7 +574,7 @@ void App::debugWindow() {
 
                         // Changing this will update the far clipping plane.
                         ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
-                        
+
                         // Adjust the chunk loading radius.  Casting to int and back avoids
                         // accidental type issues in the setter.  We clamp the range to a
                         // reasonable minimum and maximum.
@@ -568,7 +584,7 @@ void App::debugWindow() {
                                 renderer->setLoadRadius(radius);
                             }
                         }
-    
+
                         // Adjust the maximum number of chunks being generated at the same time.
                         // Lower values produce smoother frame rates but slower world loading.
                         // if (world) {
@@ -739,8 +755,8 @@ void App::debugWindow() {
                 }
                 ImGui::EndTabBar();
             }
-            
-            
+
+
             ImGui::End();
             if (!uiInteractive) {
                 ImGui::PopStyleVar();
@@ -858,6 +874,36 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	return inputs;
 }
 
+// TODO: make menus managed by a pointer or container later
+void App::processInputsMenus(int key, int action) {
+
+	// HANDLE EVENTS WHEN CHAT OPEN
+	if (menuManager == chat)
+	{
+		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+		{
+			if (chat->currMsg.empty()) return ; //will this return be safe in the future?
+			NetMessage pkt;
+			pkt.message = chat->currMsg;
+			udpClient->sendPacket(pkt);
+			chat->currMsg.clear();
+		}
+		if (key == GLFW_KEY_BACKSPACE && action == GLFW_PRESS)
+			chat->removeCharFromCurrMsg();
+		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			menuManager.reset();
+	}
+
+	// CHOSE MENU (order here IS important. must do after handling events)
+	if (!menuManager)
+	{
+		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+			menuManager = chat;
+	}
+}
+
+
+// TODO : put actions in corresponding functions for clarity
 void App::processInput() {
     static bool f11Held = false;
     static bool f1Held  = false;
@@ -867,7 +913,7 @@ void App::processInput() {
     static bool leftMousePressedLastFrame = false;
 	static bool rightMousePressedLastFrame = false;
 
-	//reload chunk. F3 + A;
+	//reload chunk. F3 + A; TODO : also add the neighbours logic. Otherwise some "walls" could be rendered
 	if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS &&
     	glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
 		for (auto &chunkPtr : renderer->getRenderedChunks())
@@ -959,8 +1005,8 @@ void App::processInput() {
     }
 
     // Exit (ESC).  Allow closing window even when ImGui doesn’t want keyboard.
-    if (glfwGetKey(window, controlsArray[CLOSE_WINDOW]) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
+    // if (glfwGetKey(window, controlsArray[CLOSE_WINDOW]) == GLFW_PRESS)
+    //     glfwSetWindowShouldClose(window, true);
 }
 
 
@@ -981,7 +1027,6 @@ void App::updateWindowTitle() {
         lastTitleUpdate = currentFrame;
         frameCount = 0;
     }
-
 }
 
 void App::toggleDisplayMode() {

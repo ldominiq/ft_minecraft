@@ -59,11 +59,18 @@ FetchContent_MakeAvailable(imgui)
 FetchContent_Declare(
   zstd
   GIT_REPOSITORY https://github.com/facebook/zstd.git
-  GIT_TAG v1.5.6   # stable release instead of dev
+  GIT_TAG v1.5.6   # stable release
   SOURCE_SUBDIR build/cmake
 )
 FetchContent_MakeAvailable(zstd)
 
+# Freetype
+FetchContent_Declare(
+  freetype
+  GIT_REPOSITORY https://github.com/freetype/freetype.git
+  GIT_TAG VER-2-13-3  # latest stable release
+)
+FetchContent_MakeAvailable(freetype)
 
 if(ASAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g -O1")
@@ -76,6 +83,10 @@ endif()
 
 if(EXISTS ${CMAKE_SOURCE_DIR}/shaders)
   file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${CMAKE_BINARY_DIR})
+endif()
+
+if(EXISTS ${CMAKE_SOURCE_DIR}/fonts)
+  file(COPY ${CMAKE_SOURCE_DIR}/fonts DESTINATION ${CMAKE_BINARY_DIR})
 endif()
 
 # ---------------------------------------------------------------------------
@@ -166,6 +177,8 @@ target_include_directories(ft_minecraft PRIVATE
     ${stb_SOURCE_DIR}
 	${zstd_SOURCE_DIR}/lib
     ${imgui_SOURCE_DIR}
+	${CMAKE_SOURCE_DIR}/include/client/menus
+	${freetype_SOURCE_DIR}/include
 )
 
 find_package(OpenGL REQUIRED)
@@ -173,7 +186,7 @@ find_package(OpenGL REQUIRED)
 target_link_libraries(ft_minecraft PRIVATE
     glfw glad imgui OpenGL::GL
     dl pthread X11 Xi Xrandr Xxf86vm z
-	libzstd
+	libzstd freetype
 )
 add_dependencies(ft_minecraft update_shaders copy_shaders)
 

@@ -42,12 +42,6 @@ void UDPClient::sendPacket(const Packet &pkt) {
 	sendto(sockfd, bytes.data(), bytes.size(), 0, (sockaddr*)&servaddr, sizeof(servaddr));
 }
 
-//TODO remove! This is for testing
-void UDPClient::sendMessage(const char* message) {
-    sendto(sockfd, message, strlen(message), MSG_CONFIRM,
-           (const struct sockaddr*)&servaddr, sizeof(servaddr));
-}
-
 void UDPClient::sendConnect() {
 
 	NetConnect connectPkt;

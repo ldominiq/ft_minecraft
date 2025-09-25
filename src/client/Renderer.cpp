@@ -1,36 +1,38 @@
 #include "Renderer.hpp"
 
-void Renderer::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ)
-{
-	x = (globalX % Chunk::WIDTH + Chunk::WIDTH) % Chunk::WIDTH;
-	z = (globalZ % Chunk::DEPTH + Chunk::DEPTH) % Chunk::DEPTH;
-	y = globalY;
+void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk) {
 
-	chunkX = globalX / Chunk::WIDTH;
-	if (globalX < 0 && globalX % Chunk::WIDTH != 0)
-		chunkX--;
+    const int dirX[] = { 0, 0, 1, -1 };
+    const int dirZ[] = { 1, -1, 0, 0 };
+    const int opp[]  = { SOUTH, NORTH, WEST, EAST };
 
-	chunkZ = globalZ / Chunk::DEPTH;
-	if (globalZ < 0 && globalZ % Chunk::DEPTH != 0)
-		chunkZ--;
+    for (int dir = 0; dir < 4; ++dir) {
+        int nx = chunkX + dirX[dir];
+        int nz = chunkZ + dirZ[dir];
+
+        std::shared_ptr<ChunkRenderer> neighbor = getChunk(nx, nz);
+
+        chunk->setAdjacentChunks(static_cast<Direction>(dir), neighbor);
+		if (chunk->hasAllAdjacentChunkLoaded())
+			chunksToBuild.insert(Chunk::toKey(chunkX, chunkZ));
+        if (neighbor) {
+            neighbor->setAdjacentChunks(opp[dir], chunk);
+
+            if (neighbor->hasAllAdjacentChunkLoaded()) {
+				chunksToBuild.insert(Chunk::toKey(nx, nz));
+            }
+        }
+    }
 }
 
-// BlockType Renderer::getBlockWorld(glm::ivec3 globalCoords)
-// {
-// 	int x, y, z;
-// 	int chunkX, chunkZ;
-// 	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
-
-// 	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-// 	if (it == chunks.end()) {
-// 		return BlockType::AIR;
-// 	}
-// 	std::shared_ptr<Chunk> currChunk = it->second;
-// 	return currChunk->getBlock(x, y, z);
-// }
-
-void Renderer::setBlockWorld(glm::vec3 &targetCoords, BlockType type)
+void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
+    // Offset the global coordinates in the direction of the face normal
+    glm::ivec3 targetCoords = globalCoords;
+    if (faceNormal.has_value()) {
+        targetCoords += *faceNormal;
+    }
+
     int x, y, z;
     int chunkX, chunkZ;
     globalCoordsToLocalCoords(x, y, z, 
@@ -80,54 +82,6 @@ void Renderer::setBlockWorld(glm::vec3 &targetCoords, BlockType type)
 	}
 }
 
-bool Renderer::isBlockVisibleWorld(glm::ivec3 globalCoords)
-{
-	int x, y, z;
-	int chunkX, chunkZ;
-	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
-
-	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-	if (it == chunks.end()) {
-		return false;
-	}
-
-	std::shared_ptr<ChunkRenderer> currChunk = it->second;
-	return currChunk->isBlockVisible(glm::vec3(x, y ,z));
-}
-
-std::shared_ptr<ChunkRenderer> Renderer::getChunk(int chunkX, int chunkZ) {
-    const ChunkPos key = Chunk::toKey(chunkX, chunkZ);
-    auto it = chunks.find(key);
-    if (it == chunks.end())
-        return nullptr;
-    return it->second;
-}
-
-void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk) {
-
-    const int dirX[] = { 0, 0, 1, -1 };
-    const int dirZ[] = { 1, -1, 0, 0 };
-    const int opp[]  = { SOUTH, NORTH, WEST, EAST };
-
-    for (int dir = 0; dir < 4; ++dir) {
-        int nx = chunkX + dirX[dir];
-        int nz = chunkZ + dirZ[dir];
-
-        std::shared_ptr<ChunkRenderer> neighbor = getChunk(nx, nz);
-
-        chunk->setAdjacentChunks(static_cast<Direction>(dir), neighbor);
-		if (chunk->hasAllAdjacentChunkLoaded())
-			chunksToBuild.insert(Chunk::toKey(chunkX, chunkZ));
-        if (neighbor) {
-            neighbor->setAdjacentChunks(opp[dir], chunk);
-
-            if (neighbor->hasAllAdjacentChunkLoaded()) {
-				chunksToBuild.insert(Chunk::toKey(nx, nz));
-            }
-        }
-    }
-}
-
 std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
 {
 	return renderedChunks;
@@ -136,7 +90,7 @@ std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
 void Renderer::updateChunk(const NetModifiedBlockData &pkt)
 {
 	glm::vec3 targetCoords = glm::vec3(pkt.x, pkt.y, pkt.z);
-	setBlockWorld(targetCoords, static_cast<BlockType>(pkt.blockType));
+	setBlockWorld(targetCoords, std::nullopt, static_cast<BlockType>(pkt.blockType));
 }
 
 void Renderer::buildChunks()

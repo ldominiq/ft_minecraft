@@ -15,6 +15,7 @@
 #include "stb_image.h"
 #include "Renderer.hpp"
 #include "UDPClient.hpp"
+#include "Chat.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -76,6 +77,8 @@ private:
     void setUdpClientPacketCallback();
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
+	void processInputsMenus(int key, int action);
+	static void char_callback(GLFWwindow* window, unsigned int codepoint) ;
     void updateWindowTitle();
     void toggleDisplayMode();
 
@@ -113,6 +116,10 @@ private:
     std::shared_ptr<Shader> gradientShader;
     
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
+
+	//menus
+	std::shared_ptr<Menu> menuManager;
+	std::shared_ptr<Chat> chat;
 
 	std::optional<int> seed;
 
