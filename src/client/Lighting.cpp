@@ -27,10 +27,15 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
 
 Lighting::~Lighting() {
     glDeleteBuffers(1, &lightCubeVBO);
+    glDeleteBuffers(1, &debugVBO);
 
     glDeleteVertexArrays(1, &lightCubeVAO);
     glDeleteVertexArrays(1, &skyVAO);
     glDeleteVertexArrays(1, &planeVAO);
+    glDeleteVertexArrays(1, &debugVAO);
+
+    glDeleteTextures(1, &depthMap);
+    glDeleteFramebuffers(1, &depthMapFBO);
 }
 
 void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos) const {
@@ -212,9 +217,6 @@ void Lighting::updateShadowMap(const Renderer& renderer, const glm::vec3& camera
         lastShadowQuality = shadowQuality;
         refreshShadowResolution();
 
-        glDeleteTextures(1, &depthMap);
-        glDeleteFramebuffers(1, &depthMapFBO);
-
         glGenFramebuffers(1, &depthMapFBO);
         glGenTextures(1, &depthMap);
         glBindTexture(GL_TEXTURE_2D, depthMap);
@@ -327,13 +329,12 @@ void Lighting::initShadowResources() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void Lighting::drawShadowMapPreview() const {
+void Lighting::drawShadowMapPreview() {
     shadowDebugShader->use();
     shadowDebugShader->setFloat("near_plane", shadowNearPlane);
     shadowDebugShader->setFloat("far_plane", shadowFarPlane);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, depthMap);
-
 
     drawTexturePreviewQuad(depthMap);
 }
@@ -347,10 +348,6 @@ void Lighting::initShadowDebugShader() const {
 void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
     if (textureID == 0) return;
 
-    static std::shared_ptr<Shader> debugFBOShader;
-    static GLuint vao = 0;
-    static GLuint vbo = 0;
-
     if (!debugFBOShader) {
         debugFBOShader = std::make_shared<Shader>(
             "shaders/debugRenderer.vert",
@@ -360,7 +357,7 @@ void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
         debugFBOShader->setInt("texCoords", 0);
     }
 
-    if (vao == 0) {
+    if (debugVAO == 0) {
         // NDC quad in top-right corner
         constexpr float verts[] = {
             //  pos.xy    uv
@@ -372,10 +369,10 @@ void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
             0.90f, 0.40f, 0.0f, 0.0f,
             0.90f, 0.90f, 0.0f, 1.0f
        };
-        glGenVertexArrays(1, &vao);
-        glGenBuffers(1, &vbo);
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glGenVertexArrays(1, &debugVAO);
+        glGenBuffers(1, &debugVBO);
+        glBindVertexArray(debugVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, debugVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0); // position
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), static_cast<void *>(nullptr));
@@ -391,7 +388,7 @@ void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
     glBindTexture(GL_TEXTURE_2D, textureID);
 
     debugFBOShader->use();
-    glBindVertexArray(vao);
+    glBindVertexArray(debugVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 

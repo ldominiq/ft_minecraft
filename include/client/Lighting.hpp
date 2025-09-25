@@ -89,10 +89,10 @@ public:
 
     void initShadowGroundPlane();
     void initShadowResources();
-    void drawShadowMapPreview() const;
+    void drawShadowMapPreview();
     void initShadowDebugShader() const;
 
-    static void drawTexturePreviewQuad(unsigned int textureID);
+    void drawTexturePreviewQuad(unsigned int textureID);
 
     enum class ShadowQuality {
         Low = 1024,
@@ -191,13 +191,16 @@ public:
     void setPointLightQuadratic(int index, float quadratic);
 
 private:
-    unsigned int skyVAO{};
-    unsigned int lightCubeVAO{}, lightCubeVBO{};
-    unsigned int planeVAO{};
+    GLuint skyVAO{};
+    GLuint lightCubeVAO{}, lightCubeVBO{};
+    GLuint planeVAO{};
+    GLuint debugVAO{};
+    GLuint debugVBO{};
     std::unique_ptr<Shader> skyShader;
     std::unique_ptr<Shader> lightCubeShader;
     std::shared_ptr<Shader> shadowDepthShader;
     std::shared_ptr<Shader> shadowDebugShader;
+    std::shared_ptr<Shader> debugFBOShader;
 
     // Screen dimensions for sky shader
     int width;

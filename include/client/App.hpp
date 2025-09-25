@@ -78,7 +78,6 @@ private:
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
 	void processInputsMenus(int key, int action);
-	static void char_callback(GLFWwindow* window, unsigned int codepoint) ;
     void updateWindowTitle();
     void toggleDisplayMode();
 
@@ -88,15 +87,12 @@ private:
 
     void debugWindow();
 
-    void updateShadowResolution();
-
     GLFWwindow* window;
 
 	uint16_t inputMask = 0;
     bool keyPressedRecently = false;
 
-    unsigned int VAO, VBO, EBO, shaderProgram, texture;
-
+    unsigned int texture;
 
     enum class DisplayMode {
         Windowed,

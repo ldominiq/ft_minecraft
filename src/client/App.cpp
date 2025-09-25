@@ -4,11 +4,7 @@
 
 #include "App.hpp"
 
-App::App(): VAO(0),
-			VBO(0),
-			EBO(0),
-
-			shaderProgram(0),
+App::App():
 			texture(0),
 
 			camera(nullptr),
@@ -777,9 +773,6 @@ void App::cleanup() {
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &EBO);
     glDeleteTextures(1, &texture);
 
 	NetDisconnect pkt;
