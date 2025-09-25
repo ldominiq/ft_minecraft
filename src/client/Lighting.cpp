@@ -1,6 +1,6 @@
 #include "Lighting.hpp"
 
-Lighting::Lighting(int screenWidth, int screenHeight) : width(screenWidth), height(screenHeight) {
+Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screenWidth), height(screenHeight) {
     // VAO for fullscreen triangle (no attributes needed)
     glGenVertexArrays(1, &skyVAO);
     glBindVertexArray(skyVAO);
@@ -8,8 +8,8 @@ Lighting::Lighting(int screenWidth, int screenHeight) : width(screenWidth), heig
 
     skyShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
     lightCubeShader = std::make_unique<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
-    simpleDepthShader = std::make_shared<Shader>("shaders/shadowDepthShader.vert", "shaders/shadowDepthShader.frag");
-    debugDepthQuad = std::make_shared<Shader>("shaders/shadowDebugShader.vert", "shaders/shadowDebugShader.frag");
+    shadowDepthShader = std::make_shared<Shader>("shaders/shadowDepthShader.vert", "shaders/shadowDepthShader.frag");
+    shadowDebugShader = std::make_shared<Shader>("shaders/shadowDebugShader.vert", "shaders/shadowDebugShader.frag");
 
 
     // Light cube setup
@@ -26,9 +26,11 @@ Lighting::Lighting(int screenWidth, int screenHeight) : width(screenWidth), heig
 }
 
 Lighting::~Lighting() {
-    glDeleteVertexArrays(1, &skyVAO);
-    glDeleteVertexArrays(1, &lightCubeVAO);
     glDeleteBuffers(1, &lightCubeVBO);
+
+    glDeleteVertexArrays(1, &lightCubeVAO);
+    glDeleteVertexArrays(1, &skyVAO);
+    glDeleteVertexArrays(1, &planeVAO);
 }
 
 void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos) const {
@@ -221,7 +223,7 @@ void Lighting::updateShadowMap(const Renderer& renderer, const glm::vec3& camera
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-        float borderColor[] = {1.0f,1.0f,1.0f,1.0f};
+        constexpr float borderColor[] = {1.0f,1.0f,1.0f,1.0f};
         glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
         glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
@@ -250,8 +252,8 @@ void Lighting::updateShadowMap(const Renderer& renderer, const glm::vec3& camera
         lightSpaceMatrix = lightProjection * lightView;
 
         // render scene from light's point of view
-        simpleDepthShader->use();
-        simpleDepthShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        shadowDepthShader->use();
+        shadowDepthShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
         glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
         glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
@@ -259,10 +261,10 @@ void Lighting::updateShadowMap(const Renderer& renderer, const glm::vec3& camera
 
         glCullFace(GL_FRONT); // required so shadows don't bug through mountains
 
-        renderer.render(simpleDepthShader);
+        renderer.render(shadowDepthShader);
         // floor
         constexpr auto model = glm::mat4(1.0f);
-        simpleDepthShader->setMat4("model", model);
+        shadowDepthShader->setMat4("model", model);
         glBindVertexArray(planeVAO);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -325,10 +327,10 @@ void Lighting::initShadowResources() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void Lighting::drawShadowMapPreview() {
-    debugDepthQuad->use();
-    debugDepthQuad->setFloat("near_plane", shadowNearPlane);
-    debugDepthQuad->setFloat("far_plane", shadowFarPlane);
+void Lighting::drawShadowMapPreview() const {
+    shadowDebugShader->use();
+    shadowDebugShader->setFloat("near_plane", shadowNearPlane);
+    shadowDebugShader->setFloat("far_plane", shadowFarPlane);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, depthMap);
 
@@ -337,12 +339,12 @@ void Lighting::drawShadowMapPreview() {
 }
 
 void Lighting::initShadowDebugShader() const {
-    debugDepthQuad->use();
-    debugDepthQuad->setInt("depthMap", 0);
+    shadowDebugShader->use();
+    shadowDebugShader->setInt("depthMap", 0);
 }
 
 // Draws a small textured quad (preview of an FBO texture) in the top-right corner.
-void Lighting::drawTexturePreviewQuad(unsigned int textureID) {
+void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
     if (textureID == 0) return;
 
     static std::shared_ptr<Shader> debugFBOShader;
@@ -360,7 +362,7 @@ void Lighting::drawTexturePreviewQuad(unsigned int textureID) {
 
     if (vao == 0) {
         // NDC quad in top-right corner
-        float verts[] = {
+        constexpr float verts[] = {
             //  pos.xy    uv
             0.40f, 0.90f, 1.0f, 1.0f,
             0.40f, 0.40f, 1.0f, 0.0f,
@@ -376,13 +378,13 @@ void Lighting::drawTexturePreviewQuad(unsigned int textureID) {
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0); // position
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), static_cast<void *>(nullptr));
         glEnableVertexAttribArray(1); // uv
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void *>(2 * sizeof(float)));
         glBindVertexArray(0);
     }
 
-    GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
     if (depthEnabled) glDisable(GL_DEPTH_TEST);
 
     glActiveTexture(GL_TEXTURE0);
@@ -396,37 +398,78 @@ void Lighting::drawTexturePreviewQuad(unsigned int textureID) {
     if (depthEnabled) glEnable(GL_DEPTH_TEST);
 }
 
+// Setters
+void Lighting::setPointLightEnabled(const int index, const bool enabled) {
+    if (index < 0 || index >= 3) return;
+    pointLightsOn[index] = enabled;
+}
+
+void Lighting::setPointLightPosition(int index, const glm::vec3 &pos) {
+    if (index < 0 || index >= 3) return;
+    pointLightPositions[index] = pos;
+}
+
+void Lighting::setPointLightAmbient(int index, const glm::vec3& color) {
+    if (index < 0 || index >= 3) return;
+    pointLightAmbient[index] = color;
+}
+
+void Lighting::setPointLightDiffuse(int index, const glm::vec3 &color) {
+    if (index < 0 || index >= 3) return;
+    pointLightDiffuse[index] = color;
+}
+
+void Lighting::setPointLightSpecular(int index, const glm::vec3 &color) {
+    if (index < 0 || index >= 3) return;
+    pointLightSpecular[index] = color;
+}
+
+void Lighting::setPointLightConstant(int index, const float constant) {
+    if (index < 0 || index >= 3) return;
+    pointLightConstant[index] = constant;
+}
+
+void Lighting::setPointLightLinear(int index, const float linear) {
+    if (index < 0 || index >= 3) return;
+    pointLightLinear[index] = linear;
+}
+
+void Lighting::setPointLightQuadratic(int index, const float quadratic) {
+    if (index < 0 || index >= 3) return;
+    pointLightQuadratic[index] = quadratic;
+}
+
 
 // Getters
-bool Lighting::isPointLightOn(int index) const { 
+bool Lighting::isPointLightOn(const int index) const {
     if (index < 0 || index >= 3) return false;
     return pointLightsOn[index];
 };
-glm::vec3 Lighting::getPointLightPosition(int index) const { 
+glm::vec3 Lighting::getPointLightPosition(const int index) const {
     if (index < 0 || index >= 3) return glm::vec3(0.0f);
     return pointLightPositions[index]; 
 };
-glm::vec3 Lighting::getPointLightAmbient(int index) const { 
+glm::vec3 Lighting::getPointLightAmbient(const int index) const {
     if (index < 0 || index >= 3) return glm::vec3(0.0f);
     return pointLightAmbient[index]; 
 };
-glm::vec3 Lighting::getPointLightDiffuse(int index) const { 
+glm::vec3 Lighting::getPointLightDiffuse(const int index) const {
     if (index < 0 || index >= 3) return glm::vec3(0.0f);
     return pointLightDiffuse[index]; 
 };
-glm::vec3 Lighting::getPointLightSpecular(int index) const { 
+glm::vec3 Lighting::getPointLightSpecular(const int index) const {
     if (index < 0 || index >= 3) return glm::vec3(0.0f);
     return pointLightSpecular[index]; 
 };
-float Lighting::getPointLightConstant(int index) const { 
+float Lighting::getPointLightConstant(const int index) const {
     if (index < 0 || index >= 3) return 1.0f;
     return pointLightConstant[index]; 
 };
-float Lighting::getPointLightLinear(int index) const { 
+float Lighting::getPointLightLinear(const int index) const {
     if (index < 0 || index >= 3) return 0.0f;
     return pointLightLinear[index]; 
 };
-float Lighting::getPointLightQuadratic(int index) const { 
+float Lighting::getPointLightQuadratic(const int index) const {
     if (index < 0 || index >= 3) return 0.0f;
     return pointLightQuadratic[index]; 
 };

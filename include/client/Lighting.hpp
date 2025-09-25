@@ -89,38 +89,54 @@ public:
 
     void initShadowGroundPlane();
     void initShadowResources();
-    void drawShadowMapPreview();
+    void drawShadowMapPreview() const;
     void initShadowDebugShader() const;
 
-    void drawTexturePreviewQuad(unsigned int textureID);
+    static void drawTexturePreviewQuad(unsigned int textureID);
+
+    enum class ShadowQuality {
+        Low = 1024,
+        Medium = 2048,
+        High = 4096,
+        Ultra = 8192
+    };
 
     // GETTERS
+    bool isDirectionalLightOn() const { return directionalLightOn; };
+    bool isFlashlightOn() const { return flashlightOn; };
+    bool isSkyTimePaused() const { return skyTimePaused; };
+    bool isSpotLightOn() const { return flashlightOn; };
+    bool isShadowsEnabled() const { return shadowsEnabled; };
+
     glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; };
     glm::vec3 getLightPos() const { return lightPos; };
-    bool isDirectionalLightOn() const { return directionalLightOn; };
     glm::vec3 getDirectionalAmbientColor() const { return directionalAmbientColor; };
     glm::vec3 getDirectionalDiffuseColor() const { return directionalDiffuseColor; };
     glm::vec3 getDirectionalSpecularColor() const { return directionalSpecularColor; };
+
+    int getShadowUpdateInterval() const { return shadowUpdateInterval; };
+    int getShadowFrameCounter() const { return shadowFrameCounter; };
+    ShadowQuality getShadowQuality() const { return shadowQuality; };
+    float getShadowOrthoRange() const { return shadowOrthoRange; };
+    float getShadowNearPlane() const { return shadowNearPlane; };
+    float getShadowFarPlane() const { return shadowFarPlane; };
     float getMaterialShininess() const { return materialShininess; };
-    bool isFlashlightOn() const { return flashlightOn; };
-    float getFlashlightConstant() const { return spotLightConstant; };
-    float getFlashlightLinear() const { return spotLightLinear; };
-    float getFlashlightQuadratic() const { return spotLightQuadratic; };
-    float getFlashlightCutoff() const { return flashlightCutoff; };
-    float getFlashlightOuterCutoff() const { return flashlightOuterCutoff; };
+
     float getSkyExposure() const { return skyExposure; };
     float getSkyAtmDensity() const { return skyAtmDensity; };
     float getSkyAtmThickness() const { return skyAtmThickness; };
-    float getPlanetScale() const { return planetScale; };
-    bool isSkyTimePaused() const { return skyTimePaused; };
     float getSkyTimeOffset() const { return skyTimeOffset; };
-    bool isSpotLightOn() const { return flashlightOn; };
+    float getPlanetScale() const { return planetScale; };
+    float getSunYawDeg() const { return sunYawDeg; };
+
     float getSpotLightConstant() const { return spotLightConstant; };
     float getSpotLightLinear() const { return spotLightLinear; };
     float getSpotLightQuadratic() const { return spotLightQuadratic; };
     float getFlashlightCutoffAngle() const { return flashlightCutoff; };
     float getFlashlightOuterCutoffAngle() const { return flashlightOuterCutoff; };
-    
+
+    size_t getNumPointLights() const { return pointLightsOn.size(); };
+
     bool isPointLightOn(int index) const;
     glm::vec3 getPointLightPosition(int index) const;
     glm::vec3 getPointLightAmbient(int index) const;
@@ -132,12 +148,50 @@ public:
     
 
     // SETTERS
-     void setLightPos(const glm::vec3& pos) { lightPos = pos; };
-     void setViewportSize(const int screenWidth, const int screenHeight) { width = screenWidth; height = screenHeight; };
+    void setLightPos(const glm::vec3& pos) { lightPos = pos; };
+    void setViewportSize(const int screenWidth, const int screenHeight) { width = screenWidth; height = screenHeight; };
+
+    void setShadowsEnabled(const bool enabled) { shadowsEnabled = enabled; };
+    void setShadowQuality(const ShadowQuality quality) { shadowQuality = quality; };
+    void setShadowUpdateInterval(const int interval) { shadowUpdateInterval = interval; };
+    void setShadowOrthoRange(const float range) { shadowOrthoRange = range; };
+    void setShadowNearPlane(const float nearPlane) { shadowNearPlane = nearPlane; };
+    void setShadowFarPlane(const float farPlane) { shadowFarPlane = farPlane; };
+
+    void setMaterialShininess(const float shininess) { materialShininess = shininess; };
+
+    void setSpotLightOn(const bool enabled) { flashlightOn = enabled; };
+    void setSpotLightConstant(const float constant) { spotLightConstant = constant; };
+    void setSpotLightLinear(const float linear) { spotLightLinear = linear; };
+    void setSpotLightQuadratic(const float quadratic) { spotLightQuadratic = quadratic; };
+    void setFlashlightCutoffAngle(const float cutoff) { flashlightCutoff = cutoff; };
+    void setFlashlightOuterCutoffAngle(const float outerCutoff) { flashlightOuterCutoff = outerCutoff; };
+
+    void setDirectionalLightEnabled(const bool enabled) { directionalLightOn = enabled; };
+    void setDirectionalLightDirection(const glm::vec3& dir) { directionalLightDir = dir; };
+    void setDirectionalAmbientColor(const glm::vec3& color) { directionalAmbientColor = color; };
+    void setDirectionalDiffuseColor(const glm::vec3& color) { directionalDiffuseColor = color; };
+    void setDirectionalSpecularColor(const glm::vec3& color) { directionalSpecularColor = color; };
+
+    void setSkyExposure(const float exposure) { skyExposure = exposure; };
+    void setSkyAtmDensity(const float density) { skyAtmDensity = density; };
+    void setSkyAtmThickness(const float thickness) { skyAtmThickness = thickness; };
+    void setSkyTimeOffset(const float offset) { skyTimeOffset = offset; };
+    void setSkyTimePaused(const bool paused) { skyTimePaused = paused; };
+    void setSunYawDeg(const float yawDeg) { sunYawDeg = yawDeg; };
+    void setPlanetScale(const float scale) { planetScale = scale; };
+
+    void setPointLightEnabled(int index, bool enabled);
+    void setPointLightPosition(int index, const glm::vec3& pos);
+    void setPointLightAmbient(int index, const glm::vec3& color);
+    void setPointLightDiffuse(int index, const glm::vec3& color);
+    void setPointLightSpecular(int index, const glm::vec3& color);
+    void setPointLightConstant(int index, float constant);
+    void setPointLightLinear(int index, float linear);
+    void setPointLightQuadratic(int index, float quadratic);
 
 private:
     unsigned int skyVAO{};
-    unsigned int skyVBO{};
     unsigned int lightCubeVAO{}, lightCubeVBO{};
     unsigned int planeVAO{};
     std::unique_ptr<Shader> skyShader;
@@ -206,23 +260,18 @@ private:
     float materialShininess = 32.0f; // material shininess factor
 
     // SHADOWS
-    glm::mat4 lightProjection, lightView;
+    glm::mat4 lightProjection{}, lightView{};
     glm::mat4 lightSpaceMatrix {1.0f};
     glm::vec3 cachedShadowLightDir {0.0f, -1.0f, 0.0f};
     int shadowFrameCounter = 0;
     int shadowUpdateInterval = 4;
 
-    float shadowOrthoRange = 200.0f;
     bool forceShadowUpdate = false;
     bool shadowsEnabled = true;
+    float shadowOrthoRange = 200.0f;
 
-    unsigned int depthMapFBO, depthMap;
-    enum class ShadowQuality {
-        Low = 1024,
-        Medium = 2048,
-        High = 4096,
-        Ultra = 8192
-    };
+    unsigned int depthMapFBO{}, depthMap{};
+
 
     ShadowQuality shadowQuality = ShadowQuality::High;
     int SHADOW_WIDTH = static_cast<int>(shadowQuality);

@@ -1,7 +1,7 @@
 #version 460 core
 
 /*
-Accr=rate Atmospherical Scattering from GPUgems 2
+Accurate Atmospherical Scattering from GPUgems 2
 The two most common forms of scattering in the atmosphere are Rayleigh scattering and Mie scattering.
 
 Rayleigh scattering is caused by small molecules in the air, and it scatters light more heavily at the shorter wavelengths

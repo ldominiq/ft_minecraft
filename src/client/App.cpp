@@ -374,7 +374,7 @@ void App::debugWindow() {
             static bool appliedDefaultFontSize = false;
             if (!appliedDefaultFontSize) {
                 style.FontSizeBase = 30.0f;
-                style._NextFrameFontSizeBase = 30.0f; // FIXME: Temporary hack until we finish remaining work.
+                style._NextFrameFontSizeBase = 30.0f;
                 appliedDefaultFontSize = true;
             }
 
@@ -552,15 +552,18 @@ void App::debugWindow() {
                             textureShader->use();
                             textureShader->setInt("blinn", useBlinnPhong);
                         }
-                        // ImGui::Checkbox("Shadows Enabled", &shadowsEnabled);
+                    	bool shadowsEnabled = lighting->isShadowsEnabled();
+                        if (ImGui::Checkbox("Shadows", &shadowsEnabled))
+							lighting->setShadowsEnabled(shadowsEnabled);
+
                         // Changing this will update the far clipping plane.
-                        // ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
+                        ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
                         
                         // Adjust the chunk loading radius.  Casting to int and back avoids
                         // accidental type issues in the setter.  We clamp the range to a
                         // reasonable minimum and maximum.
                         if (renderer) {
-                            int radius = static_cast<int>(renderer->getLoadRadius());
+                            int radius = renderer->getLoadRadius();
                             if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
                                 renderer->setLoadRadius(radius);
                             }
@@ -582,99 +585,157 @@ void App::debugWindow() {
                     if (ImGui::CollapsingHeader("Lighting")) {
                         if (ImGui::BeginTabBar("Lighting", tab_bar_flags))
                         {
-                            // if (ImGui::BeginTabItem("Shadows"))
-                            // {
-                            //     ImGui::Text("Shadow Controls");
-                            //     ImGui::Checkbox("Force Shadow Update", &forceShadowUpdate);
-                            //     ImGui::SliderInt("Shadow Update Interval (frames)", &shadowUpdateInterval, 1, 60);
-                            //     ImGui::SliderFloat("Shadow Ortho Range", &shadowOrthoRange, 20.0f, 200.0f, "%.1f");
-                            //     ImGui::SliderFloat("Shadow Near Plane", &shadowNearPlane, 0.001f, 1.0f, "%.2f");
-                            //     ImGui::SliderFloat("Shadow Far Plane", &shadowFarPlane, 50.0f, 2000.0f, "%.1f");
-                            //     // ImGui::SliderFloat("Shadow min Bias", &MIN_BIAS, 0.0f, 0.00035f, "%.5f");
-                            //     // ImGui::SliderFloat("Shadow max Bias", &MAX_BIAS, 0.0f, 0.0010f, "%.4f");
-                            //     // ImGui::SliderFloat("Shadow Contact Offset", &shadowContactOffset, 0.0f, 0.0015f, "%.5f");
-                            //     // ImGui::SliderInt("Shadow PCF Radius", &PCF_RADIUS, 1, 5);
-                            //     // ImGui::SliderInt("Shadow Poisson Samples", &POISSON_SAMPLES, 1, 64);
-                            //     // ImGui::SliderFloat("Shadow Poisson Radius Base", &POISSON_RADIUS_BASE, 0.1f, 5.0f, "%.2f");
-                            //     // ImGui::SliderFloat("Shadow Poisson Radius Scale", &POISSON_RADIUS_SCALE, 0.1f, 5.0f, "%.2f");
-                            //     ImGui::Text("Shadow Quality");
-                            //
-                            //     ShadowQuality oldQuality = shadowQuality;
-                            //     ShadowQuality newQuality = shadowQuality;
-                            //     ImGui::RadioButton("Low (1024x1024)",    (int*)&newQuality, (int)ShadowQuality::Low); ImGui::SameLine();
-                            //     ImGui::RadioButton("Medium (2048x2048)", (int*)&newQuality, (int)ShadowQuality::Medium); ImGui::SameLine();
-                            //     ImGui::RadioButton("High (4096x4096)",   (int*)&newQuality, (int)ShadowQuality::High); ImGui::SameLine();
-                            //     ImGui::RadioButton("Ultra (8192x8192)",  (int*)&newQuality, (int)ShadowQuality::Ultra);
-                            //     if (oldQuality != newQuality) {
-                            //         shadowQuality = newQuality;
-                            //     }
-                            //     ImGui::EndTabItem();
-                            // }
-                            // if (ImGui::BeginTabItem("Directional Light"))
-                            // {
-                            //     ImGui::Text("Directional Light Controls");
-                            //     ImGui::Checkbox("Light On", &directionalLightOn);
-                            //     ImGui::SliderFloat3("Light Direction", &directionalLightDir.x, -1.0f, 1.0f);
-                            //     ImGui::ColorEdit3("Light Colour", &directionalDiffuseColor.x);
-                            //     ImGui::ColorEdit3("Ambient Colour", &directionalAmbientColor.x);
-                            //     ImGui::ColorEdit3("Specular Colour", &directionalSpecularColor.x);
-                            //     ImGui::SliderFloat("Material Shininess", &materialShininess, 1.0f, 256.0f);
-                            //     ImGui::EndTabItem();
-                            // }
-                            // if (ImGui::BeginTabItem("Point Lights"))
-                            // {
-                            //     ImGui::Text("Point Light Controls");
-                            //     for (int i = 0; i < pointLightsOn.size(); ++i)
-                            //     {
-                            //         bool enabled = pointLightsOn[i];
-                            //         if (ImGui::Checkbox(("Light " + std::to_string(i)).c_str(), &enabled)) {
-                            //             pointLightsOn[i] = enabled;
-                            //         }
-                            //         ImGui::SliderFloat3(("Light " + std::to_string(i) + " Position").c_str(), &pointLightPositions[i].x, 0.0f, 90.0f);
-                            //         ImGui::SliderFloat(("Light " + std::to_string(i) + " Constant").c_str(), &pointLightConstant[i], 0.0f, 2.0f);
-                            //         ImGui::SliderFloat(("Light " + std::to_string(i) + " Linear").c_str(), &pointLightLinear[i], 0.0f, 0.2f);
-                            //         ImGui::SliderFloat(("Light " + std::to_string(i) + " Quadratic").c_str(), &pointLightQuadratic[i], 0.0f, 0.1f);
-                            //         ImGui::ColorEdit3(("Light " + std::to_string(i) + " Ambient").c_str(), &pointLightAmbient[i].x);
-                            //         ImGui::ColorEdit3(("Light " + std::to_string(i) + " Diffuse").c_str(), &pointLightDiffuse[i].x);
-                            //         ImGui::ColorEdit3(("Light " + std::to_string(i) + " Specular").c_str(), &pointLightSpecular[i].x);
-                            //     }
-                            //     ImGui::EndTabItem();
-                            // }
-                            // if (ImGui::BeginTabItem("Flashlight"))
-                            // {
-                            //     ImGui::Text("Flashlight Controls");
-                            //     ImGui::Checkbox("Flashlight On", &flashlightOn);
-                            //     // ImGui::ColorEdit3("Flashlight Colour", &spotlightColor.x);
-                            //     // ImGui::SliderFloat("Flashlight Intensity", &spotlightIntensity, 0.0f, 5.0f);
-                            //     ImGui::SliderFloat("Flashlight Cutoff", &flashlightCutoff, 1.0f, 90.0f);
-                            //     ImGui::SliderFloat("Flashlight Outer Cutoff", &flashlightOuterCutoff, 1.0f, 90.0f);
-                            //     ImGui::EndTabItem();
-                            // }
+                            if (ImGui::BeginTabItem("Shadows"))
+                            {
+								int shadowUpdateInterval = lighting->getShadowUpdateInterval();
+                            	float shadowOrthoRange = lighting->getShadowOrthoRange();
+                            	float shadowNearPlane = lighting->getShadowNearPlane();
+                            	float shadowFarPlane = lighting->getShadowFarPlane();
+                            	ImGui::Text("Shadow Controls");
+                                if (ImGui::SliderInt("Shadow Update Interval (frames)", &shadowUpdateInterval, 1, 60))
+                                	lighting->setShadowUpdateInterval(shadowUpdateInterval);
+                                if (ImGui::SliderFloat("Shadow Ortho Range", &shadowOrthoRange, 20.0f, 200.0f, "%.1f"))
+									lighting->setShadowOrthoRange(shadowOrthoRange);
+                                if (ImGui::SliderFloat("Shadow Near Plane", &shadowNearPlane, 0.001f, 1.0f, "%.2f"))
+                                	lighting->setShadowNearPlane(shadowNearPlane);
+                                if (ImGui::SliderFloat("Shadow Far Plane", &shadowFarPlane, 50.0f, 2000.0f, "%.1f"))
+                                	lighting->setShadowFarPlane(shadowFarPlane);
+                                // ImGui::SliderFloat("Shadow min Bias", &MIN_BIAS, 0.0f, 0.00035f, "%.5f");
+                                // ImGui::SliderFloat("Shadow max Bias", &MAX_BIAS, 0.0f, 0.0010f, "%.4f");
+                                // ImGui::SliderFloat("Shadow Contact Offset", &shadowContactOffset, 0.0f, 0.0015f, "%.5f");
+                                // ImGui::SliderInt("Shadow PCF Radius", &PCF_RADIUS, 1, 5);
+                                // ImGui::SliderInt("Shadow Poisson Samples", &POISSON_SAMPLES, 1, 64);
+                                // ImGui::SliderFloat("Shadow Poisson Radius Base", &POISSON_RADIUS_BASE, 0.1f, 5.0f, "%.2f");
+                                // ImGui::SliderFloat("Shadow Poisson Radius Scale", &POISSON_RADIUS_SCALE, 0.1f, 5.0f, "%.2f");
+                                ImGui::Text("Shadow Quality");
+
+                            	using SQ = Lighting::ShadowQuality;
+                            	const SQ currentQuality = lighting->getShadowQuality();
+								int qualitySelection = static_cast<int>(currentQuality);
+
+                                ImGui::RadioButton("Low (1024x1024)",    &qualitySelection, static_cast<int>(SQ::Low)); ImGui::SameLine();
+                                ImGui::RadioButton("Medium (2048x2048)", &qualitySelection, static_cast<int>(SQ::Medium)); ImGui::SameLine();
+                                ImGui::RadioButton("High (4096x4096)",   &qualitySelection, static_cast<int>(SQ::High)); ImGui::SameLine();
+                                ImGui::RadioButton("Ultra (8192x8192)",  &qualitySelection, static_cast<int>(SQ::Ultra));
+                                if (qualitySelection != static_cast<int>(currentQuality)) {
+                                    lighting->setShadowQuality(static_cast<SQ>(qualitySelection));
+                                }
+                                ImGui::EndTabItem();
+                            }
+                            if (ImGui::BeginTabItem("Directional Light"))
+                            {
+                            	bool directionalLightOn = lighting->isDirectionalLightOn();
+                            	glm::vec3 directionalLightDir = lighting->getDirectionalLightDirection();
+                            	glm::vec3 directionalDiffuseColor = lighting->getDirectionalDiffuseColor();
+                            	glm::vec3 directionalAmbientColor = lighting->getDirectionalAmbientColor();
+                            	glm::vec3 directionalSpecularColor = lighting->getDirectionalSpecularColor();
+                            	float materialShininess = lighting->getMaterialShininess();
+
+                                ImGui::Text("Directional Light Controls");
+                                if (ImGui::Checkbox("Light On", &directionalLightOn))
+                                	lighting->setDirectionalLightEnabled(directionalLightOn);
+                                if (ImGui::SliderFloat3("Light Direction", &directionalLightDir.x, -1.0f, 1.0f))
+                                	lighting->setDirectionalLightDirection(directionalLightDir);
+                                if (ImGui::ColorEdit3("Light Colour", &directionalDiffuseColor.x))
+                                	lighting->setDirectionalDiffuseColor(directionalDiffuseColor);
+                                if (ImGui::ColorEdit3("Ambient Colour", &directionalAmbientColor.x))
+                                	lighting->setDirectionalAmbientColor(directionalAmbientColor);
+                                if (ImGui::ColorEdit3("Specular Colour", &directionalSpecularColor.x))
+                                	lighting->setDirectionalSpecularColor(directionalSpecularColor);
+                                if (ImGui::SliderFloat("Material Shininess", &materialShininess, 1.0f, 256.0f))
+                                	lighting->setMaterialShininess(materialShininess);
+                                ImGui::EndTabItem();
+                            }
+                            if (ImGui::BeginTabItem("Point Lights"))
+                            {
+                                ImGui::Text("Point Light Controls");
+                                for (int i = 0; i < lighting->getNumPointLights(); ++i)
+                                {
+                                    bool enabled = lighting->isPointLightOn(i);
+                                	glm::vec3 pointLightPosition = lighting->getPointLightPosition(i);
+                                	glm::vec3 pointLightAmbient = lighting->getPointLightAmbient(i);
+                                	glm::vec3 pointLightDiffuse = lighting->getPointLightDiffuse(i);
+                                	glm::vec3 pointLightSpecular = lighting->getPointLightSpecular(i);
+                                	float pointLightConstant = lighting->getPointLightConstant(i);
+                                	float pointLightLinear = lighting->getPointLightLinear(i);
+                                	float pointLightQuadratic = lighting->getPointLightQuadratic(i);
+
+                                    if (ImGui::Checkbox(("Light " + std::to_string(i)).c_str(), &enabled))
+                                        lighting->setPointLightEnabled(i, enabled);
+                                    if (ImGui::SliderFloat3(("Light " + std::to_string(i) + " Position").c_str(), &pointLightPosition.x, 0.0f, 90.0f))
+                                    	lighting->setPointLightPosition(i, pointLightPosition);
+                                    if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Constant").c_str(), &pointLightConstant, 0.0f, 2.0f))
+                                    	lighting->setPointLightConstant(i, pointLightConstant);
+                                    if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Linear").c_str(), &pointLightLinear, 0.0f, 0.2f))
+                                    	lighting->setPointLightLinear(i, pointLightLinear);
+                                    if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Quadratic").c_str(), &pointLightQuadratic, 0.0f, 0.1f))
+                                    	lighting->setPointLightQuadratic(i, pointLightQuadratic);
+                                    if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Ambient").c_str(), &pointLightAmbient.x))
+                                    	lighting->setPointLightAmbient(i, pointLightAmbient);
+                                    if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Diffuse").c_str(), &pointLightDiffuse.x))
+                                    	lighting->setPointLightDiffuse(i, pointLightDiffuse);
+                                    if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Specular").c_str(), &pointLightSpecular.x))
+                                    	lighting->setPointLightSpecular(i, pointLightSpecular);
+                                }
+                                ImGui::EndTabItem();
+                            }
+                            if (ImGui::BeginTabItem("Flashlight"))
+                            {
+                            	bool flashlightOn = lighting->isFlashlightOn();
+                            	float flashlightCutoff = lighting->getFlashlightCutoffAngle();
+                            	float flashlightOuterCutoff = lighting->getFlashlightOuterCutoffAngle();
+
+                                ImGui::Text("Flashlight Controls");
+                                if (ImGui::Checkbox("Flashlight On", &flashlightOn))
+                                	lighting->setSpotLightOn(flashlightOn);
+                                // ImGui::ColorEdit3("Flashlight Colour", &spotlightColor.x);
+                                // ImGui::SliderFloat("Flashlight Intensity", &spotlightIntensity, 0.0f, 5.0f);
+                                if (ImGui::SliderFloat("Flashlight Cutoff", &flashlightCutoff, 1.0f, 90.0f))
+									lighting->setFlashlightCutoffAngle(flashlightCutoff);
+                                if (ImGui::SliderFloat("Flashlight Outer Cutoff", &flashlightOuterCutoff, 1.0f, 90.0f))
+                                	lighting->setFlashlightOuterCutoffAngle(flashlightOuterCutoff);
+                                ImGui::EndTabItem();
+                            }
                         }
                         ImGui::EndTabBar();
                     }
 
                     ImGui::Separator();
-                    // if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
-                    //     ImGui::Text("Sky Controls");
-                    //     ImGui::Checkbox("Pause Sun Animation", &skyTimePaused);
-                    //     ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f");
-                    //     ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f");
-                    //     ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f");
-                    //     ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f");
-                    //     ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f");
-                    //     ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f");
-                    //     ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
-                    // }
+                    if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
+                    	bool skyTimePaused = lighting->isSkyTimePaused();
+                    	float skyTimeOffset = lighting->getSkyTimeOffset();
+                    	float sunYawDeg = lighting->getSunYawDeg();
+                    	float skyExposure = lighting->getSkyExposure();
+                    	float skyAtmDensity = lighting->getSkyAtmDensity();
+                    	float skyAtmThickness = lighting->getSkyAtmThickness();
+                    	float planetScale = lighting->getPlanetScale();
+
+                        ImGui::Text("Sky Controls");
+
+                        if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
+                        	lighting->setSkyTimePaused(skyTimePaused);
+                        if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
+                        	lighting->setSkyTimeOffset(skyTimeOffset);
+                        if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
+                        	lighting->setSunYawDeg(sunYawDeg);
+                        if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
+                        	lighting->setSkyExposure(skyExposure);
+                        if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))
+                        	lighting->setSkyAtmDensity(skyAtmDensity);
+                        if (ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f"))
+                        	lighting->setSkyAtmThickness(skyAtmThickness);
+                        if (ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f"))
+                        	lighting->setPlanetScale(planetScale);
+                        ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
+                    }
 
                     ImGui::EndTabItem();
                 }
-                if (ImGui::BeginTabItem("Settings"))
-                {
-                    if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
-                        style._NextFrameFontSizeBase = style.FontSizeBase; // FIXME: Temporary hack until we finish remaining work.
-                    
-                        ImGui::EndTabItem();
+                if (ImGui::BeginTabItem("Settings")) {
+	                if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
+	                	style._NextFrameFontSizeBase = style.FontSizeBase;
+
+                	ImGui::EndTabItem();
                 }
                 ImGui::EndTabBar();
             }
