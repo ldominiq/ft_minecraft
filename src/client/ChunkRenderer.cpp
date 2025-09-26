@@ -4,12 +4,17 @@
 ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in) {}
 
 ChunkRenderer::~ChunkRenderer() {
-    if (VAO) {
-        glDeleteVertexArrays(1, &VAO);
+    if (glfwGetCurrentContext()) {
+        if (VAO) {
+            glDeleteVertexArrays(1, &VAO);
+            VAO = 0;
+        }
+        if (VBO) {
+            glDeleteBuffers(1, &VBO);
+            VBO = 0;
+        }
+    } else {
         VAO = 0;
-    }
-    if (VBO) {
-        glDeleteBuffers(1, &VBO);
         VBO = 0;
     }
 }

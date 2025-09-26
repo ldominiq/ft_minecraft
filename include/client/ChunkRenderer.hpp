@@ -4,6 +4,7 @@
 
 #include <glad/glad.h>
 #include "Chunk.hpp"
+#include "GLFW/glfw3.h"
 
 class ChunkRenderer : public Chunk {
 
