@@ -10,7 +10,7 @@
 
 #include "Camera.hpp"
 #include "ChunkRenderer.hpp"
-#include "Skybox.hpp"
+#include "Lighting.hpp"
 #include "Shader.hpp"
 #include "stb_image.h"
 #include "Renderer.hpp"
@@ -95,7 +95,7 @@ private:
 	bool mouseMovedRecently = false;
 	float lastMouseMoveTime = 0;
 
-    unsigned int VAO, VBO, EBO, shaderProgram, texture;
+    unsigned int texture;
 
     enum class DisplayMode {
         Windowed,
@@ -110,9 +110,10 @@ private:
 	std::unique_ptr<Renderer> renderer;
 	std::unique_ptr<UDPClient> udpClient;
 
-    std::unique_ptr<Skybox> skybox;
+    std::unique_ptr<Lighting> lighting;
     std::shared_ptr<Shader> textureShader;
     std::shared_ptr<Shader> gradientShader;
+    
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
 
 	//menus
@@ -144,12 +145,6 @@ private:
 
     float renderDistance = 1000.0f; // Distance of the far clipping plane
 
-    // Lighting parameters that can be tweaked via ImGui.  The direction
-    // should be normalised each frame; colours are in [0,1].
-    glm::vec3 lightDir  = glm::vec3(-0.5f, -1.0f, -0.3f);
-    glm::vec3 lightColor = glm::vec3(1.0f);
-    glm::vec3 ambientColor = glm::vec3(0.3f);
-
     // Variables for smoothing the FPS shown in the debug UI.  We maintain a
     // moving average of frame times over a sample buffer to reduce jitter.
     std::vector<float> fpsSamples;
@@ -177,6 +172,8 @@ private:
 		CONTROL_LIST
 	#undef X
 	};
+
+    
 };
 
 #endif //APP_HPP
