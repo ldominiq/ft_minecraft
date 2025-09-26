@@ -17,6 +17,7 @@ class Chat : public Menu {
 	public:
 
 		Chat(float width, float height);
+		~Chat();
 
 		std::string currMsg;
 

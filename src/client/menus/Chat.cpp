@@ -21,6 +21,16 @@ Chat::Chat(float width, float height) : Menu(width, height), textRenderer("fonts
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 }
 
+Chat::~Chat() {
+	if (glfwGetCurrentContext()) {
+		glDeleteVertexArrays(1, &VAO);
+		glDeleteBuffers(1, &VBO);
+	} else {
+		VAO = 0;
+		VBO = 0;
+	}
+}
+
 void Chat::onRender()
 {
 	drawSimpleQuad(x, y, w, h);

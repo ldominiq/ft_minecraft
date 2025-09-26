@@ -8,6 +8,19 @@ Camera::Camera(glm::vec3 position)
 	initWireframeCube();
 }
 
+Camera::~Camera() {
+	if (glfwGetCurrentContext()) {
+		glDeleteVertexArrays(1, &wireframeVAO);
+		glDeleteBuffers(1, &wireframeVBO);
+		glDeleteBuffers(1, &wireframeEBO);
+	} else {
+		wireframeVAO = 0;
+		wireframeVBO = 0;
+		wireframeEBO = 0;
+	}
+
+}
+
 glm::mat4 Camera::getViewMatrix() const {
     return glm::lookAt(Position, Position + Front, Up);
 }
