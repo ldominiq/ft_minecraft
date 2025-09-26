@@ -79,8 +79,16 @@ Typer::Typer(const std::string& fontPath, float scale) : shader("shaders/freetyp
 }
 
 Typer::~Typer() {
-    for (auto& [_, c] : Characters)
-        glDeleteTextures(1, &c.TextureID);
+    if (glfwGetCurrentContext()) {
+        for (auto& [_, c] : Characters)
+            glDeleteTextures(1, &c.TextureID);
+        glDeleteVertexArrays(1, &VAO);
+        glDeleteBuffers(1, &VBO);
+    }
+    else {
+        VAO = 0;
+        VBO = 0;
+    }
 }
 
 void Typer::setProjection(int width, int height) {

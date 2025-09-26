@@ -10,6 +10,8 @@
 #include "Protocol.hpp"
 #include "Renderer.hpp"
 #include "PlayerMovement.hpp"
+#include "GLFW/glfw3.h"
+
 
 class Camera {
 
@@ -38,6 +40,7 @@ public:
 	uint8_t loadRadius = 12; // 4 - 32
 
     explicit Camera(glm::vec3 position);
+	~Camera();
 
     glm::mat4 getViewMatrix() const;
     void processMouseMovement(float xoffset, float yoffset);

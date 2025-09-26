@@ -26,16 +26,27 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
 }
 
 Lighting::~Lighting() {
-    glDeleteBuffers(1, &lightCubeVBO);
-    glDeleteBuffers(1, &debugVBO);
+    if (glfwGetCurrentContext()) {
+        glDeleteBuffers(1, &lightCubeVBO);
+        glDeleteBuffers(1, &debugVBO);
 
-    glDeleteVertexArrays(1, &lightCubeVAO);
-    glDeleteVertexArrays(1, &skyVAO);
-    glDeleteVertexArrays(1, &planeVAO);
-    glDeleteVertexArrays(1, &debugVAO);
+        glDeleteVertexArrays(1, &lightCubeVAO);
+        glDeleteVertexArrays(1, &skyVAO);
+        glDeleteVertexArrays(1, &planeVAO);
+        glDeleteVertexArrays(1, &debugVAO);
 
-    glDeleteTextures(1, &depthMap);
-    glDeleteFramebuffers(1, &depthMapFBO);
+        glDeleteTextures(1, &depthMap);
+        glDeleteFramebuffers(1, &depthMapFBO);
+    } else {
+        lightCubeVAO = 0;
+        lightCubeVBO = 0;
+        skyVAO = 0;
+        planeVAO = 0;
+        debugVAO = 0;
+        debugVBO = 0;
+        depthMap = 0;
+        depthMapFBO = 0;
+    }
 }
 
 void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos) const {
