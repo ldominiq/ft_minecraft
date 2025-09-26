@@ -26,7 +26,7 @@ glm::mat4 Camera::getViewMatrix() const {
 void Camera::lerpToNextPosition(float time)
 {
 	glm::vec3 currentPosition;
-	if (amountOfSnapshotsReceived < 2) return ;
+	// if (amountOfSnapshotsReceived < 2) return ;
 	glm::vec3 renderPos = previousPosition + (predictedPosition - previousPosition) * time;
 
 	movement.setPosition(renderPos);
