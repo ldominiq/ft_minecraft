@@ -172,7 +172,10 @@ private:
 	#undef X
 	};
 
-    
+    // PROFILING
+
+    double measuredAverageNs;
+    double measuredAverageMs;
 };
 
 #endif //APP_HPP

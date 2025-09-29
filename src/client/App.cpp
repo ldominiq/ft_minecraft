@@ -4,6 +4,12 @@
 
 #include "App.hpp"
 
+GLuint timeQuery;
+
+GLuint64 totalQueryTimeNs = 0;
+GLuint64 numQueries = 0;
+
+
 App::App():
 			texture(0),
 
@@ -178,6 +184,8 @@ void App::init() {
     ImGui_ImplOpenGL3_Init("#version 460");
 
 	loadControlsFromFile();
+
+    glGenQueries(1, &timeQuery);
 }
 
 void App::setUdpClientPacketCallback()
@@ -323,7 +331,23 @@ void App::render() {
 
         lighting->setViewportSize(width, height);
         lighting->updateSunDirection(deltaTime);
+
+        glBeginQuery(GL_TIME_ELAPSED, timeQuery);
+        
+
         lighting->drawSky(view, projection, camera->Position);
+
+        glEndQuery(GL_TIME_ELAPSED);
+
+        GLuint64 elapsed = 0; // will be in nanoseconds
+        glGetQueryObjectui64v(timeQuery, GL_QUERY_RESULT, &elapsed);
+        numQueries++;
+        totalQueryTimeNs += elapsed;
+        
+
+        measuredAverageNs = (double)totalQueryTimeNs / (double)numQueries;
+        measuredAverageMs = measuredAverageNs * 1.0e-6;
+
 
         if (lighting->isShadowsEnabled()) {
             lighting->updateShadowMap(*renderer, camera->Position);
@@ -412,6 +436,7 @@ void App::debugWindow() {
                 {
                     // Display smoothed FPS and frame time
                     ImGui::Text("FPS: %.1f (%.3f ms)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
+                    ImGui::Text("Avg GPU Time (drawSky): %.3f ms", measuredAverageMs);
                     // Display camera coordinates
                     ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
 
