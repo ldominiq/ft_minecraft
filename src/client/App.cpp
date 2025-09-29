@@ -538,6 +538,9 @@ void App::debugWindow() {
 
                     if (ImGui::CollapsingHeader("Rendering")) {
                         ImGui::Text("Rendering Options");
+                        if (ImGui::Checkbox("V-Sync", &vsync)) {
+                            glfwSwapInterval(vsync ? 1 : 0);
+                        }
                         // Wireframe toggle
                         if (ImGui::Checkbox("Wireframe", &wireframe)) {
                             glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
