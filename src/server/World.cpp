@@ -324,22 +324,26 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 	updatePlannedChunks(player);
 	
 	for (const auto& [cx, cz] : plannedChunks) {
-		ChunkPos key = Chunk::toKey(cx, cz);
+        ChunkPos key = Chunk::toKey(cx, cz);
         std::shared_ptr<ChunkGeneration> chunk = getChunk(cx, cz);
 
         if (!chunk && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) {
-			generationFutures.push_back(std::async(std::launch::async, [=, this]() {
-                std::shared_ptr<ChunkGeneration> newChunk = std::make_shared<ChunkGeneration>(cx, cz, terrainParams);
-                return std::make_pair(key, newChunk);
+            const int cxCopy = cx;
+            const int czCopy = cz;
+            const ChunkPos keyCopy = key;
+
+            generationFutures.push_back(std::async(std::launch::async, [this,cxCopy,czCopy, keyCopy]() {
+                std::shared_ptr<ChunkGeneration> newChunk = std::make_shared<ChunkGeneration>(cxCopy, czCopy, terrainParams);
+                return std::make_pair(keyCopy, newChunk);
             }));
             amountOfConcurrentChunksBeingGenerated++;
         }
         else if (chunk && chunk->preGenerated && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) 
-		{
-			// generatingChunks.insert(key);
-			amountOfConcurrentChunksBeingGenerated++;
-			chunk->preGenerated = false;
-		}
+        {
+            // generatingChunks.insert(key);
+            amountOfConcurrentChunksBeingGenerated++;
+            chunk->preGenerated = false;
+        }
     }
 
     // Process a limited number of ready futures.  This spreads the cost of
