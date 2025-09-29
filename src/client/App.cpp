@@ -325,7 +325,9 @@ void App::render() {
         lighting->updateSunDirection(deltaTime);
         lighting->drawSky(view, projection, camera->Position);
 
-        lighting->updateShadowMap(*renderer, camera->Position);
+        if (lighting->isShadowsEnabled()) {
+            lighting->updateShadowMap(*renderer, camera->Position);
+        }
 
         // Set the uniform matrices in the shader
         activeShader->use();
