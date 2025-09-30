@@ -69,8 +69,6 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 {
 	amountOfSnapshotsReceived++;
 
-	// serverCurrTick = pkt.serverTick;
-
 	glm::vec3 position;
 	position.x = pkt.positionX;
 	position.y = pkt.positionY;
