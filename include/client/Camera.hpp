@@ -25,12 +25,15 @@ class Camera {
 	// std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks;
 
 	PlayerMovement movement;
-	int32_t currTick = 0;
-	int32_t serverCurrTick = 0;
+	// int32_t currTick = 0;
+	// int32_t serverCurrTick = 0;
 
 	int64_t amountOfSnapshotsReceived = 0;
 	glm::vec3 predictedPosition;
 	glm::vec3 previousPosition;
+
+	double serverTick = 0;
+	double prevServerTick = 0;
 
 public:
 	std::vector<NetPlayerInputs> inputsList;
@@ -52,8 +55,8 @@ public:
 	inline const float getPitch() const { return movement.pitch; }
 	inline const uint8_t getLoadRadius() const { return loadRadius; }
 	inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
-	inline void tick() {currTick++; }
-	inline int32_t getTick() const { return currTick; }
+	// inline void tick() {currTick++; }
+	// inline int32_t getTick() const { return currTick; }
 
 	inline const glm::vec3 getPosition() const { return movement.getPosition(); }
 	inline const glm::vec3 getCameraDir() const { return movement.getCameraDir(); }

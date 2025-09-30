@@ -36,7 +36,6 @@ class CPlayerInfo
 
 		inline const glm::vec3 getPosition() const { return movement->getPosition(); }
 		inline const glm::vec3 getVelocity() const { return movement->getVelocity(); }
-		inline const int32_t getTick() const { return movement->getTick(); }
 		inline const float getVerticalVelocity() const { return movement->getVerticalVelocity(); }
 
 		inline const glm::vec3 getCameraDir() const { return movement->getCameraDir(); }

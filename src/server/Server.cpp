@@ -307,8 +307,7 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 {
 	player.lastPositionSent = player.getPosition();
 	NetPlayerMove pkt;
-	pkt.snapshotTick = tick;
-	pkt.inputRecvTick = player.getTick();
+	pkt.serverTick = tick;
 
 	pkt.positionX = player.getPosition().x;
 	pkt.positionY = player.getPosition().y;

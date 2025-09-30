@@ -181,6 +181,7 @@ void App::init() {
 	loadControlsFromFile();
 }
 
+float lastTickTime;
 void App::setUdpClientPacketCallback()
 {
 	udpClient->setCallback([this](const PacketPtr& pkt) {
@@ -210,6 +211,7 @@ void App::setUdpClientPacketCallback()
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
 				camera->onSnapshot(p, *renderer);
+				lastTickTime = glfwGetTime();
 				break;
 			}
 
@@ -270,8 +272,6 @@ void App::gameTick()
 		NetPlayerInputs inputs = buildPlayerInputsPacket();
 		udpClient->sendPacket(inputs);
 	}
-	
-	camera->tick();
 }
 
 void App::render() {
@@ -295,14 +295,12 @@ void App::render() {
 			accumulator -= tickDuration;
 		}
 
-
 		const double mouseIdleThreshold = 0.2; // seconds, tweak to taste
 		if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
 			mouseMovedRecently = false;
 
-		// alpha is between 0 and 1, representing interpolation factor
-		float alpha = accumulator / tickDuration;
-		camera->lerpToNextPosition(alpha);
+		if (lastTickTime > currentFrame) lastTickTime = currentFrame;
+		camera->lerpToNextPosition(currentFrame - lastTickTime);
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -913,7 +911,6 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	inputs.pitch = camera->getPitch();
 	inputs.yaw = camera->getYaw();
 	inputs.loadRadius = camera->getLoadRadius();
-	inputs.tick = camera->getTick();
 
 	camera->inputsList.push_back(inputs);
 

@@ -23,12 +23,28 @@ glm::mat4 Camera::getViewMatrix() const {
     return glm::lookAt(getPosition(), getPosition() + movement.Front, movement.Up);
 }
 
-void Camera::lerpToNextPosition(float time)
+void Camera::lerpToNextPosition(float deltaTime)
 {
-	glm::vec3 currentPosition;
-	// if (amountOfSnapshotsReceived < 2) return ;
-	glm::vec3 renderPos = previousPosition + (predictedPosition - previousPosition) * time;
+	// m_Info.m_IntraTick = (m_Info.m_CurrentTime - PreviousTickStart) / (float)(CurrentTickStart - PreviousTickStart);
+	// float intraTick = std::chrono::duration<float>(std::chrono::steady_clock::now()).count() - 
+	// auto now = std::chrono::steady_clock::now();
+	// float currTime = std::chrono::duration<float>(now.time_since_epoch()).count();
 
+	double currTime = prevServerTick + deltaTime * 1000;
+	std::clamp(currTime, prevServerTick, serverTick);
+	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
+
+	std::cout << deltaTime << std::endl;
+	std::cout << currTime << std::endl;
+	std::cout << prevServerTick << std::endl;
+	std::cout << serverTick<< std::endl;
+	std::cout << intraTick << std::endl;
+	std::cout << std::endl;
+	if (prevServerTick == 0) return ;
+
+	// std::clamp(intraTick, 0.0f, serverTick - prevServerTick);
+	// float t = (serverTick - (prevServerTick + intraTick)) / serverTick;
+	glm::vec3 renderPos = previousPosition + (predictedPosition - previousPosition) * intraTick;
 	movement.setPosition(renderPos);
 }
 
@@ -60,7 +76,7 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 {
 	amountOfSnapshotsReceived++;
 
-	serverCurrTick = pkt.inputRecvTick;
+	// serverCurrTick = pkt.serverTick;
 
 	glm::vec3 position;
 	position.x = pkt.positionX;
@@ -79,6 +95,9 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 	// movement.setPosition(position);
 	previousPosition = predictedPosition;
 	predictedPosition = position;
+
+	prevServerTick = serverTick;
+	serverTick = pkt.serverTick * MS_TICK_RATE;
 
 	predictNTicks(world);
 }

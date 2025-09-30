@@ -144,7 +144,6 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 
 	// TODO : fix this. it doens't really work. just a quick hack.
 	// if (lastInputsPktRecvd.tick > tick || lastInputsPktRecvd.tick < 0)
-	tick = lastInputsPktRecvd.tick;
 
 	lastInputsPktRecvd = {};
 	this->jump = false;

@@ -21,7 +21,6 @@ struct PlayerMovement final : public LivingEntity {
 
 	GAMEMODES gamemode = GAMEMODES::SPECTATOR;
 	float yaw, pitch;
-	int32_t tick;
 
 	glm::vec3 getDesiredMove() override;
 	void doJump(const ICommonWorld &world) override;
@@ -35,7 +34,6 @@ struct PlayerMovement final : public LivingEntity {
 	inline const glm::vec3 getVelocity() const { return this->velocity; }
 	inline const float getVerticalVelocity() const { return this->verticalVelocity; }
 	inline const glm::vec3 getCameraDir() const { return this->Front; }
-	inline const int32_t getTick() const { return tick; }
 
 	inline void setPosition(glm::vec3 position) {this->position = position; }
 	inline void setVelocity(glm::vec3 velocity) {this->velocity = velocity; }

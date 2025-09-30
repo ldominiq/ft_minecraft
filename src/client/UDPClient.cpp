@@ -75,8 +75,3 @@ void UDPClient::dispatch(const uint8_t* data, size_t n)
 	if (onPacket) onPacket({ std::move(pkt) });
 }
 
-// void UDPClient::receiveAccept()
-// {
-// 	app = std::make_unique<App>();
-
-// }
