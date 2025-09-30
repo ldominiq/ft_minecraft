@@ -181,7 +181,6 @@ void App::init() {
 	loadControlsFromFile();
 }
 
-float lastTickTime;
 void App::setUdpClientPacketCallback()
 {
 	udpClient->setCallback([this](const PacketPtr& pkt) {
@@ -210,8 +209,8 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
+				lastTickClientTime = glfwGetTime();
 				camera->onSnapshot(p, *renderer);
-				lastTickTime = glfwGetTime();
 				break;
 			}
 
@@ -299,8 +298,7 @@ void App::render() {
 		if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
 			mouseMovedRecently = false;
 
-		if (lastTickTime > currentFrame) lastTickTime = currentFrame;
-		camera->lerpToNextPosition(currentFrame - lastTickTime);
+		camera->lerpToNextPosition(glfwGetTime() - lastTickClientTime);
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if

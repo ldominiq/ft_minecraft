@@ -19,12 +19,10 @@ class CPlayerInfo
 
 		int id;
 		sockaddr_in addr;
-		std::chrono::_V2::steady_clock::time_point lastPktRecvTick;
 
 		std::string name;
 		uint8_t loadRadius; // TODO : set setter on new packet
 
-		glm::vec3 lastPositionSent;
 		int health; //unused
 
 		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>();

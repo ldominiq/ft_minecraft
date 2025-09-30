@@ -96,6 +96,7 @@ private:
     bool keyPressedRecently = false;
 	bool mouseMovedRecently = false;
 	float lastMouseMoveTime = 0;
+	float lastTickClientTime = 0;
 
     unsigned int texture;
 

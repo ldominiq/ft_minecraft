@@ -2,7 +2,7 @@
 
 Camera::Camera(glm::vec3 position)
     : MouseSensitivity(0.1f) {
-    // movement.updateCameraVectors();
+    movement.updateCameraVectors();
 	initWireframeCube();
 }
 
@@ -25,25 +25,18 @@ glm::mat4 Camera::getViewMatrix() const {
 
 void Camera::lerpToNextPosition(float deltaTime)
 {
-	// m_Info.m_IntraTick = (m_Info.m_CurrentTime - PreviousTickStart) / (float)(CurrentTickStart - PreviousTickStart);
-	// float intraTick = std::chrono::duration<float>(std::chrono::steady_clock::now()).count() - 
-	// auto now = std::chrono::steady_clock::now();
-	// float currTime = std::chrono::duration<float>(now.time_since_epoch()).count();
+	if (prevServerTick == 0) return ;
 
 	double currTime = prevServerTick + deltaTime * 1000;
 	std::clamp(currTime, prevServerTick, serverTick);
 	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
 
-	std::cout << deltaTime << std::endl;
-	std::cout << currTime << std::endl;
-	std::cout << prevServerTick << std::endl;
-	std::cout << serverTick<< std::endl;
-	std::cout << intraTick << std::endl;
-	std::cout << std::endl;
-	if (prevServerTick == 0) return ;
-
-	// std::clamp(intraTick, 0.0f, serverTick - prevServerTick);
-	// float t = (serverTick - (prevServerTick + intraTick)) / serverTick;
+	// std::cout << deltaTime << std::endl;
+	// std::cout << currTime << std::endl;
+	// std::cout << prevServerTick << std::endl;
+	// std::cout << serverTick<< std::endl;
+	// std::cout << intraTick << std::endl;
+	// std::cout << std::endl;
 	glm::vec3 renderPos = previousPosition + (predictedPosition - previousPosition) * intraTick;
 	movement.setPosition(renderPos);
 }

@@ -175,7 +175,6 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (player == players.end())
 		return ;
 
-	player->lastPktRecvTick = currTick;
 	player->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
 	player->setYawAndPitch(pkt.yaw, pkt.pitch);
@@ -188,7 +187,6 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	if (player == players.end())
 		return ;
 
-	player->lastPktRecvTick = currTick;
 	world->processPlayerMouseInputs(*player, pkt);
 }
 
@@ -305,7 +303,6 @@ void Server::sendChunk(CPlayerInfo &player) {
 // TODO : delta compression
 void Server::sendPositionDeltas(CPlayerInfo &player)
 {
-	player.lastPositionSent = player.getPosition();
 	NetPlayerMove pkt;
 	pkt.serverTick = tick;
 
