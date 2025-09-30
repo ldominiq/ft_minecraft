@@ -188,6 +188,7 @@ World::World() {
 }
 
 World::World(int seed) {
+	std::cout << "World seed: " << seed << std::endl;
 	std::string regionsDirName = "Regions/";
 	regionDirName = regionsDirName + "region-" + std::to_string(seed);
 	if (SAVES_ACTIVE)
