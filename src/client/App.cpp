@@ -351,7 +351,9 @@ void App::render() {
         lighting->updateSunDirection(deltaTime);
         lighting->drawSky(view, projection, camera->getPosition());
 
-        lighting->updateShadowMap(*renderer, camera->getPosition());
+        if (lighting->isShadowsEnabled()) {
+            lighting->updateShadowMap(*renderer, camera->getPosition());
+        }
 
         // Set the uniform matrices in the shader
         activeShader->use();
@@ -564,6 +566,9 @@ void App::debugWindow() {
 
                     if (ImGui::CollapsingHeader("Rendering")) {
                         ImGui::Text("Rendering Options");
+                        if (ImGui::Checkbox("V-Sync", &vsync)) {
+                            glfwSwapInterval(vsync ? 1 : 0);
+                        }
                         // Wireframe toggle
                         if (ImGui::Checkbox("Wireframe", &wireframe)) {
                             glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);

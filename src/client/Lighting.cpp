@@ -126,16 +126,19 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     shader.setVec3("viewPos", cameraPos);
     shader.setVec3("lightPos", lightPos);
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
-    // shader.setInt("shadows", shadowsEnabled ? 1 : 0); // enable/disable shadows by pressing 'SPACE'
     shader.setFloat("shadows.MIN_BIAS", MIN_BIAS);
     shader.setFloat("shadows.MAX_BIAS", MAX_BIAS);
     shader.setInt("shadows.PCF_RADIUS", PCF_RADIUS);
     shader.setInt("shadows.POISSON_SAMPLES", POISSON_SAMPLES);
     shader.setFloat("shadows.POISSON_RADIUS_BASE", POISSON_RADIUS_BASE);
     shader.setFloat("shadows.POISSON_RADIUS_SCALE", POISSON_RADIUS_SCALE);
-    // shader.setFloat("shadows.AMBIENT_OCCLUSION", ambientOcclusion);
     shader.setFloat("shadows.CONTACT_OFFSET", shadowContactOffset);
     shader.setFloat("shadows.enabled", shadowsEnabled);
+
+    if (shadowsEnabled) {
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+    }
 
     // Lighting uniforms
     // ====================================
@@ -205,9 +208,6 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
         shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
         shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
     }
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
 }
 
 void Lighting::updateShadowMap(const Renderer& renderer, const glm::vec3& cameraPos) {

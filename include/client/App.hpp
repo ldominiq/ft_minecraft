@@ -90,6 +90,8 @@ private:
 
     GLFWwindow* window;
 
+    bool vsync = true;
+
 	uint16_t inputMask = 0;
     bool keyPressedRecently = false;
 	bool mouseMovedRecently = false;

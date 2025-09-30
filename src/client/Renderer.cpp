@@ -103,9 +103,11 @@ void Renderer::buildChunks()
 
 	for (auto [chunkX, chunkZ] : chunksToBuild) {
 		std::shared_ptr<ChunkRenderer> currChunk = getChunk(chunkX, chunkZ);
-		meshFutures.push_back(std::async(std::launch::async, [chunkX, chunkZ, currChunk]() {
+		if (!currChunk) continue;
+
+		meshFutures.push_back(std::async(std::launch::async, [currChunk, cx = chunkX, cz = chunkZ]() {
 			currChunk->buildMeshData();
-			return Chunk::toKey(chunkX, chunkZ);
+			return Chunk::toKey(cx, cz);
 		}));
 	}
 
