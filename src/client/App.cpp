@@ -787,7 +787,7 @@ void App::debugWindow() {
 
 			static bool spectator = false;
 			ImGui::Separator();
-			if (ImGui::Checkbox("Suvival", &spectator))
+			if (ImGui::Checkbox("Survival", &spectator))
 			{
 				if (spectator)
 				{

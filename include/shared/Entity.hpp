@@ -72,7 +72,7 @@ class Entity {
 		bool entityCollidesWithBlock(const glm::vec3 blockPos);
 
 		inline const glm::vec3 getPosition() const { return position; }
-		inline const float getEntityWitdth() const { return entityWidth; }
+		inline const float getEntityWidth() const { return entityWidth; }
 		inline const float getEntityHeight() const { return entityHeight; }
 };
 

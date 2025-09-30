@@ -25,7 +25,7 @@ void PlayerMovement::updatePosition()
 	float deltaTime = 0.05f;
 	float velocity = this->movementSpeed * deltaTime;
 
-    // Minecraft'ish camera. Doens't move along the Y axis
+    // Minecraft'ish camera. Doesn't move along the Y axis
     glm::vec3 horizontalFront = glm::normalize(glm::vec3(this->Front.x, 0.0f, this->Front.z));
 
 	// 4 directions
@@ -126,7 +126,8 @@ glm::vec3 PlayerMovement::getDesiredMove()
 
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 {
-	float headHeight = this->entityHeight - 0.3f;
+	constexpr float forehead = 0.3f;
+	float headHeight = this->entityHeight - forehead;
 	this->position.y -= headHeight;
 
 	if (gamemode == GAMEMODES::SURVIVAL)
@@ -141,9 +142,6 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 		updatePosition();
 	}
 	this->position.y += headHeight;
-
-	// TODO : fix this. it doens't really work. just a quick hack.
-	// if (lastInputsPktRecvd.tick > tick || lastInputsPktRecvd.tick < 0)
 
 	lastInputsPktRecvd = {};
 	this->jump = false;
