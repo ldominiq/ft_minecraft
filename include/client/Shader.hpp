@@ -9,6 +9,8 @@
 #include <iostream>
 #include <string>
 
+#include "stb_image.h"
+
 class Shader {
 public:
     GLuint ID;
@@ -21,6 +23,9 @@ public:
     void setMat4(const std::string& name, const glm::mat4& mat) const;
     void setVec3(const std::string& name, const glm::vec3& vec3) const;
 	void setVec4(const std::string& name, const glm::vec4& vec4) const;
+
 };
+
+unsigned int loadTexture(const char* path);
 
 #endif

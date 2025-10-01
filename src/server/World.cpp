@@ -594,3 +594,9 @@ void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerM
 	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.getPosition(), player.getCameraDir());
 	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.getPosition(), player.getCameraDir());
 }
+
+void World:: updateEntitiesPosition()
+{
+	for (auto &entity : entities)
+		entity->calculateNewPosition(*this);
+}

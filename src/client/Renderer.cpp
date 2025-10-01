@@ -211,3 +211,32 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 	}
 }
+
+void Renderer::onEntity(NetEntityMove &pkt)
+{
+	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
+	ItemID ID = pkt.EntityID;
+
+	std::cout << "RECEIVED " << ID << std::endl;
+	std::cout << entities.size() << std::endl;
+	auto entity = entitiesMap.find(ID);
+	if (entity != entitiesMap.end())
+	{
+		entity->second->setPosition(position);
+	}
+	else
+	{
+		if (pkt.entityType == EEntityTypes::ITEMS)
+		{
+			auto entityPtr = std::make_shared<ItemPropEntity>(position, 0, ID);
+			entities.push_back(entityPtr);
+			entitiesMap[ID] = entityPtr;
+		}
+		else if (pkt.entityType == EEntityTypes::LIVING_ENTITIES)
+		{
+			auto entityPtr = std::make_shared<LivingEntity>(position, ID);
+			entities.push_back(entityPtr);
+			entitiesMap[ID] = entityPtr;
+		}
+	}
+}

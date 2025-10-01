@@ -24,20 +24,22 @@ class LivingEntity : public Entity
 		bool jump = false;
 
 		float movementSpeed = WALKING_SPEED; //deprecated?
-		glm::vec3 velocity = glm::vec3(0, 0, 0);	//maybe only needed in player? Or should mobs also have momentum
 
 		glm::vec3 Right = glm::vec3(0, 0, 0);
 		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
-		virtual glm::vec3 getDesiredMove() = 0;
-		virtual void doJump(const ICommonWorld &world) = 0;
+		virtual void doJump(const ICommonWorld &world);
 
 	public:
 		glm::vec3 Front = glm::vec3(0, 0, 0);
 		glm::vec3 Up = glm::vec3(0, 0, 0);
 
+		inline EEntityTypes getEntityType() const override { return EEntityTypes::LIVING_ENTITIES; }
+		glm::vec3 getDesiredMove() override;
+
 		LivingEntity(glm::vec3 position);
-		virtual ~LivingEntity() = 0;
+		LivingEntity(glm::vec3 position, ItemID ID);
+		virtual ~LivingEntity();
 };
 
 #endif

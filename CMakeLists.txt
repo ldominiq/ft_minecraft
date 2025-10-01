@@ -203,3 +203,5 @@ target_include_directories(ft_minecraft_server PRIVATE
 target_link_libraries(ft_minecraft_server PRIVATE
 	libzstd
 )
+
+# TODO : LOOK INTO COMPILING WITH FLAGS. ONLY OUR CODE NO LIBS

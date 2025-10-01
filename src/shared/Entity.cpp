@@ -2,9 +2,16 @@
 #include "Entity.hpp"
 #include "CommonWorld.hpp"
 
-Entity::Entity(glm::vec3 position): position(position) {}
+ItemEntityIDManager Entity::idManager;
 
-Entity::~Entity() {}
+Entity::Entity(glm::vec3 position): position(position), ID(idManager.acquire()) {}
+
+Entity::Entity(glm::vec3 position, uint32_t ID): position(position), ID(ID) {}
+
+Entity::~Entity()
+{
+	idManager.release(ID);
+}
 
 // Build a current-player AABB (min at feet)
 AABB Entity::constructAABB(const glm::vec3 &pos) {
@@ -174,4 +181,13 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 
 	// Apply final position
 	position = newPos;
+}
+
+void Entity::calculateNewPosition(const ICommonWorld &world)
+{
+	// TODO : return early if block stopped. Same as player calculateNewPosition TODO.
+
+	glm::vec3 desiredPos = getDesiredMove();
+	calculateNewXZPosition(world, desiredPos);
+	calculateNewYPosition(world);
 }

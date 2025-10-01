@@ -14,7 +14,7 @@
 #include "Protocol.hpp"
 #include "World.hpp"
 #include "PlayerInfo.hpp"
-
+#include "ItemEntity.hpp"
 #include "Config.hpp"
 
 class Server {
@@ -55,6 +55,7 @@ private:
 	void sendImGuiData(CPlayerInfo &player);
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
+	void sendItemEntitiesPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player);
 
 public:

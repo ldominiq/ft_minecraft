@@ -36,6 +36,7 @@ class CPlayerInfo
 
 		inline const glm::vec3 getPosition() const { return movement->getPosition(); }
 		inline const glm::vec3 getVelocity() const { return movement->getVelocity(); }
+		inline const float getYaw() const { return movement->yaw; }
 		inline const int32_t getTick() const { return movement->getTick(); }
 		inline const float getVerticalVelocity() const { return movement->getVerticalVelocity(); }
 

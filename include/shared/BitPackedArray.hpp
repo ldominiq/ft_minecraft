@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include "Item.hpp"
 
-//TODO ADD RLE COMPRESSION
+//TODO DICTIONNARY TO COMPRESSION
 class BitPackedArray {
 public:
 

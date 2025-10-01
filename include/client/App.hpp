@@ -12,7 +12,6 @@
 #include "ChunkRenderer.hpp"
 #include "Skybox.hpp"
 #include "Shader.hpp"
-#include "stb_image.h"
 #include "Renderer.hpp"
 #include "UDPClient.hpp"
 #include "Chat.hpp"
@@ -70,7 +69,6 @@ public:
 private:
     void init();
     void loadResources();
-    static unsigned int loadTexture(const char* path);
     void render();
 	void gameTick();
 

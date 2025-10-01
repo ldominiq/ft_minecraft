@@ -129,6 +129,8 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 	float headHeight = this->entityHeight - 0.3f;
 	this->position.y -= headHeight;
 
+	// TODO : return early if no new packet to read and velocities are 0 and there is no collision with block under. To avoid doing unnecessary calculations. Do the same with every other entity
+
 	if (gamemode == GAMEMODES::SURVIVAL)
 	{
 		doJump(world);
@@ -142,7 +144,7 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 	}
 	this->position.y += headHeight;
 
-	// TODO : fix this. it doens't really work. just a quick hack.
+	// TODO : fix this. it doens't really work. just a quick hack. When implementing prediction
 	// if (lastInputsPktRecvd.tick > tick || lastInputsPktRecvd.tick < 0)
 	tick = lastInputsPktRecvd.tick;
 

@@ -139,6 +139,7 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 
 void Server::gameTick()
 {
+	world->updateEntitiesPosition();
 	sendAll();
 }
 
@@ -154,8 +155,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.connected = true;
 
 	players.push_back(p);
-	world->livingEntities.push_back(p.movement);
-
+	world->entities.push_back(p.movement);
 	
 	sendAccept(cliaddr);
 }
@@ -174,6 +174,9 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 	if (player == players.end())
 		return ;
+
+	if (pkt.keys & IN_DROP)
+		world->entities.push_back(std::make_shared<ItemEntity>(player->getPosition(), player->getYaw(), static_cast<int>(BlockType::DIRT)));
 
 	player->lastPktRecvTick = currTick;
 	player->setLastInputPacketReceived(pkt);
@@ -224,11 +227,11 @@ void Server::sendAll()
 	world->amountOfChunksSentThisTick = 0;
 	for (CPlayerInfo &p : players)
 	{
-		p.calculateNewPosition(*world);
 		world->updateVisibleChunks(p);
 
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
+		sendItemEntitiesPositionDeltas(p);
 		sendImGuiData(p);
 		sendNewlyUpdatedBlocks(p);
 		sendMessage(p);
@@ -320,6 +323,33 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.verticalVelocity = player.getVerticalVelocity();
 
 	sendPacketTo(pkt, player.addr);
+}
+
+// TODO : delta compression AND refactor this sh*t (put in a snapshot and send multiple at once or something) AND only send if the item moved
+void Server::sendItemEntitiesPositionDeltas(CPlayerInfo &player)
+{
+	//gotta exclude current player
+	int tmpMax = 5;
+	int curr = 0;
+	for (auto &entity : world->entities)
+	{
+		if (++curr > tmpMax) return ;
+		if (entity != player.movement)
+		{
+			NetEntityMove pkt;
+
+			std::cout << entity->getID() << std::endl;
+			pkt.EntityID = entity->getID();
+			pkt.entityType = entity->getEntityType();
+			pkt.itemTypeID = entity->getItemType();
+
+			pkt.positionX = entity->getPosition().x;
+			pkt.positionY = entity->getPosition().y;
+			pkt.positionZ = entity->getPosition().z;
+
+			sendPacketTo(pkt, player.addr);
+		}
+	}
 }
 
 void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)

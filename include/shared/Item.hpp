@@ -8,7 +8,7 @@
 #include <array>
 #include <vector>
 
-// using ItemID = uint8_t;   // for world storage/networking
+using BlockID = uint8_t;   // for world storage/networking
 using ItemID  = uint16_t;  // for inventory/items
 
 enum class BiomeType {
@@ -21,7 +21,7 @@ enum class BiomeType {
 	MOUNTAIN
 };
 
-enum class BlockType : ItemID {
+enum class BlockType : BlockID {
 	BEGIN = 0,
     AIR,
     GRASS,
@@ -53,6 +53,8 @@ enum class MiscType : ItemID {
 	BEGIN = (ItemID)WeaponType::END + 1,
 	END
 };
+
+using ItemType = std::variant<BlockType, LiquidType, WeaponType, MiscType>;
 
 struct BlockDef { uint8_t toughness; };
 struct LiquidDef { int maxPropagation; };

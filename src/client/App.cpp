@@ -131,6 +131,7 @@ void App::init() {
 				case GLFW_KEY_SPACE: return IN_UP;   // jump
 				case GLFW_KEY_LEFT_SHIFT: return IN_RUN;
 				case GLFW_KEY_LEFT_CONTROL: return IN_DOWN;
+				case GLFW_KEY_Q: return IN_DROP;
 				default: return 0; // key not tracked
 			}
 		};
@@ -222,6 +223,12 @@ void App::setUdpClientPacketCallback()
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
 				camera->onSnapshot(p, *renderer);
+				break;
+			}
+
+			case PacketType::NET_ENTITY_MOVE: {
+				auto& p = static_cast<NetEntityMove&>(*pkt);
+				renderer->onEntity(p);
 				break;
 			}
 
@@ -357,6 +364,8 @@ void App::render() {
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
 
+		// TODO : put all of the draw logic in renderer
+
         // Set the uniform matrices in the shader
         activeShader->setMat4("view", view);
         activeShader->setMat4("projection", projection);
@@ -374,7 +383,12 @@ void App::render() {
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
 		renderer->render(activeShader);
-		
+
+		for (auto &entity : renderer->entities)
+		{
+			entity->draw(projection, view);
+		}
+
         skybox->draw(camera->getViewMatrix(), projection);	
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
@@ -714,6 +728,18 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	if (glfwGetKey(window, controlsArray[MOVE_FAST]) == GLFW_PRESS)
 		keys |= IN_RUN;
 	
+
+	static bool qPressedLastFrame = false; // global or member variable
+    bool qDown = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS;
+
+    if (qDown && !qPressedLastFrame) {
+        // Key was just pressed (not held)
+        keys |= IN_DROP;
+    }
+
+    // Update state for next frame
+    qPressedLastFrame = qDown;
+
 	inputs.keys = keys;
 	inputs.pitch = camera->getPitch();
 	inputs.yaw = camera->getYaw();
@@ -725,7 +751,6 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	return inputs;
 }
 
-// TODO: make menus managed by a pointer or container later
 void App::processInputsMenus(int key, int action) {
 
 	// HANDLE EVENTS WHEN CHAT OPEN
@@ -896,32 +921,6 @@ void App::toggleDisplayMode() {
         glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
         displayMode = DisplayMode::Windowed;
     }
-}
-
-unsigned int App::loadTexture(const char* path) {
-    GLuint texID;
-    glGenTextures(1, &texID);
-    glBindTexture(GL_TEXTURE_2D, texID);
-
-    int w, h, ch;
-    stbi_set_flip_vertically_on_load(true);
-    unsigned char* data = stbi_load(path, &w, &h, &ch, 0);
-    if (data) {
-        const GLenum format = ch == 4 ? GL_RGBA : GL_RGB;
-        glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-    } else {
-        std::cerr << "Failed to load texture: " << path << "\n";
-    }
-    
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    
-    stbi_image_free(data);
-    
-    return texID;
 }
 
 // static

@@ -141,6 +141,39 @@ struct NetPlayerMove final : public Packet {
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;
 
+struct NetEntityMove final : public Packet {
+	static constexpr PacketType ID = PacketType::NET_ENTITY_MOVE;
+
+	EEntityTypes entityType;
+	uint32_t EntityID;
+	uint16_t itemTypeID = 0;	//Maybe only send if Item?; Same size as ItemID in Item.hpp
+
+	//position
+	float positionX;
+	float positionY;
+	float positionZ;
+
+	NetEntityMove() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+		w.write_u8(entityType);
+		w.write_u32(EntityID);
+		w.write_u16(itemTypeID);
+		w.write_f32(positionX);
+		w.write_f32(positionY);
+		w.write_f32(positionZ);
+    }
+    void decode(BufferReader& r) override {
+		entityType = static_cast<EEntityTypes>(r.read_u8());
+		EntityID = r.read_u32();
+		itemTypeID = r.read_u16();
+		positionX = r.read_f32();
+		positionY = r.read_f32();
+		positionZ = r.read_f32();
+    }
+};
+inline AutoRegister<NetEntityMove> _reg_NetEntityMove;
+
 struct NetChunkHeader final : public Packet {
     static constexpr PacketType ID = PacketType::CHUNK_HEADER;
 	int32_t X = 0;

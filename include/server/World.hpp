@@ -84,7 +84,6 @@ public:
     ~World();
 
 	int amountOfChunksSentThisTick = 0;
-	std::vector<std::weak_ptr<ChunkGeneration>> getRenderedChunks();
 
     void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
     void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
@@ -107,7 +106,8 @@ public:
 	std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
 
 	void processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt);
-	
+	void updateEntitiesPosition();	
+
 	void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 };
 
