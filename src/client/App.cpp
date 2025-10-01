@@ -4,19 +4,14 @@
 
 #include "App.hpp"
 
-
-App::App(): VAO(0),
-			VBO(0),
-			EBO(0),
-
-			shaderProgram(0),
+App::App():
 			texture(0),
 
 			camera(nullptr),
 			monitor(nullptr),
 			mode(nullptr),
 
-            skybox(nullptr),
+            lighting(nullptr),
             textureShader(nullptr),
             gradientShader(nullptr),
             activeShader(nullptr) {
@@ -49,21 +44,12 @@ void App::init() {
 
     glfwGetFramebufferSize(window, &windowedWidth, &windowedHeight);
 
-    const std::vector<std::string> faces = {
-        "assets/skybox/right.bmp",  // +X
-        "assets/skybox/left.bmp",   // -X
-        "assets/skybox/top.bmp",    // +Y
-        "assets/skybox/bottom.bmp", // -Y
-        "assets/skybox/front.bmp",  // +Z
-        "assets/skybox/back.bmp"    // -Z
-    };
-
-	skybox = std::make_unique<Skybox>(faces);
-
 	udpClient = std::make_unique<UDPClient>("127.0.0.1");
 	setUdpClientPacketCallback();
 
 	renderer = std::make_unique<Renderer>();
+
+    lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
 
     chat = std::make_unique<Chat>(windowedWidth, windowedHeight);
 
@@ -74,7 +60,9 @@ void App::init() {
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
 
-    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+    lighting->initShadowGroundPlane();
+	lighting->initShadowResources();
+
 
     // Mouse movement event handling
     camera = std::make_unique<Camera>(glm::vec3(0.0f, 128.0f, 0.0f));
@@ -189,7 +177,7 @@ void App::init() {
     // Initialize ImGui for GLFW and OpenGL.  Pass the window pointer and GLSL
     // version string.  The GLSL version must match your context version.
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 330");
+    ImGui_ImplOpenGL3_Init("#version 460");
 
 	loadControlsFromFile();
 }
@@ -222,6 +210,7 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
+				lastTickClientTime = glfwGetTime();
 				camera->onSnapshot(p, *renderer);
 				break;
 			}
@@ -262,7 +251,7 @@ void App::setUdpClientPacketCallback()
 void App::loadResources() {
     // Load shaders and textures
 
-    textureShader = std::make_shared<Shader>("shaders/simple.vert", "shaders/simple.frag");
+    textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
     texture = loadTexture("assets/textures/textures.png");
 
@@ -270,6 +259,13 @@ void App::loadResources() {
 
     activeShader->use();
     activeShader->setInt("atlas", 0);
+
+    // shader configuration
+    // --------------------
+    textureShader->use();
+    textureShader->setInt("diffuseTexture", 0);
+    textureShader->setInt("shadowMap", 1);
+    lighting->initShadowDebugShader();
 }
 
 void App::gameTick()
@@ -282,8 +278,6 @@ void App::gameTick()
 		NetPlayerInputs inputs = buildPlayerInputsPacket();
 		udpClient->sendPacket(inputs);
 	}
-	
-	camera->tick();
 }
 
 void App::render() {
@@ -307,14 +301,11 @@ void App::render() {
 			accumulator -= tickDuration;
 		}
 
-
 		const double mouseIdleThreshold = 0.2; // seconds, tweak to taste
 		if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
 			mouseMovedRecently = false;
 
-		// alpha is between 0 and 1, representing interpolation factor
-		float alpha = accumulator / tickDuration;
-		camera->lerpToNextPosition(alpha);
+		camera->lerpToNextPosition(glfwGetTime() - lastTickClientTime);
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -352,11 +343,8 @@ void App::render() {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        activeShader->use();
 
-        // window aspect ratio
+        // window aspect / uniforms
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
         const float aspect = static_cast<float>(width) / static_cast<float>(height);
@@ -364,33 +352,43 @@ void App::render() {
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
 
-		// TODO : put all of the draw logic in renderer
+        lighting->setViewportSize(width, height);
+        lighting->updateSunDirection(deltaTime);
+        lighting->drawSky(view, projection, camera->movement.getPosition());
+
+        if (lighting->isShadowsEnabled()) {
+            lighting->updateShadowMap(*renderer, camera->movement.getPosition());
+        }
 
         // Set the uniform matrices in the shader
+        activeShader->use();
         activeShader->setMat4("view", view);
         activeShader->setMat4("projection", projection);
 
-        // Update lighting uniforms from the adjustable state.  Normalize the
-        // direction so that it remains a unit vector after editing.
-        glm::vec3 dirNorm = glm::normalize(lightDir);
-        activeShader->setVec3("lightDir", dirNorm);
-        activeShader->setVec3("lightColor", lightColor);
-        activeShader->setVec3("ambientColor", ambientColor);
+        lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->getPosition().x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->getPosition().z / Chunk::DEPTH));
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
 
-		renderer->buildChunks();
-		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
-		renderer->render(activeShader);
+        renderer->render(activeShader);
+
+		if (lighting->isShadowMapEnabled())
+    		lighting->drawShadowMapPreview();
+
+        lighting->drawLightCubes(view, projection);
 
 		for (auto &entity : renderer->entities)
 		{
 			entity->draw(projection, view);
 		}
 
-        skybox->draw(camera->getViewMatrix(), projection);	
+		const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
+		const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));
+
+		renderer->buildChunks();
+		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+        glBindVertexArray(0);
 
         if (showDebugWindow) {
             //ImGui::ShowDemoWindow();
@@ -406,7 +404,7 @@ void App::render() {
 		if (menuManager) {
 			menuManager->render();
 		}
-			
+
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -420,12 +418,20 @@ void App::debugWindow() {
         // visible.  When uiInteractive is true the window captures input and
         // the mouse is released.
         {
+            ImGuiStyle& style = ImGui::GetStyle();
 
-            glm::vec3 pos = camera->getPosition();
+            // Set default font size
+            static bool appliedDefaultFontSize = false;
+            if (!appliedDefaultFontSize) {
+                style.FontSizeBase = 30.0f;
+                style._NextFrameFontSizeBase = 30.0f;
+                appliedDefaultFontSize = true;
+            }
+
+            glm::vec3 pos = camera->movement.getPosition();
             int wx = static_cast<int>(std::floor(pos.x));
             int wz = static_cast<int>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
-
             ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
             if (!uiInteractive) {
                 flags |= ImGuiWindowFlags_NoInputs;
@@ -433,30 +439,36 @@ void App::debugWindow() {
                 ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
             }
             ImGui::Begin("Debug Window", nullptr, flags);
-            // Display smoothed FPS and frame time
-            ImGui::Text("FPS: %.1f (%.3f ms)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
-            // Display camera coordinates
-            ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
 
-            // ImGui::Text("World SEED: %i", params.seed);
+            ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+            if (ImGui::BeginTabBar("Tabs", tab_bar_flags))
+            {
+                if (ImGui::BeginTabItem("ALL"))
+                {
+                    // Display smoothed FPS and frame time
+                    ImGui::Text("FPS: %.1f (%.3f ms)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
+                    // Display camera coordinates
+                    ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
 
-            // ImGui::Text("Continentalness: %.3f", Chunk::getContinentalness(params, wx, wz));
-            // ImGui::Text("Erosion: %.3f", Chunk::getErosion(params, wx, wz));
-            // ImGui::Text("Peak/Valley: %.3f", Chunk::getPV(params, wx, wz));
-            // ImGui::Text("Temperature: %.3f", Chunk::getTemperature(params, wx, wz));
-            // ImGui::Text("Humidity: %.3f", Chunk::getHumidity(params, wx, wz));
+                    // ImGui::Text("World SEED: %i", params.seed);
 
-            uint8_t biome = currentBiome;
-            const char* biomeName =
-                (static_cast<BiomeType>(biome) == BiomeType::PLAINS) ? "PLAINS" :
-                (static_cast<BiomeType>(biome) == BiomeType::DESERT) ? "DESERT" :
-                (static_cast<BiomeType>(biome) == BiomeType::FOREST) ? "FOREST" :
-                (static_cast<BiomeType>(biome) == BiomeType::TUNDRA) ? "TUNDRA" :
-                (static_cast<BiomeType>(biome) == BiomeType::SWAMP)  ? "SWAMP"  :
-                (static_cast<BiomeType>(biome) == BiomeType::OCEAN)  ? "OCEAN"  :
-                (static_cast<BiomeType>(biome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
-                                               "UNKNOWN";
-            ImGui::Text("BIOME: %s", biomeName);
+                    // ImGui::Text("Continentalness: %.3f", Chunk::getContinentalness(params, wx, wz));
+                    // ImGui::Text("Erosion: %.3f", Chunk::getErosion(params, wx, wz));
+                    // ImGui::Text("Peak/Valley: %.3f", Chunk::getPV(params, wx, wz));
+                    // ImGui::Text("Temperature: %.3f", Chunk::getTemperature(params, wx, wz));
+                    // ImGui::Text("Humidity: %.3f", Chunk::getHumidity(params, wx, wz));
+
+                    uint8_t biome = currentBiome;
+                    const char* biomeName =
+                        (static_cast<BiomeType>(biome) == BiomeType::PLAINS) ? "PLAINS" :
+                        (static_cast<BiomeType>(biome) == BiomeType::DESERT) ? "DESERT" :
+                        (static_cast<BiomeType>(biome) == BiomeType::FOREST) ? "FOREST" :
+                        (static_cast<BiomeType>(biome) == BiomeType::TUNDRA) ? "TUNDRA" :
+                        (static_cast<BiomeType>(biome) == BiomeType::SWAMP)  ? "SWAMP"  :
+                        (static_cast<BiomeType>(biome) == BiomeType::OCEAN)  ? "OCEAN"  :
+                        (static_cast<BiomeType>(biome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
+                                                    "UNKNOWN";
+                    ImGui::Text("BIOME: %s", biomeName);
 
 
             // Additional metrics: number of loaded chunks and approximate memory usage
@@ -473,136 +485,320 @@ void App::debugWindow() {
                 ImGui::Text("Memory: %.2f MB", memMB);
             }
 
-            ImGui::Separator();
 
-            if (ImGui::CollapsingHeader("Teleportation")) {
-                // Teleport player
-                ImGui::Text("Teleport Player");
-                static float tmpX = 0;
-                static float tmpY = 100;
-                static float tmpZ = 0;
-                ImGui::InputFloat("X", &tmpX);
-                ImGui::InputFloat("Y", &tmpY);
-                ImGui::InputFloat("Z", &tmpZ);
-                if (ImGui::Button("Teleport")) {
-                    // camera->Position = glm::vec3(tmpX, tmpY, tmpZ);
+                    ImGui::Separator();
+
+                    if (ImGui::CollapsingHeader("Teleportation")) {
+                        // Teleport player
+                        ImGui::Text("Teleport Player");
+                        static float tmpX = 0;
+                        static float tmpY = 100;
+                        static float tmpZ = 0;
+                        ImGui::InputFloat("X", &tmpX);
+                        ImGui::InputFloat("Y", &tmpY);
+                        ImGui::InputFloat("Z", &tmpZ);
+                        if (ImGui::Button("Teleport")) {
+                            camera->movement.setPosition(glm::vec3(tmpX, tmpY, tmpZ));
+                        }
+                    }
+
+                    ImGui::Separator();
+
+                    // if (ImGui::CollapsingHeader("Noise Generation")) {
+                    //     if (ImGui::CollapsingHeader("Continentalness Parameters")) {
+                    //         ImGui::SliderFloat("frequency", &params.continentalnessFrequency, 0.001f, 0.01f);
+                    //         ImGui::SliderInt("octaves", &params.continentalnessOctaves, 1, 10);
+                    //         ImGui::SliderFloat("persistence", &params.continentalnessPersistence, 0.0f, 1.0f);
+                    //         ImGui::SliderFloat("lacunarity", &params.continentalnessLacunarity, 1.0f, 4.0f);
+                    //         ImGui::SliderFloat("scaling factor", &params.continentalnessScalingFactor, 1.0f, 5.0f);
+                    //     }
+
+                    //     if (ImGui::CollapsingHeader("Erosion Parameters")) {
+                    //         ImGui::SliderFloat("#frequency", &params.erosionFrequency, 0.001f, 0.02f);
+                    //         ImGui::SliderInt("#octaves", &params.erosionOctaves, 1, 10);
+                    //         ImGui::SliderFloat("#persistence", &params.erosionPersistence, 0.0f, 1.0f);
+                    //         ImGui::SliderFloat("#lacunarity", &params.erosionLacunarity, 1.0f, 4.0f);
+                    //         ImGui::SliderFloat("#scaling factor", &params.erosionScalingFactor, 1.0f, 5.0f);
+                    //     }
+
+                    //     if (ImGui::CollapsingHeader("Peak/Valley Parameters")) {
+                    //         ImGui::SliderFloat("-frequency", &params.peakValleyFrequency, 0.001f, 0.09f);
+                    //         ImGui::SliderInt("-octaves", &params.peakValleyOctaves, 1, 10);
+                    //         ImGui::SliderFloat("-persistence", &params.peakValleyPersistence, 0.0f, 1.0f);
+                    //         ImGui::SliderFloat("-lacunarity", &params.peakValleyLacunarity, 1.0f, 4.0f);
+                    //         ImGui::SliderFloat("-scaling factor", &params.peakValleyScalingFactor, 1.0f, 5.0f);
+                    //     }
+
+                    //     if (ImGui::CollapsingHeader("Temperature Parameters")) {
+                    //         ImGui::SliderFloat("--frequency", &params.temperatureFrequency, 0.0001f, 0.0012f);
+                    //         ImGui::SliderInt("--octaves", &params.temperatureOctaves, 1, 10);
+                    //         ImGui::SliderFloat("--persistence", &params.temperaturePersistence, 0.0f, 1.0f);
+                    //         ImGui::SliderFloat("--lacunarity", &params.temperatureLacunarity, 1.0f, 4.0f);
+                    //         ImGui::SliderFloat("--scaling factor", &params.temperatureScalingFactor, 1.0f, 5.0f);
+                    //     }
+
+                    //     if (ImGui::CollapsingHeader("Humidity Parameters")) {
+                    //         ImGui::SliderFloat("---frequency", &params.humidityFrequency, 0.0005f, 0.0015f);
+                    //         ImGui::SliderInt("---octaves", &params.humidityOctaves, 1, 10);
+                    //         ImGui::SliderFloat("---persistence", &params.humidityPersistence, 0.0f, 1.0f);
+                    //         ImGui::SliderFloat("---lacunarity", &params.humidityLacunarity, 1.0f, 4.0f);
+                    //         ImGui::SliderFloat("---scaling factor", &params.humidityScalingFactor, 1.0f, 5.0f);
+                    //     }
+                    // }
+
+
+                    ImGui::Separator();
+
+                    // if (ImGui::CollapsingHeader("Heightmap")) {
+                    //     // Create heightmap image
+                    //     ImGui::Text("Heightmap Generation");
+                    //     ImGui::InputInt("Size (ex. 100)", &params.genSize);
+                    //     ImGui::InputInt("Downsample (ex. 8)", &params.downsample);
+                    //     if (ImGui::Button("Generate Noises")) {
+                    //         if (world) {
+                    //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 1);
+                    //         }
+                    //     }
+                    //     if (ImGui::Button("Generate Heightmaps")) {
+                    //         if (world) {
+                    //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 0);
+                    //         }
+                    //     }
+                    //     if (ImGui::Button("Generate Biome Map")) {
+                    //         if (world) {
+                    //             world->dumpBiomeMap(0, 0, params.genSize, params.genSize, params.downsample);
+                    //         }
+                    //     }
+                    // }
+
+                    ImGui::Separator();
+
+                    if (ImGui::CollapsingHeader("Rendering")) {
+                        ImGui::Text("Rendering Options");
+                        if (ImGui::Checkbox("V-Sync", &vsync)) {
+                            glfwSwapInterval(vsync ? 1 : 0);
+                        }
+                        // Wireframe toggle
+                        if (ImGui::Checkbox("Wireframe", &wireframe)) {
+                            glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
+                        }
+                        // Shader toggle (texture vs gradient).  We update activeShader accordingly.
+                        if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
+                            activeShader = useGradientShader ? gradientShader : textureShader;
+                        }
+                        static int renderType = 0;
+                        ImGui::RadioButton("Lighting render", &renderType, 0); ImGui::SameLine();
+                        ImGui::RadioButton("Normals render",  &renderType, 1); ImGui::SameLine();
+                        ImGui::RadioButton("Depth render",    &renderType, 2);
+
+                        // Ensure the uniform is applied to the intended program(s),
+                        // not whatever was last bound (e.g., selected-face wireframe).
+                        auto applyRenderType = [&](const std::shared_ptr<Shader>& s) {
+                            if (!s) return;
+                            s->use();
+                            s->setInt("renderType", renderType);
+                        };
+                        applyRenderType(textureShader);
+
+                        static bool useBlinnPhong = true;
+                        if (ImGui::Checkbox("Blinn-Phong", &useBlinnPhong)) {
+                            textureShader->use();
+                            textureShader->setInt("blinn", useBlinnPhong);
+                        }
+                    	bool shadowsEnabled = lighting->isShadowsEnabled();
+                        if (ImGui::Checkbox("Shadows", &shadowsEnabled))
+							lighting->setShadowsEnabled(shadowsEnabled);
+                    	bool shadowMapEnabled = lighting->isShadowMapEnabled();
+                    	if (ImGui::Checkbox("Shadow Map (DEBUG)", &shadowMapEnabled))
+                    		lighting->setShowShadowMapEnabled(shadowMapEnabled);
+
+                        // Changing this will update the far clipping plane.
+                        ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
+
+                        // Adjust the chunk loading radius.  Casting to int and back avoids
+                        // accidental type issues in the setter.  We clamp the range to a
+                        // reasonable minimum and maximum.
+                        if (renderer) {
+                            int radius = renderer->getLoadRadius();
+                            if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
+                                renderer->setLoadRadius(radius);
+                            }
+                        }
+
+                        // Adjust the maximum number of chunks being generated at the same time.
+                        // Lower values produce smoother frame rates but slower world loading.
+                        // if (world) {
+                        //     int maxGen = static_cast<int>(world->getMaxConcurrentGeneration());
+                        //     if (ImGui::SliderInt("Generation Concurrency", &maxGen, 1, 8)) {
+                        //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
+                        //     }
+                        // }
+                    }
+
+                    // Lighting controls: direction and colours.  The direction vector
+                    // components are clamped to [-1,1]; colours use a colour picker.
+                    ImGui::Separator();
+                    if (ImGui::CollapsingHeader("Lighting")) {
+                        if (ImGui::BeginTabBar("Lighting", tab_bar_flags))
+                        {
+                            if (ImGui::BeginTabItem("Shadows"))
+                            {
+								int shadowUpdateInterval = lighting->getShadowUpdateInterval();
+                            	float shadowOrthoRange = lighting->getShadowOrthoRange();
+                            	float shadowNearPlane = lighting->getShadowNearPlane();
+                            	float shadowFarPlane = lighting->getShadowFarPlane();
+                            	ImGui::Text("Shadow Controls");
+                                if (ImGui::SliderInt("Shadow Update Interval (frames)", &shadowUpdateInterval, 1, 60))
+                                	lighting->setShadowUpdateInterval(shadowUpdateInterval);
+                                if (ImGui::SliderFloat("Shadow Ortho Range", &shadowOrthoRange, 20.0f, 200.0f, "%.1f"))
+									lighting->setShadowOrthoRange(shadowOrthoRange);
+                                if (ImGui::SliderFloat("Shadow Near Plane", &shadowNearPlane, 0.001f, 1.0f, "%.2f"))
+                                	lighting->setShadowNearPlane(shadowNearPlane);
+                                if (ImGui::SliderFloat("Shadow Far Plane", &shadowFarPlane, 50.0f, 2000.0f, "%.1f"))
+                                	lighting->setShadowFarPlane(shadowFarPlane);
+                                // ImGui::SliderFloat("Shadow min Bias", &MIN_BIAS, 0.0f, 0.00035f, "%.5f");
+                                // ImGui::SliderFloat("Shadow max Bias", &MAX_BIAS, 0.0f, 0.0010f, "%.4f");
+                                // ImGui::SliderFloat("Shadow Contact Offset", &shadowContactOffset, 0.0f, 0.0015f, "%.5f");
+                                // ImGui::SliderInt("Shadow PCF Radius", &PCF_RADIUS, 1, 5);
+                                // ImGui::SliderInt("Shadow Poisson Samples", &POISSON_SAMPLES, 1, 64);
+                                // ImGui::SliderFloat("Shadow Poisson Radius Base", &POISSON_RADIUS_BASE, 0.1f, 5.0f, "%.2f");
+                                // ImGui::SliderFloat("Shadow Poisson Radius Scale", &POISSON_RADIUS_SCALE, 0.1f, 5.0f, "%.2f");
+                                ImGui::Text("Shadow Quality");
+
+                            	using SQ = Lighting::ShadowQuality;
+                            	const SQ currentQuality = lighting->getShadowQuality();
+								int qualitySelection = static_cast<int>(currentQuality);
+
+                                ImGui::RadioButton("Low (1024x1024)",    &qualitySelection, static_cast<int>(SQ::Low)); ImGui::SameLine();
+                                ImGui::RadioButton("Medium (2048x2048)", &qualitySelection, static_cast<int>(SQ::Medium)); ImGui::SameLine();
+                                ImGui::RadioButton("High (4096x4096)",   &qualitySelection, static_cast<int>(SQ::High)); ImGui::SameLine();
+                                ImGui::RadioButton("Ultra (8192x8192)",  &qualitySelection, static_cast<int>(SQ::Ultra));
+                                if (qualitySelection != static_cast<int>(currentQuality)) {
+                                    lighting->setShadowQuality(static_cast<SQ>(qualitySelection));
+                                }
+                                ImGui::EndTabItem();
+                            }
+                            if (ImGui::BeginTabItem("Directional Light"))
+                            {
+                            	bool directionalLightOn = lighting->isDirectionalLightOn();
+                            	glm::vec3 directionalLightDir = lighting->getDirectionalLightDirection();
+                            	glm::vec3 directionalDiffuseColor = lighting->getDirectionalDiffuseColor();
+                            	glm::vec3 directionalAmbientColor = lighting->getDirectionalAmbientColor();
+                            	glm::vec3 directionalSpecularColor = lighting->getDirectionalSpecularColor();
+                            	float materialShininess = lighting->getMaterialShininess();
+
+                                ImGui::Text("Directional Light Controls");
+                                if (ImGui::Checkbox("Light On", &directionalLightOn))
+                                	lighting->setDirectionalLightEnabled(directionalLightOn);
+                                if (ImGui::SliderFloat3("Light Direction", &directionalLightDir.x, -1.0f, 1.0f))
+                                	lighting->setDirectionalLightDirection(directionalLightDir);
+                                if (ImGui::ColorEdit3("Light Colour", &directionalDiffuseColor.x))
+                                	lighting->setDirectionalDiffuseColor(directionalDiffuseColor);
+                                if (ImGui::ColorEdit3("Ambient Colour", &directionalAmbientColor.x))
+                                	lighting->setDirectionalAmbientColor(directionalAmbientColor);
+                                if (ImGui::ColorEdit3("Specular Colour", &directionalSpecularColor.x))
+                                	lighting->setDirectionalSpecularColor(directionalSpecularColor);
+                                if (ImGui::SliderFloat("Material Shininess", &materialShininess, 1.0f, 256.0f))
+                                	lighting->setMaterialShininess(materialShininess);
+                                ImGui::EndTabItem();
+                            }
+                            if (ImGui::BeginTabItem("Point Lights"))
+                            {
+                                ImGui::Text("Point Light Controls");
+                                for (int i = 0; i < lighting->getNumPointLights(); ++i)
+                                {
+                                    bool enabled = lighting->isPointLightOn(i);
+                                	glm::vec3 pointLightPosition = lighting->getPointLightPosition(i);
+                                	glm::vec3 pointLightAmbient = lighting->getPointLightAmbient(i);
+                                	glm::vec3 pointLightDiffuse = lighting->getPointLightDiffuse(i);
+                                	glm::vec3 pointLightSpecular = lighting->getPointLightSpecular(i);
+                                	float pointLightConstant = lighting->getPointLightConstant(i);
+                                	float pointLightLinear = lighting->getPointLightLinear(i);
+                                	float pointLightQuadratic = lighting->getPointLightQuadratic(i);
+
+                                    if (ImGui::Checkbox(("Light " + std::to_string(i)).c_str(), &enabled))
+                                        lighting->setPointLightEnabled(i, enabled);
+                                    if (ImGui::SliderFloat3(("Light " + std::to_string(i) + " Position").c_str(), &pointLightPosition.x, 0.0f, 90.0f))
+                                    	lighting->setPointLightPosition(i, pointLightPosition);
+                                    if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Constant").c_str(), &pointLightConstant, 0.0f, 2.0f))
+                                    	lighting->setPointLightConstant(i, pointLightConstant);
+                                    if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Linear").c_str(), &pointLightLinear, 0.0f, 0.2f))
+                                    	lighting->setPointLightLinear(i, pointLightLinear);
+                                    if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Quadratic").c_str(), &pointLightQuadratic, 0.0f, 0.1f))
+                                    	lighting->setPointLightQuadratic(i, pointLightQuadratic);
+                                    if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Ambient").c_str(), &pointLightAmbient.x))
+                                    	lighting->setPointLightAmbient(i, pointLightAmbient);
+                                    if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Diffuse").c_str(), &pointLightDiffuse.x))
+                                    	lighting->setPointLightDiffuse(i, pointLightDiffuse);
+                                    if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Specular").c_str(), &pointLightSpecular.x))
+                                    	lighting->setPointLightSpecular(i, pointLightSpecular);
+                                }
+                                ImGui::EndTabItem();
+                            }
+                            if (ImGui::BeginTabItem("Flashlight"))
+                            {
+                            	bool flashlightOn = lighting->isFlashlightOn();
+                            	float flashlightCutoff = lighting->getFlashlightCutoffAngle();
+                            	float flashlightOuterCutoff = lighting->getFlashlightOuterCutoffAngle();
+
+                                ImGui::Text("Flashlight Controls");
+                                if (ImGui::Checkbox("Flashlight On", &flashlightOn))
+                                	lighting->setSpotLightOn(flashlightOn);
+                                // ImGui::ColorEdit3("Flashlight Colour", &spotlightColor.x);
+                                // ImGui::SliderFloat("Flashlight Intensity", &spotlightIntensity, 0.0f, 5.0f);
+                                if (ImGui::SliderFloat("Flashlight Cutoff", &flashlightCutoff, 1.0f, 90.0f))
+									lighting->setFlashlightCutoffAngle(flashlightCutoff);
+                                if (ImGui::SliderFloat("Flashlight Outer Cutoff", &flashlightOuterCutoff, 1.0f, 90.0f))
+                                	lighting->setFlashlightOuterCutoffAngle(flashlightOuterCutoff);
+                                ImGui::EndTabItem();
+                            }
+                        }
+                        ImGui::EndTabBar();
+                    }
+
+                    ImGui::Separator();
+                    if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
+                    	bool skyTimePaused = lighting->isSkyTimePaused();
+                    	float skyTimeOffset = lighting->getSkyTimeOffset();
+                    	float sunYawDeg = lighting->getSunYawDeg();
+                    	float skyExposure = lighting->getSkyExposure();
+                    	float skyAtmDensity = lighting->getSkyAtmDensity();
+                    	float skyAtmThickness = lighting->getSkyAtmThickness();
+                    	float planetScale = lighting->getPlanetScale();
+
+                        ImGui::Text("Sky Controls");
+
+                        if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
+                        	lighting->setSkyTimePaused(skyTimePaused);
+                        if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
+                        	lighting->setSkyTimeOffset(skyTimeOffset);
+                        if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
+                        	lighting->setSunYawDeg(sunYawDeg);
+                        if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
+                        	lighting->setSkyExposure(skyExposure);
+                        if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))
+                        	lighting->setSkyAtmDensity(skyAtmDensity);
+                        if (ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f"))
+                        	lighting->setSkyAtmThickness(skyAtmThickness);
+                        if (ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f"))
+                        	lighting->setPlanetScale(planetScale);
+                        ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
+                    }
+
+                    ImGui::EndTabItem();
                 }
-            }
+                if (ImGui::BeginTabItem("Settings")) {
+	                if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
+	                	style._NextFrameFontSizeBase = style.FontSizeBase;
 
-            ImGui::Separator();
-
-            // if (ImGui::CollapsingHeader("Noise Generation")) {
-            //     if (ImGui::CollapsingHeader("Continentalness Parameters")) {
-            //         ImGui::SliderFloat("frequency", &params.continentalnessFrequency, 0.001f, 0.01f);
-            //         ImGui::SliderInt("octaves", &params.continentalnessOctaves, 1, 10);
-            //         ImGui::SliderFloat("persistence", &params.continentalnessPersistence, 0.0f, 1.0f);
-            //         ImGui::SliderFloat("lacunarity", &params.continentalnessLacunarity, 1.0f, 4.0f);
-            //         ImGui::SliderFloat("scaling factor", &params.continentalnessScalingFactor, 1.0f, 5.0f);
-            //     }
-
-            //     if (ImGui::CollapsingHeader("Erosion Parameters")) {
-            //         ImGui::SliderFloat("#frequency", &params.erosionFrequency, 0.001f, 0.02f);
-            //         ImGui::SliderInt("#octaves", &params.erosionOctaves, 1, 10);
-            //         ImGui::SliderFloat("#persistence", &params.erosionPersistence, 0.0f, 1.0f);
-            //         ImGui::SliderFloat("#lacunarity", &params.erosionLacunarity, 1.0f, 4.0f);
-            //         ImGui::SliderFloat("#scaling factor", &params.erosionScalingFactor, 1.0f, 5.0f);
-            //     }
-
-            //     if (ImGui::CollapsingHeader("Peak/Valley Parameters")) {
-            //         ImGui::SliderFloat("-frequency", &params.peakValleyFrequency, 0.001f, 0.09f);
-            //         ImGui::SliderInt("-octaves", &params.peakValleyOctaves, 1, 10);
-            //         ImGui::SliderFloat("-persistence", &params.peakValleyPersistence, 0.0f, 1.0f);
-            //         ImGui::SliderFloat("-lacunarity", &params.peakValleyLacunarity, 1.0f, 4.0f);
-            //         ImGui::SliderFloat("-scaling factor", &params.peakValleyScalingFactor, 1.0f, 5.0f);
-            //     }
-
-            //     if (ImGui::CollapsingHeader("Temperature Parameters")) {
-            //         ImGui::SliderFloat("--frequency", &params.temperatureFrequency, 0.0001f, 0.0012f);
-            //         ImGui::SliderInt("--octaves", &params.temperatureOctaves, 1, 10);
-            //         ImGui::SliderFloat("--persistence", &params.temperaturePersistence, 0.0f, 1.0f);
-            //         ImGui::SliderFloat("--lacunarity", &params.temperatureLacunarity, 1.0f, 4.0f);
-            //         ImGui::SliderFloat("--scaling factor", &params.temperatureScalingFactor, 1.0f, 5.0f);
-            //     }
-
-            //     if (ImGui::CollapsingHeader("Humidity Parameters")) {
-            //         ImGui::SliderFloat("---frequency", &params.humidityFrequency, 0.0005f, 0.0015f);
-            //         ImGui::SliderInt("---octaves", &params.humidityOctaves, 1, 10);
-            //         ImGui::SliderFloat("---persistence", &params.humidityPersistence, 0.0f, 1.0f);
-            //         ImGui::SliderFloat("---lacunarity", &params.humidityLacunarity, 1.0f, 4.0f);
-            //         ImGui::SliderFloat("---scaling factor", &params.humidityScalingFactor, 1.0f, 5.0f);
-            //     }
-            // }
-            
-
-            ImGui::Separator();
-
-            // if (ImGui::CollapsingHeader("Heightmap")) {
-            //     // Create heightmap image
-            //     ImGui::Text("Heightmap Generation");
-            //     ImGui::InputInt("Size (ex. 100)", &params.genSize);
-            //     ImGui::InputInt("Downsample (ex. 8)", &params.downsample);
-            //     if (ImGui::Button("Generate Noises")) {
-            //         if (world) {
-            //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 1);
-            //         }
-            //     }
-            //     if (ImGui::Button("Generate Heightmaps")) {
-            //         if (world) {
-            //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 0);
-            //         }
-            //     }
-            //     if (ImGui::Button("Generate Biome Map")) {
-            //         if (world) {
-            //             world->dumpBiomeMap(0, 0, params.genSize, params.genSize, params.downsample);
-            //         }
-            //     }
-            // }
-
-            ImGui::Separator();
-
-            // Wireframe toggle
-            if (ImGui::Checkbox("Wireframe", &wireframe)) {
-                glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-            }
-            // Shader toggle (texture vs gradient).  We update activeShader accordingly.
-            if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
-                activeShader = useGradientShader ? gradientShader : textureShader;
-            }
-            // Changing this will update the far clipping plane.
-            // ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
-            
-            // Adjust the chunk loading radius.  Casting to int and back avoids
-            // accidental type issues in the setter.  We clamp the range to a
-            // reasonable minimum and maximum.
-            if (renderer) {
-                int radius = static_cast<int>(renderer->getLoadRadius());
-                if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-                    renderer->setLoadRadius(radius);
+                	ImGui::EndTabItem();
                 }
-            }
-
-            // Adjust the maximum number of chunks being generated at the same time.
-            // Lower values produce smoother frame rates but slower world loading.
-            // if (world) {
-            //     int maxGen = static_cast<int>(world->getMaxConcurrentGeneration());
-            //     if (ImGui::SliderInt("Generation Concurrency", &maxGen, 1, 8)) {
-            //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
-            //     }
-            // }
-
-            // Lighting controls: direction and colours.  The direction vector
-            // components are clamped to [-1,1]; colours use a colour picker.
-            ImGui::Separator();
-            if (ImGui::CollapsingHeader("Lighting")) {
-                ImGui::Text("Lighting Controls");
-                ImGui::SliderFloat3("Light Direction", &lightDir.x, -1.0f, 1.0f);
-                ImGui::ColorEdit3("Light Colour", &lightColor.x);
-                ImGui::ColorEdit3("Ambient Colour", &ambientColor.x);
+                ImGui::EndTabBar();
             }
 
 			static bool spectator = false;
 			ImGui::Separator();
-			if (ImGui::Checkbox("Suvival", &spectator))
+			if (ImGui::Checkbox("Survival", &spectator))
 			{
 				if (spectator)
 				{
@@ -639,9 +835,6 @@ void App::cleanup() {
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &EBO);
     glDeleteTextures(1, &texture);
 
 	NetDisconnect pkt;
@@ -741,10 +934,9 @@ NetPlayerInputs App::buildPlayerInputsPacket()
     qPressedLastFrame = qDown;
 
 	inputs.keys = keys;
-	inputs.pitch = camera->getPitch();
-	inputs.yaw = camera->getYaw();
+	inputs.pitch = camera->movement.getPitch();
+	inputs.yaw = camera->movement.getYaw();
 	inputs.loadRadius = camera->getLoadRadius();
-	inputs.tick = camera->getTick();
 
 	camera->inputsList.push_back(inputs);
 

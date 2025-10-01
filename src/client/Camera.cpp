@@ -2,20 +2,42 @@
 
 Camera::Camera(glm::vec3 position)
     : MouseSensitivity(0.1f) {
-    // movement.updateCameraVectors();
+    movement.updateCameraVectors();
 	initWireframeCube();
 }
 
-glm::mat4 Camera::getViewMatrix() const {
-    return glm::lookAt(getPosition(), getPosition() + movement.Front, movement.Up);
+Camera::~Camera() {
+	if (glfwGetCurrentContext()) {
+		glDeleteVertexArrays(1, &wireframeVAO);
+		glDeleteBuffers(1, &wireframeVBO);
+		glDeleteBuffers(1, &wireframeEBO);
+	} else {
+		wireframeVAO = 0;
+		wireframeVBO = 0;
+		wireframeEBO = 0;
+	}
+
 }
 
-void Camera::lerpToNextPosition(float time)
-{
-	glm::vec3 currentPosition;
-	if (amountOfSnapshotsReceived < 2) return ;
-	glm::vec3 renderPos = previousPosition + (predictedPosition - previousPosition) * time;
+glm::mat4 Camera::getViewMatrix() const {
+    return glm::lookAt(movement.getPosition(), movement.getPosition() + movement.Front, movement.Up);
+}
 
+void Camera::lerpToNextPosition(float deltaTime)
+{
+	if (prevServerTick == 0) return ;
+
+	double currTime = prevServerTick + deltaTime * 1000;
+	currTime = std::clamp(currTime, prevServerTick, serverTick);
+	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
+
+	// std::cout << deltaTime << std::endl;
+	// std::cout << currTime << std::endl;
+	// std::cout << prevServerTick << std::endl;
+	// std::cout << serverTick<< std::endl;
+	// std::cout << intraTick << std::endl;
+	// std::cout << std::endl;
+	glm::vec3 renderPos = previousPosition + (predictedPosition - previousPosition) * intraTick;
 	movement.setPosition(renderPos);
 }
 
@@ -47,8 +69,6 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 {
 	amountOfSnapshotsReceived++;
 
-	serverCurrTick = pkt.inputRecvTick;
-
 	glm::vec3 position;
 	position.x = pkt.positionX;
 	position.y = pkt.positionY;
@@ -66,6 +86,9 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 	// movement.setPosition(position);
 	previousPosition = predictedPosition;
 	predictedPosition = position;
+
+	prevServerTick = serverTick;
+	serverTick = pkt.serverTick * MS_TICK_RATE;
 
 	predictNTicks(world);
 }
@@ -126,7 +149,7 @@ void Camera::initWireframeCube() {
 void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection) {
 
 	glm::ivec3 blockPos, faceNormal;
-	if (!Renderer->getTargetedBlock(getPosition(), glm::normalize(movement.Front), blockPos, faceNormal))
+	if (!Renderer->getTargetedBlock(movement.getPosition(), glm::normalize(movement.Front), blockPos, faceNormal))
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));

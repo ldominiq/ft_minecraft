@@ -22,10 +22,10 @@ void PlayerMovement::updatePosition()
 
     this->movementSpeed = (inputs.keys & IN_RUN) ? FLY_SPEED : DEFAULT_SPEED;
 
-	float deltaTime = 0.05f;
+	float deltaTime = MS_TICK_RATE/1000.0f;
 	float velocity = this->movementSpeed * deltaTime;
 
-    // Minecraft'ish camera. Doens't move along the Y axis
+    // Minecraft'ish camera. Doesn't move along the Y axis
     glm::vec3 horizontalFront = glm::normalize(glm::vec3(this->Front.x, 0.0f, this->Front.z));
 
 	// 4 directions
@@ -126,7 +126,8 @@ glm::vec3 PlayerMovement::getDesiredMove()
 
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 {
-	float headHeight = this->entityHeight - 0.3f;
+	constexpr float forehead = 0.3f;
+	float headHeight = this->entityHeight - forehead;
 	this->position.y -= headHeight;
 
 	// TODO : return early if no new packet to read and velocities are 0 and there is no collision with block under. To avoid doing unnecessary calculations. Do the same with every other entity
@@ -144,10 +145,13 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 	}
 	this->position.y += headHeight;
 
+<<<<<<< HEAD
 	// TODO : fix this. it doens't really work. just a quick hack. When implementing prediction
 	// if (lastInputsPktRecvd.tick > tick || lastInputsPktRecvd.tick < 0)
 	tick = lastInputsPktRecvd.tick;
 
+=======
+>>>>>>> dev
 	lastInputsPktRecvd = {};
 	this->jump = false;
 }

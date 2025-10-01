@@ -101,7 +101,7 @@ class Entity {
 		inline virtual ItemID getItemType() const { return 0; } //only used for items; It's here to avoid the cost of dynamically down casting
 		virtual void calculateNewPosition(const ICommonWorld &world);
 		inline const glm::vec3 getPosition() const { return position; }
-		inline const float getEntityWitdth() const { return entityWidth; }
+		inline const float getEntityWidth() const { return entityWidth; }
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const uint32_t getID() const { return ID; }
 

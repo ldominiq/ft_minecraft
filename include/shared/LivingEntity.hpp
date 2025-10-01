@@ -12,7 +12,7 @@
 
 #define MM_DEFAULT		0.98f
 #define MM_STRAFE		1.0f
-#define MM_SNEAK_STRAFE	0.98f * sqrt(2)
+#define MM_SNEAK_STRAFE (0.98f * 1.41421356237f)
 
 #define WALKING_SPEED	4.317f
 

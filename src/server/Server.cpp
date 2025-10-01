@@ -176,13 +176,12 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	if (pkt.keys & IN_DROP)
-		world->entities.push_back(std::make_shared<ItemEntity>(player->getPosition(), player->getYaw(), static_cast<int>(BlockType::DIRT)));
-
-	player->lastPktRecvTick = currTick;
-	player->setLastInputPacketReceived(pkt);
+			world->entities.push_back(std::make_shared<ItemEntity>(player->movement->getPosition(), player->movement->getYaw(), static_cast<int>(BlockType::DIRT)));
+	
+	player->movement->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
-	player->setYawAndPitch(pkt.yaw, pkt.pitch);
-	player->updateCameraVectors();	//order is vital. updateCameraVectors uses pkt.
+	player->movement->setYawAndPitch(pkt.yaw, pkt.pitch);
+	player->movement->updateCameraVectors();	//order is vital. updateCameraVectors uses pkt.
 }
 
 void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &cliaddr)
@@ -191,7 +190,6 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	if (player == players.end())
 		return ;
 
-	player->lastPktRecvTick = currTick;
 	world->processPlayerMouseInputs(*player, pkt);
 }
 
@@ -213,7 +211,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 			if (auto itMode = gamemodeMap.find(mode); itMode != gamemodeMap.end())
 			{
 				auto player = NetUtils::findPlayerByAddr(players, cliaddr);
-				player->setGamemode(itMode->second);
+				player->movement->setGamemode(itMode->second);
 			}
 		}
 	}
@@ -244,8 +242,8 @@ void Server::sendAll()
 
 void Server::sendImGuiData(CPlayerInfo &player) {
     NetImGui pkt;
-	float wx = player.getPosition().x;
-	float wz = player.getPosition().z;
+	float wx = player.movement->getPosition().x;
+	float wz = player.movement->getPosition().z;
 	TerrainGenerationParams params = world->getTerrainParams();
     pkt.currentBiome = static_cast<uint8_t>(ChunkGeneration::computeBiome(params, wx, wz, ChunkGeneration::computeTerrainHeight(params, wx, wz)));
     sendPacketTo(pkt, player.addr);
@@ -308,19 +306,17 @@ void Server::sendChunk(CPlayerInfo &player) {
 // TODO : delta compression
 void Server::sendPositionDeltas(CPlayerInfo &player)
 {
-	player.lastPositionSent = player.getPosition();
 	NetPlayerMove pkt;
-	pkt.snapshotTick = tick;
-	pkt.inputRecvTick = player.getTick();
+	pkt.serverTick = tick;
 
-	pkt.positionX = player.getPosition().x;
-	pkt.positionY = player.getPosition().y;
-	pkt.positionZ = player.getPosition().z;
+	pkt.positionX = player.movement->getPosition().x;
+	pkt.positionY = player.movement->getPosition().y;
+	pkt.positionZ = player.movement->getPosition().z;
 
-	pkt.velocityX = player.getVelocity().x;
-	pkt.velocityZ = player.getVelocity().z;
+	pkt.velocityX = player.movement->getVelocity().x;
+	pkt.velocityZ = player.movement->getVelocity().z;
 
-	pkt.verticalVelocity = player.getVerticalVelocity();
+	pkt.verticalVelocity = player.movement->getVerticalVelocity();
 
 	sendPacketTo(pkt, player.addr);
 }

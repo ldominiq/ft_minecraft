@@ -188,6 +188,7 @@ World::World() {
 }
 
 World::World(int seed) {
+	std::cout << "World seed: " << seed << std::endl;
 	std::string regionsDirName = "Regions/";
 	regionDirName = regionsDirName + "region-" + std::to_string(seed);
 	if (SAVES_ACTIVE)
@@ -254,8 +255,8 @@ void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
     int unloadRadius = player.loadRadius + 16;
 
     // convert player position (world coords) to chunk coords
-    int playerChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-    int playerChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+    int playerChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+    int playerChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
     for (auto it = player.loadedChunks.begin(); it != player.loadedChunks.end(); )
     {
@@ -277,12 +278,12 @@ void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
 void World::setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates,
                           const CPlayerInfo &player)
 {
-    glm::vec2 camDir = glm::normalize(glm::vec2(player.getCameraDir().x, player.getCameraDir().z));
+    glm::vec2 camDir = glm::normalize(glm::vec2(player.movement->getCameraDir().x, player.movement->getCameraDir().z));
     float maxDist = static_cast<float>(player.loadRadius);
 
     // Get player’s current chunk position
-    int baseChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-    int baseChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+    int baseChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+    int baseChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
     for (int dx = -player.loadRadius; dx <= player.loadRadius; ++dx) {
         for (int dz = -player.loadRadius; dz <= player.loadRadius; ++dz) {
@@ -340,8 +341,8 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
     // in a circular distance from the camera are removed.  We copy the keys
     // to a temporary list to avoid invalidating the iterator while erasing.
 
-	const int currentChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-	const int currentChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+	const int currentChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+	const int currentChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
 	handleOutOfMemory(currentChunkX, currentChunkZ, player.loadRadius);
 	
@@ -352,22 +353,26 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 	updatePlannedChunks(player);
 	
 	for (const auto& [cx, cz] : plannedChunks) {
-		ChunkPos key = Chunk::toKey(cx, cz);
+        ChunkPos key = Chunk::toKey(cx, cz);
         std::shared_ptr<ChunkGeneration> chunk = getChunk(cx, cz);
 
         if (!chunk && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) {
-			generationFutures.push_back(std::async(std::launch::async, [=, this]() {
-                std::shared_ptr<ChunkGeneration> newChunk = std::make_shared<ChunkGeneration>(cx, cz, terrainParams);
-                return std::make_pair(key, newChunk);
+            const int cxCopy = cx;
+            const int czCopy = cz;
+            const ChunkPos keyCopy = key;
+
+            generationFutures.push_back(std::async(std::launch::async, [this,cxCopy,czCopy, keyCopy]() {
+                std::shared_ptr<ChunkGeneration> newChunk = std::make_shared<ChunkGeneration>(cxCopy, czCopy, terrainParams);
+                return std::make_pair(keyCopy, newChunk);
             }));
             amountOfConcurrentChunksBeingGenerated++;
         }
         else if (chunk && chunk->preGenerated && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) 
-		{
-			// generatingChunks.insert(key);
-			amountOfConcurrentChunksBeingGenerated++;
-			chunk->preGenerated = false;
-		}
+        {
+            // generatingChunks.insert(key);
+            amountOfConcurrentChunksBeingGenerated++;
+            chunk->preGenerated = false;
+        }
     }
 
     // Process a limited number of ready futures.  This spreads the cost of
@@ -591,8 +596,8 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 
 void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
 {
-	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.getPosition(), player.getCameraDir());
-	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.getPosition(), player.getCameraDir());
+	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
+	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
 }
 
 void World:: updateEntitiesPosition()
