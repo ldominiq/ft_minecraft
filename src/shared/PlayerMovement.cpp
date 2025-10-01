@@ -22,7 +22,7 @@ void PlayerMovement::updatePosition()
 
     this->movementSpeed = (inputs.keys & IN_RUN) ? FLY_SPEED : DEFAULT_SPEED;
 
-	float deltaTime = 0.05f;
+	float deltaTime = MS_TICK_RATE/1000.0f;
 	float velocity = this->movementSpeed * deltaTime;
 
     // Minecraft'ish camera. Doesn't move along the Y axis

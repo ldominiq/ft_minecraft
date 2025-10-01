@@ -255,8 +255,8 @@ void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
     int unloadRadius = player.loadRadius + 16;
 
     // convert player position (world coords) to chunk coords
-    int playerChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-    int playerChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+    int playerChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+    int playerChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
     for (auto it = player.loadedChunks.begin(); it != player.loadedChunks.end(); )
     {
@@ -278,12 +278,12 @@ void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
 void World::setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates,
                           const CPlayerInfo &player)
 {
-    glm::vec2 camDir = glm::normalize(glm::vec2(player.getCameraDir().x, player.getCameraDir().z));
+    glm::vec2 camDir = glm::normalize(glm::vec2(player.movement->getCameraDir().x, player.movement->getCameraDir().z));
     float maxDist = static_cast<float>(player.loadRadius);
 
     // Get player’s current chunk position
-    int baseChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-    int baseChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+    int baseChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+    int baseChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
     for (int dx = -player.loadRadius; dx <= player.loadRadius; ++dx) {
         for (int dz = -player.loadRadius; dz <= player.loadRadius; ++dz) {
@@ -341,8 +341,8 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
     // in a circular distance from the camera are removed.  We copy the keys
     // to a temporary list to avoid invalidating the iterator while erasing.
 
-	const int currentChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-	const int currentChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+	const int currentChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+	const int currentChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
 	handleOutOfMemory(currentChunkX, currentChunkZ, player.loadRadius);
 	
@@ -596,6 +596,6 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 
 void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
 {
-	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.getPosition(), player.getCameraDir());
-	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.getPosition(), player.getCameraDir());
+	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
+	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
 }

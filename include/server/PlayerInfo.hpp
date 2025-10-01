@@ -31,18 +31,6 @@ class CPlayerInfo
 		std::vector<ChunkPos> rdyChunks;
 
 		bool connected; //unused
-
-		inline const glm::vec3 getPosition() const { return movement->getPosition(); }
-		inline const glm::vec3 getVelocity() const { return movement->getVelocity(); }
-		inline const float getVerticalVelocity() const { return movement->getVerticalVelocity(); }
-
-		inline const glm::vec3 getCameraDir() const { return movement->getCameraDir(); }
-		inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {movement->lastInputsPktRecvd = pkt; }
-		inline void setGamemode(GAMEMODES gamemode) {movement->gamemode = gamemode; }
-
-		inline void updateCameraVectors() {movement->updateCameraVectors(); }
-		inline void setYawAndPitch(float yaw, float pitch) {movement->setYawAndPitch(yaw, pitch); }
-		inline void calculateNewPosition(const ICommonWorld &world) {movement->calculateNewPosition(world); }
 };
 
 #endif

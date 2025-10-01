@@ -20,7 +20,7 @@ Camera::~Camera() {
 }
 
 glm::mat4 Camera::getViewMatrix() const {
-    return glm::lookAt(getPosition(), getPosition() + movement.Front, movement.Up);
+    return glm::lookAt(movement.getPosition(), movement.getPosition() + movement.Front, movement.Up);
 }
 
 void Camera::lerpToNextPosition(float deltaTime)
@@ -28,7 +28,7 @@ void Camera::lerpToNextPosition(float deltaTime)
 	if (prevServerTick == 0) return ;
 
 	double currTime = prevServerTick + deltaTime * 1000;
-	std::clamp(currTime, prevServerTick, serverTick);
+	currTime = std::clamp(currTime, prevServerTick, serverTick);
 	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
 
 	// std::cout << deltaTime << std::endl;
@@ -149,7 +149,7 @@ void Camera::initWireframeCube() {
 void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection) {
 
 	glm::ivec3 blockPos, faceNormal;
-	if (!Renderer->getTargetedBlock(getPosition(), glm::normalize(movement.Front), blockPos, faceNormal))
+	if (!Renderer->getTargetedBlock(movement.getPosition(), glm::normalize(movement.Front), blockPos, faceNormal))
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));

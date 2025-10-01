@@ -24,8 +24,6 @@ class Camera {
 	// //""Temporarily"" put some chunks in Camera.
 	// std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks;
 
-	PlayerMovement movement;
-
 	int64_t amountOfSnapshotsReceived = 0;
 	glm::vec3 predictedPosition;
 	glm::vec3 previousPosition;
@@ -34,6 +32,7 @@ class Camera {
 	double prevServerTick = 0;
 
 public:
+	PlayerMovement movement;
 	std::vector<NetPlayerInputs> inputsList;
 
     float MouseSensitivity;
@@ -48,16 +47,16 @@ public:
 	void onSnapshot(NetPlayerMove &pkt, const Renderer &world);
 	void lerpToNextPosition(float time);
 
-	inline const float getYaw() const { return movement.yaw; }
-	inline const float getPitch() const { return movement.pitch; }
+	// inline const float getYaw() const { return movement.yaw; }
+	// inline const float getPitch() const { return movement.pitch; }
 	inline const uint8_t getLoadRadius() const { return loadRadius; }
-	inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
+	// inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
 
-	inline const glm::vec3 getPosition() const { return movement.getPosition(); }
-	inline const glm::vec3 getCameraDir() const { return movement.getCameraDir(); }
+	// inline const glm::vec3 getPosition() const { return movement.getPosition(); }
+	// inline const glm::vec3 getCameraDir() const { return movement.getCameraDir(); }
 	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
 
-	inline void setPosition(glm::vec3 position) { movement.setPosition(position); }
+	// inline void setPosition(glm::vec3 position) { movement.setPosition(position); }
 
 	void drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 };

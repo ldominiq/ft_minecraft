@@ -347,10 +347,10 @@ void App::render() {
 
         lighting->setViewportSize(width, height);
         lighting->updateSunDirection(deltaTime);
-        lighting->drawSky(view, projection, camera->getPosition());
+        lighting->drawSky(view, projection, camera->movement.getPosition());
 
         if (lighting->isShadowsEnabled()) {
-            lighting->updateShadowMap(*renderer, camera->getPosition());
+            lighting->updateShadowMap(*renderer, camera->movement.getPosition());
         }
 
         // Set the uniform matrices in the shader
@@ -358,7 +358,7 @@ void App::render() {
         activeShader->setMat4("view", view);
         activeShader->setMat4("projection", projection);
 
-        lighting->uploadLightingUniforms(*textureShader, camera->getPosition(), camera->getCameraDir());
+        lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
@@ -370,8 +370,8 @@ void App::render() {
 
         lighting->drawLightCubes(view, projection);
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->getPosition().x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->getPosition().z / Chunk::DEPTH));
+		const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
+		const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
@@ -417,7 +417,7 @@ void App::debugWindow() {
                 appliedDefaultFontSize = true;
             }
 
-            glm::vec3 pos = camera->getPosition();
+            glm::vec3 pos = camera->movement.getPosition();
             int wx = static_cast<int>(std::floor(pos.x));
             int wz = static_cast<int>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
@@ -487,7 +487,7 @@ void App::debugWindow() {
                         ImGui::InputFloat("Y", &tmpY);
                         ImGui::InputFloat("Z", &tmpZ);
                         if (ImGui::Button("Teleport")) {
-                            camera->setPosition(glm::vec3(tmpX, tmpY, tmpZ));
+                            camera->movement.setPosition(glm::vec3(tmpX, tmpY, tmpZ));
                         }
                     }
 
@@ -911,8 +911,8 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 		keys |= IN_RUN;
 	
 	inputs.keys = keys;
-	inputs.pitch = camera->getPitch();
-	inputs.yaw = camera->getYaw();
+	inputs.pitch = camera->movement.getPitch();
+	inputs.yaw = camera->movement.getYaw();
 	inputs.loadRadius = camera->getLoadRadius();
 
 	camera->inputsList.push_back(inputs);

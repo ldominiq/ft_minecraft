@@ -175,10 +175,10 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (player == players.end())
 		return ;
 
-	player->setLastInputPacketReceived(pkt);
+	player->movement->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
-	player->setYawAndPitch(pkt.yaw, pkt.pitch);
-	player->updateCameraVectors();	//order is vital. updateCameraVectors uses pkt.
+	player->movement->setYawAndPitch(pkt.yaw, pkt.pitch);
+	player->movement->updateCameraVectors();	//order is vital. updateCameraVectors uses pkt.
 }
 
 void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &cliaddr)
@@ -208,7 +208,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 			if (auto itMode = gamemodeMap.find(mode); itMode != gamemodeMap.end())
 			{
 				auto player = NetUtils::findPlayerByAddr(players, cliaddr);
-				player->setGamemode(itMode->second);
+				player->movement->setGamemode(itMode->second);
 			}
 		}
 	}
@@ -222,7 +222,7 @@ void Server::sendAll()
 	world->amountOfChunksSentThisTick = 0;
 	for (CPlayerInfo &p : players)
 	{
-		p.calculateNewPosition(*world);
+		p.movement->calculateNewPosition(*world);
 		world->updateVisibleChunks(p);
 
 		sendChunk(p);
@@ -239,8 +239,8 @@ void Server::sendAll()
 
 void Server::sendImGuiData(CPlayerInfo &player) {
     NetImGui pkt;
-	float wx = player.getPosition().x;
-	float wz = player.getPosition().z;
+	float wx = player.movement->getPosition().x;
+	float wz = player.movement->getPosition().z;
 	TerrainGenerationParams params = world->getTerrainParams();
     pkt.currentBiome = static_cast<uint8_t>(ChunkGeneration::computeBiome(params, wx, wz, ChunkGeneration::computeTerrainHeight(params, wx, wz)));
     sendPacketTo(pkt, player.addr);
@@ -306,14 +306,14 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	NetPlayerMove pkt;
 	pkt.serverTick = tick;
 
-	pkt.positionX = player.getPosition().x;
-	pkt.positionY = player.getPosition().y;
-	pkt.positionZ = player.getPosition().z;
+	pkt.positionX = player.movement->getPosition().x;
+	pkt.positionY = player.movement->getPosition().y;
+	pkt.positionZ = player.movement->getPosition().z;
 
-	pkt.velocityX = player.getVelocity().x;
-	pkt.velocityZ = player.getVelocity().z;
+	pkt.velocityX = player.movement->getVelocity().x;
+	pkt.velocityZ = player.movement->getVelocity().z;
 
-	pkt.verticalVelocity = player.getVerticalVelocity();
+	pkt.verticalVelocity = player.movement->getVerticalVelocity();
 
 	sendPacketTo(pkt, player.addr);
 }
