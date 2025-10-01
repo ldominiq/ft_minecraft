@@ -72,6 +72,7 @@ private:
     void loadResources();
     static unsigned int loadTexture(const char* path);
     void render();
+	void gameTick();
 
     void cleanup();
     void setUdpClientPacketCallback();
@@ -93,6 +94,9 @@ private:
 
 	uint16_t inputMask = 0;
     bool keyPressedRecently = false;
+	bool mouseMovedRecently = false;
+	float lastMouseMoveTime = 0;
+	float lastTickClientTime = 0;
 
     unsigned int texture;
 

@@ -11,7 +11,7 @@ std::shared_ptr<ChunkT> CommonWorld<ChunkT>::getChunk(int chunkX, int chunkZ) {
 }
 
 template <typename ChunkT>
-void CommonWorld<ChunkT>::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ)
+void CommonWorld<ChunkT>::globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ) const
 {
 	x = (globalX % Chunk::WIDTH + Chunk::WIDTH) % Chunk::WIDTH;
 	z = (globalZ % Chunk::DEPTH + Chunk::DEPTH) % Chunk::DEPTH;
@@ -27,7 +27,7 @@ void CommonWorld<ChunkT>::globalCoordsToLocalCoords(int &x, int &y, int &z, int 
 }
 
 template <typename ChunkT>
-BlockType CommonWorld<ChunkT>::getBlockWorld(glm::ivec3 globalCoords)
+BlockType CommonWorld<ChunkT>::getBlockWorld(glm::ivec3 globalCoords) const
 {
 	int x, y, z;
 	int chunkX, chunkZ;
@@ -35,7 +35,7 @@ BlockType CommonWorld<ChunkT>::getBlockWorld(glm::ivec3 globalCoords)
 
 	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
 	if (it == chunks.end()) {
-		return BlockType::AIR;
+		return BlockType::END;
 	}
 	std::shared_ptr<Chunk> currChunk = it->second;
 	return currChunk->getBlock(x, y, z);
@@ -121,5 +121,9 @@ void CommonWorld<ChunkT>::setTargettedBlock(const glm::vec3 &rayOrigin, const gl
 {
 	glm::ivec3 blockPos, faceNormal;
 	if (getTargetedBlock(rayOrigin, rayDir, blockPos, faceNormal))
+	{
+		for (auto &entity : livingEntities)
+			if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return ;
 		setBlockWorld(blockPos, faceNormal, BlockType::DIRT);
+	}
 }

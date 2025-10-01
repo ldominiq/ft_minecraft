@@ -88,7 +88,8 @@ void App::init() {
         app->lastY = ypos;
         app->camera->processMouseMovement(xoffset, yoffset);
 
-		app->keyPressedRecently = true;
+		app->mouseMovedRecently = true;
+		app->lastMouseMoveTime = glfwGetTime();
     });
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -208,7 +209,8 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
-				camera->updatePosition(p);
+				lastTickClientTime = glfwGetTime();
+				camera->onSnapshot(p, *renderer);
 				break;
 			}
 
@@ -259,22 +261,44 @@ void App::loadResources() {
     lighting->initShadowDebugShader();
 }
 
+void App::gameTick()
+{
+	// sending/receiving packets and stuff
+
+	udpClient->receivePacket();
+	if ((keyPressedRecently || mouseMovedRecently) && !menuManager)
+	{
+		NetPlayerInputs inputs = buildPlayerInputsPacket();
+		udpClient->sendPacket(inputs);
+	}
+}
+
 void App::render() {
 
     while (!glfwWindowShouldClose(window)) {
-
-		// sending/receiving packets and stuff
-		udpClient->receivePacket();
-		if (keyPressedRecently && !menuManager)
-		{
-			NetPlayerInputs inputs = buildPlayerInputsPacket();
-			udpClient->sendPacket(inputs);
-		}
 
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+		//Tick logic
+		float tickDuration = 1.0f / TPS; // 0.05s per tick
+		static float accumulator = 0.0f;
+		accumulator += deltaTime;
+
+		while (accumulator >= tickDuration) //should never be more than 1 tick...
+		{
+			// Advance one tick
+			gameTick();
+			accumulator -= tickDuration;
+		}
+
+		const double mouseIdleThreshold = 0.2; // seconds, tweak to taste
+		if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
+			mouseMovedRecently = false;
+
+		camera->lerpToNextPosition(glfwGetTime() - lastTickClientTime);
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -323,10 +347,10 @@ void App::render() {
 
         lighting->setViewportSize(width, height);
         lighting->updateSunDirection(deltaTime);
-        lighting->drawSky(view, projection, camera->Position);
+        lighting->drawSky(view, projection, camera->movement.getPosition());
 
         if (lighting->isShadowsEnabled()) {
-            lighting->updateShadowMap(*renderer, camera->Position);
+            lighting->updateShadowMap(*renderer, camera->movement.getPosition());
         }
 
         // Set the uniform matrices in the shader
@@ -334,7 +358,7 @@ void App::render() {
         activeShader->setMat4("view", view);
         activeShader->setMat4("projection", projection);
 
-        lighting->uploadLightingUniforms(*textureShader, camera->Position, camera->Front);
+        lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
@@ -346,8 +370,8 @@ void App::render() {
 
         lighting->drawLightCubes(view, projection);
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->Position.z / Chunk::DEPTH));
+		const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
+		const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
@@ -393,7 +417,7 @@ void App::debugWindow() {
                 appliedDefaultFontSize = true;
             }
 
-            glm::vec3 pos = camera->Position;
+            glm::vec3 pos = camera->movement.getPosition();
             int wx = static_cast<int>(std::floor(pos.x));
             int wz = static_cast<int>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
@@ -463,7 +487,7 @@ void App::debugWindow() {
                         ImGui::InputFloat("Y", &tmpY);
                         ImGui::InputFloat("Z", &tmpZ);
                         if (ImGui::Button("Teleport")) {
-                            camera->Position = glm::vec3(tmpX, tmpY, tmpZ);
+                            camera->movement.setPosition(glm::vec3(tmpX, tmpY, tmpZ));
                         }
                     }
 
@@ -761,6 +785,24 @@ void App::debugWindow() {
                 ImGui::EndTabBar();
             }
 
+			static bool spectator = false;
+			ImGui::Separator();
+			if (ImGui::Checkbox("Survival", &spectator))
+			{
+				if (spectator)
+				{
+					NetMessage pkt;
+					pkt.message = "/gamemode survival";
+					udpClient->sendPacket(pkt);
+				}
+				else
+				{
+					NetMessage pkt;
+					pkt.message = "/gamemode spectator";
+					udpClient->sendPacket(pkt);
+				}
+			}
+
 
             ImGui::End();
             if (!uiInteractive) {
@@ -867,11 +909,13 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 
 	if (glfwGetKey(window, controlsArray[MOVE_FAST]) == GLFW_PRESS)
 		keys |= IN_RUN;
-
+	
 	inputs.keys = keys;
-	inputs.pitch = camera->getPitch();
-	inputs.yaw = camera->getYaw();
+	inputs.pitch = camera->movement.getPitch();
+	inputs.yaw = camera->movement.getYaw();
 	inputs.loadRadius = camera->getLoadRadius();
+
+	camera->inputsList.push_back(inputs);
 
 	return inputs;
 }

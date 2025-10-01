@@ -98,24 +98,39 @@ struct NetPlayerMouseInputs final : public Packet {
 };
 inline AutoRegister<NetPlayerMouseInputs> _reg_NetPlayerMouseInput;
 
-// TODO : add delta compression
+// TODO : add delta compression & put inside of a new Snapshot packet
 struct NetPlayerMove final : public Packet {
 	static constexpr PacketType ID = PacketType::PLAYER_MOVE;
+	int32_t serverTick; // TODO : move to snapshot packet
+
 	float positionX;
 	float positionY;
 	float positionZ;
 
+	float velocityX;
+	float velocityZ;
+
+	float verticalVelocity;
+
 	NetPlayerMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
+		w.write_i32(serverTick);
 		w.write_f32(positionX);
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
+		w.write_f32(velocityX);
+		w.write_f32(velocityZ);
+		w.write_f32(verticalVelocity);
     }
     void decode(BufferReader& r) override {
+		serverTick = r.read_i32();
 		positionX = r.read_f32();
 		positionY = r.read_f32();
 		positionZ = r.read_f32();
+		velocityX = r.read_f32();
+		velocityZ = r.read_f32();
+		verticalVelocity = r.read_f32();
     }
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;

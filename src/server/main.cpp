@@ -1,28 +1,31 @@
 #include <iostream>
 #include "Server.hpp"
+#include <csignal>
 
-int main()
-{
+Server* g_server = nullptr;
+
+void handle_sigint(int) {
+    if (g_server) {
+        g_server->saveWorldOnExit();
+    }
+    exit(0);
+}
+
+int main(int argc, char* argv[]) {
+
+	std::optional<int> seed;
+	if (argc > 1)
+	{
+		try {
+			seed = std::stoi(argv[1]);
+		} catch (std::exception &e) {
+			std::cout << e.what() << ": please. Just put a number... exiting" << std::endl;
+			exit(1);
+		}
+	}
+	
+	std::signal(SIGINT, handle_sigint);
 	Server serv;
-	serv.run();
-
-	// if (argc > 1)
-	// {
-	// 	int seed;
-	// 	try {
-	// 		seed = std::stoi(argv[1]);
-	// 	} catch (std::exception &e) {
-	// 		std::cout << e.what() << ": please. Just put a number... exiting" << std::endl;
-	// 		exit(1);
-	// 	}
-		
-	// 	App app(seed);
-	// 	app.run();
-
-	// } else {
-	// 	App app;
-	// 	app.run();
-	// }
-
-	return 0;
+	g_server = &serv;
+    g_server->run(seed);
 }

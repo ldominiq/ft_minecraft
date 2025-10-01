@@ -12,7 +12,8 @@ enum class BlockType : uint8_t{
     WATER,
     BEDROCK,
     LOG,
-    LEAVES
+    LEAVES,
+	END
 };
 
 enum class BiomeType {

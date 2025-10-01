@@ -52,7 +52,8 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 	if (x == 0) {
 		if (auto westChunkBase = currChunk->getAdjacentChunks()[WEST].lock()) {
 			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
-				westChunk->buildMesh();
+				if (westChunk->hasAllAdjacentChunkLoaded())
+					westChunk->buildMesh();
 			}
 		}
 	}
@@ -60,7 +61,8 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 	if (x == Chunk::WIDTH - 1) {
 		if (auto eastChunkBase = currChunk->getAdjacentChunks()[EAST].lock()) {
 			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
-				eastChunk->buildMesh();
+				if (eastChunk->hasAllAdjacentChunkLoaded())
+					eastChunk->buildMesh();
 			}
 		}
 	}
@@ -68,7 +70,8 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 	if (z == 0) {
 		if (auto southChunkBase = currChunk->getAdjacentChunks()[SOUTH].lock()) {
 			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
-				southChunk->buildMesh();
+				if (southChunk->hasAllAdjacentChunkLoaded())
+					southChunk->buildMesh();
 			}
 		}
 	}
@@ -76,7 +79,8 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 	if (z == Chunk::DEPTH - 1) {
 		if (auto northChunkBase = currChunk->getAdjacentChunks()[NORTH].lock()) {
 			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
-				northChunk->buildMesh();
+				if (northChunk->hasAllAdjacentChunkLoaded())
+					northChunk->buildMesh();
 			}
 		}
 	}

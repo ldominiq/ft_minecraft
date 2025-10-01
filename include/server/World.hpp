@@ -18,14 +18,16 @@
 #include <filesystem>
 #include <optional>
 #include <cstring>
+#include <zstd.h>
 
 #include "TerrainParams.hpp"
 #include "Protocol.hpp"
 #include "PlayerInfo.hpp"
 #include "CommonWorld.hpp"
 
-static constexpr int MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK = 40;
+static constexpr int MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK = 20;
 static constexpr int REGION_SIZE = 32;
+static constexpr bool SAVES_ACTIVE = false;
 
 struct RegionFileMetadata {
     char magic[4] = {'R','G','N','1'};
@@ -65,6 +67,8 @@ class World final : public CommonWorld<ChunkGeneration>
 
 	void handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadius);
 	void removeLoadedChunksFromPlayer(CPlayerInfo &player);
+
+	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneration> &chunk); // TODO : consider moving to shared?
 
 	std::unordered_set<ChunkPos> loadedRegions;
 	void updateRegionStreaming(int currentChunkX, int currentChunkZ);

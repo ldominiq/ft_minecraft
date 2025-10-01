@@ -11,8 +11,8 @@
 #include <stdexcept>
 #include <type_traits>
 #include <cstring>
+#include "Config.hpp"
 
-#define MAX_CLIENTS 8
 #define MAXLINE 1400
 
 enum class PacketType : uint8_t {

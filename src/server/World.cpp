@@ -177,14 +177,25 @@ World::World() {
     std::mt19937 rng(time(nullptr));
     terrainParams.seed = rng();
 
-	regionDirName = "region-" + std::to_string(terrainParams.seed);
-	// std::filesystem::create_directories(regionDirName);
+	std::string regionsDirName = "Regions/";
+	regionDirName = regionsDirName + "region-" + std::to_string(terrainParams.seed);
+	if (SAVES_ACTIVE)
+	{
+		std::filesystem::create_directories(regionsDirName);
+		std::filesystem::create_directories(regionDirName);
+	}
     std::cout << "World seed: " << terrainParams.seed << std::endl;
 }
 
 World::World(int seed) {
-	regionDirName = "region-" + std::to_string(seed);
-	// std::filesystem::create_directories(regionDirName);
+	std::cout << "World seed: " << seed << std::endl;
+	std::string regionsDirName = "Regions/";
+	regionDirName = regionsDirName + "region-" + std::to_string(seed);
+	if (SAVES_ACTIVE)
+	{
+		std::filesystem::create_directories(regionsDirName);
+		std::filesystem::create_directories(regionDirName);
+	}
     terrainParams.seed = seed;
 }
 
@@ -220,14 +231,32 @@ void World::handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadi
 	}
 }
 
+void World::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneration> &chunk) {
+
+    const int dirX[] = { 0, 0, 1, -1 };
+    const int dirZ[] = { 1, -1, 0, 0 };
+    const int opp[]  = { SOUTH, NORTH, WEST, EAST };
+
+    for (int dir = 0; dir < 4; ++dir) {
+        int nx = chunkX + dirX[dir];
+        int nz = chunkZ + dirZ[dir];
+
+        std::shared_ptr<ChunkGeneration> neighbor = getChunk(nx, nz);
+
+        chunk->setAdjacentChunks(static_cast<Direction>(dir), neighbor);
+        if (neighbor) {
+            neighbor->setAdjacentChunks(opp[dir], chunk);
+        }
+    }
+}
 
 void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
 {
     int unloadRadius = player.loadRadius + 16;
 
     // convert player position (world coords) to chunk coords
-    int playerChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-    int playerChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+    int playerChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+    int playerChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
     for (auto it = player.loadedChunks.begin(); it != player.loadedChunks.end(); )
     {
@@ -249,12 +278,12 @@ void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
 void World::setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates,
                           const CPlayerInfo &player)
 {
-    glm::vec2 camDir = glm::normalize(glm::vec2(player.getCameraDir().x, player.getCameraDir().z));
+    glm::vec2 camDir = glm::normalize(glm::vec2(player.movement->getCameraDir().x, player.movement->getCameraDir().z));
     float maxDist = static_cast<float>(player.loadRadius);
 
     // Get player’s current chunk position
-    int baseChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-    int baseChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+    int baseChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+    int baseChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
     for (int dx = -player.loadRadius; dx <= player.loadRadius; ++dx) {
         for (int dz = -player.loadRadius; dz <= player.loadRadius; ++dz) {
@@ -312,8 +341,8 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
     // in a circular distance from the camera are removed.  We copy the keys
     // to a temporary list to avoid invalidating the iterator while erasing.
 
-	const int currentChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-	const int currentChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+	const int currentChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+	const int currentChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
 	handleOutOfMemory(currentChunkX, currentChunkZ, player.loadRadius);
 	
@@ -363,6 +392,7 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 			auto result = fut.get();
 			// generatingChunks.insert(result.first);
 			chunks[result.first] = result.second;
+			linkNeighbors(result.first.first, result.first.second, result.second);
 			plannedChunks.erase(result.first);
 
 			it = generationFutures.erase(it);
@@ -376,8 +406,9 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 
 void World::saveRegionsOnExit()
 {
+	if (!SAVES_ACTIVE) return;
     for (auto it = loadedRegions.begin(); it != loadedRegions.end();) {
-        //saveRegion(it->first, it->second);
+        saveRegion(it->first, it->second);
         it = loadedRegions.erase(it);
     }
 }
@@ -405,9 +436,10 @@ void World::updateRegionStreaming(int currentChunkX, int currentChunkZ) {
     }
 
     // Unload regions that are not in the 3x3 grid
+	// TODO : saveRegions if no player is in it...? Or something like that
     for (auto it = loadedRegions.begin(); it != loadedRegions.end();) {
         if (!regionsToKeep.count(*it)) {
-            //saveRegion(it->first, it->second);
+            // saveRegion(it->first, it->second);
             it = loadedRegions.erase(it);
         } else {
             ++it;
@@ -415,30 +447,29 @@ void World::updateRegionStreaming(int currentChunkX, int currentChunkZ) {
     }
 }
 
-//TODO handle the throws or change them to returns
 void World::saveRegion(int regionX, int regionZ) {
-    std::string filename = getRegionFilename(regionX, regionZ);
-    std::ofstream out(filename, std::ios::binary | std::ios::trunc);
-    if (!out) throw std::runtime_error("Cannot open region file for writing: " + filename);
+	std::string filename = getRegionFilename(regionX, regionZ);
 
-    // --- Write metadata ---
-    RegionFileMetadata metadata;
-    out.write(reinterpret_cast<const char*>(&metadata), sizeof(metadata));
+	// Write into memory buffer first
+	std::ostringstream oss(std::ios::binary);
 
-    // --- Reserve header space ---
-    std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE); // all zeroed
-    out.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
+	// --- Write metadata ---
+	RegionFileMetadata metadata;
+	oss.write(reinterpret_cast<const char*>(&metadata), sizeof(metadata));
 
-    // --- Write chunks ---
+	// --- Reserve header space ---
+	std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE);
+	oss.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
+
+	// --- Write chunks ---
 	for (int x = regionX * REGION_SIZE; x < (regionX + 1) * REGION_SIZE; x++) {
-		for (int z = regionZ * REGION_SIZE; z < (regionZ + 1) * REGION_SIZE; z++)
-		{
+		for (int z = regionZ * REGION_SIZE; z < (regionZ + 1) * REGION_SIZE; z++) {
 			auto it = chunks.find(Chunk::toKey(x, z));
-			if (it == chunks.end()) continue ;
-			
-			std::streampos currPos = out.tellp();
-			it->second->saveToStream(out);
-			std::streampos newPos = out.tellp();
+			if (it == chunks.end()) continue;
+
+			std::streampos currPos = oss.tellp();
+			it->second->saveToStream(oss);
+			std::streampos newPos = oss.tellp();
 
 			ChunkEntry entry;
 			entry.X = it->first.first;
@@ -446,7 +477,6 @@ void World::saveRegion(int regionX, int regionZ) {
 			entry.offset = static_cast<std::uint32_t>(currPos);
 			entry.size   = static_cast<std::uint32_t>(newPos - currPos);
 
-			//int idx = (x % REGION_SIZE) * REGION_SIZE + z;
 			int localX = x - regionX * REGION_SIZE;
 			int localZ = z - regionZ * REGION_SIZE;
 			int idx = localZ * REGION_SIZE + localX;
@@ -457,41 +487,80 @@ void World::saveRegion(int regionX, int regionZ) {
 		}
 	}
 
+	// --- Rewrite header in memory ---
+	oss.seekp(sizeof(metadata));
+	oss.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
 
-    // --- Rewrite header with correct entries ---
-    out.seekp(sizeof(metadata));
-    out.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
+	// === Compress entire buffer ===
+	std::string rawData = oss.str();
+	size_t maxCompressedSize = ZSTD_compressBound(rawData.size());
+	std::vector<uint8_t> compressed(maxCompressedSize);
+
+	size_t compressedSize = ZSTD_compress(compressed.data(), maxCompressedSize,
+										rawData.data(), rawData.size(), /*level*/ 3);
+	if (ZSTD_isError(compressedSize)) {
+		throw std::runtime_error("ZSTD compression failed: " + std::string(ZSTD_getErrorName(compressedSize)));
+	}
+	compressed.resize(compressedSize);
+
+	// === Write compressed file ===
+	std::ofstream out(filename, std::ios::binary | std::ios::trunc);
+	if (!out) throw std::runtime_error("Cannot open region file for writing: " + filename);
+
+	out.write(reinterpret_cast<const char*>(compressed.data()), compressed.size());
 }
 
-
 void World::loadRegion(int regionX, int regionZ) {
-    std::string filename = getRegionFilename(regionX, regionZ);
-    std::ifstream in(filename, std::ios::binary);
-    if (!in) return ;
+	std::string filename = getRegionFilename(regionX, regionZ);
+	std::ifstream in(filename, std::ios::binary);
+	if (!in) return;
 
-    // --- Read metadata ---
-    RegionFileMetadata metadata;
-    in.read(reinterpret_cast<char*>(&metadata), sizeof(metadata));
-    if (std::strncmp(metadata.magic, "RGN1", 4) != 0)
-        throw std::runtime_error("Invalid region file magic in " + filename);
+	// Read whole compressed file into memory
+	std::vector<uint8_t> compressed((std::istreambuf_iterator<char>(in)), {});
+	if (compressed.empty()) return;
 
-    // --- Read header ---
-    std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE);
-    in.read(reinterpret_cast<char*>(header.data()), header.size() * sizeof(ChunkEntry));
+	// Figure out decompressed size (if stored in frame)
+	unsigned long long decompressedSize = ZSTD_getFrameContentSize(compressed.data(), compressed.size());
+	if (decompressedSize == ZSTD_CONTENTSIZE_ERROR) {
+		throw std::runtime_error("Not a valid ZSTD stream: " + filename);
+	}
+	if (decompressedSize == ZSTD_CONTENTSIZE_UNKNOWN) {
+		throw std::runtime_error("Unknown decompressed size for: " + filename);
+	}
 
-    // --- Load each chunk ---
-    for (const auto& entry : header) {
-        if (entry.size == 0 || entry.offset == 0) continue; // empty slot
+	std::vector<uint8_t> decompressed(decompressedSize);
 
-        // Seek to the chunk data
-        in.seekg(entry.offset);
-        auto chunk = std::make_shared<ChunkGeneration>(entry.X, entry.Z, terrainParams, false);
-        chunk->loadFromStream(in);
+	size_t actualSize = ZSTD_decompress(decompressed.data(), decompressedSize,
+										compressed.data(), compressed.size());
+	if (ZSTD_isError(actualSize)) {
+		throw std::runtime_error("ZSTD decompression failed: " + std::string(ZSTD_getErrorName(actualSize)));
+	}
 
-        // Insert into chunk map
-        ChunkPos pos(entry.X, entry.Z);
-        chunks[pos] = chunk;
-    }
+	// Now parse from memory (like a file stream)
+	std::istringstream iss(std::string(reinterpret_cast<char*>(decompressed.data()), actualSize));
+
+	// --- Read metadata ---
+	RegionFileMetadata metadata;
+	iss.read(reinterpret_cast<char*>(&metadata), sizeof(metadata));
+	if (std::strncmp(metadata.magic, "RGN1", 4) != 0)
+		throw std::runtime_error("Invalid region file magic in " + filename);
+
+	// --- Read header ---
+	std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE);
+	iss.read(reinterpret_cast<char*>(header.data()), header.size() * sizeof(ChunkEntry));
+
+	// --- Load chunks ---
+	for (const auto& entry : header) {
+		if (entry.size == 0 || entry.offset == 0) continue;
+
+		iss.seekg(entry.offset);
+		auto chunk = std::make_shared<ChunkGeneration>(entry.X, entry.Z, terrainParams, false);
+		chunk->loadFromStream(iss);
+		linkNeighbors(entry.X, entry.Z, chunk);
+
+		ChunkPos pos(entry.X, entry.Z);
+		chunks[pos] = chunk;
+	}
 }
 
 std::string World::getRegionFilename(int regionX, int regionZ) const {
@@ -527,6 +596,6 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 
 void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
 {
-	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.getPosition(), player.getCameraDir());
-	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.getPosition(), player.getCameraDir());
+	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
+	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
 }
