@@ -40,6 +40,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
 
 		void render(const std::shared_ptr<Shader> &shaderProgram) const ;
+		void renderWater(const std::shared_ptr<Shader>& waterShader) const;
 
 		// Get or set the current chunk load radius.  The radius determines how
 		// many chunks around the camera are loaded.  Values below 1 are clamped.

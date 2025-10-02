@@ -259,6 +259,11 @@ void App::loadResources() {
     textureShader->setInt("diffuseTexture", 0);
     textureShader->setInt("shadowMap", 1);
     lighting->initShadowDebugShader();
+
+    waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
+    dudvTexture = loadTexture("assets/textures/waterDUDV.png");
+    waterNormalTexture = loadTexture("assets/textures/waterNormal.png");
+    waterFBO = std::make_unique<WaterFramebuffer>(windowedWidth, windowedHeight);
 }
 
 void App::gameTick()
@@ -271,6 +276,9 @@ void App::gameTick()
 		NetPlayerInputs inputs = buildPlayerInputsPacket();
 		udpClient->sendPacket(inputs);
 	}
+
+    waterMoveFactor += 0.0003f * deltaTime;
+    if (waterMoveFactor > 1.0f) waterMoveFactor = 0.0f;
 }
 
 void App::render() {
@@ -334,9 +342,6 @@ void App::render() {
 		if (menuManager != chat)
         	processInput();
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-
         // window aspect / uniforms
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
@@ -347,23 +352,136 @@ void App::render() {
 
         lighting->setViewportSize(width, height);
         lighting->updateSunDirection(deltaTime);
-        lighting->drawSky(view, projection, camera->movement.getPosition());
 
         if (lighting->isShadowsEnabled()) {
             lighting->updateShadowMap(*renderer, camera->movement.getPosition());
         }
 
-        // Set the uniform matrices in the shader
+
+        // ============================================================
+        // PASS 1: RENDER REFLECTION (camera flipped, clip below water)
+        // ============================================================
+        
+        waterFBO->bindReflectionFrameBuffer();
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_CLIP_DISTANCE0);
+        
+        // Flip camera vertically
+        float distance = 2.0f * (camera->movement.getPosition().y - 64.0f); // assuming water height is 64.0f
+        glm::vec3 reflectCamPos = camera->movement.getPosition();
+        reflectCamPos.y -= distance;
+        
+        // Invert pitch (construct a new Camera instead of copying; Camera is non-copyable)
+        Camera reflectCamera(reflectCamPos);
+        reflectCamera.movement.setYawAndPitch(camera->movement.getYaw(), -camera->movement.getPitch());
+        glm::mat4 reflectView = reflectCamera.getViewMatrix();
+        
+        // Set clip plane (only render above water)
+        glm::vec4 clipPlane = glm::vec4(0, 1, 0, -64.0f);
         activeShader->use();
-        activeShader->setMat4("view", view);
+        activeShader->setVec4("clipPlane", clipPlane);
+        activeShader->setMat4("view", reflectView);
         activeShader->setMat4("projection", projection);
-
-        lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
-
+        
+        // Render scene (solid blocks only, no water)
+        lighting->uploadLightingUniforms(*activeShader, reflectCamPos, camera->movement.getCameraDir());
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
 
         renderer->render(activeShader);
+        lighting->drawSky(reflectView, projection, reflectCamPos);
+        
+        waterFBO->unbindCurrentFrameBuffer();
+
+        // ============================================================
+        // PASS 2: RENDER REFRACTION (normal camera, clip above water)
+        // ============================================================
+        waterFBO->bindRefractionFrameBuffer();
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_CLIP_DISTANCE0);
+        
+        // Set clip plane (only render below water)
+        clipPlane = glm::vec4(0, -1, 0, 64.0f);
+        activeShader->use();
+        activeShader->setVec4("clipPlane", clipPlane);
+        activeShader->setMat4("view", view);
+        activeShader->setMat4("projection", projection);
+        
+        // Render scene (solid blocks only, no water)
+        lighting->uploadLightingUniforms(*activeShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        renderer->render(activeShader);
+        
+        waterFBO->unbindCurrentFrameBuffer();
+        glDisable(GL_CLIP_DISTANCE0);
+        
+        
+        // ============================================================
+        // PASS 3: RENDER MAIN SCENE (normal rendering, disable clipping)
+        // ============================================================
+        // Restore viewport to actual window size
+        glViewport(0, 0, width, height);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        // CRITICAL: Disable clipping distance for normal rendering!
+        glDisable(GL_CLIP_DISTANCE0);
+        
+        // Render sky FIRST (it should handle depth properly to stay in background)
+        lighting->drawSky(view, projection, camera->movement.getPosition());
+        
+        // Disable clipping for normal rendering
+        clipPlane = glm::vec4(0, -1, 0, 100000);  // Plane far away = no clipping
+        activeShader->use();
+        activeShader->setVec4("clipPlane", clipPlane);
+        activeShader->setMat4("view", view);
+        activeShader->setMat4("projection", projection);
+        
+        // Render solid blocks
+        lighting->uploadLightingUniforms(*activeShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        renderer->render(activeShader);
+        
+        // ============================================================
+        // PASS 4: RENDER WATER WITH SPECIAL SHADER
+        // ============================================================
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        waterShader->use();
+        waterShader->setMat4("projection", projection);
+        waterShader->setMat4("view", view);
+        waterShader->setVec3("cameraPos", camera->movement.getPosition());
+        waterShader->setVec3("lightPos", lighting->getLightPos());
+        waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
+        waterShader->setFloat("moveFactor", waterMoveFactor);
+        
+        // Bind all water textures
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, waterFBO->getReflectionTexture());
+        waterShader->setInt("reflectionTexture", 0);
+        
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionTexture());
+        waterShader->setInt("refractionTexture", 1);
+        
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, dudvTexture);
+        waterShader->setInt("dudvMap", 2);
+        
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
+        waterShader->setInt("normalMap", 3);
+        
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionDepthTexture());
+        waterShader->setInt("refractionDepthTexture", 4);
+        
+        // Render water meshes from all chunks
+        renderer->renderWater(waterShader);
+        
+        glDisable(GL_BLEND);
 
 		if (lighting->isShadowMapEnabled())
     		lighting->drawShadowMapPreview();

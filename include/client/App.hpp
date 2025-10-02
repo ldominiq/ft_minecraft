@@ -16,6 +16,7 @@
 #include "Renderer.hpp"
 #include "UDPClient.hpp"
 #include "Chat.hpp"
+#include "WaterFramebuffer.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -122,6 +123,11 @@ private:
 	//menus
 	std::shared_ptr<Menu> menuManager;
 	std::shared_ptr<Chat> chat;
+
+    std::unique_ptr<WaterFramebuffer> waterFBO;
+    std::shared_ptr<Shader> waterShader;
+    GLuint dudvTexture, waterNormalTexture;
+    float waterMoveFactor = 0.0f;
 
 	std::optional<int> seed;
 
