@@ -583,7 +583,25 @@ void App::debugWindow() {
                 const size_t visibleChunks = renderer->getVisibleChunkCount();
                 const size_t totalChunks   = renderer->getTotalChunkCount();
                 ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
+
+                size_t solidVertices = 0;
+                size_t waterVertices = 0;
+                for (auto& weakChunk : renderer->getRenderedChunks()) {
+                    if (auto chunk = weakChunk.lock()) {
+                        solidVertices += chunk->getMeshVerticesSize() / 9;
+                        waterVertices += chunk->getWaterMeshVerticesSize() / 9;
+                    }
+                }
+                
+                size_t totalVertices = solidVertices + waterVertices;
+                size_t totalTriangles = totalVertices / 3;
+                size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
+                
+                ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
+                ImGui::Text("Triangles: %zu", totalTriangles);
+                ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
             }
+
             // Display memory usage in megabytes.  We call a static helper to
             // obtain the current resident set size (RSS).
             {

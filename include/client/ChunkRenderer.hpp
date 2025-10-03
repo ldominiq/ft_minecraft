@@ -10,12 +10,12 @@ class ChunkRenderer : public Chunk {
 
     GLuint VAO = 0;
     GLuint VBO = 0;
-	uint meshVerticesSize;
+	uint meshVerticesSize = 0;
     std::vector<float> meshVertices; // Vertices for the mesh
 
 	GLuint waterVAO = 0;
 	GLuint waterVBO = 0;
-	uint waterMeshVerticesSize;
+	uint waterMeshVerticesSize = 0;
 	std::vector<float> waterMeshVertices;
 
 	glm::vec2 getTextureOffset(const BlockType type, const int face);

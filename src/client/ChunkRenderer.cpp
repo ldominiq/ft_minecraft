@@ -1,7 +1,7 @@
 
 #include "ChunkRenderer.hpp"
 
-ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in) {}
+ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVerticesSize(0), waterMeshVerticesSize(0) {}
 
 ChunkRenderer::~ChunkRenderer() {
     if (glfwGetCurrentContext()) {
