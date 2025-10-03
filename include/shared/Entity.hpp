@@ -113,7 +113,7 @@ class Entity {
 
 		//ONLY USED IN CLIENT :
 		glm::vec3 prevPosition = glm::vec3(0.0f, 0.0f, 0.0f);
-		virtual void draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::vec3 &position) { std::cout << "Not Yet Implemented :D" << std::endl; };
+		virtual void draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::vec3 &position) { ;} //std::cout << "Not Yet Implemented :D" << std::endl; };
 };
 
 #endif
