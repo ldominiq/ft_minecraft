@@ -45,7 +45,10 @@ public:
     glm::mat4 getViewMatrix() const;
     void processMouseMovement(float xoffset, float yoffset);
 	void onSnapshot(NetPlayerMove &pkt, const Renderer &world);
-	void lerpToNextPosition(float time);
+	void lerpToNextPosition(float deltaTime);
+
+	//maybe refactor some day and put somewhere else
+	glm::vec3 lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &position);
 
 	// inline const float getYaw() const { return movement.yaw; }
 	// inline const float getPitch() const { return movement.pitch; }

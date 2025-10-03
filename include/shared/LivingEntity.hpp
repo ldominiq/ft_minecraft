@@ -38,7 +38,7 @@ class LivingEntity : public Entity
 		glm::vec3 getDesiredMove() override;
 
 		LivingEntity(glm::vec3 position);
-		LivingEntity(glm::vec3 position, ItemID ID);
+		LivingEntity(glm::vec3 position, entityID ID);
 		virtual ~LivingEntity();
 };
 

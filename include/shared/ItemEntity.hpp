@@ -7,17 +7,19 @@
 
 class ItemEntity : public Entity
 {
-	ItemID item;
-	static ItemEntityIDManager idManager;
+	// static ItemEntityIDManager idManager;
+
+	protected:
+		BlockType item;
 
 	public:
 		glm::vec3 getDesiredMove() override;
 
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::ITEMS; }
-		ItemID inline getItemType() const { return item; }
+		BlockType inline getItemType() const { return item; }
 
-		ItemEntity(glm::vec3 position, float yaw, ItemID item);
-		ItemEntity(glm::vec3 position, float yaw, ItemID ID, uint32_t entityID);
+		ItemEntity(glm::vec3 position, float yaw, BlockType item);
+		ItemEntity(glm::vec3 position, BlockType item, entityID entityID);
 		virtual ~ItemEntity();
 };
 

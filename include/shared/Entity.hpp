@@ -24,6 +24,8 @@ constexpr float EPS = 1e-5f;
 #define GRAVITY			0.08f
 #define DRAG			0.98f
 
+using entityID = uint32_t;
+
 struct AABB {
     glm::vec3 min;
     glm::vec3 max;
@@ -46,39 +48,41 @@ class ICommonWorld;
 
 class ItemEntityIDManager {
 public:
-    uint32_t acquire() {
+    entityID acquire() {
         if (!freeIDs.empty()) {
-            uint32_t id = freeIDs.front();
+            entityID id = freeIDs.front();
             freeIDs.pop();
             return id;
         }
         return nextID++;
     }
 
-    void release(uint32_t id) {
+    void release(entityID id) {
         freeIDs.push(id);
     }
 
 	private:
-		uint32_t nextID = 1;                 // start from 1 (0 = invalid?)
-		std::queue<uint32_t> freeIDs;        // recycled IDs
+		entityID nextID = 1;                 // start from 1 (0 = invalid?)
+		std::queue<entityID> freeIDs;        // recycled IDs
 };
 
 class Entity {
 
 	static ItemEntityIDManager idManager;
-	uint32_t ID;
 
 	protected:
+		entityID ID;
+
 		float entityWidth;
 		float entityHeight;
 
+		//TODO : maybe use velocity.y instead of verticalVelocity... velocity.y is always = 0
 		glm::vec3 velocity = glm::vec3(0, 0, 0);
 		float verticalVelocity = 0;
 
 		glm::vec3 position;
 
-		bool onGround = true;
+		bool onGround = false;
 
 		inline bool isSolidBlock(const BlockType &b) { return b != BlockType::AIR; }
 
@@ -91,23 +95,25 @@ class Entity {
 
 	public:
 		Entity(glm::vec3 position);
-		Entity(glm::vec3 position, uint32_t ID);
+		Entity(glm::vec3 position, entityID entityID);
 		virtual ~Entity() = 0;
 
 		float yaw, pitch;
 		bool entityCollidesWithBlock(const glm::vec3 blockPos);
 
 		inline virtual EEntityTypes getEntityType() const = 0;
-		inline virtual ItemID getItemType() const { return 0; } //only used for items; It's here to avoid the cost of dynamically down casting
+		inline virtual BlockType getItemType() const { return BlockType::END; } //only used for items; It's here to avoid the cost of dynamically down casting
 		virtual void calculateNewPosition(const ICommonWorld &world);
 		inline const glm::vec3 getPosition() const { return position; }
 		inline const float getEntityWidth() const { return entityWidth; }
 		inline const float getEntityHeight() const { return entityHeight; }
-		inline const uint32_t getID() const { return ID; }
+		inline const entityID getID() const { return ID; }
 
 		inline void setPosition(glm::vec3 position) {this->position = position; }
 
-		virtual void draw(const glm::mat4 &projection, const glm::mat4 &view) { std::cout << "Code is crap :D" << std::endl; }; //ONLY USED IN CLIENT;
+		//ONLY USED IN CLIENT :
+		glm::vec3 prevPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+		virtual void draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::vec3 &position) { std::cout << "Not Yet Implemented :D" << std::endl; };
 };
 
 #endif

@@ -41,6 +41,18 @@ void Camera::lerpToNextPosition(float deltaTime)
 	movement.setPosition(renderPos);
 }
 
+glm::vec3 Camera::lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &position)
+{
+	if (prevServerTick == 0) position ;
+
+	double currTime = prevServerTick + deltaTime * 1000;
+	currTime = std::clamp(currTime, prevServerTick, serverTick);
+	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
+
+	glm::vec3 renderPos = prevPosition + (position - prevPosition) * intraTick;
+	return renderPos;
+}
+
 // Remove prediction for now. 
 void Camera::predictNTicks(const Renderer &world)
 {

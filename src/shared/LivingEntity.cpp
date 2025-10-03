@@ -1,9 +1,11 @@
 
 #include "LivingEntity.hpp"
 
+//server
 LivingEntity::LivingEntity(glm::vec3 position) : Entity(position) {}
 
-LivingEntity::LivingEntity(glm::vec3 position, ItemID ID): Entity(position, ID) {}
+//client
+LivingEntity::LivingEntity(glm::vec3 position, entityID ID): Entity(position, ID) {}
 
 LivingEntity::~LivingEntity() {}
 

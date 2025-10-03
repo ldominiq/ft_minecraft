@@ -8,7 +8,6 @@
 #include <array>
 #include <vector>
 
-using BlockID = uint8_t;   // for world storage/networking
 using ItemID  = uint16_t;  // for inventory/items
 
 enum class BiomeType {
@@ -21,11 +20,11 @@ enum class BiomeType {
 	MOUNTAIN
 };
 
-enum class BlockType : BlockID {
+enum class BlockType : ItemID {
 	BEGIN = 0,
-    AIR,
+	AIR,
     GRASS,
-    DIRT,
+	DIRT,
     STONE,
     SAND,
     SNOW,

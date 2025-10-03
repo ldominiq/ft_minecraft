@@ -3,8 +3,10 @@
 #define CHUNK_RENDERER_HPP
 
 #include <glad/glad.h>
-#include "Chunk.hpp"
+
 #include "GLFW/glfw3.h"
+#include "Chunk.hpp"
+#include "blockRenderingHelperFunctions.hpp"
 
 class ChunkRenderer : public Chunk {
 
@@ -13,16 +15,10 @@ class ChunkRenderer : public Chunk {
 	uint meshVerticesSize;
     std::vector<float> meshVertices; // Vertices for the mesh
 
-	glm::vec2 getTextureOffset(const BlockType type, const int face);
-    void addFace(int x, int y, int z, int face); // Add a face to the mesh vertices
-
 	public:
 
 		ChunkRenderer(std::istream& in);
 		~ChunkRenderer();
-
-		const int ATLAS_COLS = 10;
-		const int ATLAS_ROWS = 1;
 
 		// Release GL resources
 		void releaseGL();

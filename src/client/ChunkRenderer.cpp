@@ -19,143 +19,6 @@ ChunkRenderer::~ChunkRenderer() {
     }
 }
 
-// This function maps block type + face to UV offset
-glm::vec2 ChunkRenderer::getTextureOffset(const BlockType type, const int face) {
-    int col = 0;
-    int row = 0;
-
-    switch (type) {
-        case BlockType::GRASS:
-            if (face == 2)      { col = 0; row = 0; } // top
-            else if (face == 3) { col = 2; row = 0; } // bottom = dirt
-            else                { col = 1; row = 0; } // side = grass-side
-            break;
-
-        case BlockType::DIRT:
-            col = 2; row = 0;
-            break;
-
-        case BlockType::STONE:
-            col = 3; row = 0;
-            break;
-
-        case BlockType::SAND:
-            col = 4; row = 0;
-            break;
-
-        case BlockType::SNOW:
-            col = 5; row = 0;
-            break;
-
-        case BlockType::WATER:
-            col = 6; row = 0;
-            break;
-            
-        case BlockType::BEDROCK:
-            col = 7; row = 0;
-            break;
-
-        case BlockType::LOG:
-            col = 8; row = 0;
-            break;
-        case BlockType::LEAVES:
-            col = 9; row = 0;
-            break;
-
-        default:
-            col = 0; row = 0;
-            std::cerr << "Unknown BlockType in getTextureOffset: " << static_cast<int>(type) << std::endl;
-            break;
-    }
-
-    return glm::vec2(col, row);
-}
-
-void ChunkRenderer::addFace(int x, int y, int z, int face) {
-    const float faceX = static_cast<float>(originX + x);
-    const float faceY = static_cast<float>(y);
-    const float faceZ = static_cast<float>(originZ + z);
-
-    const float TILE_W = 1.0f / ATLAS_COLS;
-    const float TILE_H = 1.0f / ATLAS_ROWS;
-
-    static const float faceData[6][18] = {
-        // FRONT face (Z+)
-        { 0,0,1,  1,0,1,  1,1,1,
-        1,1,1,  0,1,1,  0,0,1 },
-
-        // BACK face (Z-)
-        { 1,0,0,  0,0,0,  0,1,0,
-        0,1,0,  1,1,0,  1,0,0 },
-
-        // TOP face (Y+)
-        { 0,1,1,  1,1,1,  1,1,0,
-        1,1,0,  0,1,0,  0,1,1 },
-
-        // BOTTOM face (Y-)
-        { 0,0,0,  1,0,0,  1,0,1,
-        1,0,1,  0,0,1,  0,0,0 },
-
-        // RIGHT face (X+)
-        { 1,0,1,  1,0,0,  1,1,0,
-        1,1,0,  1,1,1,  1,0,1 },
-
-        // LEFT face (X-)
-        { 0,0,0,  0,0,1,  0,1,1,
-        0,1,1,  0,1,0,  0,0,0 }
-    };
-
-    static const float uvCoords[12] = {
-        0, 0,
-        1, 0,
-        1, 1,
-        1, 1,
-        0, 1,
-        0, 0
-    };
-
-    static const glm::vec3 faceNormals[6] = {
-        {  0,  0,  1 }, // front
-        {  0,  0, -1 }, // back
-        {  0,  1,  0 }, // top
-        {  0, -1,  0 }, // bottom
-        {  1,  0,  0 }, // right
-        { -1,  0,  0 }  // left
-    };
-
-    glm::vec3 normal = faceNormals[face];
-
-    // Get block type for this position
-    const BlockType type = getBlock(x, y, z);
-
-    // Determine UV offset in atlas based on block type and face
-    glm::vec2 tileCoord = getTextureOffset(type, face);
-    glm::vec2 offset = { tileCoord.x * TILE_W, tileCoord.y * TILE_H };
-
-    // Build six vertices for this face using the computed light
-    for (int i = 0; i < 6; ++i) {
-        float px = faceX + faceData[face][i * 3 + 0];
-        float py = faceY + faceData[face][i * 3 + 1];
-        float pz = faceZ + faceData[face][i * 3 + 2];
-
-        float baseU = uvCoords[i * 2 + 0]; // 0 → 1
-        float baseV = uvCoords[i * 2 + 1]; // 0 → 1
-
-        float u = baseU * TILE_W + offset.x;
-        float v = baseV * TILE_H + offset.y;
-
-        meshVertices.push_back(px);    // position.x
-        meshVertices.push_back(py);    // position.y
-        meshVertices.push_back(pz);    // position.z
-        meshVertices.push_back(u);     // texture u
-        meshVertices.push_back(v);     // texture v
-        meshVertices.push_back(py);    // send Y again for gradient
-        meshVertices.push_back(normal.x);
-        meshVertices.push_back(normal.y);
-        meshVertices.push_back(normal.z);
-    }
-}
-
 void ChunkRenderer::buildMesh() {
 	buildMeshData();
 	uploadMesh();
@@ -198,27 +61,27 @@ void ChunkRenderer::buildMeshData() {
 
                 // FRONT (+Z)
                 if (getBlockOrNeighbor(x, y, z, 0, 0, +1, NORTH) == BlockType::AIR)
-                    addFace(x, y, z, 0);
+                    addFace(meshVertices, x, y, z, originX, originZ, blockTypeVector[(x) + WIDTH * ((y) + HEIGHT * (z))], 0, true); //addFace(x, y, z, 0);
 
                 // BACK (-Z)
                 if (getBlockOrNeighbor(x, y, z, 0, 0, -1, SOUTH) == BlockType::AIR)
-                    addFace(x, y, z, 1);
+                    addFace(meshVertices, x, y, z, originX, originZ, blockTypeVector[(x) + WIDTH * ((y) + HEIGHT * (z))], 1, true);
 
                 // TOP (+Y) – no vertical neighbor chunks
                 if (y == HEIGHT - 1 || getBlockOrNeighbor(x, y, z, 0, +1, 0, NONE) == BlockType::AIR)
-                    addFace(x, y, z, 2);
+                    addFace(meshVertices, x, y, z, originX, originZ, blockTypeVector[(x) + WIDTH * ((y) + HEIGHT * (z))], 2, true);
 
                 // BOTTOM (-Y)
                 if (y == 0 || getBlockOrNeighbor(x, y, z, 0, -1, 0, NONE) == BlockType::AIR)
-                    addFace(x, y, z, 3);
+                    addFace(meshVertices, x, y, z, originX, originZ, blockTypeVector[(x) + WIDTH * ((y) + HEIGHT * (z))], 3, true);
 
                 // RIGHT (+X)
                 if (getBlockOrNeighbor(x, y, z, +1, 0, 0, EAST) == BlockType::AIR)
-                    addFace(x, y, z, 4);
+                    addFace(meshVertices, x, y, z, originX, originZ, blockTypeVector[(x) + WIDTH * ((y) + HEIGHT * (z))], 4, true);
 
                 // LEFT (-X)
                 if (getBlockOrNeighbor(x, y, z, -1, 0, 0, WEST) == BlockType::AIR)
-                    addFace(x, y, z, 5);
+                    addFace(meshVertices, x, y, z, originX, originZ, blockTypeVector[(x) + WIDTH * ((y) + HEIGHT * (z))], 5, true);
             }
         }
     }

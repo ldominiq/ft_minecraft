@@ -84,7 +84,7 @@ struct NetPlayerMouseInputs final : public Packet {
     static constexpr PacketType ID = PacketType::PLAYER_MOUSE_INPUT;
 
 	uint8_t mouseButtons = 0;	// bitfield
-	//uint16_t itemID // itemIDK
+	//uint16_t itemID // itemID
 
     NetPlayerMouseInputs() : Packet(ID) {}
 

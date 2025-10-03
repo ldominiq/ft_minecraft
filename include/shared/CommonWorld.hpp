@@ -6,7 +6,7 @@
 #include <optional>
 
 #include "Chunk.hpp"
-#include "Entity.hpp"
+#include "ItemEntity.hpp"
 
 class ICommonWorld {
 public:
@@ -28,7 +28,7 @@ class CommonWorld : public ICommonWorld{
 		bool isBlockVisibleWorld(glm::ivec3 globalCoords);
 
 		bool getTargetedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100);
-		void removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir);
+		bool removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir);
 		void setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir);
 
 		// Return the total number of chunks currently loaded in the world (in memory).

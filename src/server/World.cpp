@@ -597,7 +597,43 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
 {
 	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
-	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
+	if (pkt.mouseButtons & IN_LEFT_CLICK)
+	{
+		if (removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir()) && player.movement->gamemode == GAMEMODES::SURVIVAL)
+		{
+			//Repetition. Not clean. And not performance friendly either.
+			glm::ivec3 blockPos, faceNormal;
+			getTargetedBlock(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal);
+
+			//--------------------------
+
+			BlockType dropped = getBlockWorld(blockPos);
+
+			// random generator
+			static std::mt19937 rng(std::random_device{}());
+			std::uniform_real_distribution<float> angleDist(0.0f, 360.0f);
+			std::uniform_real_distribution<float> offsetDist(-0.25f, 0.25f);
+
+			// pick a random yaw angle (in degrees)
+			float randomAngle = angleDist(rng);
+
+			// convert to radians for glm
+			float yawRad = glm::radians(randomAngle);
+
+			// small position offset from the block center
+			glm::vec3 positionOffset = glm::normalize(glm::vec3(std::cos(yawRad), 0.0f, std::sin(yawRad))) 
+									* 0.25f; // radius offset
+
+			// optional: add some slight random variation so they don’t stack perfectly
+			positionOffset.x += offsetDist(rng);
+			positionOffset.z += offsetDist(rng);
+
+			// spawn the entity at block center + offset
+			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
+
+			entities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped));
+		}
+	}
 }
 
 void World:: updateEntitiesPosition()

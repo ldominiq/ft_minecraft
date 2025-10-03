@@ -252,7 +252,7 @@ void App::loadResources() {
     // Load shaders and textures
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
-    gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
+    // gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
     texture = loadTexture("assets/textures/textures.png");
 
     activeShader = textureShader;
@@ -301,11 +301,11 @@ void App::render() {
 			accumulator -= tickDuration;
 		}
 
+		camera->lerpToNextPosition(glfwGetTime() - lastTickClientTime);
+
 		const double mouseIdleThreshold = 0.2; // seconds, tweak to taste
 		if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
 			mouseMovedRecently = false;
-
-		camera->lerpToNextPosition(glfwGetTime() - lastTickClientTime);
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -379,7 +379,8 @@ void App::render() {
 
 		for (auto &entity : renderer->entities)
 		{
-			entity->draw(projection, view);
+			glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->getPosition());
+			entity->draw(projection, view, newEntityPos);
 		}
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
@@ -921,17 +922,8 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	if (glfwGetKey(window, controlsArray[MOVE_FAST]) == GLFW_PRESS)
 		keys |= IN_RUN;
 	
-
-	static bool qPressedLastFrame = false; // global or member variable
-    bool qDown = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS;
-
-    if (qDown && !qPressedLastFrame) {
-        // Key was just pressed (not held)
+	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
         keys |= IN_DROP;
-    }
-
-    // Update state for next frame
-    qPressedLastFrame = qDown;
 
 	inputs.keys = keys;
 	inputs.pitch = camera->movement.getPitch();

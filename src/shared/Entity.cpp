@@ -6,7 +6,7 @@ ItemEntityIDManager Entity::idManager;
 
 Entity::Entity(glm::vec3 position): position(position), ID(idManager.acquire()) {}
 
-Entity::Entity(glm::vec3 position, uint32_t ID): position(position), ID(ID) {}
+Entity::Entity(glm::vec3 position, entityID entityID): position(position), ID(entityID) {}
 
 Entity::~Entity()
 {
@@ -104,80 +104,96 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 	AABB currentBox = constructAABB(position);
 
 	// attempt Y movement
-	float dy = verticalVelocity;
-	if (std::abs(dy) > EPS) {
-		AABB movedY = constructAABB(newPos).movedBy(0.0f, dy, 0.0f);
-		if (!aabbCollidesWithWorld(movedY, world)) {
-			newPos.y += dy;
-		} else {
-			// collision on Y: either hit head (dy>0) or land (dy<0)
-			if (dy > 0.0f) {
-				// head collision: find nearest block above to snap below
-				int startY = (int)std::floor(currentBox.max.y + EPS);
-				int endY = (int)std::floor(currentBox.max.y + dy + 1.0f);
-				bool stopped = false;
-				for (int by = startY; by <= endY && !stopped; ++by) {
-					// check blocks at by that overlap horizontal footprint
-					int minBX = (int)std::floor(currentBox.min.x + EPS);
-					int maxBX = (int)std::floor(currentBox.max.x - EPS);
-					int minBZ = (int)std::floor(currentBox.min.z + EPS);
-					int maxBZ = (int)std::floor(currentBox.max.z - EPS);
-					for (int bx = minBX; bx <= maxBX && !stopped; ++bx) {
-						for (int bz = minBZ; bz <= maxBZ && !stopped; ++bz) {
-							if (isSolidBlock(world.getBlockWorld({bx, by, bz}))) {
-								float headBefore = currentBox.max.y;
-								float headAfter  = currentBox.max.y + dy;
 
-								// only stop if we were below the block and tried to enter it
-								if (headBefore <= by + EPS && headAfter > by - EPS) {
-									newPos.y = (float)by - entityHeight - EPS; // snap below ceiling
-									verticalVelocity = 0.0f;
-									stopped = true;
-								}
-							}
-						}
-					}
-				}
-				if (!stopped) verticalVelocity = 0.0f; // fallback
+	onGround = false;
+	float remainingDy = verticalVelocity;
+	while (std::abs(remainingDy) > 0.0f + EPS) {
+		float step = remainingDy;// glm::clamp(remainingDy, -0.99f, 0.99f); // at most ~1 block per sub-step
+		
+		float dy = step;
+		if (std::abs(dy) > EPS) {
+			AABB movedY = constructAABB(newPos).movedBy(0.0f, dy, 0.0f);
+			if (!aabbCollidesWithWorld(movedY, world)) {
+				newPos.y += dy;
+				currentBox = movedY;
 			} else {
-				// falling -> landed: find the highest solid block we hit and snap on top
-				int fromY = (int)std::floor(currentBox.min.y + dy - 1.0f); // lower bound after fall
-				int toY = (int)std::floor(currentBox.min.y + EPS);       // current foot block
-				bool landed = false;
-				for (int by = toY; by >= fromY && !landed; --by) {
-					int minBX = (int)std::floor(currentBox.min.x + EPS);
-					int maxBX = (int)std::floor(currentBox.max.x - EPS);
-					int minBZ = (int)std::floor(currentBox.min.z + EPS);
-					int maxBZ = (int)std::floor(currentBox.max.z - EPS);
-					for (int bx = minBX; bx <= maxBX && !landed; ++bx) {
-						for (int bz = minBZ; bz <= maxBZ && !landed; ++bz) {
-							if (isSolidBlock(world.getBlockWorld({bx, by, bz}))) {
-								float feetBefore = currentBox.min.y;
-								float feetAfter  = currentBox.min.y + dy;
+				// collision on Y: either hit head (dy>0) or land (dy<0)
+				if (dy > 0.0f) {
+					// head collision: find nearest block above to snap below
+					int startY = (int)std::floor(currentBox.max.y);
+					int endY = (int)std::floor(currentBox.max.y + dy + 1.0f);
+					bool stopped = false;
+					for (int by = startY; by <= endY && !stopped; ++by) {
+						// check blocks at by that overlap horizontal footprint
+						int minBX = (int)std::floor(currentBox.min.x + EPS);
+						int maxBX = (int)std::floor(currentBox.max.x - EPS);
+						int minBZ = (int)std::floor(currentBox.min.z + EPS);
+						int maxBZ = (int)std::floor(currentBox.max.z - EPS);
+						for (int bx = minBX; bx <= maxBX && !stopped; ++bx) {
+							for (int bz = minBZ; bz <= maxBZ && !stopped; ++bz) {
+								if (isSolidBlock(world.getBlockWorld({bx, by, bz}))) {
+									float headBefore = currentBox.max.y;
+									float headAfter  = currentBox.max.y + dy;
 
-								// only snap if we were above the block and are now moving into it
-								if (feetBefore >= by + 1.0f - EPS && feetAfter < by + 1.0f) {
-									newPos.y = (float)by + 1.0f + EPS; // snap to block top
-									verticalVelocity = 0.0f;
-									onGround = true;
-									landed = true;
+									// only stop if we were below the block and tried to enter it
+									if (headBefore <= by && headAfter > by) {
+										newPos.y = (float)by - entityHeight; // snap below ceiling
+										verticalVelocity = 0.0f;
+										stopped = true;
+									}
 								}
 							}
 						}
 					}
-				}
-				if (!landed) {
-					// fallback: keep current vertical (should be rare)
-					newPos.y += dy;
+					if (!stopped) verticalVelocity = 0.0f; // fallback
+				} else {
+					// falling -> landed: find the highest solid block we hit and snap on top
+					int fromY = (int)std::floor(currentBox.min.y + dy - 1.0f); // lower bound after fall
+					int toY = (int)std::floor(currentBox.min.y);       // current foot block
+					bool landed = false;
+					for (int by = toY; by >= fromY && !landed; --by) {
+						int minBX = (int)std::floor(currentBox.min.x + EPS);
+						int maxBX = (int)std::floor(currentBox.max.x - EPS);
+						int minBZ = (int)std::floor(currentBox.min.z + EPS);
+						int maxBZ = (int)std::floor(currentBox.max.z - EPS);
+						for (int bx = minBX; bx <= maxBX && !landed; ++bx) {
+							for (int bz = minBZ; bz <= maxBZ && !landed; ++bz) { // this is getting done twice if .x = .z . meh performance
+								if (isSolidBlock(world.getBlockWorld({bx, by, bz}))) {
+									float feetBefore = currentBox.min.y;
+									float feetAfter  = currentBox.min.y + dy;
+
+									// only snap if we were above the block and are now moving into it
+									if (entityHeight < 1.0f && feetBefore >= by + entityHeight && feetAfter < by + entityHeight) /// I don't understand this but it.. works? idk it's weird
+									{
+										newPos.y = (float)by + 1.0f; // snap to block top
+										verticalVelocity = 0.0f;
+										onGround = true;
+										landed = true;
+									}
+									else if (feetBefore >= by + 1.0f && feetAfter < by + 1.0f) {
+										newPos.y = (float)by + 1.0f; // snap to block top
+										verticalVelocity = 0.0f;
+										onGround = true;
+										landed = true;
+									}
+								}
+							}
+						}
+					}
+					if (!landed) {
+						// fallback: keep current vertical (should be rare)
+						newPos.y += dy;
+					}
 				}
 			}
 		}
+		remainingDy -= step;
 	}
 
 	// apply gravity
 	verticalVelocity -= GRAVITY; //gravity
 	verticalVelocity *= DRAG;
-	if (std::abs(verticalVelocity) < 0.003) verticalVelocity = 0;
+	if (std::abs(verticalVelocity) < 0.003 || onGround) verticalVelocity = 0;
 
 	// Apply final position
 	position = newPos;

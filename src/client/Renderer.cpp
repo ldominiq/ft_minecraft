@@ -217,28 +217,28 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 void Renderer::onEntity(NetEntityMove &pkt)
 {
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
-	ItemID ID = pkt.EntityID;
-
-	std::cout << "RECEIVED " << ID << std::endl;
-	std::cout << entities.size() << std::endl;
-	auto entity = entitiesMap.find(ID);
+	BlockType ID = static_cast<BlockType>(pkt.itemTypeID);
+	uint32_t entityID = pkt.EntityID;
+	
+	auto entity = entitiesMap.find(entityID);
 	if (entity != entitiesMap.end())
 	{
+		entity->second->prevPosition = entity->second->getPosition();
 		entity->second->setPosition(position);
 	}
 	else
 	{
 		if (pkt.entityType == EEntityTypes::ITEMS)
 		{
-			auto entityPtr = std::make_shared<ItemPropEntity>(position, 0, ID);
+			auto entityPtr = std::make_shared<ItemPropEntity>(position, ID, entityID);
 			entities.push_back(entityPtr);
-			entitiesMap[ID] = entityPtr;
+			entitiesMap[entityID] = entityPtr;
 		}
 		else if (pkt.entityType == EEntityTypes::LIVING_ENTITIES)
 		{
-			auto entityPtr = std::make_shared<LivingEntity>(position, ID);
+			auto entityPtr = std::make_shared<LivingEntity>(position, entityID);
 			entities.push_back(entityPtr);
-			entitiesMap[ID] = entityPtr;
+			entitiesMap[entityID] = entityPtr;
 		}
 	}
 }

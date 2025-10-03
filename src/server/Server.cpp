@@ -176,7 +176,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	if (pkt.keys & IN_DROP)
-			world->entities.push_back(std::make_shared<ItemEntity>(player->movement->getPosition(), player->movement->getYaw(), static_cast<int>(BlockType::DIRT)));
+		world->entities.push_back(std::make_shared<ItemEntity>(player->movement->getPosition(), player->movement->getYaw(), BlockType::DIRT));
 	
 	player->movement->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
@@ -325,19 +325,15 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 void Server::sendItemEntitiesPositionDeltas(CPlayerInfo &player)
 {
 	//gotta exclude current player
-	int tmpMax = 5;
-	int curr = 0;
 	for (auto &entity : world->entities)
 	{
-		if (++curr > tmpMax) return ;
 		if (entity != player.movement)
 		{
 			NetEntityMove pkt;
 
-			std::cout << entity->getID() << std::endl;
 			pkt.EntityID = entity->getID();
 			pkt.entityType = entity->getEntityType();
-			pkt.itemTypeID = entity->getItemType();
+			pkt.itemTypeID = static_cast<ItemID>(entity->getItemType());
 
 			pkt.positionX = entity->getPosition().x;
 			pkt.positionY = entity->getPosition().y;
