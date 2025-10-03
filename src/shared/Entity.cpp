@@ -83,6 +83,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
             newPos.x += dx;
             currentBox = constructAABB(newPos);
 		}
+		else velocity.x = 0.0f;
     }
 
     // Z axis
@@ -93,6 +94,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
             newPos.z += dz;
             currentBox = constructAABB(newPos);
 		}
+		else velocity.z = 0.0f;
     }
 
 	position = newPos;

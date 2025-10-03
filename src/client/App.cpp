@@ -252,7 +252,7 @@ void App::loadResources() {
     // Load shaders and textures
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
-    // gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
+    gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
     texture = loadTexture("assets/textures/textures.png");
 
     activeShader = textureShader;
