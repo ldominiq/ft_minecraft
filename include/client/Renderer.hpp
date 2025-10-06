@@ -64,7 +64,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 			return renderedChunks.size();
 		}
 
-		void onEntity(NetEntityMove &pkt);	// handles NetEntityMove packet
+		void onEntity(NetEntityMove &pkt, const float &lastTickClientTime);	// handles NetEntityMove packet
 };
 
 #endif

@@ -28,8 +28,9 @@ class Camera {
 	glm::vec3 predictedPosition;
 	glm::vec3 previousPosition;
 
-	double serverTick = 0;
-	double prevServerTick = 0;
+	//TODO : get all the tick logic elsewhere;
+	float serverTick = 0;
+	float prevServerTick = 0;
 
 public:
 	PlayerMovement movement;
@@ -48,18 +49,12 @@ public:
 	void lerpToNextPosition(float deltaTime);
 
 	//maybe refactor some day and put somewhere else
-	glm::vec3 lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &position);
+	glm::vec3 lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition);
 
-	// inline const float getYaw() const { return movement.yaw; }
-	// inline const float getPitch() const { return movement.pitch; }
 	inline const uint8_t getLoadRadius() const { return loadRadius; }
 	// inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
 
-	// inline const glm::vec3 getPosition() const { return movement.getPosition(); }
-	// inline const glm::vec3 getCameraDir() const { return movement.getCameraDir(); }
 	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
-
-	// inline void setPosition(glm::vec3 position) { movement.setPosition(position); }
 
 	void drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 };

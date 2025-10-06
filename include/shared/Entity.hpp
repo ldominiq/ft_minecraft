@@ -109,10 +109,16 @@ class Entity {
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const entityID getID() const { return ID; }
 
-		inline void setPosition(glm::vec3 position) {this->position = position; positionUpdated = true; }
+		inline void setPosition(glm::vec3 position) {
+			if (this->position != position) positionUpdated = true;
+			this->position = position;
+		}
 
 		//ONLY USED IN CLIENT :
+		//TODO move all of this and get a normal tick on client.
 		glm::vec3 prevPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+		glm::vec3 nextPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+		float lastTickClientTime = 0;
 		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; };
 };
 

@@ -25,11 +25,12 @@ ItemPropEntityManager::~ItemPropEntityManager()
 
 void ItemPropEntityManager::updateMesh(const std::vector<std::shared_ptr<Entity>> &entities)
 {
-    int i = 0;
+    int i = -1;
 
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
     for (auto &entity : entities)
 	{
+		i++;
 		if (!entity->positionUpdated) continue ;
 
 		std::vector<float> vertices;
@@ -37,8 +38,6 @@ void ItemPropEntityManager::updateMesh(const std::vector<std::shared_ptr<Entity>
 
 		// update the existing data:
     	glBufferSubData(GL_ARRAY_BUFFER, i*180*sizeof(float), 180*sizeof(float), vertices.data());
-
-		i++;
 	}
 }
 

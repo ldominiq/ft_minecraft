@@ -219,7 +219,7 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
-				renderer->onEntity(p);
+				renderer->onEntity(p, lastTickClientTime);
 				break;
 			}
 
@@ -379,10 +379,12 @@ void App::render() {
 
         lighting->drawLightCubes(view, projection);
 
-
 		for (auto &entity : renderer->entities)
 		{
-			glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->getPosition());
+			if (!entity->positionUpdated) continue ;
+			glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+			entity->setPosition(newEntityPos);
+			if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
 		}
 		
 		m_itemPropEntityManager->draw(projection, view, renderer->entities);

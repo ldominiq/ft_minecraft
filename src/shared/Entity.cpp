@@ -206,7 +206,6 @@ void Entity::calculateNewPosition(const ICommonWorld &world)
 	positionUpdated = false;
 	// TODO : return early if block stopped. Same as player calculateNewPosition TODO.
 	glm::vec3 desiredPos = getDesiredMove();
-	positionUpdated = true;
 	calculateNewXZPosition(world, desiredPos);
 	calculateNewYPosition(world);
 }

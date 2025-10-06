@@ -27,7 +27,7 @@ void Camera::lerpToNextPosition(float deltaTime)
 {
 	if (prevServerTick == 0) return ;
 
-	double currTime = prevServerTick + deltaTime * 1000;
+	float currTime = prevServerTick + deltaTime * 1000;
 	currTime = std::clamp(currTime, prevServerTick, serverTick);
 	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
 
@@ -41,15 +41,15 @@ void Camera::lerpToNextPosition(float deltaTime)
 	movement.setPosition(renderPos);
 }
 
-glm::vec3 Camera::lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &position)
+glm::vec3 Camera::lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition)
 {
-	if (prevServerTick == 0) position ;
+	if (prevServerTick == 0) nextPosition ;
 
-	double currTime = prevServerTick + deltaTime * 1000;
+	float currTime = prevServerTick + deltaTime * 1000;
 	currTime = std::clamp(currTime, prevServerTick, serverTick);
 	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
 
-	glm::vec3 renderPos = prevPosition + (position - prevPosition) * intraTick;
+	glm::vec3 renderPos = prevPosition + (nextPosition - prevPosition) * intraTick;
 	return renderPos;
 }
 

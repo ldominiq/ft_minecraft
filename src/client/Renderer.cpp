@@ -215,7 +215,7 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 	}
 }
 
-void Renderer::onEntity(NetEntityMove &pkt)
+void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 {
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
 	BlockType type = static_cast<BlockType>(pkt.type);
@@ -224,14 +224,17 @@ void Renderer::onEntity(NetEntityMove &pkt)
 	auto entity = entitiesMap.find(ID);
 	if (entity != entitiesMap.end())
 	{
-		entity->second->prevPosition = entity->second->getPosition();
-		entity->second->setPosition(position);
+		entity->second->prevPosition = entity->second->nextPosition;
+		entity->second->nextPosition = position;
+		entity->second->positionUpdated = true;
+		entity->second->lastTickClientTime = lastTickClientTime;
 	}
 	else
 	{
 		if (pkt.eEntityType == EEntityTypes::ITEMS)
 		{
 			auto entityPtr = std::make_shared<ItemPropEntity>(position, type, ID);
+			entityPtr->lastTickClientTime = lastTickClientTime;
 			entities.push_back(entityPtr);
 			entitiesMap[ID] = entityPtr;
 		}

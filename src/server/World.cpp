@@ -596,19 +596,16 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 
 void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
 {
+	//Repetition. Not clean. And not performance friendly either.
+	glm::ivec3 blockPos, faceNormal;
+	getTargetedBlock(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal);
+	BlockType dropped = getBlockWorld(blockPos);
+
 	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
 	if (pkt.mouseButtons & IN_LEFT_CLICK)
 	{
 		if (removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir()) && player.movement->gamemode == GAMEMODES::SURVIVAL)
 		{
-			//Repetition. Not clean. And not performance friendly either.
-			glm::ivec3 blockPos, faceNormal;
-			getTargetedBlock(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal);
-
-			//--------------------------
-
-			BlockType dropped = getBlockWorld(blockPos+faceNormal);
-
 			// random generator
 			static std::mt19937 rng(std::random_device{}());
 			std::uniform_real_distribution<float> angleDist(0.0f, 360.0f);
@@ -629,7 +626,7 @@ void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerM
 			positionOffset.z += offsetDist(rng);
 
 			// spawn the entity at block center + offset
-			glm::vec3 spawnPos = glm::vec3(blockPos+faceNormal) + glm::vec3(0.5f) + positionOffset;
+			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
 
 			entities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped));
 		}

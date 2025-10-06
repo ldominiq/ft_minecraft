@@ -176,7 +176,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	if (pkt.keys & IN_DROP)
-		world->entities.push_back(std::make_shared<ItemEntity>(player->movement->getPosition(), player->movement->getYaw(), BlockType::DIRT, true));
+		world->entities.push_back(std::make_shared<ItemEntity>(player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f), player->movement->getYaw(), BlockType::DIRT, true));
 	
 	player->movement->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
