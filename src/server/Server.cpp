@@ -176,7 +176,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	if (pkt.keys & IN_DROP)
-		world->entities.push_back(std::make_shared<ItemEntity>(player->movement->getPosition(), player->movement->getYaw(), BlockType::DIRT));
+		world->entities.push_back(std::make_shared<ItemEntity>(player->movement->getPosition(), player->movement->getYaw(), BlockType::DIRT, true));
 	
 	player->movement->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
@@ -314,9 +314,8 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.positionZ = player.movement->getPosition().z;
 
 	pkt.velocityX = player.movement->getVelocity().x;
+	pkt.velocityY = player.movement->getVelocity().y;
 	pkt.velocityZ = player.movement->getVelocity().z;
-
-	pkt.verticalVelocity = player.movement->getVerticalVelocity();
 
 	sendPacketTo(pkt, player.addr);
 }
@@ -327,13 +326,14 @@ void Server::sendItemEntitiesPositionDeltas(CPlayerInfo &player)
 	//gotta exclude current player
 	for (auto &entity : world->entities)
 	{
-		if (entity != player.movement)
+		if (entity != player.movement && entity->positionUpdated)
 		{
 			NetEntityMove pkt;
 
-			pkt.EntityID = entity->getID();
-			pkt.entityType = entity->getEntityType();
-			pkt.itemTypeID = static_cast<ItemID>(entity->getItemType());
+			// TODO : only send if items moved
+			pkt.eEntityType = EEntityTypes::ITEMS; //TODO : put a getter to get type ITEMS or LIVING ENTITIES
+			pkt.entityID = entity->getID();
+			pkt.type = static_cast<ItemID>(entity->getItemType());
 
 			pkt.positionX = entity->getPosition().x;
 			pkt.positionY = entity->getPosition().y;
@@ -352,7 +352,7 @@ void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)
 		pkt.x = block.first.x;
 		pkt.y = block.first.y;
 		pkt.z = block.first.z;
-		pkt.blockType = static_cast<uint8_t>(block.second);
+		pkt.blockType = static_cast<ItemID>(block.second);
 
 		sendPacketTo(pkt, player.addr);
 	}

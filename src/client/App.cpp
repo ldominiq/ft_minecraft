@@ -53,6 +53,8 @@ void App::init() {
 
     chat = std::make_unique<Chat>(windowedWidth, windowedHeight);
 
+	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>();
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -377,11 +379,13 @@ void App::render() {
 
         lighting->drawLightCubes(view, projection);
 
+
 		for (auto &entity : renderer->entities)
 		{
 			glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->getPosition());
-			entity->draw(projection, view, newEntityPos);
 		}
+		
+		m_itemPropEntityManager->draw(projection, view, renderer->entities);
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
 		const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));

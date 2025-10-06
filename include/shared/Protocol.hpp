@@ -108,9 +108,9 @@ struct NetPlayerMove final : public Packet {
 	float positionZ;
 
 	float velocityX;
+	float velocityY;
 	float velocityZ;
 
-	float verticalVelocity;
 
 	NetPlayerMove() : Packet(ID) {}
 
@@ -121,7 +121,7 @@ struct NetPlayerMove final : public Packet {
 		w.write_f32(positionZ);
 		w.write_f32(velocityX);
 		w.write_f32(velocityZ);
-		w.write_f32(verticalVelocity);
+		w.write_f32(velocityY);
     }
     void decode(BufferReader& r) override {
 		serverTick = r.read_i32();
@@ -130,7 +130,7 @@ struct NetPlayerMove final : public Packet {
 		positionZ = r.read_f32();
 		velocityX = r.read_f32();
 		velocityZ = r.read_f32();
-		verticalVelocity = r.read_f32();
+		velocityY = r.read_f32();
     }
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;
@@ -138,9 +138,9 @@ inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;
 struct NetEntityMove final : public Packet {
 	static constexpr PacketType ID = PacketType::NET_ENTITY_MOVE;
 
-	EEntityTypes entityType;
-	uint32_t EntityID;
-	uint16_t itemTypeID = 0;	//Maybe only send if Item?; Same size as ItemID in Item.hpp
+	EEntityTypes eEntityType;
+	uint32_t entityID;
+	uint16_t type = 0;	//Maybe only send if Item?; Same size as ItemID in Item.hpp
 
 	//position
 	float positionX;
@@ -150,17 +150,17 @@ struct NetEntityMove final : public Packet {
 	NetEntityMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
-		w.write_u8(entityType);
-		w.write_u32(EntityID);
-		w.write_u16(itemTypeID);
+		w.write_u8(eEntityType);
+		w.write_u32(entityID);
+		w.write_u16(type);
 		w.write_f32(positionX);
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
     }
     void decode(BufferReader& r) override {
-		entityType = static_cast<EEntityTypes>(r.read_u8());
-		EntityID = r.read_u32();
-		itemTypeID = r.read_u16();
+		eEntityType = static_cast<EEntityTypes>(r.read_u8());
+		entityID = r.read_u32();
+		type = r.read_u16();
 		positionX = r.read_f32();
 		positionY = r.read_f32();
 		positionZ = r.read_f32();

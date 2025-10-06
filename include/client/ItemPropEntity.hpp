@@ -1,28 +1,18 @@
 
 #ifndef ITEM_PROP_ENTITY
-#define ITEM_RPOP__ENTITY
+#define ITEM_PROP_ENTITY
 
-#include <glm/glm.hpp>
-
-#include "ItemEntity.hpp"
-#include "Shader.hpp"
 #include "blockRenderingHelperFunctions.hpp"
-#include "GLFW/glfw3.h"
+#include "ItemEntity.hpp"
 
 class ItemPropEntity : public ItemEntity
 {
-	GLuint VAO, VBO, EBO;
-	uint texture;
-	std::unique_ptr<Shader> shader;
 	std::vector<float> meshVertices;
-
-	void uploadMesh();
+	void createMesh(std::vector<float> &meshVertices);
 
 	public:
-		ItemPropEntity(glm::vec3 position, BlockType ID, entityID entityID);
+		ItemPropEntity(glm::vec3 position, BlockType type, entityID ID);
 		~ItemPropEntity();
-
-		void draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::vec3 &position);
 };
 
 #endif

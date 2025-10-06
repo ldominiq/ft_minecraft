@@ -88,12 +88,9 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 
 	glm::vec3 velocity;
 	velocity.x = pkt.velocityX;
-	velocity.y = 0;
+	velocity.y = pkt.velocityY;
 	velocity.z = pkt.velocityZ;
 	movement.setVelocity(velocity);
-
-	float verticalVelocity = pkt.verticalVelocity;
-	movement.setVerticalVelocity(verticalVelocity);
 
 	// movement.setPosition(position);
 	previousPosition = predictedPosition;

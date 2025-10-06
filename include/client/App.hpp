@@ -15,6 +15,7 @@
 #include "Renderer.hpp"
 #include "UDPClient.hpp"
 #include "Chat.hpp"
+#include "ItemPropEntityManager.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -108,6 +109,7 @@ private:
 	GLFWmonitor* monitor;
     const GLFWvidmode* mode;
 
+	std::unique_ptr<ItemPropEntityManager> m_itemPropEntityManager;
 	std::unique_ptr<Renderer> renderer;
 	std::unique_ptr<UDPClient> udpClient;
 

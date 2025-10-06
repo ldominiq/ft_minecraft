@@ -6,7 +6,7 @@ ItemEntityIDManager Entity::idManager;
 
 Entity::Entity(glm::vec3 position): position(position), ID(idManager.acquire()) {}
 
-Entity::Entity(glm::vec3 position, entityID entityID): position(position), ID(entityID) {}
+Entity::Entity(glm::vec3 position, entityID ID): position(position), ID(ID) {}
 
 Entity::~Entity()
 {
@@ -97,7 +97,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
 		else velocity.z = 0.0f;
     }
 
-	position = newPos;
+	setPosition(newPos);
 }
 
 void Entity::calculateNewYPosition(const ICommonWorld &world)
@@ -108,7 +108,7 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 	// attempt Y movement
 
 	onGround = false;
-	float remainingDy = verticalVelocity;
+	float remainingDy = velocity.y;
 	while (std::abs(remainingDy) > 0.0f + EPS) {
 		float step = remainingDy;// glm::clamp(remainingDy, -0.99f, 0.99f); // at most ~1 block per sub-step
 		
@@ -140,14 +140,14 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 									// only stop if we were below the block and tried to enter it
 									if (headBefore <= by && headAfter > by) {
 										newPos.y = (float)by - entityHeight; // snap below ceiling
-										verticalVelocity = 0.0f;
+										velocity.y = 0.0f;
 										stopped = true;
 									}
 								}
 							}
 						}
 					}
-					if (!stopped) verticalVelocity = 0.0f; // fallback
+					if (!stopped) velocity.y = 0.0f; // fallback
 				} else {
 					// falling -> landed: find the highest solid block we hit and snap on top
 					int fromY = (int)std::floor(currentBox.min.y + dy - 1.0f); // lower bound after fall
@@ -168,13 +168,13 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 									if (entityHeight < 1.0f && feetBefore >= by + entityHeight && feetAfter < by + entityHeight) /// I don't understand this but it.. works? idk it's weird
 									{
 										newPos.y = (float)by + 1.0f; // snap to block top
-										verticalVelocity = 0.0f;
+										velocity.y = 0.0f;
 										onGround = true;
 										landed = true;
 									}
 									else if (feetBefore >= by + 1.0f && feetAfter < by + 1.0f) {
 										newPos.y = (float)by + 1.0f; // snap to block top
-										verticalVelocity = 0.0f;
+										velocity.y = 0.0f;
 										onGround = true;
 										landed = true;
 									}
@@ -193,19 +193,20 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 	}
 
 	// apply gravity
-	verticalVelocity -= GRAVITY; //gravity
-	verticalVelocity *= DRAG;
-	if (std::abs(verticalVelocity) < 0.003 || onGround) verticalVelocity = 0;
+	velocity.y -= GRAVITY; //gravity
+	velocity.y *= DRAG;
+	if (std::abs(velocity.y) < 0.003 || onGround) velocity.y = 0;
 
 	// Apply final position
-	position = newPos;
+	setPosition(newPos);
 }
 
 void Entity::calculateNewPosition(const ICommonWorld &world)
 {
+	positionUpdated = false;
 	// TODO : return early if block stopped. Same as player calculateNewPosition TODO.
-
 	glm::vec3 desiredPos = getDesiredMove();
+	positionUpdated = true;
 	calculateNewXZPosition(world, desiredPos);
 	calculateNewYPosition(world);
 }

@@ -46,6 +46,7 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
     std::shared_ptr<ChunkRenderer> currChunk = it->second;
 
     currChunk->setBlock(x, y, z, type);
+	// TODO : do not rebuild WHOLE MESH when only 1 block gets removed/added.
 	currChunk->buildMesh();
 
 	// //update possible neighbour
@@ -217,10 +218,10 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 void Renderer::onEntity(NetEntityMove &pkt)
 {
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
-	BlockType ID = static_cast<BlockType>(pkt.itemTypeID);
-	uint32_t entityID = pkt.EntityID;
-	
-	auto entity = entitiesMap.find(entityID);
+	BlockType type = static_cast<BlockType>(pkt.type);
+	entityID ID = pkt.entityID;
+
+	auto entity = entitiesMap.find(ID);
 	if (entity != entitiesMap.end())
 	{
 		entity->second->prevPosition = entity->second->getPosition();
@@ -228,17 +229,17 @@ void Renderer::onEntity(NetEntityMove &pkt)
 	}
 	else
 	{
-		if (pkt.entityType == EEntityTypes::ITEMS)
+		if (pkt.eEntityType == EEntityTypes::ITEMS)
 		{
-			auto entityPtr = std::make_shared<ItemPropEntity>(position, ID, entityID);
+			auto entityPtr = std::make_shared<ItemPropEntity>(position, type, ID);
 			entities.push_back(entityPtr);
-			entitiesMap[entityID] = entityPtr;
+			entitiesMap[ID] = entityPtr;
 		}
-		else if (pkt.entityType == EEntityTypes::LIVING_ENTITIES)
+		else if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
 		{
-			auto entityPtr = std::make_shared<LivingEntity>(position, entityID);
+			auto entityPtr = std::make_shared<LivingEntity>(position, ID);
 			entities.push_back(entityPtr);
-			entitiesMap[entityID] = entityPtr;
+			entitiesMap[ID] = entityPtr;
 		}
 	}
 }

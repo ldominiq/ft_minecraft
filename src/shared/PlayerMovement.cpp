@@ -64,8 +64,8 @@ void PlayerMovement::doJump(const ICommonWorld &world)
 	// jump
 	this->jump = lastInputsPktRecvd.keys & IN_UP;
 	const float JUMP_EPS = 0.01f; // TODO (when physics (with pred) work) RECHECK THIS IS USEFUL
-	if (this->jump && onGround && this->verticalVelocity <= JUMP_EPS) {
-		this->verticalVelocity = JUMP_VELOCITY;
+	if (this->jump && onGround && this->velocity.y <= JUMP_EPS) {
+		this->velocity.y = JUMP_VELOCITY;
 		this->onGround = false;
 		jumpBoostApplied = false;
 	}
@@ -126,6 +126,7 @@ glm::vec3 PlayerMovement::getDesiredMove()
 
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 {
+	positionUpdated = false;
 	constexpr float forehead = 0.3f;
 	float headHeight = this->entityHeight - forehead;
 	this->position.y -= headHeight;

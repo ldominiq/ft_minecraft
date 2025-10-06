@@ -47,23 +47,23 @@ struct AABB {
 class ICommonWorld;
 
 class ItemEntityIDManager {
-public:
-    entityID acquire() {
-        if (!freeIDs.empty()) {
-            entityID id = freeIDs.front();
-            freeIDs.pop();
-            return id;
-        }
-        return nextID++;
-    }
 
-    void release(entityID id) {
-        freeIDs.push(id);
-    }
+	entityID nextID = 1;                 // start from 1 (0 = invalid?)
+	std::queue<entityID> freeIDs;        // recycled IDs
 
-	private:
-		entityID nextID = 1;                 // start from 1 (0 = invalid?)
-		std::queue<entityID> freeIDs;        // recycled IDs
+	public:
+		entityID acquire() {
+			if (!freeIDs.empty()) {
+				entityID id = freeIDs.front();
+				freeIDs.pop();
+				return id;
+			}
+			return nextID++;
+		}
+
+		void release(entityID id) {
+			freeIDs.push(id);
+		}
 };
 
 class Entity {
@@ -76,9 +76,7 @@ class Entity {
 		float entityWidth;
 		float entityHeight;
 
-		//TODO : maybe use velocity.y instead of verticalVelocity... velocity.y is always = 0
 		glm::vec3 velocity = glm::vec3(0, 0, 0);
-		float verticalVelocity = 0;
 
 		glm::vec3 position;
 
@@ -95,11 +93,13 @@ class Entity {
 
 	public:
 		Entity(glm::vec3 position);
-		Entity(glm::vec3 position, entityID entityID);
+		Entity(glm::vec3 position, entityID ID);
 		virtual ~Entity() = 0;
 
 		float yaw, pitch;
 		bool entityCollidesWithBlock(const glm::vec3 blockPos);
+		// position has been changed since last check.
+		bool positionUpdated = true;
 
 		inline virtual EEntityTypes getEntityType() const = 0;
 		inline virtual BlockType getItemType() const { return BlockType::END; } //only used for items; It's here to avoid the cost of dynamically down casting
@@ -109,11 +109,11 @@ class Entity {
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const entityID getID() const { return ID; }
 
-		inline void setPosition(glm::vec3 position) {this->position = position; }
+		inline void setPosition(glm::vec3 position) {this->position = position; positionUpdated = true; }
 
 		//ONLY USED IN CLIENT :
 		glm::vec3 prevPosition = glm::vec3(0.0f, 0.0f, 0.0f);
-		virtual void draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::vec3 &position) { ;} //std::cout << "Not Yet Implemented :D" << std::endl; };
+		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; };
 };
 
 #endif

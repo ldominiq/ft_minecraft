@@ -15,7 +15,7 @@ void LivingEntity::doJump(const ICommonWorld &world)
 	bool onGround = this->aabbCollidesWithWorld(boxFeetProbe, world);
 
 	if (this->jump && onGround)
-		this->verticalVelocity = JUMP_VELOCITY;
+		this->velocity.y = JUMP_VELOCITY;
 }
 
 glm::vec3 LivingEntity::getDesiredMove()

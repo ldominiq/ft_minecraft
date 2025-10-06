@@ -607,7 +607,7 @@ void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerM
 
 			//--------------------------
 
-			BlockType dropped = getBlockWorld(blockPos);
+			BlockType dropped = getBlockWorld(blockPos+faceNormal);
 
 			// random generator
 			static std::mt19937 rng(std::random_device{}());
@@ -622,14 +622,14 @@ void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerM
 
 			// small position offset from the block center
 			glm::vec3 positionOffset = glm::normalize(glm::vec3(std::cos(yawRad), 0.0f, std::sin(yawRad))) 
-									* 0.25f; // radius offset
+									* 0.15f; // radius offset
 
 			// optional: add some slight random variation so they don’t stack perfectly
 			positionOffset.x += offsetDist(rng);
 			positionOffset.z += offsetDist(rng);
 
 			// spawn the entity at block center + offset
-			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
+			glm::vec3 spawnPos = glm::vec3(blockPos+faceNormal) + glm::vec3(0.5f) + positionOffset;
 
 			entities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped));
 		}
