@@ -261,8 +261,8 @@ void App::loadResources() {
     lighting->initShadowDebugShader();
 
     waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
-    dudvTexture = loadTexture("assets/textures/waterDUDV.png");
-    waterNormalTexture = loadTexture("assets/textures/waterNormal.png");
+    dudvTexture = loadTexture("assets/textures/waterdudv.png");
+    waterNormalTexture = loadTexture("assets/textures/NormalMap.png");
     waterFBO = std::make_unique<WaterFramebuffer>(windowedWidth, windowedHeight);
 }
 
@@ -277,7 +277,7 @@ void App::gameTick()
 		udpClient->sendPacket(inputs);
 	}
 
-    waterMoveFactor += 0.0003f * deltaTime;
+    waterMoveFactor += 0.03f * deltaTime;
     if (waterMoveFactor > 1.0f) waterMoveFactor = 0.0f;
 }
 
@@ -365,6 +365,13 @@ void App::render() {
         waterFBO->bindReflectionFrameBuffer();
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_CLIP_DISTANCE0);
+
+        // float distance = 2 * (camera->movement.getPosition().y + 5.9);
+        // glm::vec3 originalCamPos = camera->movement.getPosition();
+        // camera->movement.setPosition(glm::vec3(originalCamPos.x , originalCamPos.y - distance, originalCamPos.z));
+        // camera->movement.setYawAndPitch(camera->movement.getYaw(), -camera->movement.getPitch());
+        // glm::mat4 reflectView = camera->getViewMatrix();
+        
         
         // Flip camera vertically
         float distance = 2.0f * (camera->movement.getPosition().y - 64.0f); // assuming water height is 64.0f
@@ -372,7 +379,7 @@ void App::render() {
         reflectCamPos.y -= distance;
         
         // Invert pitch (construct a new Camera instead of copying; Camera is non-copyable)
-        Camera reflectCamera(reflectCamPos);
+        static Camera reflectCamera(reflectCamPos);
         reflectCamera.movement.setYawAndPitch(camera->movement.getYaw(), -camera->movement.getPitch());
         glm::mat4 reflectView = reflectCamera.getViewMatrix();
         
@@ -389,7 +396,11 @@ void App::render() {
         glBindTexture(GL_TEXTURE_2D, texture);
 
         renderer->render(activeShader);
-        lighting->drawSky(reflectView, projection, reflectCamPos);
+
+        // originalCamPos = camera->movement.getPosition();
+        // camera->movement.setPosition(glm::vec3(originalCamPos.x , originalCamPos.y - distance, originalCamPos.z));
+        // camera->movement.setYawAndPitch(camera->movement.getYaw(), -camera->movement.getPitch());
+        // lighting->drawSky(reflectView, projection, reflectCamPos);
         
         waterFBO->unbindCurrentFrameBuffer();
 
