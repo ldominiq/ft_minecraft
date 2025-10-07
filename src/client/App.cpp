@@ -365,23 +365,24 @@ void App::render() {
         waterFBO->bindReflectionFrameBuffer();
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_CLIP_DISTANCE0);
+        
+        
+    	// Calculate reflected position
+    	float distance = 2.0f * (camera->movement.getPosition().y - 64.0f);
+    	glm::vec3 reflectCamPos = camera->movement.getPosition();
+    	reflectCamPos.y -= distance;
 
-        // float distance = 2 * (camera->movement.getPosition().y + 5.9);
-        // glm::vec3 originalCamPos = camera->movement.getPosition();
-        // camera->movement.setPosition(glm::vec3(originalCamPos.x , originalCamPos.y - distance, originalCamPos.z));
-        // camera->movement.setYawAndPitch(camera->movement.getYaw(), -camera->movement.getPitch());
-        // glm::mat4 reflectView = camera->getViewMatrix();
-        
-        
-        // Flip camera vertically
-        float distance = 2.0f * (camera->movement.getPosition().y - 64.0f); // assuming water height is 64.0f
-        glm::vec3 reflectCamPos = camera->movement.getPosition();
-        reflectCamPos.y -= distance;
-        
-        // Invert pitch (construct a new Camera instead of copying; Camera is non-copyable)
-        static Camera reflectCamera(reflectCamPos);
-        reflectCamera.movement.setYawAndPitch(camera->movement.getYaw(), -camera->movement.getPitch());
-        glm::mat4 reflectView = reflectCamera.getViewMatrix();
+    	// Manually construct the reflected view matrix
+    	float yaw = camera->movement.getYaw();
+    	float pitch = -camera->movement.getPitch();  // Inverted pitch
+
+    	glm::vec3 front;
+    	front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    	front.y = sin(glm::radians(pitch));
+    	front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    	front = glm::normalize(front);
+
+    	glm::mat4 reflectView = glm::lookAt(reflectCamPos, reflectCamPos + front, glm::vec3(0, 1, 0));
         
         // Set clip plane (only render above water)
         glm::vec4 clipPlane = glm::vec4(0, 1, 0, -64.0f);
@@ -389,19 +390,25 @@ void App::render() {
         activeShader->setVec4("clipPlane", clipPlane);
         activeShader->setMat4("view", reflectView);
         activeShader->setMat4("projection", projection);
+
+    	// Get the original forward direction
+    	glm::vec3 originalDir = camera->movement.getCameraDir();
+
+    	// Reflect it across the horizontal plane (flip Y component)
+    	glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
+
+    	// Use this for lighting
+    	lighting->uploadLightingUniforms(*activeShader, reflectCamPos, reflectedDir);
         
         // Render scene (solid blocks only, no water)
-        lighting->uploadLightingUniforms(*activeShader, reflectCamPos, camera->movement.getCameraDir());
+        // lighting->uploadLightingUniforms(*activeShader, reflectCamPos, camera->movement.getCameraDir());
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
 
+        // lighting->drawSky(reflectView, projection, reflectCamPos);
         renderer->render(activeShader);
 
-        // originalCamPos = camera->movement.getPosition();
-        // camera->movement.setPosition(glm::vec3(originalCamPos.x , originalCamPos.y - distance, originalCamPos.z));
-        // camera->movement.setYawAndPitch(camera->movement.getYaw(), -camera->movement.getPitch());
-        // lighting->drawSky(reflectView, projection, reflectCamPos);
-        
+
         waterFBO->unbindCurrentFrameBuffer();
 
         // ============================================================
