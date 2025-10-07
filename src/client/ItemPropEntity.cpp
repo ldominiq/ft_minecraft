@@ -3,6 +3,7 @@
 
 ItemPropEntity::ItemPropEntity(glm::vec3 position, BlockType type, entityID ID) : ItemEntity(position, type, ID)
 {
+	nextPosition = position;
 }
 
 ItemPropEntity::~ItemPropEntity()

@@ -43,7 +43,7 @@ void Camera::lerpToNextPosition(float deltaTime)
 
 glm::vec3 Camera::lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition)
 {
-	if (prevServerTick == 0) nextPosition ;
+	if (prevPosition == glm::vec3{}) return nextPosition;
 
 	float currTime = prevServerTick + deltaTime * 1000;
 	currTime = std::clamp(currTime, prevServerTick, serverTick);

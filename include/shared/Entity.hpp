@@ -76,9 +76,9 @@ class Entity {
 		float entityWidth;
 		float entityHeight;
 
-		glm::vec3 velocity = glm::vec3(0, 0, 0);
+		glm::vec3 velocity{};
 
-		glm::vec3 position;
+		glm::vec3 position{};
 
 		bool onGround = false;
 
@@ -116,8 +116,8 @@ class Entity {
 
 		//ONLY USED IN CLIENT :
 		//TODO move all of this and get a normal tick on client.
-		glm::vec3 prevPosition = glm::vec3(0.0f, 0.0f, 0.0f);
-		glm::vec3 nextPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+		glm::vec3 prevPosition{};
+		glm::vec3 nextPosition{};
 		float lastTickClientTime = 0;
 		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; };
 };

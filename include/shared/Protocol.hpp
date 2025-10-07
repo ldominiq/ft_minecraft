@@ -192,19 +192,6 @@ struct NetChunkHeader final : public Packet {
 };
 inline AutoRegister<NetChunkHeader> _reg_NetChunkHeader;
 
-
-// THIS WAS FOR DEBUG
-// #include <iomanip>
-// inline void printHex(const std::vector<uint8_t>& data, size_t max = 64) {
-//     size_t n = std::min(data.size(), max);
-//     for (size_t i = 0; i < n; ++i) {
-//         std::cout << std::hex << std::setw(2) << std::setfill('0')
-//                   << static_cast<int>(data[i]) << " ";
-//     }
-//     if (data.size() > max) std::cout << "...";
-//     std::cout << std::dec << "\n";
-// }
-
 // Example CHUNK_DATA carrying raw bytes (length-prefixed)
 struct NetChunkData final : public Packet {
     static constexpr PacketType ID = PacketType::CHUNK_DATA;

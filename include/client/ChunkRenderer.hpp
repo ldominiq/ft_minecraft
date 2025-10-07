@@ -12,7 +12,7 @@ class ChunkRenderer : public Chunk {
 
     GLuint VAO = 0;
     GLuint VBO = 0;
-	uint meshVerticesSize;
+	uint meshVerticesSize = 0;
     std::vector<float> meshVertices; // Vertices for the mesh
 
 	public:
