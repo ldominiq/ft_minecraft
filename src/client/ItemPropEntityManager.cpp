@@ -44,7 +44,7 @@ void ItemPropEntityManager::updateMesh(const std::vector<std::shared_ptr<Entity>
 // In your constructor or init function:
 void ItemPropEntityManager::initGL()
 {
-	const int MAX_BUFFER_SIZE = 180 * 10000; // 1 item takes 180 vertices.
+	const int MAX_BUFFER_SIZE = 180 * 10000; // 1 item takes 180 floats.
 
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -72,8 +72,10 @@ void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 
     glBindVertexArray(VAO);
 
-	shader->setInt("atlas", 0);
+	// glActiveTexture(GL_TEXTURE0);
+	// glBindTexture(GL_TEXTURE_2D, texture);
+
 	shader->setMat4("projection", projection);
 	shader->setMat4("view", view);
-	glDrawArrays(GL_TRIANGLES, 0, entities.size() * 180); // TODO : check if we can pass les than meshVertices.size()
+	glDrawArrays(GL_TRIANGLES, 0, entities.size() * 36); // TODO : check if we can pass les than meshVertices.size()
 }
