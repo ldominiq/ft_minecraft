@@ -448,6 +448,9 @@ void App::render() {
         // Render sky FIRST (it should handle depth properly to stay in background)
         lighting->drawSky(view, projection, camera->movement.getPosition());
         
+        // Ensure depth testing is ON for world rendering
+        glEnable(GL_DEPTH_TEST);
+        
         // Disable clipping for normal rendering
         clipPlane = glm::vec4(0, -1, 0, 100000);  // Plane far away = no clipping
         activeShader->use();
@@ -464,8 +467,14 @@ void App::render() {
         // ============================================================
         // PASS 4: RENDER WATER WITH SPECIAL SHADER
         // ============================================================
+        // Ensure depth testing is enabled for transparent water blending over opaque geometry
+        glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // Important for transparency: keep depth test ON but disable depth writes for water
+        GLboolean oldDepthMask;
+        glGetBooleanv(GL_DEPTH_WRITEMASK, &oldDepthMask);
+        glDepthMask(GL_FALSE);
         
         waterShader->use();
         waterShader->setMat4("projection", projection);
@@ -499,6 +508,8 @@ void App::render() {
         // Render water meshes from all chunks
         renderer->renderWater(waterShader);
         
+        // Restore depth mask and state
+        glDepthMask(oldDepthMask);
         glDisable(GL_BLEND);
 
 		if (lighting->isShadowMapEnabled())

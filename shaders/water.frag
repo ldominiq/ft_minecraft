@@ -82,6 +82,9 @@ void main() {
     // Add specular highlights
     FragColor = vec4(FragColor.rgb + specularHighlights, 1.0);
     
-    // Add slight transparency based on depth
-    FragColor.a = clamp(waterDepth / 5.0, 0.0, 1.0);
+    // Angle-based transparency (Fresnel-style) without relying on sea-level depth
+    // More opaque at grazing angles, more transparent when looking straight down
+    const float alphaGrazing = 0.80; // opacity when looking across the surface
+    const float alphaFacing  = 0.55; // opacity when looking straight down
+    FragColor.a = mix(alphaGrazing, alphaFacing, refractiveFactor);
 }
