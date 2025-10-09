@@ -17,6 +17,7 @@
 #include "UDPClient.hpp"
 #include "Chat.hpp"
 #include "WaterFramebuffer.hpp"
+#include "Block.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -128,6 +129,10 @@ private:
     std::shared_ptr<Shader> waterShader;
     GLuint dudvTexture, waterNormalTexture;
     float waterMoveFactor = 0.0f;
+
+    // Underwater full-screen overlay
+    std::shared_ptr<Shader> underwaterOverlayShader;
+    GLuint overlayVAO = 0, overlayVBO = 0;
 
 	std::optional<int> seed;
 
