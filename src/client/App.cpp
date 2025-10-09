@@ -384,8 +384,11 @@ void App::render() {
 
     	glm::mat4 reflectView = glm::lookAt(reflectCamPos, reflectCamPos + front, glm::vec3(0, 1, 0));
         
-        // Set clip plane (only render above water)
-        glm::vec4 clipPlane = glm::vec4(0, 1, 0, -64.0f);
+        // Set clip plane (only render above water). Apply a small bias that grows slightly as the camera approaches the plane
+        const float seaLevel = 64.0f;
+        const float camHeightToWater = camera->movement.getPosition().y - seaLevel;
+        const float clipBias = glm::clamp(std::abs(camHeightToWater) * 0.02f, 0.02f, 0.5f);
+        glm::vec4 clipPlane = glm::vec4(0, 1, 0, -(seaLevel + clipBias));
         activeShader->use();
         activeShader->setVec4("clipPlane", clipPlane);
         activeShader->setMat4("view", reflectView);
@@ -485,6 +488,7 @@ void App::render() {
     	waterShader->setFloat("nearPlane", 0.1f);
     	waterShader->setFloat("farPlane", renderDistance);
     	waterShader->setVec3("sunDir", lighting->getDirectionalLightDirection());
+        waterShader->setFloat("seaLevel", 64.0f);
 
         // Bind all water textures
         glActiveTexture(GL_TEXTURE0);

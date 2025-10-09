@@ -17,6 +17,7 @@ uniform vec3 lightColor;
 uniform float nearPlane;
 uniform float farPlane;
 uniform vec3 sunDir;
+uniform float seaLevel;
 
 // Water properties
 const float waveStrength = 0.015;        // Distortion intensity
@@ -90,8 +91,13 @@ void main() {
 
     vec3 diffuse = lightColor * (0.05 * NdotL);
 
+    // Attenuate reflections for non sea-level water blocks to avoid incorrect global planar reflection
+    float seaDelta = abs(worldPos.y - seaLevel);
+    float seaBlend = 1.0 - smoothstep(0.0, 0.75, seaDelta); // within ~0.75 units of sea level => full reflection
+    float reflectWeight = F * seaBlend;
+
     // Mix reflect/refract
-    vec3 color = mix(refr, refl, F);
+    vec3 color = mix(refr, refl, reflectWeight);
 
     // Depth-based tint
     vec3 shallowColor = vec3(0.0, 0.45, 0.65);
