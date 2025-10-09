@@ -418,8 +418,8 @@ void App::render() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_CLIP_DISTANCE0);
         
-        // Set clip plane (only render below water)
-        clipPlane = glm::vec4(0, -1, 0, 64.0f);
+        // Set clip plane for refraction: render full scene (no effective clipping)
+        clipPlane = glm::vec4(0, -1, 0, 100000.0f);
         activeShader->use();
         activeShader->setVec4("clipPlane", clipPlane);
         activeShader->setMat4("view", view);
@@ -480,10 +480,12 @@ void App::render() {
         waterShader->setMat4("projection", projection);
         waterShader->setMat4("view", view);
         waterShader->setVec3("cameraPos", camera->movement.getPosition());
-        waterShader->setVec3("lightPos", lighting->getLightPos());
         waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
         waterShader->setFloat("moveFactor", waterMoveFactor);
-        
+    	waterShader->setFloat("nearPlane", 0.1f);
+    	waterShader->setFloat("farPlane", renderDistance);
+    	waterShader->setVec3("sunDir", lighting->getDirectionalLightDirection());
+
         // Bind all water textures
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, waterFBO->getReflectionTexture());
