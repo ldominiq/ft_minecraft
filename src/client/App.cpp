@@ -260,10 +260,12 @@ void App::loadResources() {
     textureShader->setInt("shadowMap", 1);
     lighting->initShadowDebugShader();
 
+	// TODO: refactor the water init shit
     waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
     dudvTexture = loadTexture("assets/textures/waterdudv.png");
     waterNormalTexture = loadTexture("assets/textures/NormalMap.png");
     waterFBO = std::make_unique<WaterFramebuffer>(windowedWidth, windowedHeight);
+
 
     // Setup underwater overlay resources
     underwaterOverlayShader = std::make_shared<Shader>("shaders/underwater_overlay.vert", "shaders/underwater_overlay.frag");
@@ -369,233 +371,59 @@ void App::render() {
         	processInput();
 
         // window aspect / uniforms
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-        const float aspect = static_cast<float>(width) / static_cast<float>(height);
+        glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
+        const float aspect = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
 
-        lighting->setViewportSize(width, height);
+        lighting->setViewportSize(screenWidth, screenHeight);
         lighting->updateSunDirection(deltaTime);
 
         if (lighting->isShadowsEnabled()) {
             lighting->updateShadowMap(*renderer, camera->movement.getPosition());
         }
 
+        // WATER RENDERING
+        const float seaLevel = 64.0f;
 
         // ============================================================
         // PASS 1: RENDER REFLECTION (camera flipped, clip below water)
         // ============================================================
-        
-        waterFBO->bindReflectionFrameBuffer();
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glEnable(GL_CLIP_DISTANCE0);
-        
-        
-    	// Calculate reflected position
-    	float distance = 2.0f * (camera->movement.getPosition().y - 64.0f);
-    	glm::vec3 reflectCamPos = camera->movement.getPosition();
-    	reflectCamPos.y -= distance;
-
-    	// Manually construct the reflected view matrix
-    	float yaw = camera->movement.getYaw();
-    	float pitch = -camera->movement.getPitch();  // Inverted pitch
-
-    	glm::vec3 front;
-    	front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    	front.y = sin(glm::radians(pitch));
-    	front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-    	front = glm::normalize(front);
-
-    	glm::mat4 reflectView = glm::lookAt(reflectCamPos, reflectCamPos + front, glm::vec3(0, 1, 0));
-        
-        // Set clip plane (only render above water). Apply a small bias that grows slightly as the camera approaches the plane
-        const float seaLevel = 64.0f;
-        const float camHeightToWater = camera->movement.getPosition().y - seaLevel;
-        const float clipBias = glm::clamp(std::abs(camHeightToWater) * 0.02f, 0.02f, 0.5f);
-        glm::vec4 clipPlane = glm::vec4(0, 1, 0, -(seaLevel + clipBias));
-        activeShader->use();
-        activeShader->setVec4("clipPlane", clipPlane);
-        activeShader->setMat4("view", reflectView);
-        activeShader->setMat4("projection", projection);
-        // Underwater fog uniforms for world shader (reflection pass uses same shader)
-        {
-            const glm::vec3 camPosLocal = camera->movement.getPosition();
-            // Check actual block at camera position to decide if underwater
-            const glm::ivec3 eyeBlock = glm::ivec3(glm::floor(camPosLocal));
-            const bool isUnder = (renderer->getBlockWorld(eyeBlock) == BlockType::WATER);
-            activeShader->setInt("isUnderwater", isUnder ? 1 : 0);
-            activeShader->setFloat("seaLevel", seaLevel);
-            activeShader->setVec3("waterFogColor", glm::vec3(0.05f, 0.35f, 0.55f));
-            activeShader->setFloat("waterFogDensity", 0.06f);
-        }
-
-    	// Get the original forward direction
-    	glm::vec3 originalDir = camera->movement.getCameraDir();
-
-    	// Reflect it across the horizontal plane (flip Y component)
-    	glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
-
-    	// Use this for lighting
-    	lighting->uploadLightingUniforms(*activeShader, reflectCamPos, reflectedDir);
-        
-        // Render scene (solid blocks only, no water)
-        // lighting->uploadLightingUniforms(*activeShader, reflectCamPos, camera->movement.getCameraDir());
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-
-        // lighting->drawSky(reflectView, projection, reflectCamPos);
-        renderer->render(activeShader);
-
-
-        waterFBO->unbindCurrentFrameBuffer();
+        renderWaterReflectionPass(projection, seaLevel);
 
         // ============================================================
         // PASS 2: RENDER REFRACTION (normal camera, clip above water)
         // ============================================================
-        waterFBO->bindRefractionFrameBuffer();
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glEnable(GL_CLIP_DISTANCE0);
-        
-        // Set clip plane for refraction: render full scene (no effective clipping)
-        clipPlane = glm::vec4(0, -1, 0, 100000.0f);
-        activeShader->use();
-        activeShader->setVec4("clipPlane", clipPlane);
-        activeShader->setMat4("view", view);
-        activeShader->setMat4("projection", projection);
-        // Underwater fog uniforms for world shader (refraction pass)
-        {
-            const glm::vec3 camPosLocal = camera->movement.getPosition();
-            const glm::ivec3 eyeBlock = glm::ivec3(glm::floor(camPosLocal));
-            const bool isUnder = (renderer->getBlockWorld(eyeBlock) == BlockType::WATER);
-            activeShader->setInt("isUnderwater", isUnder ? 1 : 0);
-            activeShader->setFloat("seaLevel", seaLevel);
-            activeShader->setVec3("waterFogColor", glm::vec3(0.05f, 0.35f, 0.55f));
-            activeShader->setFloat("waterFogDensity", 0.06f);
-        }
-        
-        // Render scene (solid blocks only, no water)
-        lighting->uploadLightingUniforms(*activeShader, camera->movement.getPosition(), camera->movement.getCameraDir());
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        renderer->render(activeShader);
-        
-        waterFBO->unbindCurrentFrameBuffer();
-        glDisable(GL_CLIP_DISTANCE0);
+        renderWaterRefractionPass(view, projection);
         
         
         // ============================================================
         // PASS 3: RENDER MAIN SCENE (normal rendering, disable clipping)
         // ============================================================
-        // Restore viewport to actual window size
-        glViewport(0, 0, width, height);
+        glViewport(0, 0, screenWidth, screenHeight);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        
-        // CRITICAL: Disable clipping distance for normal rendering!
         glDisable(GL_CLIP_DISTANCE0);
         
-        // Render sky FIRST (it should handle depth properly to stay in background)
+        // Render sky first
         lighting->drawSky(view, projection, camera->movement.getPosition());
         
-        // Ensure depth testing is ON for world rendering
+        // Render solid blocks
         glEnable(GL_DEPTH_TEST);
-        
-        // Disable clipping for normal rendering
-        clipPlane = glm::vec4(0, -1, 0, 100000);  // Plane far away = no clipping
+        const glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
         activeShader->use();
         activeShader->setVec4("clipPlane", clipPlane);
         activeShader->setMat4("view", view);
         activeShader->setMat4("projection", projection);
-        // Underwater fog uniforms for world shader (main pass)
-        {
-            const glm::vec3 camPosLocal = camera->movement.getPosition();
-            const glm::ivec3 eyeBlock = glm::ivec3(glm::floor(camPosLocal));
-            const bool isUnder = (renderer->getBlockWorld(eyeBlock) == BlockType::WATER);
-            activeShader->setInt("isUnderwater", isUnder ? 1 : 0);
-            activeShader->setFloat("seaLevel", seaLevel);
-            activeShader->setVec3("waterFogColor", glm::vec3(0.05f, 0.35f, 0.55f));
-            activeShader->setFloat("waterFogDensity", 0.06f);
-        }
-        
-        // Render solid blocks
         lighting->uploadLightingUniforms(*activeShader, camera->movement.getPosition(), camera->movement.getCameraDir());
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
         renderer->render(activeShader);
         
         // ============================================================
-        // PASS 4: RENDER WATER WITH SPECIAL SHADER
+        // PASS 4: RENDER WATER SURFACE
         // ============================================================
-        // Ensure depth testing is enabled for transparent water blending over opaque geometry
-        glEnable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        // Important for transparency: keep depth test ON but disable depth writes for water
-        GLboolean oldDepthMask;
-        glGetBooleanv(GL_DEPTH_WRITEMASK, &oldDepthMask);
-        glDepthMask(GL_FALSE);
-        // Control face culling for water:
-        // - Underwater: disable culling to see the underside
-        // - Above water: enable back-face culling to avoid double-sided artifacts on the surface
-        GLboolean cullWasEnabled = glIsEnabled(GL_CULL_FACE);
-        GLint prevCullFaceMode = GL_BACK;
-        glGetIntegerv(GL_CULL_FACE_MODE, &prevCullFaceMode);
-        const glm::vec3 camPosLocalWater = camera->movement.getPosition();
-        const glm::ivec3 eyeBlockWater = glm::ivec3(glm::floor(camPosLocalWater));
-        const bool isUnderwaterBlock = (renderer->getBlockWorld(eyeBlockWater) == BlockType::WATER);
-        const bool belowSeaSurface = camPosLocalWater.y < (seaLevel - 0.05f);
-        if (isUnderwaterBlock && belowSeaSurface) {
-            if (cullWasEnabled) glDisable(GL_CULL_FACE);
-        } else {
-            if (!cullWasEnabled) glEnable(GL_CULL_FACE);
-            glCullFace(GL_BACK);
-        }
-        
-        waterShader->use();
-        waterShader->setMat4("projection", projection);
-        waterShader->setMat4("view", view);
-        waterShader->setVec3("cameraPos", camera->movement.getPosition());
-        waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
-        waterShader->setFloat("moveFactor", waterMoveFactor);
-    	waterShader->setFloat("nearPlane", 0.1f);
-    	waterShader->setFloat("farPlane", renderDistance);
-    	waterShader->setVec3("sunDir", lighting->getDirectionalLightDirection());
-        waterShader->setFloat("seaLevel", 64.0f);
-
-        // Bind all water textures
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, waterFBO->getReflectionTexture());
-        waterShader->setInt("reflectionTexture", 0);
-        
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionTexture());
-        waterShader->setInt("refractionTexture", 1);
-        
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, dudvTexture);
-        waterShader->setInt("dudvMap", 2);
-        
-        glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
-        waterShader->setInt("normalMap", 3);
-        
-        glActiveTexture(GL_TEXTURE4);
-        glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionDepthTexture());
-        waterShader->setInt("refractionDepthTexture", 4);
-        
-        // Render water meshes from all chunks
-        renderer->renderWater(waterShader);
-        
-        // Restore culling and depth mask and state
-        if (cullWasEnabled) {
-            glEnable(GL_CULL_FACE);
-        } else {
-            glDisable(GL_CULL_FACE);
-        }
-        glCullFace(prevCullFaceMode);
-        glDepthMask(oldDepthMask);
-        glDisable(GL_BLEND);
+        renderWaterSurface(view, projection, seaLevel);
 
 		if (lighting->isShadowMapEnabled())
     		lighting->drawShadowMapPreview();
@@ -612,55 +440,10 @@ void App::render() {
         glBindVertexArray(0);
 
         if (showDebugWindow) {
-            //ImGui::ShowDemoWindow();
             debugWindow();
         }
 
-        // Draw underwater full-screen overlay if inside water block
-        {
-            const glm::vec3 camPosLocal = camera->movement.getPosition();
-            const glm::ivec3 eyeBlock = glm::ivec3(glm::floor(camPosLocal));
-            const bool isUnder = (renderer->getBlockWorld(eyeBlock) == BlockType::WATER);
-            if (isUnder && underwaterOverlayShader && overlayVAO) {
-                const GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
-                glDisable(GL_DEPTH_TEST);
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-                underwaterOverlayShader->use();
-                underwaterOverlayShader->setFloat("uTime", static_cast<float>(glfwGetTime()));
-                underwaterOverlayShader->setVec2("uResolution", glm::vec2(width, height));
-                
-                // Bind scene textures from refraction FBO and dudv for distortion
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionTexture());
-                underwaterOverlayShader->setInt("uSceneColor", 0);
-                glActiveTexture(GL_TEXTURE1);
-                glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionDepthTexture());
-                underwaterOverlayShader->setInt("uSceneDepth", 1);
-                glActiveTexture(GL_TEXTURE2);
-                glBindTexture(GL_TEXTURE_2D, dudvTexture);
-                underwaterOverlayShader->setInt("uDuDv", 2);
-
-                underwaterOverlayShader->setFloat("uMove", waterMoveFactor);
-                underwaterOverlayShader->setFloat("uNear", 0.1f);
-                underwaterOverlayShader->setFloat("uFar", renderDistance);
-                underwaterOverlayShader->setVec3("uFogColor", glm::vec3(0.05f, 0.35f, 0.55f));
-                underwaterOverlayShader->setFloat("uFogDensity", 0.085f);
-                underwaterOverlayShader->setVec3("uTintColor", glm::vec3(0.9f, 1.05f, 1.1f));
-                underwaterOverlayShader->setFloat("uOpacity", 0.42f);
-
-                glBindVertexArray(overlayVAO);
-                glDrawArrays(GL_TRIANGLES, 0, 6);
-                glBindVertexArray(0);
-
-                glDisable(GL_BLEND);
-                if (depthWasEnabled) glEnable(GL_DEPTH_TEST);
-            }
-        }
-
-        // Finalize the ImGui frame and draw it.  Even if the overlay is
-        // non-interactive the draw data will be present, so draw it always.
+        // Finalize ImGui rendering
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -673,6 +456,205 @@ void App::render() {
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+}
+
+// ============================================================
+// Water Rendering Helper Methods
+// ============================================================
+
+glm::mat4 App::calculateReflectedViewMatrix(float seaLevel) const {
+    // Calculate reflected camera position
+    const float distance = 2.0f * (camera->movement.getPosition().y - seaLevel);
+    glm::vec3 reflectCamPos = camera->movement.getPosition();
+    reflectCamPos.y -= distance;
+
+    // Construct reflected view matrix with inverted pitch
+    const float yaw = camera->movement.getYaw();
+    const float pitch = -camera->movement.getPitch();  // Inverted pitch for reflection
+
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front = glm::normalize(front);
+
+    return glm::lookAt(reflectCamPos, reflectCamPos + front, glm::vec3(0, 1, 0));
+}
+
+void App::renderWaterReflectionPass(const glm::mat4& projection, float seaLevel) {
+    waterFBO->bindReflectionFrameBuffer();
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_CLIP_DISTANCE0);
+
+    // Calculate reflected view matrix
+    const glm::mat4 reflectView = calculateReflectedViewMatrix(seaLevel);
+    const float distance = 2.0f * (camera->movement.getPosition().y - seaLevel);
+    glm::vec3 reflectCamPos = camera->movement.getPosition();
+    reflectCamPos.y -= distance;
+
+    // Set clip plane (only render above water) with adaptive bias
+    const float camHeightToWater = camera->movement.getPosition().y - seaLevel;
+    const float clipBias = glm::clamp(std::abs(camHeightToWater) * 0.02f, 0.02f, 0.5f);
+    const glm::vec4 clipPlane = glm::vec4(0, 1, 0, -(seaLevel + clipBias));
+
+    activeShader->use();
+    activeShader->setVec4("clipPlane", clipPlane);
+    activeShader->setMat4("view", reflectView);
+    activeShader->setMat4("projection", projection);
+
+    // Calculate reflected camera direction for lighting
+    const glm::vec3 originalDir = camera->movement.getCameraDir();
+    const glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
+
+    lighting->uploadLightingUniforms(*activeShader, reflectCamPos, reflectedDir);
+
+    // Render reflection scene
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    lighting->drawSky(reflectView, projection, reflectCamPos);
+    renderer->render(activeShader);
+
+    waterFBO->unbindCurrentFrameBuffer();
+}
+
+void App::renderWaterRefractionPass(const glm::mat4& view, const glm::mat4& projection) {
+    waterFBO->bindRefractionFrameBuffer();
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_CLIP_DISTANCE0);
+
+    // Set clip plane for refraction (effectively no clipping)
+    const glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000.0f);
+
+    activeShader->use();
+    activeShader->setVec4("clipPlane", clipPlane);
+    activeShader->setMat4("view", view);
+    activeShader->setMat4("projection", projection);
+
+    // Render refraction scene
+    lighting->uploadLightingUniforms(*activeShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    renderer->render(activeShader);
+
+    waterFBO->unbindCurrentFrameBuffer();
+    glDisable(GL_CLIP_DISTANCE0);
+}
+
+void App::renderWaterSurface(const glm::mat4& view, const glm::mat4& projection, float seaLevel) {
+    // Configure OpenGL state for transparent water rendering
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);  // Disable depth writes for transparency
+
+    // Configure face culling based on camera position
+    const GLboolean cullWasEnabled = glIsEnabled(GL_CULL_FACE);
+    const glm::vec3 camPos = camera->movement.getPosition();
+    const glm::ivec3 eyeBlock = glm::ivec3(glm::floor(camPos));
+    const bool isUnderwater = (renderer->getBlockWorld(eyeBlock) == BlockType::WATER);
+    const bool belowSeaSurface = camPos.y < (seaLevel - 0.05f);
+
+    GLint prevCullFaceMode = GL_BACK;
+    glGetIntegerv(GL_CULL_FACE_MODE, &prevCullFaceMode);
+
+    if (isUnderwater && belowSeaSurface) {
+        if (cullWasEnabled) glDisable(GL_CULL_FACE);
+    } else {
+        if (!cullWasEnabled) glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+    }
+
+    // Set water shader uniforms
+    waterShader->use();
+    waterShader->setMat4("projection", projection);
+    waterShader->setMat4("view", view);
+    waterShader->setVec3("cameraPos", camPos);
+    waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
+    waterShader->setFloat("moveFactor", waterMoveFactor);
+    waterShader->setFloat("nearPlane", 0.1f);
+    waterShader->setFloat("farPlane", renderDistance);
+    waterShader->setVec3("sunDir", lighting->getDirectionalLightDirection());
+    waterShader->setFloat("seaLevel", seaLevel);
+
+    // Bind water textures
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, waterFBO->getReflectionTexture());
+    waterShader->setInt("reflectionTexture", 0);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionTexture());
+    waterShader->setInt("refractionTexture", 1);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, dudvTexture);
+    waterShader->setInt("dudvMap", 2);
+
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
+    waterShader->setInt("normalMap", 3);
+
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionDepthTexture());
+    waterShader->setInt("refractionDepthTexture", 4);
+
+    // Render water meshes
+    renderer->renderWater(waterShader);
+
+    // Restore OpenGL state
+    if (cullWasEnabled) {
+        glEnable(GL_CULL_FACE);
+    } else {
+        glDisable(GL_CULL_FACE);
+    }
+    glCullFace(prevCullFaceMode);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+
+	renderUnderWater();
+}
+
+void App::renderUnderWater() {
+
+    const glm::vec3 camPosLocal = camera->movement.getPosition();
+    const glm::ivec3 eyeBlock = glm::ivec3(glm::floor(camPosLocal));
+    const bool isUnder = (renderer->getBlockWorld(eyeBlock) == BlockType::WATER);
+    if (isUnder && underwaterOverlayShader && overlayVAO) {
+        const GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        underwaterOverlayShader->use();
+        underwaterOverlayShader->setFloat("uTime", static_cast<float>(glfwGetTime()));
+        underwaterOverlayShader->setVec2("uResolution", glm::vec2(screenWidth, screenHeight));
+
+        // Bind scene textures from refraction FBO and dudv for distortion
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionTexture());
+        underwaterOverlayShader->setInt("uSceneColor", 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, waterFBO->getRefractionDepthTexture());
+        underwaterOverlayShader->setInt("uSceneDepth", 1);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, dudvTexture);
+        underwaterOverlayShader->setInt("uDuDv", 2);
+
+        underwaterOverlayShader->setFloat("uMove", waterMoveFactor);
+        underwaterOverlayShader->setFloat("uNear", 0.1f);
+        underwaterOverlayShader->setFloat("uFar", renderDistance);
+        underwaterOverlayShader->setVec3("uFogColor", glm::vec3(0.05f, 0.35f, 0.55f));
+        underwaterOverlayShader->setFloat("uFogDensity", 0.085f);
+        underwaterOverlayShader->setVec3("uTintColor", glm::vec3(0.9f, 1.05f, 1.1f));
+        underwaterOverlayShader->setFloat("uOpacity", 0.42f);
+
+        glBindVertexArray(overlayVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        glDisable(GL_BLEND);
+        if (depthWasEnabled) glEnable(GL_DEPTH_TEST);
+    }
+
 }
 
 void App::debugWindow() {

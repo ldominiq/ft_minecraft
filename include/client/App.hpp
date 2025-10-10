@@ -90,6 +90,14 @@ private:
 
     void debugWindow();
 
+    // Water rendering helper methods
+    void renderWaterReflectionPass(const glm::mat4& projection, float seaLevel);
+    void renderWaterRefractionPass(const glm::mat4& view, const glm::mat4& projection);
+    void renderWaterSurface(const glm::mat4& view, const glm::mat4& projection, float seaLevel);
+    void renderUnderWater();
+
+    glm::mat4 calculateReflectedViewMatrix(float seaLevel) const;
+
     GLFWwindow* window;
 
     bool vsync = true;
@@ -154,6 +162,8 @@ private:
     int windowedY = 100;
     int windowedWidth = 1280;
     int windowedHeight = 720;
+	int screenWidth = 1280;
+	int screenHeight = 720;
 
     bool useGradientShader = false;
 
