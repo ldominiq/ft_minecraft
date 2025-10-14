@@ -214,7 +214,7 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 	}
 }
 
-void Renderer::renderWater(const std::shared_ptr<Shader>& waterShader) const {
+void Renderer::renderWater() const {
     for (const auto& weakChunk : renderedChunks) {
         if (auto chunk = weakChunk.lock()) {
             if (chunk->getWaterMeshVerticesSize() > 0) {
