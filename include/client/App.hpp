@@ -17,7 +17,11 @@
 #include "UDPClient.hpp"
 #include "Chat.hpp"
 #include "WaterFramebuffer.hpp"
+#include "RenderTypeFramebuffer.hpp"
+#include "WaterRenderer.hpp"
 #include "Block.hpp"
+#include "GuiTexture.hpp"
+
 
 #include <fstream>
 #include <sstream>
@@ -38,6 +42,8 @@
 #include <unistd.h> // for sysconf
 #include <stdio.h>  // for FILE, fopen
 #include <cstdlib>
+
+#include "GuiRenderer.hpp"
 
 #define CONTROL_LIST 		\
     X(FORWARD)       		\
@@ -74,6 +80,7 @@ private:
     void loadResources();
     static unsigned int loadTexture(const char* path);
     void render();
+	void renderScene(glm::mat4 view, glm::mat4 projection);
 	void gameTick();
 
     void cleanup();
@@ -90,13 +97,7 @@ private:
 
     void debugWindow();
 
-    // Water rendering helper methods
-    void renderWaterReflectionPass(const glm::mat4& projection, float seaLevel);
-    void renderWaterRefractionPass(const glm::mat4& view, const glm::mat4& projection);
-    void renderWaterSurface(const glm::mat4& view, const glm::mat4& projection, float seaLevel);
-    void renderUnderWater();
 
-    glm::mat4 calculateReflectedViewMatrix(float seaLevel) const;
 
     GLFWwindow* window;
 
@@ -121,26 +122,33 @@ private:
     const GLFWvidmode* mode;
 
 	std::unique_ptr<Renderer> renderer;
+	std::unique_ptr<WaterRenderer> waterRenderer;
 	std::unique_ptr<UDPClient> udpClient;
 
     std::unique_ptr<Lighting> lighting;
     std::shared_ptr<Shader> textureShader;
     std::shared_ptr<Shader> gradientShader;
-    
+
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
 
 	//menus
 	std::shared_ptr<Menu> menuManager;
 	std::shared_ptr<Chat> chat;
 
-    std::unique_ptr<WaterFramebuffer> waterFBO;
-    std::shared_ptr<Shader> waterShader;
-    GLuint dudvTexture, waterNormalTexture;
-    float waterMoveFactor = 0.0f;
+	std::shared_ptr<Loader> loader;
+	// GUI
+	std::vector<GuiTexture> guis;
+	std::unique_ptr<GuiRenderer> guiRenderer;
 
-    // Underwater full-screen overlay
-    std::shared_ptr<Shader> underwaterOverlayShader;
-    GLuint overlayVAO = 0, overlayVBO = 0;
+
+	// Water
+	std::unique_ptr<WaterFramebuffer> waterFramebuffer;
+	std::shared_ptr<Shader> underwaterOverlayShader;
+	std::shared_ptr<Shader> waterShader;
+    GLuint dudvTexture, waterNormalTexture;
+
+	// Render type debug framebuffers
+	std::unique_ptr<RenderTypeFramebuffer> renderTypeFramebuffer;
 
 	std::optional<int> seed;
 
@@ -187,6 +195,14 @@ private:
     // Internal flag to handle key debounce for toggling the interactive mode.
     bool uiToggleHeld = false;
 	bool showDebugWindow = true;
+
+	// Debug framebuffer view toggles
+	bool showReflectionTexture = false;
+	bool showRefractionTexture = false;
+	bool showRefractionDepthTexture = false;
+	bool showShadowMapTexture = false;
+	bool showNormalsTexture = false;
+	bool showDepthTexture = false;
 
 	//keeps track of control GLFW values
     int controlsArray[CONTROL_COUNT];
