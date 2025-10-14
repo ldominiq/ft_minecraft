@@ -16,6 +16,8 @@ public:
     Shader(const char* vertexPath, const char* fragmentPath);
     void use() const;
 
+    void stop() const;
+
     void setInt(const std::string& name, int value) const;
     void setFloat(const std::string& name, float value) const;
     void setFloat3(const std::string& name, const float &v1, const float &v2, const float &v3) const;
@@ -24,6 +26,16 @@ public:
     void setVec3(const std::string& name, const glm::vec3& vec3) const;
     void setVec4(const std::string& name, const glm::vec4& vec4) const;
 
+protected:
+    int getUniformLocation(const std::string& name) const;
+    void loadMatrix(int location, glm::mat4 matrix) const;
+    void bindAttribute(int attribute, const std::string &name);
+    void bindAttributes();
+
+    void getAllUniformLocations(glm::mat4 matrix);
+
+private:
+    int location_transformationMatrix;
 };
 
 #endif
