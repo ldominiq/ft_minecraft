@@ -1,6 +1,6 @@
 #include "WaterFramebuffer.hpp"
 
-WaterFramebuffer::WaterFramebuffer(int width, int height) 
+WaterFramebuffer::WaterFramebuffer(int width, int height)
     : displayWidth(width), displayHeight(height) {
     initializeReflectionFrameBuffer();
     initializeRefractionFrameBuffer();
@@ -23,19 +23,22 @@ void WaterFramebuffer::cleanUp() {
     }
 }
 
-void WaterFramebuffer::bindReflectionFrameBuffer() {
+void WaterFramebuffer::bindFrameBuffer(GLuint framebuffer, int width, int height) {
     glBindTexture(GL_TEXTURE_2D, 0);
-    glBindFramebuffer(GL_FRAMEBUFFER, reflectionFrameBuffer);
-    glViewport(0, 0, REFLECTION_WIDTH, REFLECTION_HEIGHT);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glViewport(0, 0, width, height);
+}
+
+void WaterFramebuffer::bindReflectionFrameBuffer() {
+    bindFrameBuffer(reflectionFrameBuffer, REFLECTION_WIDTH, REFLECTION_HEIGHT);
 }
 
 void WaterFramebuffer::bindRefractionFrameBuffer() {
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindFramebuffer(GL_FRAMEBUFFER, refractionFrameBuffer);
-    glViewport(0, 0, REFRACTION_WIDTH, REFRACTION_HEIGHT);
+    bindFrameBuffer(refractionFrameBuffer, REFRACTION_WIDTH, REFLECTION_HEIGHT);
 }
 
-void WaterFramebuffer::unbindCurrentFrameBuffer() {
+// switch back to default framebuffer
+void WaterFramebuffer::unbindCurrentFrameBuffer() const {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, displayWidth, displayHeight);
 }

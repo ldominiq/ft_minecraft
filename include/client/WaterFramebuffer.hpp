@@ -2,16 +2,16 @@
 #define WATERFRAMEBUFFER_HPP
 
 #include <glad/glad.h>
-#include <iostream>
 
 class WaterFramebuffer {
 public:
     WaterFramebuffer(int width, int height);
     ~WaterFramebuffer();
 
+    void bindFrameBuffer(GLuint framebuffer, int width, int height);
     void bindReflectionFrameBuffer();
     void bindRefractionFrameBuffer();
-    void unbindCurrentFrameBuffer();
+    void unbindCurrentFrameBuffer() const;
 
     GLuint getReflectionTexture() const { return reflectionTexture; }
     GLuint getRefractionTexture() const { return refractionTexture; }
