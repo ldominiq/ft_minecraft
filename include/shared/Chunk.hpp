@@ -18,6 +18,7 @@
 
 #include "Item.hpp"
 #include "BitPackedArray.hpp"
+#include "LiquidsManager.hpp"
 
 class BlockStorage;
 
@@ -59,6 +60,8 @@ class Chunk {
 		std::weak_ptr<Chunk> adjacentChunks[4] = {};
 
 	public:
+
+		std::vector<s_liquid> liquids; //TODO put this in the bitpacker.
 
 		Chunk(int chunkX, int chunkZ, int bitsPerEntry = 4)
         : originX(chunkX * WIDTH),

@@ -33,7 +33,7 @@ bool Entity::aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world) {
 	for (int y = minY; y <= maxY; ++y)
 	for (int z = minZ; z <= maxZ; ++z) {
 		BlockType b = world.getBlockWorld({x, y, z});
-		if (isSolidBlock(b)) {
+		if (isBlockSolid(b)) {
 			// block occupies AABB {x..x+1, y..y+1, z..z+1} -> any overlap is collision
 			// we already limited the loop to candidate blocks, so we can early return
 			return true;
@@ -133,7 +133,7 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 						int maxBZ = (int)std::floor(currentBox.max.z - EPS);
 						for (int bx = minBX; bx <= maxBX && !stopped; ++bx) {
 							for (int bz = minBZ; bz <= maxBZ && !stopped; ++bz) {
-								if (isSolidBlock(world.getBlockWorld({bx, by, bz}))) {
+								if (isBlockSolid(world.getBlockWorld({bx, by, bz}))) {
 									float headBefore = currentBox.max.y;
 									float headAfter  = currentBox.max.y + dy;
 
@@ -160,7 +160,7 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 						int maxBZ = (int)std::floor(currentBox.max.z - EPS);
 						for (int bx = minBX; bx <= maxBX && !landed; ++bx) {
 							for (int bz = minBZ; bz <= maxBZ && !landed; ++bz) { // this is getting done twice if .x = .z . meh performance
-								if (isSolidBlock(world.getBlockWorld({bx, by, bz}))) {
+								if (isBlockSolid(world.getBlockWorld({bx, by, bz}))) {
 									float feetBefore = currentBox.min.y;
 									float feetAfter  = currentBox.min.y + dy;
 

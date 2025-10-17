@@ -172,7 +172,6 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
 	}
 }
 
-
 World::World() {
     std::mt19937 rng(time(nullptr));
     terrainParams.seed = rng();
@@ -393,6 +392,7 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 			// generatingChunks.insert(result.first);
 			chunks[result.first] = result.second;
 			linkNeighbors(result.first.first, result.first.second, result.second);
+
 			plannedChunks.erase(result.first);
 
 			it = generationFutures.erase(it);
@@ -401,6 +401,191 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 		else {
 			it++;
 		}
+	}
+}
+
+// finds the shortest (at most 4 blocks away) path to fall
+// This is being done iteratively
+//todo: if perf is an issue also add a check for depth <= currPropagation
+std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialBlockPos)
+{
+	std::vector<s_waterPath> furthestsblocksPath;
+	std::vector<s_waterPath> newFurthestsblocksPath;
+	std::unordered_set<glm::ivec3> visited;
+	std::vector<s_waterPath> finalPaths;
+
+	glm::ivec3 down(0, -1, 0);
+
+	static const glm::ivec3 directions[5] = {
+		{ 0, -1,  0}, // Down
+		{-1,  0,  0}, // Left
+		{ 1,  0,  0}, // Right
+		{ 0,  0,  1}, // Front
+		{ 0,  0, -1}  // Back
+	};
+
+	int depth = 0;
+	bool pathFound = false;
+
+	furthestsblocksPath.push_back({});
+
+	while (depth <= 4 && !pathFound)
+	{
+		for (auto &currPath : furthestsblocksPath)
+		{
+			for (auto &dir : directions)
+			{
+				s_waterPath newPath = currPath;
+				newPath.currBlockPos += dir;
+				newPath.currPath.push_back(dir);
+
+				glm::ivec3 newPosition(newPath.currBlockPos + initialBlockPos);
+				if (visited.contains(newPosition)) continue;
+				visited.insert(newPosition);
+
+				BlockType type = getBlockWorld(newPosition);
+
+				if (!isBlockSolid(type))
+				{
+					if (dir == down)
+					{
+						pathFound = true;
+						finalPaths.push_back(newPath);
+					}
+					else
+						newFurthestsblocksPath.push_back(newPath);
+				}
+			}
+		}
+		furthestsblocksPath = std::move(newFurthestsblocksPath);
+		depth++;
+	}
+
+	return finalPaths;
+}
+
+std::vector<std::shared_ptr<s_liquid>> World::waterFlowTowardsShortestPath(const glm::ivec3 &initialBlockPos, const std::shared_ptr<s_liquid> &liquid, const std::vector<s_waterPath> &paths)
+{
+	std::unordered_map<glm::ivec3, std::shared_ptr<s_liquid>> newLiquids;
+
+	glm::ivec3 down(0, -1, 0);
+
+	for (auto &path : paths)
+	{
+		if (path.currPath.empty()) continue ;
+
+		glm::ivec3 pos = path.currPath.front();
+		glm::ivec3 position = pos + initialBlockPos;
+
+		if (getBlockWorld(position) != BlockType::AIR) continue ;
+
+		int newLiquidPropagationValue = liquid->currPropagation - 1;
+		if (path.currPath.size() == 2 && path.currPath.back() == down) // if propagation goes to 0 but last is down. make sure it goes down and doesn't keep floating
+			newLiquidPropagationValue = liquid->currPropagation;
+		if (pos == down)
+			newLiquidPropagationValue = s_liquid{}.currPropagation;
+
+		s_waterPath newWaterPath;
+		newWaterPath.currPath = std::vector<glm::ivec3>(
+			path.currPath.begin() + 1, path.currPath.end());
+
+		auto it = newLiquids.find(position);
+		if (it == liquidsManager.liquids.end())
+		{
+			std::shared_ptr<s_liquid> newLiquidPtr = std::make_shared<s_liquid>();
+			newLiquidPtr->currPropagation = newLiquidPropagationValue;
+			newLiquidPtr->liquidType = BlockType::WATER;
+			newLiquidPtr->position = position;
+			newLiquidPtr->source = liquid;
+			if (!newWaterPath.currPath.empty())
+				newLiquidPtr->currentPaths.push_back(newWaterPath);
+
+			newLiquids[position] = newLiquidPtr;
+		}
+		else // if liquid already exists just add the path to it
+			it->second->currentPaths.push_back(newWaterPath);
+	}
+
+	std::vector<std::shared_ptr<s_liquid>> newLiquidsVector;
+	newLiquidsVector.reserve(newLiquids.size());
+	for (auto &[pos, liquid] : newLiquids)
+		newLiquidsVector.push_back(liquid);
+
+	return newLiquidsVector;
+}
+
+// update liquids. TODO: maybe separate liquid creation and deletion. current flow could end up MAYBE creating issues?
+void World::updateLiquids()
+{
+	glm::ivec3 down(0, -1, 0);
+
+	static const glm::ivec3 directions[5] = {
+		{ 0, -1,  0}, // Down
+		{-1,  0,  0}, // Left
+		{ 1,  0,  0}, // Right
+		{ 0,  0,  1}, // Front
+		{ 0,  0, -1}  // Back
+	};
+
+	std::unordered_set<glm::ivec3> visitedPositions;
+	std::vector<glm::ivec3> liquidsToRemove;
+
+	std::vector<std::shared_ptr<s_liquid>> newLiquids;
+	for (auto &[pos, liquid] : liquidsManager.liquidsToUpdate)
+	{
+		if (liquid->source.expired())
+		{
+			liquidsToRemove.push_back(pos);
+			continue ;
+		}
+
+		if (liquid->currentPaths.empty())
+		{
+			std::vector<s_waterPath> paths = findShortestWaterPath(pos);
+			if (!paths.empty())
+				liquid->currentPaths = paths;
+		}
+		if (!liquid->currentPaths.empty())
+		{
+			std::vector<std::shared_ptr<s_liquid>> extraLiquids = waterFlowTowardsShortestPath(pos, liquid, liquid->currentPaths);
+			newLiquids.insert(newLiquids.end(),
+                  extraLiquids.begin(),
+                  extraLiquids.end());
+			liquid->currentPaths.clear();
+			continue ;
+		}
+
+		for (const auto &dir : directions)
+		{
+			glm::ivec3 newPosition(pos + dir);
+			if (visitedPositions.contains(newPosition)) continue;
+			visitedPositions.insert(newPosition);
+
+			BlockType neighbor = getBlockWorld(newPosition);
+			if (neighbor == BlockType::AIR)
+			{
+				std::shared_ptr<s_liquid> newLiquidPtr = std::make_shared<s_liquid>();
+				newLiquidPtr->currPropagation = liquid->currPropagation - 1;
+				newLiquidPtr->liquidType = liquid->liquidType;
+				newLiquidPtr->position = newPosition;
+				newLiquidPtr->source = liquidsManager.liquids[liquid->position];
+				newLiquids.push_back(newLiquidPtr);
+			}
+		}
+	}
+	liquidsManager.liquidsToUpdate.clear();
+
+	for (auto liquidKey : liquidsToRemove)
+	{
+		setBlockWorld(liquidKey, std::nullopt, BlockType::AIR);
+		liquidsManager.liquids.erase(liquidKey);
+	}
+
+	for (auto &liquidPtr : newLiquids)
+	{
+		liquidsManager.addNewLiquid(liquidPtr->position, liquidPtr);
+		if (liquidPtr->currPropagation >= 0)
+			setWaterWorld(liquidPtr->position, std::nullopt, liquidPtr->liquidType);
 	}
 }
 
@@ -590,8 +775,78 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 
     std::shared_ptr<Chunk> currChunk = it->second;
 
-	updatedBlocks.push_back({glm::ivec3(targetCoords.x, targetCoords.y, targetCoords.z), type});
+	updatedBlocks.push_back({targetCoords, type});
     currChunk->setBlock(x, y, z, type);
+
+	// update neat water blocks
+	static const glm::ivec3 directions[6] = {
+		{ 0, -1,  0}, // Down
+		{ 0,  1,  0}, // Up
+		{-1,  0,  0}, // Left
+		{ 1,  0,  0}, // Right
+		{ 0,  0,  1}, // Front
+		{ 0,  0, -1}  // Back
+	};
+
+	if (type == BlockType::WATER)
+	{
+		auto liquidPtr = std::make_shared<s_liquid>();
+
+		liquidPtr->liquidType = BlockType::WATER;
+		liquidPtr->position = targetCoords;
+		liquidPtr->source = liquidPtr;
+
+		liquidsManager.addNewLiquid(targetCoords, liquidPtr);
+	}
+	else
+	{
+		// if water was there removed it
+		auto liquidIt = liquidsManager.liquids.find(targetCoords);
+		if (liquidIt != liquidsManager.liquids.end())
+			liquidsManager.liquids.erase(targetCoords);
+
+		// if water is near update it
+		for (auto &dir : directions)
+		{
+			auto it = liquidsManager.liquids.find(targetCoords + dir);
+			if (it != liquidsManager.liquids.end())
+				liquidsManager.liquidsToUpdate[it->first] = it->second;
+			else if (it == liquidsManager.liquids.end() && getBlockWorld(targetCoords + dir) == BlockType::WATER) //create new water if we have updated a block next to a generated water block
+			{
+				auto liquidPtr = std::make_shared<s_liquid>();
+
+				liquidPtr->liquidType = BlockType::WATER;
+				liquidPtr->position = targetCoords + dir;
+				liquidPtr->source = liquidPtr;
+
+				liquidsManager.addNewLiquid(targetCoords + dir, liquidPtr);
+			}
+		}
+	}
+}
+
+void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
+{
+	// Offset the global coordinates in the direction of the face normal
+	glm::ivec3 targetCoords = globalCoords;
+	if (faceNormal.has_value()) {
+		targetCoords += *faceNormal;
+	}
+
+	int x, y, z;
+	int chunkX, chunkZ;
+	globalCoordsToLocalCoords(x, y, z, 
+		targetCoords.x, targetCoords.y, targetCoords.z, 
+		chunkX, chunkZ);
+
+	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
+	if (it == chunks.end())
+		return;
+
+	std::shared_ptr<Chunk> currChunk = it->second;
+
+	updatedBlocks.push_back({targetCoords, type});
+	currChunk->setBlock(x, y, z, type);
 }
 
 void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)

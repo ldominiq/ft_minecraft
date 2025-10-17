@@ -140,6 +140,11 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 void Server::gameTick()
 {
 	world->updateEntitiesPosition();
+	if (world->liquidsManager.tickSinceLastUpdate < tick - 5)
+	{
+		world->liquidsManager.tickSinceLastUpdate = tick;
+		world->updateLiquids();
+	}
 	sendAll();
 }
 

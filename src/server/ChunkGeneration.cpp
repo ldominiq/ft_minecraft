@@ -106,7 +106,11 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
             // Water up to sea level
             for (int y = surfaceY; y <= terrainParams.seaLevel && y < HEIGHT; ++y)
+			{
                 blocks.at(x, y, z) = BlockType::WATER;
+				// s_liquid water = {.liquidType = LiquidType::WATER, .position = glm::ivec3(x, y, z)};
+				// liquids.push_back(water);
+			}
 
             // Set top block only if above water
             if (surfaceY > terrainParams.seaLevel) {

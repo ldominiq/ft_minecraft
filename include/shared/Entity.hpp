@@ -82,8 +82,6 @@ class Entity {
 
 		bool onGround = false;
 
-		inline bool isSolidBlock(const BlockType &b) { return b != BlockType::AIR; }
-
 		AABB constructAABB(const glm::vec3 &pos);
 		bool aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world);
 
