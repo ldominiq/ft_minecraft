@@ -58,7 +58,7 @@ public:
 
 	// inline void setPosition(glm::vec3 position) { movement.setPosition(position); }
 
-	void drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
+	void drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 };
 
 

@@ -80,7 +80,7 @@ private:
     void loadResources();
     static unsigned int loadTexture(const char* path);
     void render();
-	void renderScene(glm::mat4 view, glm::mat4 projection);
+	void renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane);
 	void gameTick();
 
     void cleanup();
@@ -117,11 +117,11 @@ private:
     };
     DisplayMode displayMode = DisplayMode::Fullscreen;
 
-    std::unique_ptr<Camera> camera;
+    std::shared_ptr<Camera> camera;
 	GLFWmonitor* monitor;
     const GLFWvidmode* mode;
 
-	std::unique_ptr<Renderer> renderer;
+	std::shared_ptr<Renderer> renderer;
 	std::unique_ptr<WaterRenderer> waterRenderer;
 	std::unique_ptr<UDPClient> udpClient;
 
@@ -142,7 +142,7 @@ private:
 
 
 	// Water
-	std::unique_ptr<WaterFramebuffer> waterFramebuffer;
+	std::shared_ptr<WaterFramebuffer> waterFramebuffer;
 	std::shared_ptr<Shader> underwaterOverlayShader;
 	std::shared_ptr<Shader> waterShader;
     GLuint dudvTexture, waterNormalTexture;
@@ -197,8 +197,8 @@ private:
 	bool showDebugWindow = true;
 
 	// Debug framebuffer view toggles
-	bool showReflectionTexture = false;
-	bool showRefractionTexture = false;
+	bool showReflectionTexture = true;
+	bool showRefractionTexture = true;
 	bool showRefractionDepthTexture = false;
 	bool showShadowMapTexture = false;
 	bool showNormalsTexture = false;

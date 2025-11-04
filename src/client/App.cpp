@@ -50,10 +50,10 @@ void App::init() {
 	renderer = std::make_unique<Renderer>();
 
 	// ********************Water Renderer setup******************************
+	waterFramebuffer = std::make_shared<WaterFramebuffer>(windowedWidth, windowedHeight);
 	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
-	waterRenderer = std::make_unique<WaterRenderer>();
-	underwaterOverlayShader = std::make_shared<Shader>("shaders/underwater_overlay.vert", "shaders/underwater_overlay.frag");
-	waterFramebuffer = std::make_unique<WaterFramebuffer>(windowedWidth, windowedHeight);
+	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
+	// underwaterOverlayShader = std::make_shared<Shader>("shaders/underwater_overlay.vert", "shaders/underwater_overlay.frag");
 
 	// ********************Render Type Debug Framebuffers********************
 	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
@@ -359,6 +359,8 @@ void App::render() {
 
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
+		glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
+
 
         lighting->setViewportSize(screenWidth, screenHeight);
         lighting->updateSunDirection(deltaTime);
@@ -373,7 +375,7 @@ void App::render() {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             textureShader->use();
             textureShader->setInt("renderType", 1); // Normals mode
-            textureShader->setVec4("clipPlane", glm::vec4(0, -1, 0, 100000));
+            textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
             lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
@@ -388,7 +390,7 @@ void App::render() {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             textureShader->use();
             textureShader->setInt("renderType", 2); // Depth mode
-            textureShader->setVec4("clipPlane", glm::vec4(0, -1, 0, 100000));
+            textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
             lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
@@ -404,13 +406,49 @@ void App::render() {
             textureShader->setInt("renderType", 0); // Normal lighting mode
         }
 
-    	// Binding framebuffer and rendering scene inside
-    	waterFramebuffer->bindReflectionFrameBuffer();
-        renderScene(view, projection);
-    	waterFramebuffer->unbindCurrentFrameBuffer();
+    	glEnable(GL_CLIP_DISTANCE0);
+    	float seaLevel = 65.0f;
 
-    	renderScene(view, projection);
-    	renderer->renderWater();
+    	// Render reflection texture
+    	waterFramebuffer->bindReflectionFrameBuffer();
+    	waterRenderer->renderWaterReflectionPass(renderer, activeShader, camera, projection, seaLevel, texture);
+
+    	// render refraction texture
+		waterFramebuffer->bindRefractionFrameBuffer();
+    	waterRenderer->renderWaterRefractionPass(renderer, activeShader, view, projection, texture);
+
+    	// render to screen
+    	glDisable(GL_CLIP_DISTANCE0);
+    	waterFramebuffer->unbindCurrentFrameBuffer();
+    	renderScene(view, projection, clipPlane);
+    	
+    	// Render water with proper shader setup
+    	waterRenderer->renderWaterSurface(renderer, camera, projection, seaLevel);
+
+        {
+    		// Dynamically build GUI textures based on debug flags
+    		guis.clear();
+    		if (showReflectionTexture) {
+    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showRefractionTexture) {
+    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(-0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showRefractionDepthTexture) {
+    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showShadowMapTexture && lighting) {
+    			guis.emplace_back(lighting->getShadowMapTexture(), glm::vec2(-0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showNormalsTexture && renderTypeFramebuffer) {
+    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.0f, 0.75f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showDepthTexture && renderTypeFramebuffer) {
+    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.0f, -0.75f), glm::vec2(0.25f, 0.25f));
+    		}
+
+    		guiRenderer->render(guis);
+        }
 
         if (showDebugWindow) {
             debugWindow();
@@ -429,46 +467,22 @@ void App::render() {
 			menuManager->render();
 		}
 
-		// Dynamically build GUI textures based on debug flags
-		guis.clear();
-		if (showReflectionTexture) {
-			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
-		}
-		if (showRefractionTexture) {
-			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(-0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
-		}
-		if (showRefractionDepthTexture) {
-			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
-		}
-		if (showShadowMapTexture && lighting) {
-			guis.emplace_back(lighting->getShadowMapTexture(), glm::vec2(-0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
-		}
-		if (showNormalsTexture && renderTypeFramebuffer) {
-			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.0f, 0.75f), glm::vec2(0.25f, 0.25f));
-		}
-		if (showDepthTexture && renderTypeFramebuffer) {
-			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.0f, -0.75f), glm::vec2(0.25f, 0.25f));
-		}
-
-    	guiRenderer->render(guis);
-
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 }
 
-void App::renderScene(glm::mat4 view, glm::mat4 projection) {
+void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
     glViewport(0, 0, screenWidth, screenHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glDisable(GL_CLIP_DISTANCE0);
+    // glDisable(GL_CLIP_DISTANCE0);
 
     // Render sky first
-    lighting->drawSky(view, projection, camera->movement.getPosition());
+    // lighting->drawSky(view, projection, camera->movement.getPosition());
 
     // Render solid blocks
     glEnable(GL_DEPTH_TEST);
-    const glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
     activeShader->use();
     activeShader->setVec4("clipPlane", clipPlane);
     activeShader->setMat4("view", view);
