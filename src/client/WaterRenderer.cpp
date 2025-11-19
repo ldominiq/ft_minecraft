@@ -131,8 +131,11 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Lighting> &l
     sceneShader->setMat4("view", reflectView);
     sceneShader->setMat4("projection", projection);
 
+    // Calculate reflected camera direction for lighting
+    const glm::vec3 originalDir = camera->movement.getCameraDir();
+    const glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
 
-    // lighting->uploadLightingUniforms(*activeShader, reflectCamPos, reflectedDir);
+    lighting->uploadLightingUniforms(*sceneShader, reflectCamPos, reflectedDir);
     // Render reflection scene
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -144,7 +147,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Lighting> &l
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, float seaLevel, unsigned int tex) {
+void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Lighting> &lighting, const std::shared_ptr<Camera> &camera, const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, float seaLevel, unsigned int tex) {
     // bindRefractionFrameBuffer();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_CLIP_DISTANCE0);
@@ -159,7 +162,7 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Renderer> &r
     sceneShader->setMat4("projection", projection);
 
     // Render refraction scene
-    // lighting->uploadLightingUniforms(*activeShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+    lighting->uploadLightingUniforms(*sceneShader, camera->movement.getPosition(), camera->movement.getCameraDir());
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
     renderer->render(sceneShader);
