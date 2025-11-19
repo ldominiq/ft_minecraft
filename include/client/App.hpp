@@ -125,7 +125,7 @@ private:
 	std::unique_ptr<WaterRenderer> waterRenderer;
 	std::unique_ptr<UDPClient> udpClient;
 
-    std::unique_ptr<Lighting> lighting;
+    std::shared_ptr<Lighting> lighting;
     std::shared_ptr<Shader> textureShader;
     std::shared_ptr<Shader> gradientShader;
 

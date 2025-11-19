@@ -52,11 +52,10 @@ WaterRenderer::~WaterRenderer() {
 
 }
 
-void WaterRenderer::setDependencies(Lighting* light,
+void WaterRenderer::setDependencies(
                                      GLuint dudvTex, GLuint waterNormalTex,
                                      GLuint blockTexture, std::shared_ptr<Shader> underwaterShader,
                                      int scrWidth, int scrHeight, float renderDist) {
-    lighting = light;
     dudvTexture = dudvTex;
     waterNormalTexture = waterNormalTex;
     texture = blockTexture;
@@ -94,7 +93,7 @@ glm::mat4 WaterRenderer::calculateReflectedViewMatrix(const Camera& camera, floa
     return glm::lookAt(reflectCamPos, reflectCamPos + front, glm::vec3(0, 1, 0));
 }
 
-void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const std::shared_ptr<Camera>& camera, const glm::mat4& projection, float seaLevel, unsigned int tex) {
+void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Lighting> &lighting, const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const std::shared_ptr<Camera>& camera, const glm::mat4& projection, float seaLevel, unsigned int tex) {
     // waterFramebuffer->bindReflectionFrameBuffer();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     // glEnable(GL_CLIP_DISTANCE0);
@@ -125,7 +124,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Renderer> &r
     // Set clip plane (only render above water) with adaptive bias
     const float camHeightToWater = camera->movement.getPosition().y - seaLevel;
     const float clipBias = glm::clamp(std::abs(camHeightToWater) * 0.02f, 0.02f, 0.5f);
-    const glm::vec4 clipPlane = glm::vec4(0, 1, 0, -(seaLevel + clipBias));
+    const glm::vec4 clipPlane = glm::vec4(0, 1, 0, -(seaLevel));
 
     sceneShader->use();
     sceneShader->setVec4("clipPlane", clipPlane);
@@ -137,7 +136,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Renderer> &r
     // Render reflection scene
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
-    // lighting->drawSky(reflectView, projection, reflectCamPos);
+    lighting->drawSky(reflectView, projection, reflectCamPos);
     renderer->render(sceneShader);
     glDisable(GL_CLIP_DISTANCE0);
 
@@ -150,13 +149,9 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Renderer> &r
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_CLIP_DISTANCE0);
 
-    const float clipBias = 0.1f;
-
     // Clip everything ABOVE the water (y > seaLevel), i.e., keep fragments below the plane y = seaLevel
-    // The plane is (0, -1, 0, D), where D is seaLevel - clipBias
-    const glm::vec4 clipPlane = glm::vec4(0, -1, 0, seaLevel - clipBias);
-    // Set clip plane for refraction (effectively no clipping)
-    // const glm::vec4 clipPlane = glm::vec4(0, -1, 0, 65.0f);
+    // The plane is (0, -1, 0, D), where D is seaLevel
+    const glm::vec4 clipPlane = glm::vec4(0, -1, 0, seaLevel);
 
     sceneShader->use();
     sceneShader->setVec4("clipPlane", clipPlane);

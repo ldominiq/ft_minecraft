@@ -411,7 +411,7 @@ void App::render() {
 
     	// Render reflection texture
     	waterFramebuffer->bindReflectionFrameBuffer();
-    	waterRenderer->renderWaterReflectionPass(renderer, activeShader, camera, projection, seaLevel, texture);
+    	waterRenderer->renderWaterReflectionPass(lighting, renderer, activeShader, camera, projection, seaLevel, texture);
 
     	// render refraction texture
 		waterFramebuffer->bindRefractionFrameBuffer();
@@ -479,7 +479,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     // glDisable(GL_CLIP_DISTANCE0);
 
     // Render sky first
-    // lighting->drawSky(view, projection, camera->movement.getPosition());
+    lighting->drawSky(view, projection, camera->movement.getPosition());
 
     // Render solid blocks
     glEnable(GL_DEPTH_TEST);

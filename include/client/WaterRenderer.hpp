@@ -24,13 +24,13 @@ public:
     ~WaterRenderer();
     
     // Set dependencies
-    void setDependencies(Lighting* light,
+    void setDependencies(
                         GLuint dudvTex, GLuint waterNormalTex,
                         GLuint blockTexture, std::shared_ptr<Shader> underwaterShader,
                         int scrWidth, int scrHeight, float renderDist);
 
     // Water rendering helper methods
-    void renderWaterReflectionPass(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const std::shared_ptr<Camera>& camera, const glm::mat4& projection, float seaLevel, unsigned int tex);
+    void renderWaterReflectionPass(const std::shared_ptr<Lighting> &lighting, const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const std::shared_ptr<Camera>& camera, const glm::mat4& projection, float seaLevel, unsigned int tex);
     void renderWaterRefractionPass(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, float seaLevel, unsigned int tex);
     void renderWaterSurface(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Camera> &camera, const glm::mat4& projection, float seaLevel);
     void renderUnderWater();
@@ -45,7 +45,6 @@ private:
     GLuint overlayVAO = 0, overlayVBO = 0;
     float waterMoveFactor = 0.0f;
 
-    Lighting* lighting = nullptr;
     GLuint dudvTexture = 0;
     GLuint waterNormalTexture = 0;
     GLuint texture = 0;  // Block texture atlas
