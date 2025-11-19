@@ -34,7 +34,7 @@ void WaterFramebuffer::bindReflectionFrameBuffer() {
 }
 
 void WaterFramebuffer::bindRefractionFrameBuffer() {
-    bindFrameBuffer(refractionFrameBuffer, REFRACTION_WIDTH, REFLECTION_HEIGHT);
+    bindFrameBuffer(refractionFrameBuffer, REFRACTION_WIDTH, REFRACTION_HEIGHT);
 }
 
 // switch back to default framebuffer

@@ -145,16 +145,16 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Renderer> &r
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, unsigned int tex) {
+void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, float seaLevel, unsigned int tex) {
     // bindRefractionFrameBuffer();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_CLIP_DISTANCE0);
 
     const float clipBias = 0.1f;
 
-    // Clip everything ABOVE the water (y > seaLevel), or below the plane y = seaLevel - clipBias
-    // The plane is (0, -1, 0, D), where D is -seaLevel + clipBias
-    const glm::vec4 clipPlane = glm::vec4(0, -1, 0, 65.0f - clipBias);
+    // Clip everything ABOVE the water (y > seaLevel), i.e., keep fragments below the plane y = seaLevel
+    // The plane is (0, -1, 0, D), where D is seaLevel - clipBias
+    const glm::vec4 clipPlane = glm::vec4(0, -1, 0, seaLevel - clipBias);
     // Set clip plane for refraction (effectively no clipping)
     // const glm::vec4 clipPlane = glm::vec4(0, -1, 0, 65.0f);
 

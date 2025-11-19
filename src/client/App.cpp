@@ -415,7 +415,7 @@ void App::render() {
 
     	// render refraction texture
 		waterFramebuffer->bindRefractionFrameBuffer();
-    	waterRenderer->renderWaterRefractionPass(renderer, activeShader, view, projection, texture);
+    	waterRenderer->renderWaterRefractionPass(renderer, activeShader, view, projection, seaLevel, texture);
 
     	// render to screen
     	glDisable(GL_CLIP_DISTANCE0);

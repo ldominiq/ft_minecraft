@@ -31,7 +31,7 @@ public:
 
     // Water rendering helper methods
     void renderWaterReflectionPass(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const std::shared_ptr<Camera>& camera, const glm::mat4& projection, float seaLevel, unsigned int tex);
-    void renderWaterRefractionPass(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, unsigned int tex);
+    void renderWaterRefractionPass(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, float seaLevel, unsigned int tex);
     void renderWaterSurface(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Camera> &camera, const glm::mat4& projection, float seaLevel);
     void renderUnderWater();
     glm::mat4 calculateReflectedViewMatrix(const Camera& camera, float seaLevel) const;
