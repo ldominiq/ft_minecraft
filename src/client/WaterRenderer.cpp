@@ -53,16 +53,8 @@ WaterRenderer::~WaterRenderer() {
 }
 
 void WaterRenderer::setDependencies(
-                                     GLuint dudvTex, GLuint waterNormalTex,
-                                     GLuint blockTexture, std::shared_ptr<Shader> underwaterShader,
-                                     int scrWidth, int scrHeight, float renderDist) {
+                                     GLuint dudvTex) {
     dudvTexture = dudvTex;
-    waterNormalTexture = waterNormalTex;
-    texture = blockTexture;
-    underwaterOverlayShader = underwaterShader;
-    screenWidth = scrWidth;
-    screenHeight = scrHeight;
-    renderDistance = renderDist;
 }
 
 void WaterRenderer::prepareRender() {
@@ -213,17 +205,17 @@ void WaterRenderer::renderWaterSurface(const std::shared_ptr<Renderer> &renderer
     // waterShader->setFloat("seaLevel", seaLevel);
 
     // Bind water textures
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, fbos->getReflectionTexture());
-    // waterShader->setInt("reflectionTexture", 0);
-    //
-    // glActiveTexture(GL_TEXTURE1);
-    // glBindTexture(GL_TEXTURE_2D, fbos->getRefractionTexture());
-    // waterShader->setInt("refractionTexture", 1);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, fbos->getReflectionTexture());
+    waterShader->setInt("reflectionTexture", 0);
 
-    // glActiveTexture(GL_TEXTURE2);
-    // glBindTexture(GL_TEXTURE_2D, dudvTexture);
-    // waterShader->setInt("dudvMap", 2);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, fbos->getRefractionTexture());
+    waterShader->setInt("refractionTexture", 1);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, dudvTexture);
+    waterShader->setInt("dudvMap", 2);
     //
     // glActiveTexture(GL_TEXTURE3);
     // glBindTexture(GL_TEXTURE_2D, waterNormalTexture);

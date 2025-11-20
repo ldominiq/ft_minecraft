@@ -275,6 +275,7 @@ void App::loadResources() {
 
     dudvTexture = loadTexture("assets/textures/waterdudv.png");
     waterNormalTexture = loadTexture("assets/textures/NormalMap.png");
+	waterRenderer->setDependencies(dudvTexture);
 }
 
 void App::gameTick() {

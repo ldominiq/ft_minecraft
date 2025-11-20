@@ -25,9 +25,7 @@ public:
     
     // Set dependencies
     void setDependencies(
-                        GLuint dudvTex, GLuint waterNormalTex,
-                        GLuint blockTexture, std::shared_ptr<Shader> underwaterShader,
-                        int scrWidth, int scrHeight, float renderDist);
+                        GLuint dudvTex);
 
     // Water rendering helper methods
     void renderWaterReflectionPass(const std::shared_ptr<Lighting> &lighting, const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const std::shared_ptr<Camera>& camera, const glm::mat4& projection, float seaLevel, unsigned int tex);
