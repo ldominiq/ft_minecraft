@@ -53,8 +53,9 @@ WaterRenderer::~WaterRenderer() {
 }
 
 void WaterRenderer::setDependencies(
-                                     GLuint dudvTex) {
+                                     GLuint dudvTex, GLuint waterNormalTex) {
     dudvTexture = dudvTex;
+    waterNormalTexture = waterNormalTex;
 }
 
 void WaterRenderer::prepareRender() {
@@ -165,7 +166,7 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Lighting> &l
 
 }
 
-void WaterRenderer::renderWaterSurface(const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Camera> &camera, const glm::mat4& projection, float seaLevel) {
+void WaterRenderer::renderWaterSurface(const std::shared_ptr<Lighting> &lighting, const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Camera> &camera, const glm::mat4& projection, float seaLevel) {
     prepareRender();
     // Configure OpenGL state for transparent water rendering
     // glEnable(GL_DEPTH_TEST);
@@ -191,13 +192,18 @@ void WaterRenderer::renderWaterSurface(const std::shared_ptr<Renderer> &renderer
     // }
 
     const glm::mat4 view = camera->getViewMatrix();
+    const glm::vec3 camPos = camera->movement.getPosition();
 
     // Set water shader uniforms
     waterShader->use();
     waterShader->setMat4("projection", projection);
     waterShader->setMat4("view", view);
-    // waterShader->setVec3("cameraPos", camPos);
-    // waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
+    waterShader->setVec3("cameraPos", camPos);
+    waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
+    waterShader->setVec3("lightPosition", lighting->getLightPos());
+    // Horizon threshold for specular cutoff (sun below horizon → no specular)
+    waterShader->setFloat("horizonY", 55.0f);
+    waterShader->setFloat("twilightBand", 8.0f); // smooth fade band around horizon (units of world Y)
     waterShader->setFloat("moveFactor", waterMoveFactor);
     waterShader->setFloat("waveStrength", waveStrength);
     waterShader->setFloat("tiling", dudvTiling);
@@ -218,10 +224,10 @@ void WaterRenderer::renderWaterSurface(const std::shared_ptr<Renderer> &renderer
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, dudvTexture);
     waterShader->setInt("dudvMap", 2);
-    //
-    // glActiveTexture(GL_TEXTURE3);
-    // glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
-    // waterShader->setInt("normalMap", 3);
+
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
+    waterShader->setInt("normalMap", 3);
     //
     // glActiveTexture(GL_TEXTURE4);
     // glBindTexture(GL_TEXTURE_2D, fbos->getRefractionDepthTexture());

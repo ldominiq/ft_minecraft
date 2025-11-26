@@ -275,7 +275,7 @@ void App::loadResources() {
 
     dudvTexture = loadTexture("assets/textures/waterdudv.png");
     waterNormalTexture = loadTexture("assets/textures/NormalMap.png");
-	waterRenderer->setDependencies(dudvTexture);
+	waterRenderer->setDependencies(dudvTexture, waterNormalTexture);
 }
 
 void App::gameTick() {
@@ -426,7 +426,7 @@ void App::render() {
     	renderScene(view, projection, clipPlane);
     	
     	// Render water with proper shader setup
-    	waterRenderer->renderWaterSurface(renderer, camera, projection, seaLevel);
+    	waterRenderer->renderWaterSurface(lighting, renderer, camera, projection, seaLevel);
 
         {
     		// Dynamically build GUI textures based on debug flags

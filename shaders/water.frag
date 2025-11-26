@@ -2,26 +2,33 @@
 
 in vec4 clipSpace;
 in vec3 toCameraVector;
-in vec3 worldPos;
 in vec2 textureCoords;
+in vec3 fromLightVector;
+in vec3 lightPos;
 
 out vec4 FragColor;
 
 uniform sampler2D reflectionTexture;
 uniform sampler2D refractionTexture;
 uniform sampler2D dudvMap;
-//uniform sampler2D normalMap;
+uniform sampler2D normalMap;
 //uniform sampler2D refractionDepthTexture;
 //
 uniform float moveFactor;
-//uniform vec3 lightColor;
+uniform vec3 lightColor;
+uniform float horizonY;           // horizon altitude (world Y) below which specular is disabled
+uniform float twilightBand;       // half-width of the smooth fade zone around the horizon
 //uniform float nearPlane;
 //uniform float farPlane;
-//uniform vec3 sunDir;
 //uniform float seaLevel;
 //
 //// Water properties
 uniform float waveStrength;        // Distortion intensity
+uniform float twilightSoftness;    // How soft the fade is around the horizon (0..~0.2)
+
+const float shineDamper = 20.0;
+const float reflectivity = 0.6;
+
 //const float reflectivity = 0.6;         // Specular reflectivity
 //const float shine = 32.0f;              // sharper Blinn-phong
 //const float F0 = 0.02;                 // water base reflection
@@ -121,9 +128,9 @@ void main() {
     vec2 refractTexCoords = vec2(ndc.x, ndc.y);
     vec2 reflectTexCoords = vec2(ndc.x, 1.0 - ndc.y);
 
-    vec2 distortion1 = (texture(dudvMap, vec2(textureCoords.x + moveFactor, textureCoords.y)).rg * 2.0 - 1.0) * waveStrength;
-    vec2 distortion2 = (texture(dudvMap, vec2(-textureCoords.x + moveFactor, textureCoords.y + moveFactor)).rg * 2.0 - 1.0) * waveStrength;
-    vec2 totalDistortion = distortion1 + distortion2;
+    vec2 distortedTexCoords = texture(dudvMap, vec2(textureCoords.x + moveFactor, textureCoords.y)).rg * 0.1;
+    distortedTexCoords = textureCoords + vec2(distortedTexCoords.x, distortedTexCoords.y + moveFactor);
+    vec2 totalDistortion = (texture(dudvMap, distortedTexCoords).rg * 2.0 - 1.0) * waveStrength;
 
     refractTexCoords += totalDistortion;
     refractTexCoords = clamp(refractTexCoords, 0.001, 0.999);
@@ -135,7 +142,26 @@ void main() {
     vec4 reflectColor = texture(reflectionTexture, reflectTexCoords);
     vec4 refractColor = texture(refractionTexture, refractTexCoords);
 
+    vec3 viewVector = normalize(toCameraVector);
+    float refractiveFactor = dot(viewVector, vec3(0.0, 1.0, 0.0));
+    refractiveFactor = pow(refractiveFactor, 1.0); // The higer the value the more reflective when looking at an angle
 
-    FragColor = mix(reflectColor, refractColor, 0.5);
-    FragColor = mix(FragColor, vec4(0.0, 0.3, 0.5, 1.0), 0.2);
+    vec4 normalMapColor = texture(normalMap, distortedTexCoords);
+    vec3 normal = vec3(normalMapColor.r * 2.0 - 1.0, normalMapColor.b, normalMapColor.g * 2.0 - 1.0);
+    normal = normalize(normal);
+
+    vec3 reflectedLight = reflect(normalize(fromLightVector), normal);
+    float specular = max(dot(reflectedLight, viewVector), 0.0);
+    specular = pow(specular, shineDamper);
+    vec3 specularHighlights = lightColor * specular * reflectivity;
+
+    // Smoothly fade specular highlights around the horizon
+    // dayFactor = 0 when lightPosition.y <= horizonY - twilightBand
+    // dayFactor = 1 when lightPosition.y >= horizonY + twilightBand
+    float dayFactor = smoothstep(horizonY - twilightBand, horizonY + twilightBand, lightPos.y);
+    specularHighlights *= dayFactor;
+
+    FragColor = mix(reflectColor, refractColor, refractiveFactor);
+    FragColor = mix(FragColor, vec4(0.0, 0.3, 0.5, 1.0), 0.2) + vec4(specularHighlights, 0.0); // water blue tint
+//    FragColor = normalMapColor;
 }
