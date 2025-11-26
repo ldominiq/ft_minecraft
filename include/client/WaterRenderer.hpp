@@ -51,7 +51,6 @@ private:
     std::shared_ptr<Shader> underwaterOverlayShader;
     int screenWidth = 0;
     int screenHeight = 0;
-    float renderDistance = 0.0f;
 
     void prepareRender();
 };

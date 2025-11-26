@@ -207,10 +207,8 @@ void WaterRenderer::renderWaterSurface(const std::shared_ptr<Lighting> &lighting
     waterShader->setFloat("moveFactor", waterMoveFactor);
     waterShader->setFloat("waveStrength", waveStrength);
     waterShader->setFloat("tiling", dudvTiling);
-    // waterShader->setFloat("nearPlane", 0.1f);
-    // waterShader->setFloat("farPlane", renderDistance);
-    // waterShader->setVec3("sunDir", lighting->getDirectionalLightDirection());
-    // waterShader->setFloat("seaLevel", seaLevel);
+    waterShader->setFloat("nearPlane", 0.1f);
+    waterShader->setFloat("farPlane", 1000.0f);
 
     // Bind water textures
     glActiveTexture(GL_TEXTURE0);
@@ -228,10 +226,14 @@ void WaterRenderer::renderWaterSurface(const std::shared_ptr<Lighting> &lighting
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
     waterShader->setInt("normalMap", 3);
-    //
-    // glActiveTexture(GL_TEXTURE4);
-    // glBindTexture(GL_TEXTURE_2D, fbos->getRefractionDepthTexture());
-    // waterShader->setInt("refractionDepthTexture", 4);
+
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, fbos->getRefractionDepthTexture());
+    waterShader->setInt("refractionDepthTexture", 4);
+
+    // Enable alpha blending
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // Render water meshes
     renderer->renderWater();
@@ -244,7 +246,7 @@ void WaterRenderer::renderWaterSurface(const std::shared_ptr<Lighting> &lighting
     // }
     // glCullFace(prevCullFaceMode);
     // glDepthMask(GL_TRUE);
-    // glDisable(GL_BLEND);
+    glDisable(GL_BLEND);
 
 	// renderUnderWater();
 }

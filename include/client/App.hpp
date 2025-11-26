@@ -197,8 +197,8 @@ private:
 	bool showDebugWindow = true;
 
 	// Debug framebuffer view toggles
-	bool showReflectionTexture = true;
-	bool showRefractionTexture = true;
+	bool showReflectionTexture = false;
+	bool showRefractionTexture = false;
 	bool showRefractionDepthTexture = false;
 	bool showShadowMapTexture = false;
 	bool showNormalsTexture = false;
