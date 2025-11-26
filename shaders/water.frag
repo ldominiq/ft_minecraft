@@ -13,7 +13,7 @@ uniform sampler2D dudvMap;
 //uniform sampler2D normalMap;
 //uniform sampler2D refractionDepthTexture;
 //
-//uniform float moveFactor;
+uniform float moveFactor;
 //uniform vec3 lightColor;
 //uniform float nearPlane;
 //uniform float farPlane;
@@ -21,7 +21,7 @@ uniform sampler2D dudvMap;
 //uniform float seaLevel;
 //
 //// Water properties
-//const float waveStrength = 0.015;        // Distortion intensity
+uniform float waveStrength;        // Distortion intensity
 //const float reflectivity = 0.6;         // Specular reflectivity
 //const float shine = 32.0f;              // sharper Blinn-phong
 //const float F0 = 0.02;                 // water base reflection
@@ -119,16 +119,23 @@ void main() {
 
     vec2 ndc = (clipSpace.xy/clipSpace.w) * 0.5 + 0.5;
     vec2 refractTexCoords = vec2(ndc.x, ndc.y);
-    vec2 reflectTexCoords = vec2(ndc.x, 1.0 -ndc.y);
+    vec2 reflectTexCoords = vec2(ndc.x, 1.0 - ndc.y);
 
-    vec2 distortion1 = texture(dudvMap, vec2(textureCoords.x, textureCoords.y)).rg * 2.0 - 1.0;
+    vec2 distortion1 = (texture(dudvMap, vec2(textureCoords.x + moveFactor, textureCoords.y)).rg * 2.0 - 1.0) * waveStrength;
+    vec2 distortion2 = (texture(dudvMap, vec2(-textureCoords.x + moveFactor, textureCoords.y + moveFactor)).rg * 2.0 - 1.0) * waveStrength;
+    vec2 totalDistortion = distortion1 + distortion2;
 
-    reflectTexCoords += distortion1;
-    refractTexCoords += distortion1;
+    refractTexCoords += totalDistortion;
+    refractTexCoords = clamp(refractTexCoords, 0.001, 0.999);
+
+    reflectTexCoords += totalDistortion;
+//    reflectTexCoords.x = clamp(reflectTexCoords.x, 0.001, 0.999);
+//    reflectTexCoords.y = clamp(reflectTexCoords.y, -0.999, -0.001);
 
     vec4 reflectColor = texture(reflectionTexture, reflectTexCoords);
     vec4 refractColor = texture(refractionTexture, refractTexCoords);
 
 
     FragColor = mix(reflectColor, refractColor, 0.5);
+    FragColor = mix(FragColor, vec4(0.0, 0.3, 0.5, 1.0), 0.2);
 }

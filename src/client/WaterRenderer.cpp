@@ -131,7 +131,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Lighting> &l
     // Render reflection scene
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
-    lighting->drawSky(reflectView, projection, reflectCamPos);
+    // lighting->drawSky(reflectView, projection, reflectCamPos);
     renderer->render(sceneShader);
     glDisable(GL_CLIP_DISTANCE0);
 
@@ -198,7 +198,9 @@ void WaterRenderer::renderWaterSurface(const std::shared_ptr<Renderer> &renderer
     waterShader->setMat4("view", view);
     // waterShader->setVec3("cameraPos", camPos);
     // waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
-    // waterShader->setFloat("moveFactor", waterMoveFactor);
+    waterShader->setFloat("moveFactor", waterMoveFactor);
+    waterShader->setFloat("waveStrength", waveStrength);
+    waterShader->setFloat("tiling", dudvTiling);
     // waterShader->setFloat("nearPlane", 0.1f);
     // waterShader->setFloat("farPlane", renderDistance);
     // waterShader->setVec3("sunDir", lighting->getDirectionalLightDirection());

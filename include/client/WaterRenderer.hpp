@@ -36,6 +36,8 @@ public:
 
     float getWaterMoveFactor() const { return waterMoveFactor; }
     void setWaterMoveFactor(const float factor) { waterMoveFactor = factor; }
+    float waveStrength = 0.02f;
+    float dudvTiling = 0.03f;
 
 private:
     std::shared_ptr<Shader> waterShader;

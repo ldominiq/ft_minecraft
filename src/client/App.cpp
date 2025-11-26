@@ -289,8 +289,10 @@ void App::gameTick() {
 	}
 
 	static float lastWaterMoveTime = waterRenderer->getWaterMoveFactor();
-	lastWaterMoveTime += 0.03f * deltaTime;
+	static float waveSpeed = 0.03;
+	lastWaterMoveTime += waveSpeed * deltaTime;
 	if (lastWaterMoveTime > 1.0f) lastWaterMoveTime = 0.0f;
+	waterRenderer->setWaterMoveFactor(lastWaterMoveTime);
 }
 
 void App::render() {
@@ -908,6 +910,13 @@ void App::debugWindow() {
                         	lighting->setPlanetScale(planetScale);
                         ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
                     }
+
+                	ImGui::Separator();
+                	if (ImGui::CollapsingHeader("Water")) {
+                		ImGui::SliderFloat("Water wave strength", &waterRenderer->waveStrength, 0.000f, 0.09f, "%.3f");
+                		ImGui::SliderFloat("Water dudv tiling", &waterRenderer->dudvTiling, 0.000f, 0.09f, "%.2f");
+
+                	}
 
                     ImGui::EndTabItem();
                 }

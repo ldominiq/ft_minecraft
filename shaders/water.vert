@@ -14,7 +14,7 @@ uniform mat4 projection;
 uniform mat4 view;
 uniform vec3 cameraPos;
 
-const float tiling = 6.0;
+uniform float tiling;
 
 void main() {
     vec4 worldPosition = vec4(aPos, 1.0);
@@ -24,7 +24,8 @@ void main() {
     clipSpace = projection * view * worldPosition;
     gl_Position = clipSpace;
 
-    textureCoords = vec2(position.x/2.0 + 0.5, position.y/2.0 + 0.5) * tiling;
+//    textureCoords = vec2(position.x/2.0 + 0.5, position.y/2.0 + 0.5) * tiling;
+    textureCoords = worldPos.xz * tiling;
     
     // Calculate vectors for lighting and Fresnel
     toCameraVector = cameraPos - worldPosition.xyz;
