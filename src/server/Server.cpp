@@ -160,7 +160,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.connected = true;
 
 	players.push_back(p);
-	world->entities.push_back(p.movement);
+	world->livingEntities.push_back(p.movement);
 	
 	sendAccept(cliaddr);
 }
@@ -181,8 +181,13 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	if (pkt.keys & IN_DROP)
-		world->entities.push_back(std::make_shared<ItemEntity>(player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f), player->movement->getYaw(), BlockType::DIRT, true));
-	
+	{
+		glm::vec3 itemPos = player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f);
+		world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), BlockType::DIRT, true));
+	}
+
+	if (pkt.yaw != player->movement->yaw) player->movement->positionUpdated = true;
+
 	player->movement->setLastInputPacketReceived(pkt);
 	player->loadRadius = pkt.loadRadius;
 	player->movement->setYawAndPitch(pkt.yaw, pkt.pitch);
@@ -234,7 +239,7 @@ void Server::sendAll()
 
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
-		sendItemEntitiesPositionDeltas(p);
+		sendEntitiesPositionDeltas(p);
 		sendImGuiData(p);
 		sendNewlyUpdatedBlocks(p);
 		sendMessage(p);
@@ -326,23 +331,49 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 }
 
 // TODO : delta compression AND refactor this sh*t (put in a snapshot and send multiple at once or something) AND only send if the item moved
-void Server::sendItemEntitiesPositionDeltas(CPlayerInfo &player)
+void Server::sendEntitiesPositionDeltas(CPlayerInfo &player)
 {
 	//gotta exclude current player
-	for (auto &entity : world->entities)
+	for (auto &entity : world->livingEntities)
 	{
 		if (entity != player.movement && entity->positionUpdated)
 		{
+			entity->positionUpdated = false;
+
 			NetEntityMove pkt;
 
 			// TODO : only send if items moved
-			pkt.eEntityType = EEntityTypes::ITEMS; //TODO : put a getter to get type ITEMS or LIVING ENTITIES
+			pkt.eEntityType = entity->getEntityType();
 			pkt.entityID = entity->getID();
 			pkt.type = static_cast<ItemID>(entity->getItemType());
 
 			pkt.positionX = entity->getPosition().x;
 			pkt.positionY = entity->getPosition().y;
 			pkt.positionZ = entity->getPosition().z;
+
+			pkt.yaw = entity->yaw;
+			std::cout << pkt.yaw << std::endl;
+
+			sendPacketTo(pkt, player.addr);
+		}
+	}
+
+	for (auto &entity : world->itemEntities)
+	{
+		if (entity->positionUpdated)
+		{
+			NetEntityMove pkt;
+
+			// TODO : only send if items moved
+			pkt.eEntityType = entity->getEntityType();
+			pkt.entityID = entity->getID();
+			pkt.type = static_cast<ItemID>(entity->getItemType());
+
+			pkt.positionX = entity->getPosition().x;
+			pkt.positionY = entity->getPosition().y;
+			pkt.positionZ = entity->getPosition().z;
+
+			pkt.yaw = entity->yaw;
 
 			sendPacketTo(pkt, player.addr);
 		}
@@ -351,16 +382,19 @@ void Server::sendItemEntitiesPositionDeltas(CPlayerInfo &player)
 
 void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)
 {
+	std::vector<PacketPtr> modifiedBlocks;
+
 	for (auto &block : world->updatedBlocks)
 	{
-		NetModifiedBlockData pkt;
-		pkt.x = block.first.x;
-		pkt.y = block.first.y;
-		pkt.z = block.first.z;
-		pkt.blockType = static_cast<ItemID>(block.second);
+		auto pkt = std::make_unique<NetModifiedBlockData>();
+		pkt->x = block.first.x;
+		pkt->y = block.first.y;
+		pkt->z = block.first.z;
+		pkt->blockType = static_cast<ItemID>(block.second);
 
-		sendPacketTo(pkt, player.addr);
+		modifiedBlocks.push_back(std::move(pkt));
 	}
+	sendNewGroupPacketTo(modifiedBlocks, player.addr);
 }
 
 void Server::sendMessage(CPlayerInfo &player)
@@ -369,6 +403,36 @@ void Server::sendMessage(CPlayerInfo &player)
 	NetMessage pkt;
 	pkt.message = messages.front();
 	sendPacketTo(pkt, player.addr);
+}
+
+void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_in& cliaddr)
+{
+    NetPacketGroup group;
+    int currSize = 0; // 2 bytes for group count
+
+    auto it = pkts.begin();
+    while (it != pkts.end()) {
+        auto buf = encodePacket(**it);
+        int nextSize = currSize + 4 + buf.size(); // 4 bytes for per-packet size header
+
+        // if next packet would exceed max size -> send current group first
+        if (nextSize > MAXLINE) {
+            if (!group.rawPackets.empty()) {
+                sendPacketTo(group, cliaddr);
+                group = NetPacketGroup();
+                currSize = 0; // reset
+            }
+            continue; // retry current packet
+        }
+
+        group.rawPackets.push_back(std::move(buf)); // use rawPackets directly
+        currSize = nextSize;
+        it = pkts.erase(it);
+    }
+
+    if (!group.rawPackets.empty()) {
+        sendPacketTo(group, cliaddr);
+    }
 }
 
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {

@@ -13,6 +13,48 @@
 // NET_DISCONNECT,   // C2S
 
 // --- Concrete packets ---
+
+struct NetPacketGroup final : public Packet {
+	static constexpr PacketType ID = PacketType::GROUP;
+	std::vector<std::vector<uint8_t>> rawPackets;
+
+	NetPacketGroup() : Packet(ID) {}
+
+	void add(const Packet& pkt) {
+		rawPackets.push_back(encodePacket(pkt));
+	}
+
+	void encode(BufferWriter& w) const override {
+		w.write_u16(static_cast<uint16_t>(rawPackets.size()));
+		for (auto& raw : rawPackets) {
+			w.write_u32(static_cast<uint32_t>(raw.size()));
+			w.write_bytes(raw.data(), raw.size());
+		}
+	}
+
+	void decode(BufferReader& r) override {
+		auto count = r.read_u16();
+		rawPackets.clear();
+		rawPackets.reserve(count);
+		for (uint16_t i = 0; i < count; ++i) {
+			auto size = r.read_u32();
+			auto bytes = r.read_bytes(size);
+			rawPackets.push_back(std::move(bytes));
+		}
+	}
+
+	// Utility: decode inner packets
+	std::vector<PacketPtr> unpack() const {
+		std::vector<PacketPtr> result;
+		result.reserve(rawPackets.size());
+		for (auto& raw : rawPackets) {
+			result.push_back(decodePacket(raw.data(), raw.size()));
+		}
+		return result;
+	}
+};
+inline AutoRegister<NetPacketGroup> _reg_NetPacketGroup;
+
 struct NetConnect final : public Packet {
     static constexpr PacketType ID = PacketType::NET_CONNECT;
     std::string username;
@@ -147,6 +189,8 @@ struct NetEntityMove final : public Packet {
 	float positionY;
 	float positionZ;
 
+	float yaw;
+
 	NetEntityMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
@@ -156,6 +200,7 @@ struct NetEntityMove final : public Packet {
 		w.write_f32(positionX);
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
+		w.write_f32(yaw);
     }
     void decode(BufferReader& r) override {
 		eEntityType = static_cast<EEntityTypes>(r.read_u8());
@@ -164,6 +209,7 @@ struct NetEntityMove final : public Packet {
 		positionX = r.read_f32();
 		positionY = r.read_f32();
 		positionZ = r.read_f32();
+		yaw = r.read_f32();
     }
 };
 inline AutoRegister<NetEntityMove> _reg_NetEntityMove;

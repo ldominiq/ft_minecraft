@@ -48,6 +48,7 @@ private:
 	void receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr);
 
 	void sendAll();
+	void sendNewGroupPacketTo(std::vector<PacketPtr> &pkts, const sockaddr_in &cliaddr);
 	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
 	void sendAccept(const sockaddr_in &cliaddr);
 	
@@ -55,7 +56,7 @@ private:
 	void sendImGuiData(CPlayerInfo &player);
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
-	void sendItemEntitiesPositionDeltas(CPlayerInfo &player);
+	void sendEntitiesPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player);
 
 public:

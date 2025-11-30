@@ -3,6 +3,7 @@
 #define CHUNK_RENDERER_HPP
 
 #include <glad/glad.h>
+#include <cstring>
 
 #include "GLFW/glfw3.h"
 #include "Chunk.hpp"
@@ -20,9 +21,13 @@ class ChunkRenderer : public Chunk {
 		ChunkRenderer(std::istream& in);
 		~ChunkRenderer();
 
+		bool needsUpdate = false;
+		bool neighbourNeedUpdate[4] { false };
+
 		// Release GL resources
 		void releaseGL();
 
+		void updateMesh();
 		void buildMesh(); // Build the mesh for Renderer
 		void buildMeshData();
 		void uploadMesh();

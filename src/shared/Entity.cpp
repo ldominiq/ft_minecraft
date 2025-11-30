@@ -4,9 +4,13 @@
 
 ItemEntityIDManager Entity::idManager;
 
-Entity::Entity(glm::vec3 position): position(position), ID(idManager.acquire()) {}
+Entity::Entity(glm::vec3 &position): position(position), ID(idManager.acquire())
+{
+	yaw = 0;
+	pitch = 0;
+}
 
-Entity::Entity(glm::vec3 position, entityID ID): position(position), ID(ID) {}
+Entity::Entity(glm::vec3 &position, float yaw, entityID ID): position(position), yaw(yaw), ID(ID) {}
 
 Entity::~Entity()
 {
@@ -203,7 +207,6 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 
 void Entity::calculateNewPosition(const ICommonWorld &world)
 {
-	positionUpdated = false;
 	// TODO : return early if block stopped. Same as player calculateNewPosition TODO.
 	glm::vec3 desiredPos = getDesiredMove();
 	calculateNewXZPosition(world, desiredPos);

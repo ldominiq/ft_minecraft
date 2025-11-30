@@ -51,13 +51,13 @@ Typer::Typer(const std::string& fontPath, float scale) : shader("shaders/freetyp
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             // now store character for later use
-            Character character = {
+            TypingCharacter character = {
                 texture,
                 glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
                 glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
                 static_cast<unsigned int>(face->glyph->advance.x)
             };
-            Characters.insert(std::pair<char, Character>(c, character));
+            Characters.insert(std::pair<char, TypingCharacter>(c, character));
         }
         glBindTexture(GL_TEXTURE_2D, 0);
     }
@@ -102,7 +102,7 @@ uint Typer::getPixelSizeOfString(const std::string &str)
     uint len = 0;
     for (auto &c : str)
     {
-        Character ch = Characters[c];
+        TypingCharacter ch = Characters[c];
         len += (ch.Advance >> 6);
     }
     return static_cast<uint>(len * scale);
@@ -122,7 +122,7 @@ void Typer::renderText(const std::string &text, float x, float y, const glm::vec
     std::string::const_iterator c;
     for (c = text.begin(); c != text.end(); c++) 
     {
-        Character ch = Characters[*c];
+        TypingCharacter ch = Characters[*c];
 
         float xpos = x + ch.Bearing.x * scale;
         float ypos = y - (ch.Size.y - ch.Bearing.y) * scale;

@@ -24,22 +24,21 @@ class LivingEntity : public Entity
 		bool jump = false;
 
 		float movementSpeed = WALKING_SPEED; //deprecated?
-
 		glm::vec3 Right = glm::vec3(0, 0, 0);
-		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
 		virtual void doJump(const ICommonWorld &world);
 
 	public:
+
+		LivingEntity(glm::vec3 &position);
+		LivingEntity(glm::vec3 &position, float yaw, entityID ID);
+		virtual ~LivingEntity() = 0;
+
 		glm::vec3 Front = glm::vec3(0, 0, 0);
-		glm::vec3 Up = glm::vec3(0, 0, 0);
+		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::LIVING_ENTITIES; }
 		glm::vec3 getDesiredMove() override;
-
-		LivingEntity(glm::vec3 position);
-		LivingEntity(glm::vec3 position, entityID ID);
-		virtual ~LivingEntity();
 };
 
 #endif

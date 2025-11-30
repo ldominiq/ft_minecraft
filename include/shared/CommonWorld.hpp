@@ -7,6 +7,7 @@
 
 #include "Chunk.hpp"
 #include "ItemEntity.hpp"
+#include "LivingEntity.hpp"
 
 class ICommonWorld {
 public:
@@ -36,7 +37,8 @@ class CommonWorld : public ICommonWorld{
 			return chunks.size();
 		}
 
-		std::vector<std::shared_ptr<Entity>> entities;
+		std::vector<std::shared_ptr<LivingEntity>> livingEntities;
+		std::vector<std::shared_ptr<ItemEntity>> itemEntities;
 };
 
 #include "CommonWorld.inl"

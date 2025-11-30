@@ -14,7 +14,7 @@
 #include "GLFW/glfw3.h"
 
 
-struct Character {
+struct TypingCharacter {
     unsigned int TextureID;  // ID handle of the glyph texture
     glm::ivec2   Size;       // Size of glyph
     glm::ivec2   Bearing;    // Offset from baseline to left/top of glyph
@@ -25,7 +25,7 @@ class Typer {
 private:
 	float scale;
 	Shader shader;
-	std::map<GLchar, Character> Characters;
+	std::map<GLchar, TypingCharacter> Characters;
 	unsigned int VAO, VBO;
 
 public:

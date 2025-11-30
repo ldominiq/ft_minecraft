@@ -170,6 +170,9 @@ file(GLOB_RECURSE SERVER_SRC
 add_executable(ft_minecraft ${CLIENT_SRC})
 target_include_directories(ft_minecraft PRIVATE
     ${CMAKE_SOURCE_DIR}/include/client
+	${CMAKE_SOURCE_DIR}/include/client/characters
+	${CMAKE_SOURCE_DIR}/include/client/items
+	${CMAKE_SOURCE_DIR}/include/client/menus
     ${CMAKE_SOURCE_DIR}/include/shared
     ${glm_SOURCE_DIR}
     ${fastnoise_SOURCE_DIR}/Cpp
@@ -177,7 +180,6 @@ target_include_directories(ft_minecraft PRIVATE
     ${stb_SOURCE_DIR}
 	${zstd_SOURCE_DIR}/lib
     ${imgui_SOURCE_DIR}
-	${CMAKE_SOURCE_DIR}/include/client/menus
 	${freetype_SOURCE_DIR}/include
 )
 

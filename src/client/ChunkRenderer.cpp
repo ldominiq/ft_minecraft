@@ -19,6 +19,51 @@ ChunkRenderer::~ChunkRenderer() {
     }
 }
 
+void ChunkRenderer::updateMesh()
+{
+	buildMesh();
+	needsUpdate = false;
+
+	// //update possible neighbour
+	if (neighbourNeedUpdate[WEST]) {
+		if (auto westChunkBase = getAdjacentChunks()[WEST].lock()) {
+			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
+				if (westChunk->hasAllAdjacentChunkLoaded())
+					westChunk->buildMesh();
+			}
+		}
+	}
+
+	if (neighbourNeedUpdate[EAST]) {
+		if (auto eastChunkBase = getAdjacentChunks()[EAST].lock()) {
+			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
+				if (eastChunk->hasAllAdjacentChunkLoaded())
+					eastChunk->buildMesh();
+			}
+		}
+	}
+
+	if (neighbourNeedUpdate[SOUTH]) {
+		if (auto southChunkBase = getAdjacentChunks()[SOUTH].lock()) {
+			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
+				if (southChunk->hasAllAdjacentChunkLoaded())
+					southChunk->buildMesh();
+			}
+		}
+	}
+
+	if (neighbourNeedUpdate[NORTH]) {
+		if (auto northChunkBase = getAdjacentChunks()[NORTH].lock()) {
+			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
+				if (northChunk->hasAllAdjacentChunkLoaded())
+					northChunk->buildMesh();
+			}
+		}
+	}
+
+	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
+}
+
 void ChunkRenderer::buildMesh() {
 	buildMeshData();
 	uploadMesh();

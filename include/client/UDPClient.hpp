@@ -23,12 +23,11 @@ private:
     char buffer[MAXLINE];
     struct sockaddr_in servaddr;
 
-	std::function<void(const PacketPtr&)> onPacket;
-
 public:
     UDPClient(const char* server_ip); // Constructor to set server IP
     ~UDPClient(); // Destructor to close socket
 
+	std::function<void(const PacketPtr&)> onPacket;
 	void setCallback(std::function<void(const PacketPtr&)> cb) { onPacket = std::move(cb); }
 
 	void sendPacket(const Packet &pkt);

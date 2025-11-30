@@ -90,8 +90,8 @@ class Entity {
 		void calculateNewYPosition(const ICommonWorld &world);
 
 	public:
-		Entity(glm::vec3 position);
-		Entity(glm::vec3 position, entityID ID);
+		Entity(glm::vec3 &position);
+		Entity(glm::vec3 &position, float yaw, entityID ID);
 		virtual ~Entity() = 0;
 
 		float yaw, pitch;

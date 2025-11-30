@@ -23,7 +23,7 @@ ItemPropEntityManager::~ItemPropEntityManager()
 	}
 }
 
-void ItemPropEntityManager::updateMesh(const std::vector<std::shared_ptr<Entity>> &entities)
+void ItemPropEntityManager::updateMesh(const std::vector<std::shared_ptr<ItemEntity>> &entities)
 {
     int i = -1;
 
@@ -64,7 +64,7 @@ void ItemPropEntityManager::initGL()
     glBindVertexArray(0);
 }
 
-void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const std::vector<std::shared_ptr<Entity>> &entities)
+void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const std::vector<std::shared_ptr<ItemEntity>> &entities)
 {
 	updateMesh(entities);
 

@@ -1,0 +1,195 @@
+
+#include "Character.hpp"
+
+Character::Character(glm::vec3 &position, float yaw, entityID ID) : LivingEntity(position, yaw, ID)
+{
+	createCharacterAt(position);
+}
+
+void Character::createCharacterAt(const glm::vec3 &pos)
+{
+    Space character;
+    character.translation = glm::translate(glm::mat4(1.0f), pos);
+	character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(characterScale));
+
+    // Torso
+    auto torso = std::make_shared<Shape>(glm::vec3(1,0,0));
+    torso->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, torsoScaleY, torsoScaleZ));
+    character.addChild(torso);
+
+    // Head
+    auto head = std::make_shared<Shape>(glm::vec3(0,1,0));
+    head->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, headScaleY, headScaleZ));
+    head->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, headTransY, 0));
+    character.addChild(head);
+
+    // Arms
+    auto rightArm = std::make_shared<Shape>(glm::vec3(0,0,1));
+    rightArm->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, armScaleY, armScaleZ));
+    rightArm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, armTransY, armTransZ));
+    character.addChild(rightArm);
+
+    auto leftArm = std::make_shared<Shape>(glm::vec3(0,0,1));
+    leftArm->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, armScaleY, armScaleZ));
+    leftArm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, armTransY, -armTransZ));
+    character.addChild(leftArm);
+
+    // Forearms
+    auto rightForearm = std::make_shared<Shape>(glm::vec3(0.5f,0,1));
+    rightForearm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
+    rightArm->addChild(rightForearm);
+
+    auto leftForearm = std::make_shared<Shape>(glm::vec3(0.5f,0,1));
+    leftForearm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
+    leftArm->addChild(leftForearm);
+
+    // Legs
+    auto rightLeg = std::make_shared<Shape>(glm::vec3(1,1,0));
+    rightLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, legScaleY, legScaleZ));
+    rightLeg->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, legTransY, legTransZ));
+    character.addChild(rightLeg);
+
+    auto leftLeg = std::make_shared<Shape>(glm::vec3(1,1,0));
+    leftLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, legScaleY, legScaleZ));
+    leftLeg->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, legTransY, -legTransZ));
+    character.addChild(leftLeg);
+
+    // Calves
+    auto rightCalf = std::make_shared<Shape>(glm::vec3(1,1,0.5f));
+    rightCalf->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
+    rightLeg->addChild(rightCalf);
+
+    auto leftCalf = std::make_shared<Shape>(glm::vec3(1,1,0.5f));
+    leftCalf->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
+    leftLeg->addChild(leftCalf);
+
+    s_character cc{
+        .character = character,
+        .head = head,
+        .torso = torso,
+        .rightArm = rightArm,
+        .leftArm = leftArm,
+        .rightForearm = rightForearm,
+        .leftForearm = leftForearm,
+        .rightLeg = rightLeg,
+        .leftLeg = leftLeg,
+        .rightCalf = rightCalf,
+        .leftCalf = leftCalf
+    };
+
+	c = cc;
+}
+
+// void Character::walkAnimation(float deltaTime)
+// {
+//     c.onWalkAnimation = true;
+//     float walkAmplitude = 1.0f;
+
+//     // 1. Update phase independent of speed
+//     c.walkPhase += deltaTime * c.walkingAnimationSpeed;
+
+//     // 2. Get normalized cycle (0..1)
+//     float prevNorm = c.normalizedWalkAnimationCycle;
+//     float norm = fmod(c.walkPhase, 1.0f);
+//     c.normalizedWalkAnimationCycle = norm;
+
+//     // 3. Detect cycle restart
+//     if ((prevNorm > 0.9f && norm < 0.1f) ||
+//         ((prevNorm < 0.5f && norm > 0.5f)))
+//     {
+//         c.normalizedWalkAnimationCycle = 0;
+//         c.onWalkAnimation = false;
+//     }
+
+//     // 4. Compute angle
+//     float angle = sin(c.normalizedWalkAnimationCycle * 2.0f * M_PI) * walkAmplitude;
+
+void Character::walkAnimation(float deltaTime)
+{
+    float walkAmplitude = 1.0f;
+
+    c.onWalkAnimation = true;
+
+    float oldPhase = c.walkPhase;
+
+    // Advance phase
+    c.walkPhase += deltaTime * c.walkingAnimationSpeed;
+
+    // --- Detect full cycle completion ---
+    if (floor(oldPhase) != floor(c.walkPhase))
+    {
+        // Completed a full animation cycle
+        c.walkPhase = 0.0f;
+        c.onWalkAnimation = false;
+    }
+
+    // Normalized cycle 0..1
+    float norm = c.walkPhase - floor(c.walkPhase);
+    c.normalizedWalkAnimationCycle = norm;
+
+    // Angle for limbs
+    float angle = sin(norm * 2.0f * M_PI) * walkAmplitude;
+
+    // ---- Arms ----
+    float pivotY = +armScaleY * 0.5f;
+
+    c.leftArm->rotation =
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, pivotY, 0)) *
+        glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0,0,1)) *
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, -pivotY, 0));
+
+    c.rightArm->rotation =
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, pivotY, 0)) *
+        glm::rotate(glm::mat4(1.0f), -angle, glm::vec3(0,0,1)) *
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, -pivotY, 0));
+
+    if (angle >= 0)
+    {
+        c.leftForearm->rotation =
+            glm::translate(glm::mat4(1.0f), glm::vec3(0, -1.5f, 0)) *
+            glm::rotate(glm::mat4(1.0f), angle * 1.2f, glm::vec3(0,0,1)) *
+            glm::translate(glm::mat4(1.0f), glm::vec3(0, 1.5f, 0));
+    }
+
+    if (angle <= 0)
+    {
+        c.rightForearm->rotation =
+            glm::translate(glm::mat4(1.0f), glm::vec3(0, -1.5f, 0)) *
+            glm::rotate(glm::mat4(1.0f), angle * -1.2f, glm::vec3(0,0,1)) *
+            glm::translate(glm::mat4(1.0f), glm::vec3(0, 1.5f, 0));
+    }
+
+    // ---- Legs ----
+    float legPivotY = -legScaleY * 0.5f;
+
+    c.leftLeg->rotation =
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, legPivotY, 0)) *
+        glm::rotate(glm::mat4(1.0f), -angle * 0.8f, glm::vec3(0,0,1)) *
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, -legPivotY, 0));
+
+    c.rightLeg->rotation =
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, legPivotY, 0)) *
+        glm::rotate(glm::mat4(1.0f), angle * 0.8f, glm::vec3(0,0,1)) *
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, -legPivotY, 0));
+}
+
+//make it delta too?
+void Character::jumpAnimation(float currentFrame)
+{
+    float jumpHeight = 2.0f;
+    float jumpDuration = 0.7f;
+    float t = currentFrame / jumpDuration;
+
+    if (t >= 1.0f)
+    {
+        c.onJumpAnimation = false;
+        return;
+    }
+
+    // Smooth jump curve
+    float curve = -4.0f * (t - 0.5f) * (t - 0.5f) + 1.0f; // 0 → 1 → 0
+    float jumpOffset = curve * jumpHeight;
+
+    c.character.translation = glm::translate(glm::mat4(1.0f),
+											 position + glm::vec3(0, jumpOffset, 0));
+}

@@ -20,7 +20,6 @@ struct PlayerMovement final : public LivingEntity {
 	bool jumpBoostApplied = false;
 
 	GAMEMODES gamemode = GAMEMODES::SPECTATOR;
-	float yaw, pitch;
 
 	glm::vec3 getDesiredMove() override;
 	void doJump(const ICommonWorld &world) override;

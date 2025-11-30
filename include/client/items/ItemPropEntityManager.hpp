@@ -9,6 +9,8 @@
 #include "ItemEntity.hpp"
 #include "GLFW/glfw3.h"
 
+//Not really a manager. More like a drawer....
+
 class ItemPropEntityManager {
 
 	std::unique_ptr<Shader> shader;
@@ -16,14 +18,14 @@ class ItemPropEntityManager {
 	uint texture;
 	GLuint VAO, VBO, EBO;
 
-	void updateMesh(const std::vector<std::shared_ptr<Entity>> &entities);
+	void updateMesh(const std::vector<std::shared_ptr<ItemEntity>> &entities);
 	void initGL();
 
 	public:
 		ItemPropEntityManager();
 		~ItemPropEntityManager();
 
-	void draw(const glm::mat4 &projection, const glm::mat4 &view, const std::vector<std::shared_ptr<Entity>> &entities);
+	void draw(const glm::mat4 &projection, const glm::mat4 &view, const std::vector<std::shared_ptr<ItemEntity>> &entities);
 };
 
 #endif

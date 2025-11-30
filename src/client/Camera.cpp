@@ -20,7 +20,7 @@ Camera::~Camera() {
 }
 
 glm::mat4 Camera::getViewMatrix() const {
-    return glm::lookAt(movement.getPosition(), movement.getPosition() + movement.Front, movement.Up);
+    return glm::lookAt(movement.getPosition(), movement.getPosition() + movement.Front, movement.WorldUp);
 }
 
 void Camera::lerpToNextPosition(float deltaTime)

@@ -189,6 +189,16 @@ void App::setUdpClientPacketCallback()
 	udpClient->setCallback([this](const PacketPtr& pkt) {
 
 		switch (pkt->type) {
+
+			case PacketType::GROUP: {
+				auto& g = static_cast<NetPacketGroup&>(*pkt);
+				for (auto& inner : g.unpack()) {
+					if (udpClient->onPacket)
+						udpClient->onPacket({ std::move(inner) });
+				}
+				break;
+			}
+
 			case PacketType::NET_ACCEPT: {
 				auto& p = static_cast<NetAccept&>(*pkt);
 				std::cout << "Client accepted! id=" << p.clientId << "\n";
@@ -305,9 +315,9 @@ void App::render() {
 
 		camera->lerpToNextPosition(glfwGetTime() - lastTickClientTime);
 
-		const double mouseIdleThreshold = 0.2; // seconds, tweak to taste
-		if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
-			mouseMovedRecently = false;
+		// const double mouseIdleThreshold = 0.2; // seconds
+		// if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
+		// 	mouseMovedRecently = false;
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -379,15 +389,26 @@ void App::render() {
 
         lighting->drawLightCubes(view, projection);
 
-		for (auto &entity : renderer->entities)
+		//THIS CODE IS AWFULLY BAD
+		//items
+		for (auto &entity : renderer->itemEntities)
 		{
 			if (!entity->positionUpdated) continue ;
 			glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
 			entity->setPosition(newEntityPos);
 			if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
 		}
-		
-		m_itemPropEntityManager->draw(projection, view, renderer->entities);
+		m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
+
+		//mobs
+		for (auto &entity : renderer->livingEntities)
+		{
+			if (!entity->positionUpdated) continue ;
+			glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+			entity->setPosition(newEntityPos);
+			// if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+		}
+		renderer->drawCharacters(projection, view, deltaTime);
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
 		const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));

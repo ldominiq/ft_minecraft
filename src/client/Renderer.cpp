@@ -46,45 +46,17 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
     std::shared_ptr<ChunkRenderer> currChunk = it->second;
 
     currChunk->setBlock(x, y, z, type);
-	// TODO : do not rebuild WHOLE MESH when only 1 block gets removed/added.
-	currChunk->buildMesh();
+	currChunk->needsUpdate = true;
 
 	// //update possible neighbour
-	if (x == 0) {
-		if (auto westChunkBase = currChunk->getAdjacentChunks()[WEST].lock()) {
-			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
-				if (westChunk->hasAllAdjacentChunkLoaded())
-					westChunk->buildMesh();
-			}
-		}
-	}
-
-	if (x == Chunk::WIDTH - 1) {
-		if (auto eastChunkBase = currChunk->getAdjacentChunks()[EAST].lock()) {
-			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
-				if (eastChunk->hasAllAdjacentChunkLoaded())
-					eastChunk->buildMesh();
-			}
-		}
-	}
-
-	if (z == 0) {
-		if (auto southChunkBase = currChunk->getAdjacentChunks()[SOUTH].lock()) {
-			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
-				if (southChunk->hasAllAdjacentChunkLoaded())
-					southChunk->buildMesh();
-			}
-		}
-	}
-
-	if (z == Chunk::DEPTH - 1) {
-		if (auto northChunkBase = currChunk->getAdjacentChunks()[NORTH].lock()) {
-			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
-				if (northChunk->hasAllAdjacentChunkLoaded())
-					northChunk->buildMesh();
-			}
-		}
-	}
+	if (x == 0)
+		currChunk->neighbourNeedUpdate[WEST] = true;
+	if (x == Chunk::WIDTH - 1)
+		currChunk->neighbourNeedUpdate[EAST] = true;
+	if (z == 0)
+		currChunk->neighbourNeedUpdate[SOUTH] = true;
+	if (z == Chunk::DEPTH - 1)
+		currChunk->neighbourNeedUpdate[NORTH] = true;
 }
 
 std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
@@ -211,7 +183,11 @@ void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, co
 void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 	for (auto& weakChunk : renderedChunks) {
 		if (auto chunk = weakChunk.lock())
+		{
+			if (chunk->needsUpdate)
+				chunk->updateMesh();
 			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+		}
 	}
 }
 
@@ -220,12 +196,14 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
 	BlockType type = static_cast<BlockType>(pkt.type);
 	entityID ID = pkt.entityID;
+	float yaw = pkt.yaw;
 
 	auto entity = entitiesMap.find(ID);
 	if (entity != entitiesMap.end())
 	{
 		entity->second->prevPosition = entity->second->nextPosition;
 		entity->second->nextPosition = position;
+		entity->second->yaw = yaw;
 		entity->second->positionUpdated = true;
 		entity->second->lastTickClientTime = lastTickClientTime;
 	}
@@ -233,16 +211,22 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 	{
 		if (pkt.eEntityType == EEntityTypes::ITEMS)
 		{
-			auto entityPtr = std::make_shared<ItemPropEntity>(position, type, ID);
+			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
 			entityPtr->lastTickClientTime = lastTickClientTime;
-			entities.push_back(entityPtr);
+			itemEntities.push_back(entityPtr);
 			entitiesMap[ID] = entityPtr;
 		}
 		else if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
 		{
-			auto entityPtr = std::make_shared<LivingEntity>(position, ID);
-			entities.push_back(entityPtr);
+			auto entityPtr = std::make_shared<Character>(position, yaw, ID);
+			livingEntitiesManager.add(entityPtr);
+			livingEntities.push_back(entityPtr);
 			entitiesMap[ID] = entityPtr;
 		}
 	}
+}
+
+void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime)
+{
+	livingEntitiesManager.draw(projection, view, deltatime);
 }

@@ -883,13 +883,15 @@ void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerM
 			// spawn the entity at block center + offset
 			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
 
-			entities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped));
+			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped));
 		}
 	}
 }
 
 void World:: updateEntitiesPosition()
 {
-	for (auto &entity : entities)
+	for (auto &entity : livingEntities)
+		entity->calculateNewPosition(*this);
+	for (auto &entity : itemEntities)
 		entity->calculateNewPosition(*this);
 }

@@ -28,6 +28,8 @@ enum class PacketType : uint8_t {
 	NET_DISCONNECT,		// C2S
 	NET_MESSAGE,		// S2C && C2S
     NET_IMGUI,          // S2C
+
+	GROUP,				// for grouped packets
 };
 
 enum class PacketFlags : uint8_t {
@@ -116,7 +118,7 @@ struct BufferWriter {
         write_bytes(reinterpret_cast<const uint8_t*>(s.data()), s.size());
     }
 
-    std::vector<uint8_t> take(){ return std::move(buf); }
+    std::vector<uint8_t> take(){ return buf; }
 };
 
 struct BufferReader {

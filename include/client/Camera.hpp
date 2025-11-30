@@ -21,9 +21,6 @@ class Camera {
 	void predictNTicks(const Renderer &world);
 	std::unique_ptr<Shader> blockWireframeShader = nullptr;
 
-	// //""Temporarily"" put some chunks in Camera.
-	// std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks;
-
 	int64_t amountOfSnapshotsReceived = 0;
 	glm::vec3 predictedPosition;
 	glm::vec3 previousPosition;
