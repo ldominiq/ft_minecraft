@@ -76,6 +76,10 @@ void Shader::use() const {
     glUseProgram(ID);
 }
 
+void Shader::stop() const {
+    glUseProgram(0);
+}
+
 void Shader::setInt(const std::string& name, int value) const {
     glUniform1i(glGetUniformLocation(ID, name.c_str()), value);
 }
@@ -102,4 +106,24 @@ void Shader::setFloat(const std::string &name, float value) const {
 
 void Shader::setFloat3(const std::string& name, const float &v1, const float &v2, const float &v3) const {
     glUniform3f(glGetUniformLocation(ID, name.c_str()), v1, v2, v3);
+}
+
+int Shader::getUniformLocation(const std::string &name) const {
+    return glGetUniformLocation(ID, name.c_str());
+}
+
+void Shader::loadMatrix(const int location, glm::mat4 matrix) const {
+    glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(matrix));
+}
+
+void Shader::bindAttribute(int attribute, const std::string& name) {
+    glBindAttribLocation(ID, attribute, name.c_str());
+}
+
+void Shader::bindAttributes() {
+    bindAttribute(0, "position");
+}
+
+void Shader::getAllUniformLocations(glm::mat4 matrix) {
+    loadMatrix(location_transformationMatrix, matrix);
 }

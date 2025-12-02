@@ -213,3 +213,14 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 	}
 }
+
+void Renderer::renderWater() const {
+    for (const auto& weakChunk : renderedChunks) {
+        if (auto chunk = weakChunk.lock()) {
+            if (chunk->getWaterMeshVerticesSize() > 0) {
+                glBindVertexArray(chunk->getWaterVao());
+                glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 9);
+            }
+        }
+    }
+}

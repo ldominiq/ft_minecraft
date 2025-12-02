@@ -108,6 +108,7 @@ public:
     bool isSpotLightOn() const { return flashlightOn; };
     bool isShadowsEnabled() const { return shadowsEnabled; };
     bool isShadowMapEnabled() const { return showShadowMap; };
+    GLuint getShadowMapTexture() const { return depthMap; };
 
     glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; };
     glm::vec3 getLightPos() const { return lightPos; };
