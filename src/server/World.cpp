@@ -445,7 +445,7 @@ std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialB
 
 				BlockType type = getBlockWorld(newPosition);
 
-				if (!isBlockSolid(type))
+				if (type == BlockType::AIR)
 				{
 					if (dir == down)
 					{
@@ -549,8 +549,8 @@ void World::updateLiquids()
 		{
 			std::vector<std::shared_ptr<s_liquid>> extraLiquids = waterFlowTowardsShortestPath(pos, liquid, liquid->currentPaths);
 			newLiquids.insert(newLiquids.end(),
-                  extraLiquids.begin(),
-                  extraLiquids.end());
+					extraLiquids.begin(),
+					extraLiquids.end());
 			liquid->currentPaths.clear();
 			continue ;
 		}

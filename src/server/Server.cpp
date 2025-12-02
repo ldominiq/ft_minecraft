@@ -352,7 +352,6 @@ void Server::sendEntitiesPositionDeltas(CPlayerInfo &player)
 			pkt.positionZ = entity->getPosition().z;
 
 			pkt.yaw = entity->yaw;
-			std::cout << pkt.yaw << std::endl;
 
 			sendPacketTo(pkt, player.addr);
 		}
