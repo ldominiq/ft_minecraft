@@ -49,6 +49,18 @@ void App::init() {
 
 	renderer = std::make_unique<Renderer>();
 
+	// ********************Water Renderer setup******************************
+	waterFramebuffer = std::make_shared<WaterFramebuffer>(windowedWidth, windowedHeight);
+	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
+	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
+
+	// ********************Render Type Debug Framebuffers********************
+	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
+
+	loader = std::make_unique<Loader>();
+	// GUI textures are now dynamically managed based on debug flags
+    guiRenderer = std::make_unique<GuiRenderer>(*loader);
+
     lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
 
     chat = std::make_unique<Chat>(windowedWidth, windowedHeight);
@@ -267,7 +279,7 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
-    texture = loadTexture("assets/textures/textures.png");
+    texture = activeShader->loadTexture("assets/textures/textures.png");
 
     activeShader = textureShader;
 
@@ -280,10 +292,11 @@ void App::loadResources() {
     textureShader->setInt("diffuseTexture", 0);
     textureShader->setInt("shadowMap", 1);
     lighting->initShadowDebugShader();
+
+	waterRenderer->setDependencies(lighting, renderer, camera);
 }
 
-void App::gameTick()
-{
+void App::gameTick() {
 	// sending/receiving packets and stuff
 
 	udpClient->receivePacket();
@@ -292,6 +305,12 @@ void App::gameTick()
 		NetPlayerInputs inputs = buildPlayerInputsPacket();
 		udpClient->sendPacket(inputs);
 	}
+
+	static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
+	static float waveSpeed = waterRenderer->waveStrength;
+	waterMoveOffset += waveSpeed * deltaTime;
+	if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
+	waterRenderer->setWaterMoveFactor(waterMoveOffset);
 }
 
 void App::render() {
@@ -355,41 +374,70 @@ void App::render() {
 		if (menuManager != chat)
         	processInput();
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-
         // window aspect / uniforms
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-        const float aspect = static_cast<float>(width) / static_cast<float>(height);
+        glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
+        const float aspect = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
+		glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
 
-        lighting->setViewportSize(width, height);
+
+        lighting->setViewportSize(screenWidth, screenHeight);
         lighting->updateSunDirection(deltaTime);
-        lighting->drawSky(view, projection, camera->movement.getPosition());
 
         if (lighting->isShadowsEnabled()) {
             lighting->updateShadowMap(*renderer, camera->movement.getPosition());
         }
 
-        // Set the uniform matrices in the shader
-        activeShader->use();
-        activeShader->setMat4("view", view);
-        activeShader->setMat4("projection", projection);
+        // Render to debug framebuffers if enabled
+        if (showNormalsTexture) {
+            renderTypeFramebuffer->bindNormalsFrameBuffer();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            textureShader->use();
+            textureShader->setInt("renderType", 1); // Normals mode
+            textureShader->setVec4("clipPlane", clipPlane);
+            textureShader->setMat4("view", view);
+            textureShader->setMat4("projection", projection);
+            lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            renderer->render(textureShader);
+            renderTypeFramebuffer->unbindCurrentFrameBuffer();
+        }
 
-        lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+        if (showDepthTexture) {
+            renderTypeFramebuffer->bindDepthFrameBuffer();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            textureShader->use();
+            textureShader->setInt("renderType", 2); // Depth mode
+            textureShader->setVec4("clipPlane", clipPlane);
+            textureShader->setMat4("view", view);
+            textureShader->setMat4("projection", projection);
+            lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            renderer->render(textureShader);
+            renderTypeFramebuffer->unbindCurrentFrameBuffer();
+        }
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
+        // Restore main renderType for normal scene rendering
+        if (textureShader) {
+            textureShader->use();
+            textureShader->setInt("renderType", 0); // Normal lighting mode
+        }
 
-        renderer->render(activeShader);
+    	// Render reflection texture
+    	waterRenderer->renderWaterReflectionPass(activeShader, projection, texture);
 
-		if (lighting->isShadowMapEnabled())
-    		lighting->drawShadowMapPreview();
+    	// render refraction texture
+    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, texture);
 
-        lighting->drawLightCubes(view, projection);
+    	// render to screen
+    	renderScene(view, projection, clipPlane);
+    	
+    	// Render water with proper shader setup
+    	waterRenderer->renderWaterSurface(projection);
 
 		//THIS CODE IS AWFULLY BAD
 		//items
@@ -423,15 +471,42 @@ void App::render() {
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+
         glBindVertexArray(0);
+        {
+    		// Dynamically build GUI textures based on debug flags
+    		guis.clear();
+    		if (showReflectionTexture) {
+    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showRefractionTexture) {
+    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(-0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showRefractionDepthTexture) {
+    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showShadowMapTexture && lighting) {
+    			guis.emplace_back(lighting->getShadowMapTexture(), glm::vec2(-0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showNormalsTexture && renderTypeFramebuffer) {
+    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.0f, 0.75f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showDepthTexture && renderTypeFramebuffer) {
+    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.0f, -0.75f), glm::vec2(0.25f, 0.25f));
+    		}
+
+    		guiRenderer->render(guis);
+        }
 
         if (showDebugWindow) {
-            //ImGui::ShowDemoWindow();
             debugWindow();
         }
 
-        // Finalize the ImGui frame and draw it.  Even if the overlay is
-        // non-interactive the draw data will be present, so draw it always.
+    	if (lighting->isShadowMapEnabled())
+    		lighting->drawShadowMapPreview();
+
+
+        // Finalize ImGui rendering
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -444,6 +519,37 @@ void App::render() {
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+}
+
+void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
+    glViewport(0, 0, screenWidth, screenHeight);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_CLIP_DISTANCE0);
+
+    // Render sky first
+    lighting->drawSky(view, projection, camera->movement.getPosition());
+
+    // Render solid blocks
+    glEnable(GL_DEPTH_TEST);
+    activeShader->use();
+    activeShader->setVec4("clipPlane", clipPlane);
+    activeShader->setMat4("view", view);
+    activeShader->setMat4("projection", projection);
+    lighting->uploadLightingUniforms(*activeShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    renderer->render(activeShader);
+
+    lighting->drawLightCubes(view, projection);
+
+	const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
+	const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));
+
+	renderer->buildChunks();
+	renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
+
+    camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+    glBindVertexArray(0);
 }
 
 void App::debugWindow() {
@@ -511,7 +617,25 @@ void App::debugWindow() {
                 const size_t visibleChunks = renderer->getVisibleChunkCount();
                 const size_t totalChunks   = renderer->getTotalChunkCount();
                 ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
+
+                size_t solidVertices = 0;
+                size_t waterVertices = 0;
+                for (auto& weakChunk : renderer->getRenderedChunks()) {
+                    if (auto chunk = weakChunk.lock()) {
+                        solidVertices += chunk->getMeshVerticesSize() / 9;
+                        waterVertices += chunk->getWaterMeshVerticesSize() / 9;
+                    }
+                }
+                
+                size_t totalVertices = solidVertices + waterVertices;
+                size_t totalTriangles = totalVertices / 3;
+                size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
+                
+                ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
+                ImGui::Text("Triangles: %zu", totalTriangles);
+                ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
             }
+
             // Display memory usage in megabytes.  We call a static helper to
             // obtain the current resident set size (RSS).
             {
@@ -668,6 +792,18 @@ void App::debugWindow() {
                         //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
                         //     }
                         // }
+
+                        ImGui::Separator();
+                        ImGui::Text("Framebuffer Debug Views");
+                        ImGui::Checkbox("Show Reflection Texture", &showReflectionTexture);
+                        ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
+                        ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
+                        ImGui::Checkbox("Show Shadow Map", &showShadowMapTexture);
+                        
+                        ImGui::Separator();
+                        ImGui::Text("Render Type Debug Views");
+                        ImGui::Checkbox("Show Normals View", &showNormalsTexture);
+                        ImGui::Checkbox("Show Depth View", &showDepthTexture);
                     }
 
                     // Lighting controls: direction and colours.  The direction vector
@@ -819,6 +955,13 @@ void App::debugWindow() {
                         	lighting->setPlanetScale(planetScale);
                         ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
                     }
+
+                	ImGui::Separator();
+                	if (ImGui::CollapsingHeader("Water")) {
+                		ImGui::SliderFloat("Water wave strength", &waterRenderer->waveStrength, 0.000f, 0.09f, "%.3f");
+                		ImGui::SliderFloat("Water dudv tiling", &waterRenderer->dudvTiling, 0.000f, 0.09f, "%.2f");
+
+                	}
 
                     ImGui::EndTabItem();
                 }

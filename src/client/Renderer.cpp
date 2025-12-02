@@ -230,3 +230,14 @@ void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view
 {
 	livingEntitiesManager.draw(projection, view, deltatime);
 }
+
+void Renderer::renderWater() const {
+    for (const auto& weakChunk : renderedChunks) {
+        if (auto chunk = weakChunk.lock()) {
+            if (chunk->getWaterMeshVerticesSize() > 0) {
+                glBindVertexArray(chunk->getWaterVao());
+                glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 9);
+            }
+        }
+    }
+}

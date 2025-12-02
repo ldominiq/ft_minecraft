@@ -56,7 +56,7 @@ public:
 
 	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
 
-	void drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
+	void drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 
 	std::shared_ptr<Character> getCharacter();
 	const inline bool isf5Active() const {return F5;}
