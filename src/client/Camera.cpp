@@ -4,6 +4,11 @@ Camera::Camera(glm::vec3 position)
     : MouseSensitivity(0.1f) {
     movement.updateCameraVectors();
 	initWireframeCube();
+
+	glm::vec3 a(0,0,0);
+	c = std::make_shared<Character>(a, movement.yaw, -1); //-1 get converted to max int cause uint32
+	c->createCharacterAt(movement.getPosition());
+	c->setDoDraw(false);
 }
 
 Camera::~Camera() {
@@ -19,8 +24,37 @@ Camera::~Camera() {
 
 }
 
-glm::mat4 Camera::getViewMatrix() const {
-    return glm::lookAt(movement.getPosition(), movement.getPosition() + movement.Front, movement.WorldUp);
+glm::mat4 Camera::getViewMatrix() const
+{
+	if (!F5)
+		return glm::lookAt(movement.getPosition(), movement.getPosition() + movement.Front, movement.WorldUp);
+
+	float cameraDistance = 3.0f;  // behind the player
+	float cameraHeight   = 1.5f;  // slightly above
+
+    glm::vec3 playerPos = movement.getPosition();
+
+    float yaw   = glm::radians(movement.yaw);
+    float pitch = glm::radians(movement.pitch);
+
+    // Direction the player is looking
+    glm::vec3 forward(
+        cos(pitch) * cos(yaw),
+        sin(pitch),
+        cos(pitch) * sin(yaw)
+    );
+
+    // Camera position BEHIND the player, opposite of forward
+    glm::vec3 camPos =
+        playerPos
+        - forward * cameraDistance  // behind
+        + glm::vec3(0, cameraHeight, 0); // slight upward offset
+
+    return glm::lookAt(
+        camPos,
+        playerPos + forward * 10.0f,   // look where the player is looking
+        glm::vec3(0, 1, 0)
+    );
 }
 
 void Camera::lerpToNextPosition(float deltaTime)
@@ -171,4 +205,12 @@ void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer,
     glBindVertexArray(wireframeVAO);
     glDrawElements(GL_LINES, 24, GL_UNSIGNED_INT, nullptr);
 	glBindVertexArray(0);
+}
+
+std::shared_ptr<Character> Camera::getCharacter()
+{
+	c->yaw = movement.yaw;
+	c->pitch = movement.pitch;
+	c->setPosition(movement.getPosition());
+	return c;
 }

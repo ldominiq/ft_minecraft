@@ -53,9 +53,12 @@ class Character : public LivingEntity
 	float legTransZ = 0.5f;
 	float legTransY = -((torsoScaleY/2.0f + legScaleY/2.0f) / legScaleY); // 0.875 = 3 (torso Y scale) / 2 (Y negative/positive) = 1.5, 4 (rightLeg Y scale) / 2 (Y negative/positive). 1.5+2 / 4 (rightleg Y scale as translation goes scale times fast)
 	
+	bool doDraw = true;
 	public:
-
 		s_character c;
+
+		const inline void setDoDraw(bool value) {doDraw = value;}
+		const inline bool DoDraw() const {return doDraw;}
 
 		Character(glm::vec3 &position, float yaw, entityID ID);
 		~Character() = default;

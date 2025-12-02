@@ -11,7 +11,7 @@
 #include "Renderer.hpp"
 #include "PlayerMovement.hpp"
 #include "GLFW/glfw3.h"
-
+#include "Character.hpp"
 
 class Camera {
 
@@ -28,6 +28,9 @@ class Camera {
 	//TODO : get all the tick logic elsewhere;
 	float serverTick = 0;
 	float prevServerTick = 0;
+
+	std::shared_ptr<Character> c;
+	bool F5 = false;
 
 public:
 	PlayerMovement movement;
@@ -54,6 +57,10 @@ public:
 	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
 
 	void drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
+
+	std::shared_ptr<Character> getCharacter();
+	const inline bool isf5Active() const {return F5;}
+	const inline void toggleF5() {F5 = !F5; c->setDoDraw(F5);}
 };
 
 

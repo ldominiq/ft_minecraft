@@ -182,6 +182,8 @@ void App::init() {
     ImGui_ImplOpenGL3_Init("#version 460");
 
 	loadControlsFromFile();
+
+	renderer->livingEntitiesManager.add(camera->getCharacter());
 }
 
 void App::setUdpClientPacketCallback()
@@ -407,6 +409,11 @@ void App::render() {
 			glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
 			entity->setPosition(newEntityPos);
 			// if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+		}
+
+		if (camera->isf5Active())
+		{
+			camera->getCharacter(); //updates f5 player character...
 		}
 		renderer->drawCharacters(projection, view, deltaTime);
 
@@ -996,9 +1003,8 @@ void App::processInput() {
     static bool f1Held  = false;
     static bool f2Held  = false;
     static bool f4Held  = false;
+	static bool f5Active = false;
     static bool tabHeld = false;
-    static bool leftMousePressedLastFrame = false;
-	static bool rightMousePressedLastFrame = false;
 
 	//reload chunk. F3 + A; TODO : also add the neighbours logic. Otherwise some "walls" could be rendered
 	if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS &&
@@ -1043,6 +1049,14 @@ void App::processInput() {
     if (glfwGetKey(window, GLFW_KEY_F4) == GLFW_RELEASE) {
         f4Held = false;
     }
+
+	if (glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS && !f5Active) {
+		f5Active = true;
+		camera->toggleF5();
+	}
+	if (glfwGetKey(window, GLFW_KEY_F5) == GLFW_RELEASE && f5Active) {
+		f5Active = false;
+	}
 
     // Start by getting the ImGui IO structure.  We will respect its capture flags
     // when deciding whether to process game inputs.  Note: this call is valid

@@ -22,6 +22,7 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 	auto identity = glm::mat4(1.0f);
 	for (const auto &c : characters)
 	{
+		if (!c->DoDraw()) return ;
 		if (c->positionUpdated || c->c.onWalkAnimation)
 		{
 			c->c.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));
