@@ -53,7 +53,6 @@ void App::init() {
 	waterFramebuffer = std::make_shared<WaterFramebuffer>(windowedWidth, windowedHeight);
 	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
 	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
-	// underwaterOverlayShader = std::make_shared<Shader>("shaders/underwater_overlay.vert", "shaders/underwater_overlay.frag");
 
 	// ********************Render Type Debug Framebuffers********************
 	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
@@ -273,9 +272,9 @@ void App::loadResources() {
     textureShader->setInt("shadowMap", 1);
     lighting->initShadowDebugShader();
 
-    dudvTexture = loadTexture("assets/textures/waterdudv.png");
-    waterNormalTexture = loadTexture("assets/textures/NormalMap.png");
-	waterRenderer->setDependencies(dudvTexture, waterNormalTexture);
+    dudvTexture = loadTexture("assets/textures/waterDudv.png");
+    waterNormalTexture = loadTexture("assets/textures/normalMap.png");
+	waterRenderer->setDependencies(lighting, renderer, camera, dudvTexture, waterNormalTexture);
 }
 
 void App::gameTick() {
@@ -409,24 +408,17 @@ void App::render() {
             textureShader->setInt("renderType", 0); // Normal lighting mode
         }
 
-    	glEnable(GL_CLIP_DISTANCE0);
-    	float seaLevel = 65.0f;
-
     	// Render reflection texture
-    	waterFramebuffer->bindReflectionFrameBuffer();
-    	waterRenderer->renderWaterReflectionPass(lighting, renderer, activeShader, camera, projection, seaLevel, texture);
+    	waterRenderer->renderWaterReflectionPass(activeShader, projection, texture);
 
     	// render refraction texture
-		waterFramebuffer->bindRefractionFrameBuffer();
-    	waterRenderer->renderWaterRefractionPass(lighting, camera, renderer, activeShader, view, projection, seaLevel, texture);
+    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, texture);
 
     	// render to screen
-    	glDisable(GL_CLIP_DISTANCE0);
-    	waterFramebuffer->unbindCurrentFrameBuffer();
     	renderScene(view, projection, clipPlane);
     	
     	// Render water with proper shader setup
-    	waterRenderer->renderWaterSurface(lighting, renderer, camera, projection, seaLevel);
+    	waterRenderer->renderWaterSurface(projection);
 
         {
     		// Dynamically build GUI textures based on debug flags
@@ -479,7 +471,7 @@ void App::render() {
 void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
     glViewport(0, 0, screenWidth, screenHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    // glDisable(GL_CLIP_DISTANCE0);
+    glDisable(GL_CLIP_DISTANCE0);
 
     // Render sky first
     lighting->drawSky(view, projection, camera->movement.getPosition());

@@ -143,7 +143,6 @@ private:
 
 	// Water
 	std::shared_ptr<WaterFramebuffer> waterFramebuffer;
-	std::shared_ptr<Shader> underwaterOverlayShader;
 	std::shared_ptr<Shader> waterShader;
     GLuint dudvTexture, waterNormalTexture;
 

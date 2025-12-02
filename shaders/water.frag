@@ -29,16 +29,6 @@ const float shineDamper = 20.0;
 const float reflectivity = 0.5;
 
 void main() {
-//    // Mix reflect/refract
-//    vec3 color = mix(refr, refl, reflectWeight);
-//
-//    // Depth-based tint
-//    vec3 shallowColor = vec3(0.0, 0.45, 0.65);
-//    vec3 deepColor = vec3(0.0, 0.08, 0.15);
-//    vec3 tint = mix(shallowColor, deepColor, depthFactor);
-//    color = mix(color, tint, 0.35 * depthFactor);
-
-
     vec2 ndc = (clipSpace.xy/clipSpace.w) * 0.5 + 0.5;
     vec2 refractTexCoords = vec2(ndc.x, ndc.y);
     vec2 reflectTexCoords = vec2(ndc.x, 1.0 - ndc.y);
@@ -58,8 +48,6 @@ void main() {
     refractTexCoords = clamp(refractTexCoords, 0.001, 0.999);
 
     reflectTexCoords += totalDistortion;
-//    reflectTexCoords.x = clamp(reflectTexCoords.x, 0.001, 0.999);
-//    reflectTexCoords.y = clamp(reflectTexCoords.y, -0.999, -0.001);
 
     vec4 waterColor = vec4(0.0, 0.3, 0.5, 1.0);
     vec4 murkyWaterColor = vec4(0.0, 0.5, 0.275, 1.0);

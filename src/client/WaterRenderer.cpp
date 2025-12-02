@@ -17,30 +17,6 @@
 // ============================================================
 
 WaterRenderer::WaterRenderer(const std::shared_ptr<Shader>& shader, const std::shared_ptr<WaterFramebuffer>& fbos) : waterShader(shader), fbos(fbos) {
-    // if (overlayVAO == 0) {
-    //     // Full-screen quad covering NDC [-1,1]
-    //     const float quad[] = {
-    //         // pos.xy   // uv
-    //         -1.0f, -1.0f, 0.0f, 0.0f,
-    //          1.0f, -1.0f, 1.0f, 0.0f,
-    //          1.0f,  1.0f, 1.0f, 1.0f,
-    //
-    //         -1.0f, -1.0f, 0.0f, 0.0f,
-    //          1.0f,  1.0f, 1.0f, 1.0f,
-    //         -1.0f,  1.0f, 0.0f, 1.0f
-    //     };
-    //     glGenVertexArrays(1, &overlayVAO);
-    //     glGenBuffers(1, &overlayVBO);
-    //     glBindVertexArray(overlayVAO);
-    //     glBindBuffer(GL_ARRAY_BUFFER, overlayVBO);
-    //     glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
-    //     glEnableVertexAttribArray(0);
-    //     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    //     glEnableVertexAttribArray(1);
-    //     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    //     glBindVertexArray(0);
-    // }
-
     // connect texture units
     shader->use();
     shader->setInt("reflectionTexture", 0);
@@ -52,8 +28,11 @@ WaterRenderer::~WaterRenderer() {
 
 }
 
-void WaterRenderer::setDependencies(
+void WaterRenderer::setDependencies(const std::shared_ptr<Lighting> &lightingRef, const std::shared_ptr<Renderer> &rendererRef, const std::shared_ptr<Camera>& cameraRef,
                                      GLuint dudvTex, GLuint waterNormalTex) {
+    lighting = lightingRef;
+    renderer = rendererRef;
+    camera = cameraRef;
     dudvTexture = dudvTex;
     waterNormalTexture = waterNormalTex;
 }
@@ -67,34 +46,12 @@ void WaterRenderer::prepareRender() {
 
 }
 
-glm::mat4 WaterRenderer::calculateReflectedViewMatrix(const Camera& camera, float seaLevel) const {
-    // Calculate reflected camera position
-    const float distance = 2.0f * (camera.movement.getPosition().y - seaLevel);
-    glm::vec3 reflectCamPos = camera.movement.getPosition();
-    reflectCamPos.y -= distance;
-
-    // Construct reflected view matrix with inverted pitch
-    const float yaw = camera.movement.getYaw();
-    const float pitch = -camera.movement.getPitch();  // Inverted pitch for reflection
-
-    glm::vec3 front;
-    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    front.y = sin(glm::radians(pitch));
-    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-    front = glm::normalize(front);
-
-    return glm::lookAt(reflectCamPos, reflectCamPos + front, glm::vec3(0, 1, 0));
-}
-
-void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Lighting> &lighting, const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const std::shared_ptr<Camera>& camera, const glm::mat4& projection, float seaLevel, unsigned int tex) {
-    // waterFramebuffer->bindReflectionFrameBuffer();
+void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sceneShader, const glm::mat4& projection, unsigned int tex) {
+    fbos->bindReflectionFrameBuffer();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    // glEnable(GL_CLIP_DISTANCE0);
+    glEnable(GL_CLIP_DISTANCE0);
 
     // Calculate reflected view matrix
-    // Calculate reflected camera position
-
-
     float distance = 2.0f * (camera->movement.getPosition().y - seaLevel);
     glm::vec3 reflectCamPos = camera->movement.getPosition();
     reflectCamPos.y -= distance;
@@ -135,14 +92,13 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Lighting> &l
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
     lighting->drawSky(skyView, projection, reflectCamPos);
     renderer->render(sceneShader);
-    glDisable(GL_CLIP_DISTANCE0);
 
-    // Unbind the FBO, binding the default framebuffer (ID 0)
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDisable(GL_CLIP_DISTANCE0);
+    fbos->unbindCurrentFrameBuffer();
 }
 
-void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Lighting> &lighting, const std::shared_ptr<Camera> &camera, const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, float seaLevel, unsigned int tex) {
-    // bindRefractionFrameBuffer();
+void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, unsigned int tex) {
+    fbos->bindRefractionFrameBuffer();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_CLIP_DISTANCE0);
 
@@ -161,36 +117,12 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Lighting> &l
     glBindTexture(GL_TEXTURE_2D, tex);
     renderer->render(sceneShader);
 
-    // unbindCurrentFrameBuffer();
-    // glDisable(GL_CLIP_DISTANCE0);
-
-
+    glDisable(GL_CLIP_DISTANCE0);
+    fbos->unbindCurrentFrameBuffer();
 }
 
-void WaterRenderer::renderWaterSurface(const std::shared_ptr<Lighting> &lighting, const std::shared_ptr<Renderer> &renderer, const std::shared_ptr<Camera> &camera, const glm::mat4& projection, float seaLevel) {
+void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     prepareRender();
-    // Configure OpenGL state for transparent water rendering
-    // glEnable(GL_DEPTH_TEST);
-    // glEnable(GL_BLEND);
-    // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    // glDepthMask(GL_FALSE);  // Disable depth writes for transparency
-
-    // Configure face culling based on camera position
-    // const GLboolean cullWasEnabled = glIsEnabled(GL_CULL_FACE);
-    // const glm::vec3 camPos = camera->movement.getPosition();
-    // const glm::ivec3 eyeBlock = glm::ivec3(glm::floor(camPos));
-    // const bool isUnderwater = (renderer->getBlockWorld(eyeBlock) == BlockType::WATER);
-    // const bool belowSeaSurface = camPos.y < (seaLevel - 0.05f);
-    //
-    // GLint prevCullFaceMode = GL_BACK;
-    // glGetIntegerv(GL_CULL_FACE_MODE, &prevCullFaceMode);
-    //
-    // if (isUnderwater && belowSeaSurface) {
-    //     if (cullWasEnabled) glDisable(GL_CULL_FACE);
-    // } else {
-    //     if (!cullWasEnabled) glEnable(GL_CULL_FACE);
-    //     glCullFace(GL_BACK);
-    // }
 
     const glm::mat4 view = camera->getViewMatrix();
     const glm::vec3 camPos = camera->movement.getPosition();
@@ -239,59 +171,5 @@ void WaterRenderer::renderWaterSurface(const std::shared_ptr<Lighting> &lighting
     // Render water meshes
     renderer->renderWater();
 
-    // Restore OpenGL state
-    // if (cullWasEnabled) {
-    //     glEnable(GL_CULL_FACE);
-    // } else {
-    //     glDisable(GL_CULL_FACE);
-    // }
-    // glCullFace(prevCullFaceMode);
-    // glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
-
-	// renderUnderWater();
 }
-/*
-void WaterRenderer::renderUnderWater() {
-    const glm::vec3 camPosLocal = camera->movement.getPosition();
-    const glm::ivec3 eyeBlock = glm::ivec3(glm::floor(camPosLocal));
-    const bool isUnder = (renderer->getBlockWorld(eyeBlock) == BlockType::WATER);
-    if (isUnder && underwaterOverlayShader && overlayVAO) {
-        const GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        underwaterOverlayShader->use();
-        underwaterOverlayShader->setFloat("uTime", static_cast<float>(glfwGetTime()));
-        underwaterOverlayShader->setVec2("uResolution", glm::vec2(screenWidth, screenHeight));
-
-        // Bind scene textures from refraction FBO and dudv for distortion
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, getRefractionTexture());
-        underwaterOverlayShader->setInt("uSceneColor", 0);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, waterRenderer->getRefractionDepthTexture());
-        underwaterOverlayShader->setInt("uSceneDepth", 1);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, dudvTexture);
-        underwaterOverlayShader->setInt("uDuDv", 2);
-
-        underwaterOverlayShader->setFloat("uMove", waterMoveFactor);
-        underwaterOverlayShader->setFloat("uNear", 0.1f);
-        underwaterOverlayShader->setFloat("uFar", renderDistance);
-        underwaterOverlayShader->setVec3("uFogColor", glm::vec3(0.05f, 0.35f, 0.55f));
-        underwaterOverlayShader->setFloat("uFogDensity", 0.085f);
-        underwaterOverlayShader->setVec3("uTintColor", glm::vec3(0.9f, 1.05f, 1.1f));
-        underwaterOverlayShader->setFloat("uOpacity", 0.42f);
-
-        glBindVertexArray(overlayVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glBindVertexArray(0);
-
-        glDisable(GL_BLEND);
-        if (depthWasEnabled) glEnable(GL_DEPTH_TEST);
-    }
-}
-
-*/
