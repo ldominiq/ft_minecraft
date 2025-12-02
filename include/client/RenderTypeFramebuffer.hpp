@@ -21,13 +21,13 @@ private:
     static constexpr int DEBUG_WIDTH = 640;
     static constexpr int DEBUG_HEIGHT = 360;
 
-    GLuint normalsFrameBuffer;
-    GLuint normalsTexture;
-    GLuint normalsDepthBuffer;
+    GLuint normalsFrameBuffer = 0;
+    GLuint normalsTexture = 0;
+    GLuint normalsDepthBuffer = 0;
 
-    GLuint depthFrameBuffer;
-    GLuint depthTexture;
-    GLuint depthDepthBuffer;
+    GLuint depthFrameBuffer = 0;
+    GLuint depthTexture = 0;
+    GLuint depthDepthBuffer = 0;
 
     int displayWidth;
     int displayHeight;

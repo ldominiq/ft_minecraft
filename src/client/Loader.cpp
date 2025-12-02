@@ -25,7 +25,7 @@ void Loader::storeDataInAttributeList(int attributeNumber, int coordinateSize, c
     vbos.push_back(vboID);
     glBindBuffer(GL_ARRAY_BUFFER, vboID);
     glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), &data[0], GL_STATIC_DRAW);
-    glVertexAttribPointer(attributeNumber, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glVertexAttribPointer(attributeNumber, coordinateSize, GL_FLOAT, GL_FALSE, 0, nullptr);
     glEnableVertexAttribArray(attributeNumber);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }

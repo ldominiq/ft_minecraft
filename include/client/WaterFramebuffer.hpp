@@ -28,13 +28,13 @@ private:
     static constexpr int REFRACTION_WIDTH = 1280;
     static constexpr int REFRACTION_HEIGHT = 720;
 
-    GLuint reflectionFrameBuffer;
-    GLuint reflectionTexture;
-    GLuint reflectionDepthBuffer;
+    GLuint reflectionFrameBuffer = 0;
+    GLuint reflectionTexture = 0;
+    GLuint reflectionDepthBuffer = 0;
 
-    GLuint refractionFrameBuffer;
-    GLuint refractionTexture;
-    GLuint refractionDepthTexture;
+    GLuint refractionFrameBuffer = 0;
+    GLuint refractionTexture = 0;
+    GLuint refractionDepthTexture = 0;
 
     int displayWidth;
     int displayHeight;

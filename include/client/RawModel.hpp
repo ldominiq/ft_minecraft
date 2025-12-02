@@ -12,12 +12,12 @@ public:
     RawModel();
     RawModel(GLuint vaoID, int vertexCount);
 
-    int getVaoID() const { return vaoID; }
+    GLuint getVaoID() const { return vaoID; }
 
     int getVertexCount() const { return vertexCount; }
 
 private:
-    int vaoID;
+    GLuint vaoID;
     int vertexCount;
 
 };

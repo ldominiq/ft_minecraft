@@ -23,8 +23,6 @@ uniform float farPlane;
 
 // Water properties
 uniform float waveStrength;        // Distortion intensity
-uniform float twilightSoftness;    // How soft the fade is around the horizon (0..~0.2)
-
 const float shineDamper = 20.0;
 const float reflectivity = 0.5;
 
@@ -42,7 +40,7 @@ void main() {
 
     vec2 distortedTexCoords = texture(dudvMap, vec2(textureCoords.x + moveFactor, textureCoords.y)).rg * 0.1;
     distortedTexCoords = textureCoords + vec2(distortedTexCoords.x, distortedTexCoords.y + moveFactor);
-    vec2 totalDistortion = (texture(dudvMap, distortedTexCoords).rg * 2.0 - 1.0) * waveStrength * clamp(waterDepth/20.0, 0.0, 1.0);;
+    vec2 totalDistortion = (texture(dudvMap, distortedTexCoords).rg * 2.0 - 1.0) * waveStrength * clamp(waterDepth/20.0, 0.0, 1.0);
 
     refractTexCoords += totalDistortion;
     refractTexCoords = clamp(refractTexCoords, 0.001, 0.999);
@@ -71,7 +69,7 @@ void main() {
     vec3 reflectedLight = reflect(normalize(fromLightVector), normal);
     float specular = max(dot(reflectedLight, viewVector), 0.0);
     specular = pow(specular, shineDamper);
-    vec3 specularHighlights = lightColor * specular * reflectivity * clamp(waterDepth/5.0, 0.0, 1.0);;
+    vec3 specularHighlights = lightColor * specular * reflectivity * clamp(waterDepth/5.0, 0.0, 1.0);
 
     // Smoothly fade specular highlights around the horizon
     // dayFactor = 0 when lightPosition.y <= horizonY - twilightBand

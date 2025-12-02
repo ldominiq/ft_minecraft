@@ -18,7 +18,7 @@ void GuiRenderer::render(const std::vector<GuiTexture>& guis) {
     glEnable(GL_BLEND); // Enable transparency
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_DEPTH_TEST); // Disable depth testing
-    for (GuiTexture gui : guis) {
+    for (const GuiTexture& gui : guis) {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, gui.getTexture());
         glm::mat4 matrix = glm::translate(glm::mat4(1.0f), glm::vec3(gui.getPosition(), 0.0f));

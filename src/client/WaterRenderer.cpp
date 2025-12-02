@@ -17,6 +17,9 @@
 // ============================================================
 
 WaterRenderer::WaterRenderer(const std::shared_ptr<Shader>& shader, const std::shared_ptr<WaterFramebuffer>& fbos) : waterShader(shader), fbos(fbos) {
+    dudvTexture = shader->loadTexture("assets/textures/waterDudv.png");
+    waterNormalTexture = shader->loadTexture("assets/textures/normalMap.png");
+
     // connect texture units
     shader->use();
     shader->setInt("reflectionTexture", 0);
@@ -28,13 +31,10 @@ WaterRenderer::~WaterRenderer() {
 
 }
 
-void WaterRenderer::setDependencies(const std::shared_ptr<Lighting> &lightingRef, const std::shared_ptr<Renderer> &rendererRef, const std::shared_ptr<Camera>& cameraRef,
-                                     GLuint dudvTex, GLuint waterNormalTex) {
+void WaterRenderer::setDependencies(const std::shared_ptr<Lighting> &lightingRef, const std::shared_ptr<Renderer> &rendererRef, const std::shared_ptr<Camera>& cameraRef) {
     lighting = lightingRef;
     renderer = rendererRef;
     camera = cameraRef;
-    dudvTexture = dudvTex;
-    waterNormalTexture = waterNormalTex;
 }
 
 void WaterRenderer::prepareRender() {
@@ -71,9 +71,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     reflectCamPos = camera->movement.getPosition();
     reflectCamPos.y -= distance;
 
-    // Set clip plane (only render above water) with adaptive bias
-    const float camHeightToWater = camera->movement.getPosition().y - seaLevel;
-    const float clipBias = glm::clamp(std::abs(camHeightToWater) * 0.02f, 0.02f, 0.5f);
+    // Set clip plane (only render above water)
     const glm::vec4 clipPlane = glm::vec4(0, 1, 0, -(seaLevel));
 
     sceneShader->use();
