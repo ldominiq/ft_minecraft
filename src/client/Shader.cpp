@@ -112,7 +112,7 @@ int Shader::getUniformLocation(const std::string &name) const {
     return glGetUniformLocation(ID, name.c_str());
 }
 
-void Shader::loadMatrix(const int location, glm::mat4 matrix) const {
+void Shader::loadMatrix(const int location, const glm::mat4& matrix) const {
     glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(matrix));
 }
 
@@ -124,6 +124,32 @@ void Shader::bindAttributes() {
     bindAttribute(0, "position");
 }
 
-void Shader::getAllUniformLocations(glm::mat4 matrix) {
+void Shader::getAllUniformLocations(const glm::mat4& matrix) {
     loadMatrix(location_transformationMatrix, matrix);
+}
+
+unsigned int Shader::loadTexture(const char* path) {
+    GLuint texID;
+    glGenTextures(1, &texID);
+    glBindTexture(GL_TEXTURE_2D, texID);
+
+    int w, h, ch;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* data = stbi_load(path, &w, &h, &ch, 0);
+    if (data) {
+        const GLenum format = ch == 4 ? GL_RGBA : GL_RGB;
+        glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    } else {
+        std::cerr << "Failed to load texture: " << path << "\n";
+    }
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    stbi_image_free(data);
+
+    return texID;
 }

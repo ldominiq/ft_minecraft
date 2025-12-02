@@ -9,6 +9,9 @@
 #include <iostream>
 #include <string>
 
+#include "stb_image.h"
+
+
 class Shader {
 public:
     GLuint ID;
@@ -26,16 +29,18 @@ public:
     void setVec3(const std::string& name, const glm::vec3& vec3) const;
     void setVec4(const std::string& name, const glm::vec4& vec4) const;
 
+    unsigned int loadTexture(const char* path);
+
 protected:
     int getUniformLocation(const std::string& name) const;
-    void loadMatrix(int location, glm::mat4 matrix) const;
+    void loadMatrix(int location, const glm::mat4& matrix) const;
     void bindAttribute(int attribute, const std::string &name);
     void bindAttributes();
 
-    void getAllUniformLocations(glm::mat4 matrix);
+    void getAllUniformLocations(const glm::mat4& matrix);
 
 private:
-    int location_transformationMatrix;
+    int location_transformationMatrix = -1;;
 };
 
 #endif

@@ -12,7 +12,6 @@
 #include "ChunkRenderer.hpp"
 #include "Lighting.hpp"
 #include "Shader.hpp"
-#include "stb_image.h"
 #include "Renderer.hpp"
 #include "UDPClient.hpp"
 #include "Chat.hpp"
@@ -78,7 +77,6 @@ public:
 private:
     void init();
     void loadResources();
-    static unsigned int loadTexture(const char* path);
     void render();
 	void renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane);
 	void gameTick();
@@ -195,6 +193,7 @@ private:
     bool uiToggleHeld = false;
 	bool showDebugWindow = true;
 
+	//TODO: put in struct
 	// Debug framebuffer view toggles
 	bool showReflectionTexture = false;
 	bool showRefractionTexture = false;

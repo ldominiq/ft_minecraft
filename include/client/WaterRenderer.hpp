@@ -5,7 +5,6 @@
 #ifndef WATERRENDERER_HPP
 #define WATERRENDERER_HPP
 
-#include <iostream>
 #include <memory>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
@@ -24,8 +23,7 @@ public:
     ~WaterRenderer();
     
     // Set dependencies
-    void setDependencies(const std::shared_ptr<Lighting>& lightingRef, const std::shared_ptr<Renderer>& rendererRef, const std::shared_ptr<Camera>& cameraRef,
-                                     GLuint dudvTex, GLuint waterNormalTex);
+    void setDependencies(const std::shared_ptr<Lighting>& lightingRef, const std::shared_ptr<Renderer>& rendererRef, const std::shared_ptr<Camera>& cameraRef);
 
     // Water rendering helper methods
     void renderWaterReflectionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& projection, unsigned int tex);
@@ -44,15 +42,11 @@ private:
     std::shared_ptr<Renderer> renderer;
     std::shared_ptr<Camera> camera;
 
-    GLuint overlayVAO = 0, overlayVBO = 0;
     float waterMoveFactor = 0.0f;
 
     float seaLevel = 65.0f;
     GLuint dudvTexture = 0;
     GLuint waterNormalTexture = 0;
-    GLuint texture = 0;  // Block texture atlas
-    int screenWidth = 0;
-    int screenHeight = 0;
 
     void prepareRender();
 };

@@ -1,9 +1,5 @@
 #version 460 core
 layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoord;
-layout (location = 3) in vec3 aNormal;
-
-in vec2 position;
 
 out vec4 clipSpace;
 out vec3 toCameraVector;
@@ -25,7 +21,6 @@ void main() {
     clipSpace = projection * view * worldPosition;
     gl_Position = clipSpace;
 
-//    textureCoords = vec2(position.x/2.0 + 0.5, position.y/2.0 + 0.5) * tiling;
     textureCoords = worldPosition.xz * tiling;
     
     // Calculate vectors for lighting and Fresnel
