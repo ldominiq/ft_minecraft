@@ -21,7 +21,7 @@ class ChunkRenderer : public Chunk {
 	uint waterMeshVerticesSize = 0;
 	std::vector<float> waterMeshVertices;
 
-	glm::vec2 getTextureOffset(const BlockType type, const int face);
+	// glm::vec2 getTextureOffset(const BlockType type, const int face);
     void addFace(int x, int y, int z, int face); // Add a face to the mesh vertices (solid blocks)
 	void addWaterFace(int x, int y, int z, int face); // Add a face to water mesh
 

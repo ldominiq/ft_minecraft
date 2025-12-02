@@ -3,8 +3,8 @@
 
 ItemPropEntityManager::ItemPropEntityManager()
 {
-	texture = loadTexture("assets/textures/textures.png");
 	shader = std::make_unique<Shader>("shaders/cubePropShader.vert", "shaders/cubePropShader.frag");
+	texture = shader->loadTexture("assets/textures/textures.png");
 
 	initGL();
 }

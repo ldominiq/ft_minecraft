@@ -74,6 +74,91 @@ void ChunkRenderer::updateMesh()
 	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
 }
 
+void ChunkRenderer::addFace(int x, int y, int z, int face) {
+    const float faceX = static_cast<float>(originX + x);
+    const float faceY = static_cast<float>(y);
+    const float faceZ = static_cast<float>(originZ + z);
+
+    const float TILE_W = 1.0f / ATLAS_COLS;
+    const float TILE_H = 1.0f / ATLAS_ROWS;
+
+    static const float faceData[6][18] = {
+        // FRONT face (Z+)
+        { 0,0,1,  1,0,1,  1,1,1,
+        1,1,1,  0,1,1,  0,0,1 },
+
+        // BACK face (Z-)
+        { 1,0,0,  0,0,0,  0,1,0,
+        0,1,0,  1,1,0,  1,0,0 },
+
+        // TOP face (Y+)
+        { 0,1,1,  1,1,1,  1,1,0,
+        1,1,0,  0,1,0,  0,1,1 },
+
+        // BOTTOM face (Y-)
+        { 0,0,0,  1,0,0,  1,0,1,
+        1,0,1,  0,0,1,  0,0,0 },
+
+        // RIGHT face (X+)
+        { 1,0,1,  1,0,0,  1,1,0,
+        1,1,0,  1,1,1,  1,0,1 },
+
+        // LEFT face (X-)
+        { 0,0,0,  0,0,1,  0,1,1,
+        0,1,1,  0,1,0,  0,0,0 }
+    };
+
+    static const float uvCoords[12] = {
+        0, 0,
+        1, 0,
+        1, 1,
+        1, 1,
+        0, 1,
+        0, 0
+    };
+
+    static const glm::vec3 faceNormals[6] = {
+        {  0,  0,  1 }, // front
+        {  0,  0, -1 }, // back
+        {  0,  1,  0 }, // top
+        {  0, -1,  0 }, // bottom
+        {  1,  0,  0 }, // right
+        { -1,  0,  0 }  // left
+    };
+
+    glm::vec3 normal = faceNormals[face];
+
+    // Get block type for this position
+    const BlockType type = getBlock(x, y, z);
+
+    // Determine UV offset in atlas based on block type and face
+    glm::vec2 tileCoord = getTextureOffset(type, face);
+    glm::vec2 offset = { tileCoord.x * TILE_W, tileCoord.y * TILE_H };
+
+    // Build six vertices for this face using the computed light
+    for (int i = 0; i < 6; ++i) {
+        float px = faceX + faceData[face][i * 3 + 0];
+        float py = faceY + faceData[face][i * 3 + 1];
+        float pz = faceZ + faceData[face][i * 3 + 2];
+
+        float baseU = uvCoords[i * 2 + 0]; // 0 → 1
+        float baseV = uvCoords[i * 2 + 1]; // 0 → 1
+
+        float u = baseU * TILE_W + offset.x;
+        float v = baseV * TILE_H + offset.y;
+
+        meshVertices.push_back(px);    // position.x
+        meshVertices.push_back(py);    // position.y
+        meshVertices.push_back(pz);    // position.z
+        meshVertices.push_back(u);     // texture u
+        meshVertices.push_back(v);     // texture v
+        meshVertices.push_back(py);    // send Y again for gradient
+        meshVertices.push_back(normal.x);
+        meshVertices.push_back(normal.y);
+        meshVertices.push_back(normal.z);
+    }
+}
+
 void ChunkRenderer::addWaterFace(int x, int y, int z, int face) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
