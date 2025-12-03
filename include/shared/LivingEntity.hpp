@@ -31,6 +31,7 @@ class LivingEntity : public Entity
 	public:
 
 		LivingEntity(glm::vec3 &position);
+		LivingEntity(glm::vec3 position);
 		LivingEntity(glm::vec3 &position, float yaw, entityID ID);
 		virtual ~LivingEntity() = 0;
 

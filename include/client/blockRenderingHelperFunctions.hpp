@@ -47,8 +47,6 @@ inline constexpr glm::vec3 faceNormals[6] = {
 };
 
 glm::vec2 getTextureOffset(const BlockType type, const int face);
-void addFace(std::vector<float>& meshVertices, int x, int y, int z, int originX, int originZ, BlockType type, int face, bool isIlluminated = false); // Add a face to the mesh vertices
-void buildCube(std::vector<float>& meshVertices, int x, int y, int z, int originX, int originZ, BlockType type, bool isIlluminated = false);
 
 void buildCube(std::vector<float>& meshVertices, float x, float y, float z, int originX, int originZ, BlockType type, bool isIlluminated = false);
 void addFace(std::vector<float>& meshVertices, float x, float y, float z, int originX, int originZ, BlockType type, int face, bool isIlluminated = false); // Add a face to the mesh vertices

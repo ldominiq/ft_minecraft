@@ -232,6 +232,7 @@ void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view
 }
 
 void Renderer::renderWater() const {
+	glDisable(GL_CULL_FACE);
     for (const auto& weakChunk : renderedChunks) {
         if (auto chunk = weakChunk.lock()) {
             if (chunk->getWaterMeshVerticesSize() > 0) {
@@ -240,4 +241,5 @@ void Renderer::renderWater() const {
             }
         }
     }
+	glEnable(GL_CULL_FACE);
 }

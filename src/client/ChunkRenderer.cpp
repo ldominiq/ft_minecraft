@@ -282,9 +282,9 @@ void ChunkRenderer::buildMeshData() {
                 // FRONT (+Z)
                 BlockType neighbor = getBlockOrNeighbor(x, y, z, 0, 0, +1, NORTH);
                 if (isWater) {
-                    // Water: only render face if neighbor is not water
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 0);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    // Water: only render face if neighbor is air
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 0);
+                } else if (!isBlockSolid(neighbor)) {
                     // Solid block: render if neighbor is air or water
                     addFace(x, y, z, 0);
                 }
@@ -292,40 +292,40 @@ void ChunkRenderer::buildMeshData() {
                 // BACK (-Z)
                 neighbor = getBlockOrNeighbor(x, y, z, 0, 0, -1, SOUTH);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 1);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 1);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 1);
                 }
 
                 // TOP (+Y)
                 neighbor = (y == HEIGHT - 1) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, +1, 0, NONE);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 2);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 2);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 2);
                 }
 
                 // BOTTOM (-Y)
                 neighbor = (y == 0) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, -1, 0, NONE);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 3);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 3);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 3);
                 }
 
                 // RIGHT (+X)
                 neighbor = getBlockOrNeighbor(x, y, z, +1, 0, 0, EAST);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 4);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 4);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 4);
                 }
 
                 // LEFT (-X)
                 neighbor = getBlockOrNeighbor(x, y, z, -1, 0, 0, WEST);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 5);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 5);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 5);
                 }
             }

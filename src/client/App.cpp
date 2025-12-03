@@ -439,32 +439,6 @@ void App::render() {
     	// Render water with proper shader setup
     	waterRenderer->renderWaterSurface(projection);
 
-		//THIS CODE IS AWFULLY BAD
-		//items
-		for (auto &entity : renderer->itemEntities)
-		{
-			if (!entity->positionUpdated) continue ;
-			glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
-			entity->setPosition(newEntityPos);
-			if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
-		}
-		m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
-
-		//mobs
-		for (auto &entity : renderer->livingEntities)
-		{
-			if (!entity->positionUpdated) continue ;
-			glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
-			entity->setPosition(newEntityPos);
-			// if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
-		}
-
-		if (camera->isf5Active())
-		{
-			camera->getCharacter(); //updates f5 player character...
-		}
-		renderer->drawCharacters(projection, view, deltaTime);
-
 		const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
 		const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));
 
@@ -550,6 +524,32 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
     camera->drawWireframeSelectedBlockFace(renderer, view, projection);
     glBindVertexArray(0);
+
+	//THIS CODE IS AWFULLY BAD
+	//items
+	for (auto &entity : renderer->itemEntities)
+	{
+		if (!entity->positionUpdated) continue ;
+		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+		entity->setPosition(newEntityPos);
+		if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+	}
+	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
+
+	//mobs
+	for (auto &entity : renderer->livingEntities)
+	{
+		if (!entity->positionUpdated) continue ;
+		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+		entity->setPosition(newEntityPos);
+		// if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+	}
+
+	if (camera->isf5Active())
+	{
+		camera->getCharacter(); //updates f5 player character...
+	}
+	renderer->drawCharacters(projection, view, deltaTime);
 }
 
 void App::debugWindow() {

@@ -82,4 +82,9 @@ void main() {
     FragColor.a = clamp(waterDepth/5.0, 0.0, 1.0); // softens the edges of the water
 //    FragColor = normalMapColor;
 //    FragColor = vec4(waterDepth/50.0);
+
+	if (!gl_FrontFacing) {
+		// draw the inside with transparency
+		FragColor.a *= 0.8;   // or special tint
+	}
 }

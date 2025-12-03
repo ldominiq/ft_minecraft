@@ -1,8 +1,7 @@
 
 #include "PlayerMovement.hpp"
 
-glm::vec3 tempVector = glm::vec3(0, 150, 0);
-PlayerMovement::PlayerMovement():	LivingEntity(tempVector)
+PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0, 150, 0))
 {
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;

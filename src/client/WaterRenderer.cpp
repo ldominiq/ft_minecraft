@@ -88,7 +88,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
-    lighting->drawSky(skyView, projection, reflectCamPos);
+    // lighting->drawSky(skyView, projection, reflectCamPos);
     renderer->render(sceneShader);
 
     glDisable(GL_CLIP_DISTANCE0);

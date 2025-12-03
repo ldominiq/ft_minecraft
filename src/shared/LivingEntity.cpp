@@ -3,6 +3,7 @@
 
 //server
 LivingEntity::LivingEntity(glm::vec3 &position) : Entity(position) {}
+LivingEntity::LivingEntity(glm::vec3 position) : Entity(position) {}
 
 //client
 LivingEntity::LivingEntity(glm::vec3 &position, float yaw, entityID ID): Entity(position, yaw ,ID) {}

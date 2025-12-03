@@ -54,7 +54,7 @@ bool Chunk::isBlockVisible(glm::ivec3 pos) {
 
 	if (!hasAllAdjacentChunkLoaded()) return false;
 
-    if (getBlock(x,y,z) == BlockType::AIR)
+    if (!isBlockSolid(getBlock(x,y,z)))
         return false;
 
     auto getBlockOrNeighbor = [&](int dx, int dy, int dz, Direction dir) -> BlockType {
@@ -72,12 +72,12 @@ bool Chunk::isBlockVisible(glm::ivec3 pos) {
 		return getBlock(x + dx, y + dy, z + dz);
     };
 
-    return getBlockOrNeighbor(0, 0, +1, NORTH) == BlockType::AIR ||
-           getBlockOrNeighbor(0, 0, -1, SOUTH) == BlockType::AIR ||
-           y == HEIGHT - 1 || getBlockOrNeighbor(0, +1, 0, NONE) == BlockType::AIR ||
-           y == 0 || getBlockOrNeighbor(0, -1, 0, NONE) == BlockType::AIR ||
-           getBlockOrNeighbor(+1, 0, 0, EAST) == BlockType::AIR ||
-           getBlockOrNeighbor(-1, 0, 0, WEST) == BlockType::AIR;
+    return !isBlockSolid(getBlockOrNeighbor(0, 0, +1, NORTH)) ||
+           !isBlockSolid(getBlockOrNeighbor(0, 0, -1, SOUTH)) ||
+           y == HEIGHT - 1 || !isBlockSolid(getBlockOrNeighbor(0, +1, 0, NONE)) ||
+           y == 0 || !isBlockSolid(getBlockOrNeighbor(0, -1, 0, NONE)) ||
+           !isBlockSolid(getBlockOrNeighbor(+1, 0, 0, EAST)) ||
+           !isBlockSolid(getBlockOrNeighbor(-1, 0, 0, WEST));
 }
 
 void Chunk::saveToStream(std::ostream& out) const {
