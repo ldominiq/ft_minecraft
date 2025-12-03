@@ -11,7 +11,7 @@ LivingEntitiesManager::~LivingEntitiesManager()
 	destroyCube();
 }
 
-void LivingEntitiesManager::add(std::shared_ptr<Character> character)
+void LivingEntitiesManager::add(std::shared_ptr<IClientEntity> character)
 {
 	characters.push_back(character);
 }

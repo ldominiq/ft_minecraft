@@ -18,6 +18,12 @@
 
 #define JUMP_VELOCITY	0.42f
 
+enum LivingEntityType : uint16_t
+{
+	PLAYER = 0,
+	CREEPER = 4,
+};
+
 class LivingEntity : public Entity
 {
 	protected :
@@ -28,17 +34,19 @@ class LivingEntity : public Entity
 
 		virtual void doJump(const ICommonWorld &world);
 
+		LivingEntityType type;
+
 	public:
 
-		LivingEntity(glm::vec3 &position);
-		LivingEntity(glm::vec3 position);
-		LivingEntity(glm::vec3 &position, float yaw, entityID ID);
+		LivingEntity(const glm::vec3 &position);
+		LivingEntity(const glm::vec3 &position, float yaw, entityID ID);
 		virtual ~LivingEntity() = 0;
 
 		glm::vec3 Front = glm::vec3(0, 0, 0);
 		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::LIVING_ENTITIES; }
+		inline LivingEntityType getLivingEntityType() const { return type; }
 		glm::vec3 getDesiredMove() override;
 };
 

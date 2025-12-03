@@ -1,9 +1,8 @@
 
 #include "Character.hpp"
 
-Character::Character(glm::vec3 &position, float yaw, entityID ID) : LivingEntity(position, yaw, ID)
+Character::Character(const glm::vec3 &position)
 {
-	createCharacterAt(position);
 }
 
 void Character::createCharacterAt(const glm::vec3 &pos)
@@ -169,23 +168,32 @@ void Character::walkAnimation(float deltaTime)
         glm::translate(glm::mat4(1.0f), glm::vec3(0, -legPivotY, 0));
 }
 
-//make it delta too?
-void Character::jumpAnimation(float currentFrame)
+void Character::jumpAnimation(float dt)
 {
     float jumpHeight = 2.0f;
     float jumpDuration = 0.7f;
-    float t = currentFrame / jumpDuration;
+
+    characterBodyParts.jumpPhase += dt;
+    float t = characterBodyParts.jumpPhase / jumpDuration;
 
     if (t >= 1.0f)
     {
+        // Remove any remaining jump offset
+        characterBodyParts.character.translation -= glm::translate(glm::mat4(1.0f), glm::vec3(0, characterBodyParts.jumpOffset, 0));
+        characterBodyParts.jumpOffset = 0.0f;
         characterBodyParts.onJumpAnimation = false;
+        characterBodyParts.jumpPhase = 0.0f;
         return;
     }
 
-    // Smooth jump curve
+    // Compute new offset
     float curve = -4.0f * (t - 0.5f) * (t - 0.5f) + 1.0f; // 0 → 1 → 0
-    float jumpOffset = curve * jumpHeight;
+    float newOffset = curve * jumpHeight;
 
-    characterBodyParts.character.translation = glm::translate(glm::mat4(1.0f),
-											 position + glm::vec3(0, jumpOffset, 0));
+    // Apply delta to translation
+    float deltaOffset = newOffset - characterBodyParts.jumpOffset;
+    characterBodyParts.character.translation = glm::translate(characterBodyParts.character.translation, glm::vec3(0, deltaOffset, 0));
+
+    // Store current offset
+    characterBodyParts.jumpOffset = newOffset;
 }
