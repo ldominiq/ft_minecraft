@@ -86,4 +86,5 @@ void main() {
 	if (!gl_FrontFacing) {
 		// draw the inside with transparency
 		FragColor.a *= 0.8;
+	}
 }

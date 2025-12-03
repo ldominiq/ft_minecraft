@@ -239,12 +239,12 @@ void Server::sendAll()
 
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
-		sendEntitiesPositionDeltas(p);
 		sendImGuiData(p);
 		sendNewlyUpdatedBlocks(p);
 		sendMessage(p);
 		//hit/dmg ..
 	}
+	sendEntitiesPositionDeltas();
 	world->updatedBlocks.clear();
 	if (!messages.empty())
 		messages.pop_front();
@@ -331,14 +331,14 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 }
 
 // TODO : delta compression AND refactor this sh*t (put in a snapshot and send multiple at once or something) AND only send if the item moved
-void Server::sendEntitiesPositionDeltas(CPlayerInfo &player)
+void Server::sendEntitiesPositionDeltas()
 {
 	//gotta exclude current player
 	for (auto &entity : world->livingEntities)
 	{
-		if (entity != player.movement && entity->positionUpdated)
+		for (CPlayerInfo &p : players)
 		{
-			entity->positionUpdated = false;
+			if (entity == p.movement || !entity->positionUpdated) continue;
 
 			NetEntityMove pkt;
 
@@ -353,14 +353,18 @@ void Server::sendEntitiesPositionDeltas(CPlayerInfo &player)
 
 			pkt.yaw = entity->yaw;
 
-			sendPacketTo(pkt, player.addr);
+			sendPacketTo(pkt, p.addr);
 		}
+
+		entity->positionUpdated = false;
 	}
 
 	for (auto &entity : world->itemEntities)
 	{
-		if (entity->positionUpdated)
+		for (CPlayerInfo &p : players)
 		{
+			if (!entity->positionUpdated) continue;
+
 			NetEntityMove pkt;
 
 			// TODO : only send if items moved
@@ -374,8 +378,10 @@ void Server::sendEntitiesPositionDeltas(CPlayerInfo &player)
 
 			pkt.yaw = entity->yaw;
 
-			sendPacketTo(pkt, player.addr);
+			sendPacketTo(pkt, p.addr);
 		}
+
+		entity->positionUpdated = false;
 	}
 }
 

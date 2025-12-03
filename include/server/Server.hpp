@@ -56,8 +56,8 @@ private:
 	void sendImGuiData(CPlayerInfo &player);
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
-	void sendEntitiesPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player);
+	void sendEntitiesPositionDeltas();
 
 public:
     Server();
