@@ -63,21 +63,17 @@ void Character::createCharacterAt(const glm::vec3 &pos)
     leftCalf->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
     leftLeg->addChild(leftCalf);
 
-    s_character cc{
-        .character = character,
-        .head = head,
-        .torso = torso,
-        .rightArm = rightArm,
-        .leftArm = leftArm,
-        .rightForearm = rightForearm,
-        .leftForearm = leftForearm,
-        .rightLeg = rightLeg,
-        .leftLeg = leftLeg,
-        .rightCalf = rightCalf,
-        .leftCalf = leftCalf
-    };
-
-	c = cc;
+    characterBodyParts.character = character;
+    characterBodyParts.head = head;
+    characterBodyParts.torso = torso;
+    characterBodyParts.rightArm = rightArm;
+    characterBodyParts.leftArm = leftArm;
+    characterBodyParts.rightForearm = rightForearm;
+    characterBodyParts.leftForearm = leftForearm;
+    characterBodyParts.rightLeg = rightLeg;
+    characterBodyParts.leftLeg = leftLeg;
+    characterBodyParts.rightCalf = rightCalf;
+    characterBodyParts.leftCalf = leftCalf;
 }
 
 // void Character::walkAnimation(float deltaTime)
@@ -108,24 +104,24 @@ void Character::walkAnimation(float deltaTime)
 {
     float walkAmplitude = 1.0f;
 
-    c.onWalkAnimation = true;
+    characterBodyParts.onWalkAnimation = true;
 
-    float oldPhase = c.walkPhase;
+    float oldPhase = characterBodyParts.walkPhase;
 
     // Advance phase
-    c.walkPhase += deltaTime * c.walkingAnimationSpeed;
+    characterBodyParts.walkPhase += deltaTime * characterBodyParts.walkingAnimationSpeed;
 
     // --- Detect full cycle completion ---
-    if (floor(oldPhase) != floor(c.walkPhase))
+    if (floor(oldPhase) != floor(characterBodyParts.walkPhase))
     {
         // Completed a full animation cycle
-        c.walkPhase = 0.0f;
-        c.onWalkAnimation = false;
+        characterBodyParts.walkPhase = 0.0f;
+        characterBodyParts.onWalkAnimation = false;
     }
 
     // Normalized cycle 0..1
-    float norm = c.walkPhase - floor(c.walkPhase);
-    c.normalizedWalkAnimationCycle = norm;
+    float norm = characterBodyParts.walkPhase - floor(characterBodyParts.walkPhase);
+    characterBodyParts.normalizedWalkAnimationCycle = norm;
 
     // Angle for limbs
     float angle = sin(norm * 2.0f * M_PI) * walkAmplitude;
@@ -133,19 +129,19 @@ void Character::walkAnimation(float deltaTime)
     // ---- Arms ----
     float pivotY = +armScaleY * 0.5f;
 
-    c.leftArm->rotation =
+    characterBodyParts.leftArm->rotation =
         glm::translate(glm::mat4(1.0f), glm::vec3(0, pivotY, 0)) *
         glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0,0,1)) *
         glm::translate(glm::mat4(1.0f), glm::vec3(0, -pivotY, 0));
 
-    c.rightArm->rotation =
+    characterBodyParts.rightArm->rotation =
         glm::translate(glm::mat4(1.0f), glm::vec3(0, pivotY, 0)) *
         glm::rotate(glm::mat4(1.0f), -angle, glm::vec3(0,0,1)) *
         glm::translate(glm::mat4(1.0f), glm::vec3(0, -pivotY, 0));
 
     if (angle >= 0)
     {
-        c.leftForearm->rotation =
+        characterBodyParts.leftForearm->rotation =
             glm::translate(glm::mat4(1.0f), glm::vec3(0, -1.5f, 0)) *
             glm::rotate(glm::mat4(1.0f), angle * 1.2f, glm::vec3(0,0,1)) *
             glm::translate(glm::mat4(1.0f), glm::vec3(0, 1.5f, 0));
@@ -153,7 +149,7 @@ void Character::walkAnimation(float deltaTime)
 
     if (angle <= 0)
     {
-        c.rightForearm->rotation =
+        characterBodyParts.rightForearm->rotation =
             glm::translate(glm::mat4(1.0f), glm::vec3(0, -1.5f, 0)) *
             glm::rotate(glm::mat4(1.0f), angle * -1.2f, glm::vec3(0,0,1)) *
             glm::translate(glm::mat4(1.0f), glm::vec3(0, 1.5f, 0));
@@ -162,12 +158,12 @@ void Character::walkAnimation(float deltaTime)
     // ---- Legs ----
     float legPivotY = -legScaleY * 0.5f;
 
-    c.leftLeg->rotation =
+    characterBodyParts.leftLeg->rotation =
         glm::translate(glm::mat4(1.0f), glm::vec3(0, legPivotY, 0)) *
         glm::rotate(glm::mat4(1.0f), -angle * 0.8f, glm::vec3(0,0,1)) *
         glm::translate(glm::mat4(1.0f), glm::vec3(0, -legPivotY, 0));
 
-    c.rightLeg->rotation =
+    characterBodyParts.rightLeg->rotation =
         glm::translate(glm::mat4(1.0f), glm::vec3(0, legPivotY, 0)) *
         glm::rotate(glm::mat4(1.0f), angle * 0.8f, glm::vec3(0,0,1)) *
         glm::translate(glm::mat4(1.0f), glm::vec3(0, -legPivotY, 0));
@@ -182,7 +178,7 @@ void Character::jumpAnimation(float currentFrame)
 
     if (t >= 1.0f)
     {
-        c.onJumpAnimation = false;
+        characterBodyParts.onJumpAnimation = false;
         return;
     }
 
@@ -190,6 +186,6 @@ void Character::jumpAnimation(float currentFrame)
     float curve = -4.0f * (t - 0.5f) * (t - 0.5f) + 1.0f; // 0 → 1 → 0
     float jumpOffset = curve * jumpHeight;
 
-    c.character.translation = glm::translate(glm::mat4(1.0f),
+    characterBodyParts.character.translation = glm::translate(glm::mat4(1.0f),
 											 position + glm::vec3(0, jumpOffset, 0));
 }

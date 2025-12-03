@@ -14,6 +14,7 @@ Entity::Entity(glm::vec3 &position, float yaw, entityID ID): position(position),
 
 Entity::~Entity()
 {
+	//if for some reason the entity is copied this could create issues (invalidate it's ID). Entities should be staying as unique/shared pointers.
 	idManager.release(ID);
 }
 
@@ -111,6 +112,7 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 
 	// attempt Y movement
 
+	//NOT CURRENTLY DOING STEP LOGIC. But the boilerplate is still there just in case it's needed in the near future..
 	onGround = false;
 	float remainingDy = velocity.y;
 	while (std::abs(remainingDy) > 0.0f + EPS) {

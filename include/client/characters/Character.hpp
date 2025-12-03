@@ -55,7 +55,7 @@ class Character : public LivingEntity
 	
 	bool doDraw = true;
 	public:
-		s_character c;
+		s_character characterBodyParts;
 
 		const inline void setDoDraw(bool value) {doDraw = value;}
 		const inline bool DoDraw() const {return doDraw;}

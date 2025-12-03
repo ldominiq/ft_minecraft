@@ -409,8 +409,8 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 //todo: if perf is an issue also add a check for depth <= currPropagation
 std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialBlockPos)
 {
-	std::vector<s_waterPath> furthestsblocksPath;
-	std::vector<s_waterPath> newFurthestsblocksPath;
+	std::vector<s_waterPath> furthestsBlocksPath;
+	std::vector<s_waterPath> newFurthestsBlocksPath;
 	std::unordered_set<glm::ivec3> visited;
 	std::vector<s_waterPath> finalPaths;
 
@@ -427,11 +427,11 @@ std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialB
 	int depth = 0;
 	bool pathFound = false;
 
-	furthestsblocksPath.push_back({});
+	furthestsBlocksPath.push_back({});
 
 	while (depth <= 4 && !pathFound)
 	{
-		for (auto &currPath : furthestsblocksPath)
+		for (auto &currPath : furthestsBlocksPath)
 		{
 			for (auto &dir : directions)
 			{
@@ -453,11 +453,11 @@ std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialB
 						finalPaths.push_back(newPath);
 					}
 					else
-						newFurthestsblocksPath.push_back(newPath);
+						newFurthestsBlocksPath.push_back(newPath);
 				}
 			}
 		}
-		furthestsblocksPath = std::move(newFurthestsblocksPath);
+		furthestsBlocksPath = std::move(newFurthestsBlocksPath);
 		depth++;
 	}
 
@@ -489,7 +489,7 @@ std::vector<std::shared_ptr<s_liquid>> World::waterFlowTowardsShortestPath(const
 		newWaterPath.currPath = std::vector<glm::ivec3>(
 			path.currPath.begin() + 1, path.currPath.end());
 
-		auto it = newLiquids.find(position);
+		auto it = liquidsManager.liquids.find(position);
 		if (it == liquidsManager.liquids.end())
 		{
 			std::shared_ptr<s_liquid> newLiquidPtr = std::make_shared<s_liquid>();
@@ -800,7 +800,7 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 	}
 	else
 	{
-		// if water was there removed it
+		// if water was there, removed it
 		auto liquidIt = liquidsManager.liquids.find(targetCoords);
 		if (liquidIt != liquidsManager.liquids.end())
 			liquidsManager.liquids.erase(targetCoords);

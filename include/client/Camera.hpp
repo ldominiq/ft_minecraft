@@ -29,8 +29,8 @@ class Camera {
 	float serverTick = 0;
 	float prevServerTick = 0;
 
-	std::shared_ptr<Character> c;
-	bool F5 = false;
+	std::shared_ptr<Character> characterModel;
+	bool thirdPersonCamera = false;
 
 public:
 	PlayerMovement movement;
@@ -59,8 +59,8 @@ public:
 	void drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 
 	std::shared_ptr<Character> getCharacter();
-	const inline bool isf5Active() const {return F5;}
-	const inline void toggleF5() {F5 = !F5; c->setDoDraw(F5);}
+	const inline bool isThirdPersonCameraActive() const {return thirdPersonCamera;}
+	const inline void toggleThirdPersonCamera() {thirdPersonCamera = !thirdPersonCamera; characterModel->setDoDraw(thirdPersonCamera);}
 };
 
 

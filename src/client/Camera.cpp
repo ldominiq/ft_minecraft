@@ -6,9 +6,9 @@ Camera::Camera(glm::vec3 position)
 	initWireframeCube();
 
 	glm::vec3 a(0,0,0);
-	c = std::make_shared<Character>(a, movement.yaw, -1); //-1 get converted to max int cause uint32
-	c->createCharacterAt(movement.getPosition());
-	c->setDoDraw(false);
+	characterModel = std::make_shared<Character>(a, movement.yaw, -1); //-1 get converted to max int cause uint32
+	characterModel->createCharacterAt(movement.getPosition());
+	characterModel->setDoDraw(false);
 }
 
 Camera::~Camera() {
@@ -26,7 +26,7 @@ Camera::~Camera() {
 
 glm::mat4 Camera::getViewMatrix() const
 {
-	if (!F5)
+	if (!thirdPersonCamera)
 		return glm::lookAt(movement.getPosition(), movement.getPosition() + movement.Front, movement.WorldUp);
 
 	float cameraDistance = 3.0f;  // behind the player
@@ -209,8 +209,8 @@ void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer,
 
 std::shared_ptr<Character> Camera::getCharacter()
 {
-	c->yaw = movement.yaw;
-	c->pitch = movement.pitch;
-	c->setPosition(movement.getPosition());
-	return c;
+	characterModel->yaw = movement.yaw;
+	characterModel->pitch = movement.pitch;
+	characterModel->setPosition(movement.getPosition());
+	return characterModel;
 }

@@ -6,7 +6,7 @@ PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0, 150, 0))
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;
 	this->entityHeight = 1.8f;
-    // this->Front = glm::vec3(0.0f, 0.0f, -1.0f);
+    this->Front = glm::vec3(0.0f, 0.0f, -1.0f); //not really needed
 	yaw = 0;
 	pitch = 0;
 }
@@ -57,7 +57,6 @@ void PlayerMovement::updateCameraVectors() {
     front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
     this->Front = glm::normalize(front);
     this->Right = glm::normalize(glm::cross(this->Front, this->WorldUp));
-    // this->WorldUp    = glm::normalize(glm::cross(this->Right, this->Front));
 }
 
 void PlayerMovement::doJump(const ICommonWorld &world)

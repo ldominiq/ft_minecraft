@@ -57,6 +57,7 @@
     X(TOGGLE_SHADER)		\
     X(TOGGLE_DEBUG)			\
     X(CLOSE_WINDOW)			\
+	X(THIS_PERSON_CAMERA)	\
 
 enum controls {
 #define X(name) name,

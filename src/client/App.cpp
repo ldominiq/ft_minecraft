@@ -545,7 +545,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 		// if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
 	}
 
-	if (camera->isf5Active())
+	if (camera->isThirdPersonCameraActive())
 	{
 		camera->getCharacter(); //updates f5 player character...
 	}
@@ -1037,6 +1037,7 @@ void App::loadControlsDefaults() {
     controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_TAB;
     controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
+	controlsArray[THIS_PERSON_CAMERA]	= GLFW_KEY_F5;
 }
 
 void App::loadControlsFromFile(const char* filename) {
@@ -1146,7 +1147,7 @@ void App::processInput() {
     static bool f1Held  = false;
     static bool f2Held  = false;
     static bool f4Held  = false;
-	static bool f5Active = false;
+	static bool ThirdPersonCameraKeyActive = false;
     static bool tabHeld = false;
 
 	//reload chunk. F3 + A; TODO : also add the neighbours logic. Otherwise some "walls" could be rendered
@@ -1193,12 +1194,12 @@ void App::processInput() {
         f4Held = false;
     }
 
-	if (glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS && !f5Active) {
-		f5Active = true;
-		camera->toggleF5();
+	if (glfwGetKey(window, controlsArray[THIS_PERSON_CAMERA]) == GLFW_PRESS && !ThirdPersonCameraKeyActive) {
+		ThirdPersonCameraKeyActive = true;
+		camera->toggleThirdPersonCamera();
 	}
-	if (glfwGetKey(window, GLFW_KEY_F5) == GLFW_RELEASE && f5Active) {
-		f5Active = false;
+	if (glfwGetKey(window, controlsArray[THIS_PERSON_CAMERA]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
+		ThirdPersonCameraKeyActive = false;
 	}
 
     // Start by getting the ImGui IO structure.  We will respect its capture flags

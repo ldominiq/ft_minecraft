@@ -42,6 +42,4 @@ private:
     int location_transformationMatrix = -1;;
 };
 
-unsigned int loadTexture(const char* path);
-
 #endif
