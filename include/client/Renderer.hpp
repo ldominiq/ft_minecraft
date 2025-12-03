@@ -16,6 +16,11 @@
 #include "Protocol.hpp"
 #include "CommonWorld.hpp"
 
+#include "ItemPropEntity.hpp"
+#include "LivingEntity.hpp"
+
+#include "LivingEntitiesManager.hpp"
+
 // previously half of World
 
 struct chunkData {
@@ -35,6 +40,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
 
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
+	std::unordered_map<ItemID, std::shared_ptr<Entity>> entitiesMap; //fast lookup
 
 	public:
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
@@ -60,6 +66,10 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		inline size_t getVisibleChunkCount() const {
 			return renderedChunks.size();
 		}
+
+		LivingEntitiesManager livingEntitiesManager;
+		void onEntity(NetEntityMove &pkt, const float &lastTickClientTime);	// handles NetEntityMove packet
+		void drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime);
 };
 
 #endif

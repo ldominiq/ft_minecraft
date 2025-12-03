@@ -14,7 +14,7 @@
 #include "Protocol.hpp"
 #include "World.hpp"
 #include "PlayerInfo.hpp"
-
+#include "ItemEntity.hpp"
 #include "Config.hpp"
 
 class Server {
@@ -48,6 +48,7 @@ private:
 	void receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr);
 
 	void sendAll();
+	void sendNewGroupPacketTo(std::vector<PacketPtr> &pkts, const sockaddr_in &cliaddr);
 	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
 	void sendAccept(const sockaddr_in &cliaddr);
 	
@@ -56,6 +57,7 @@ private:
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player);
+	void sendEntitiesPositionDeltas();
 
 public:
     Server();

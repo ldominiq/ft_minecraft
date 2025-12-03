@@ -21,12 +21,15 @@ enum class PacketType : uint8_t {
 	PLAYER_INPUT,		// C2S
 	PLAYER_MOUSE_INPUT,	// C2S
 	PLAYER_MOVE,		// S2C
+	NET_ENTITY_MOVE,	// S2C TODO : put it inside a snapshot and send multiple at once.
 	CHUNK_HEADER,		// S2C
 	CHUNK_DATA,			// S2C
 	MODIFIED_BLOCK_DATA,// S2C
 	NET_DISCONNECT,		// C2S
 	NET_MESSAGE,		// S2C && C2S
     NET_IMGUI,          // S2C
+
+	GROUP,				// for grouped packets
 };
 
 enum class PacketFlags : uint8_t {
@@ -34,6 +37,11 @@ enum class PacketFlags : uint8_t {
     Vita            = 1 << 0,
     Compressed      = 1 << 1,
     FinalChunk      = 1 << 2,
+};
+
+enum EEntityTypes : uint8_t {
+	ITEMS = 0,
+	LIVING_ENTITIES,
 };
 
 enum Inputs : uint16_t {
@@ -44,6 +52,8 @@ enum Inputs : uint16_t {
 	IN_UP			= 1 << 4, //jump
 	IN_DOWN			= 1 << 5,
 	IN_RUN			= 1 << 6,
+	IN_DROP			= 1 << 7,
+
 	// IN_TOGGLE_UI	= 1 << 10, // e.g. F4
 	// … up to 16 for uint16_t, or expand to uint32_t later
 };
@@ -108,7 +118,7 @@ struct BufferWriter {
         write_bytes(reinterpret_cast<const uint8_t*>(s.data()), s.size());
     }
 
-    std::vector<uint8_t> take(){ return std::move(buf); }
+    std::vector<uint8_t> take(){ return buf; }
 };
 
 struct BufferReader {

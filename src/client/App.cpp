@@ -65,6 +65,8 @@ void App::init() {
 
     chat = std::make_unique<Chat>(windowedWidth, windowedHeight);
 
+	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>();
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -131,6 +133,7 @@ void App::init() {
 				case GLFW_KEY_SPACE: return IN_UP;   // jump
 				case GLFW_KEY_LEFT_SHIFT: return IN_RUN;
 				case GLFW_KEY_LEFT_CONTROL: return IN_DOWN;
+				case GLFW_KEY_Q: return IN_DROP;
 				default: return 0; // key not tracked
 			}
 		};
@@ -191,6 +194,8 @@ void App::init() {
     ImGui_ImplOpenGL3_Init("#version 460");
 
 	loadControlsFromFile();
+
+	renderer->livingEntitiesManager.add(camera->getCharacter());
 }
 
 void App::setUdpClientPacketCallback()
@@ -198,6 +203,16 @@ void App::setUdpClientPacketCallback()
 	udpClient->setCallback([this](const PacketPtr& pkt) {
 
 		switch (pkt->type) {
+
+			case PacketType::GROUP: {
+				auto& g = static_cast<NetPacketGroup&>(*pkt);
+				for (auto& inner : g.unpack()) {
+					if (udpClient->onPacket)
+						udpClient->onPacket({ std::move(inner) });
+				}
+				break;
+			}
+
 			case PacketType::NET_ACCEPT: {
 				auto& p = static_cast<NetAccept&>(*pkt);
 				std::cout << "Client accepted! id=" << p.clientId << "\n";
@@ -223,6 +238,12 @@ void App::setUdpClientPacketCallback()
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
 				lastTickClientTime = glfwGetTime();
 				camera->onSnapshot(p, *renderer);
+				break;
+			}
+
+			case PacketType::NET_ENTITY_MOVE: {
+				auto& p = static_cast<NetEntityMove&>(*pkt);
+				renderer->onEntity(p, lastTickClientTime);
 				break;
 			}
 
@@ -313,11 +334,11 @@ void App::render() {
 			accumulator -= tickDuration;
 		}
 
-		const double mouseIdleThreshold = 0.2; // seconds, tweak to taste
-		if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
-			mouseMovedRecently = false;
-
 		camera->lerpToNextPosition(glfwGetTime() - lastTickClientTime);
+
+		// const double mouseIdleThreshold = 0.2; // seconds
+		// if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
+		// 	mouseMovedRecently = false;
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -418,6 +439,14 @@ void App::render() {
     	// Render water with proper shader setup
     	waterRenderer->renderWaterSurface(projection);
 
+		const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
+		const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));
+
+		renderer->buildChunks();
+		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
+        camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+
+        glBindVertexArray(0);
         {
     		// Dynamically build GUI textures based on debug flags
     		guis.clear();
@@ -495,6 +524,32 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
     camera->drawWireframeSelectedBlockFace(renderer, view, projection);
     glBindVertexArray(0);
+
+	//THIS CODE IS AWFULLY BAD
+	//items
+	for (auto &entity : renderer->itemEntities)
+	{
+		if (!entity->positionUpdated) continue ;
+		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+		entity->setPosition(newEntityPos);
+		if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+	}
+	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
+
+	//mobs
+	for (auto &entity : renderer->livingEntities)
+	{
+		if (!entity->positionUpdated) continue ;
+		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+		entity->setPosition(newEntityPos);
+		// if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+	}
+
+	if (camera->isThirdPersonCameraActive())
+	{
+		camera->getCharacter(); //updates f5 player character...
+	}
+	renderer->drawCharacters(projection, view, deltaTime);
 }
 
 void App::debugWindow() {
@@ -982,6 +1037,7 @@ void App::loadControlsDefaults() {
     controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_TAB;
     controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
+	controlsArray[THIS_PERSON_CAMERA]	= GLFW_KEY_F5;
 }
 
 void App::loadControlsFromFile(const char* filename) {
@@ -1044,6 +1100,9 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	if (glfwGetKey(window, controlsArray[MOVE_FAST]) == GLFW_PRESS)
 		keys |= IN_RUN;
 	
+	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+        keys |= IN_DROP;
+
 	inputs.keys = keys;
 	inputs.pitch = camera->movement.getPitch();
 	inputs.yaw = camera->movement.getYaw();
@@ -1054,7 +1113,6 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	return inputs;
 }
 
-// TODO: make menus managed by a pointer or container later
 void App::processInputsMenus(int key, int action) {
 
 	// HANDLE EVENTS WHEN CHAT OPEN
@@ -1089,9 +1147,8 @@ void App::processInput() {
     static bool f1Held  = false;
     static bool f2Held  = false;
     static bool f4Held  = false;
+	static bool ThirdPersonCameraKeyActive = false;
     static bool tabHeld = false;
-    static bool leftMousePressedLastFrame = false;
-	static bool rightMousePressedLastFrame = false;
 
 	//reload chunk. F3 + A; TODO : also add the neighbours logic. Otherwise some "walls" could be rendered
 	if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS &&
@@ -1136,6 +1193,14 @@ void App::processInput() {
     if (glfwGetKey(window, GLFW_KEY_F4) == GLFW_RELEASE) {
         f4Held = false;
     }
+
+	if (glfwGetKey(window, controlsArray[THIS_PERSON_CAMERA]) == GLFW_PRESS && !ThirdPersonCameraKeyActive) {
+		ThirdPersonCameraKeyActive = true;
+		camera->toggleThirdPersonCamera();
+	}
+	if (glfwGetKey(window, controlsArray[THIS_PERSON_CAMERA]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
+		ThirdPersonCameraKeyActive = false;
+	}
 
     // Start by getting the ImGui IO structure.  We will respect its capture flags
     // when deciding whether to process game inputs.  Note: this call is valid

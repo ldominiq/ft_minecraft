@@ -24,6 +24,7 @@
 #include "Protocol.hpp"
 #include "PlayerInfo.hpp"
 #include "CommonWorld.hpp"
+#include "LiquidsManager.hpp"
 
 static constexpr int MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK = 20;
 static constexpr int REGION_SIZE = 32;
@@ -84,12 +85,15 @@ public:
     ~World();
 
 	int amountOfChunksSentThisTick = 0;
-	std::vector<std::weak_ptr<ChunkGeneration>> getRenderedChunks();
+	s_liquidsManager liquidsManager;
 
     void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
     void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
 
+	std::vector<s_waterPath> findShortestWaterPath(const glm::ivec3 &initialBlockPos);
+	std::vector<std::shared_ptr<s_liquid>> waterFlowTowardsShortestPath(const glm::ivec3 &initialBlockPos, const std::shared_ptr<s_liquid> &liquid, const std::vector<s_waterPath> &paths);
     void updateVisibleChunks(CPlayerInfo &player);
+	void updateLiquids();
 
     // Get or set the maximum number of chunk generation tasks that can run
     // simultaneously.  Lower values reduce CPU spikes at the cost of slower
@@ -107,8 +111,10 @@ public:
 	std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
 
 	void processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt);
-	
+	void updateEntitiesPosition();	
+
 	void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
+	void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
 };
 
 #endif //WORLD_HPP

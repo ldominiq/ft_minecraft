@@ -11,7 +11,6 @@
 
 #include "stb_image.h"
 
-
 class Shader {
 public:
     GLuint ID;

@@ -11,7 +11,7 @@
 #include "Renderer.hpp"
 #include "PlayerMovement.hpp"
 #include "GLFW/glfw3.h"
-
+#include "Character.hpp"
 
 class Camera {
 
@@ -21,15 +21,16 @@ class Camera {
 	void predictNTicks(const Renderer &world);
 	std::unique_ptr<Shader> blockWireframeShader = nullptr;
 
-	// //""Temporarily"" put some chunks in Camera.
-	// std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks;
-
 	int64_t amountOfSnapshotsReceived = 0;
 	glm::vec3 predictedPosition;
 	glm::vec3 previousPosition;
 
-	double serverTick = 0;
-	double prevServerTick = 0;
+	//TODO : get all the tick logic elsewhere;
+	float serverTick = 0;
+	float prevServerTick = 0;
+
+	std::shared_ptr<Character> characterModel;
+	bool thirdPersonCamera = false;
 
 public:
 	PlayerMovement movement;
@@ -45,20 +46,21 @@ public:
     glm::mat4 getViewMatrix() const;
     void processMouseMovement(float xoffset, float yoffset);
 	void onSnapshot(NetPlayerMove &pkt, const Renderer &world);
-	void lerpToNextPosition(float time);
+	void lerpToNextPosition(float deltaTime);
 
-	// inline const float getYaw() const { return movement.yaw; }
-	// inline const float getPitch() const { return movement.pitch; }
+	//maybe refactor some day and put somewhere else
+	glm::vec3 lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition);
+
 	inline const uint8_t getLoadRadius() const { return loadRadius; }
 	// inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
 
-	// inline const glm::vec3 getPosition() const { return movement.getPosition(); }
-	// inline const glm::vec3 getCameraDir() const { return movement.getCameraDir(); }
 	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
 
-	// inline void setPosition(glm::vec3 position) { movement.setPosition(position); }
-
 	void drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
+
+	std::shared_ptr<Character> getCharacter();
+	const inline bool isThirdPersonCameraActive() const {return thirdPersonCamera;}
+	const inline void toggleThirdPersonCamera() {thirdPersonCamera = !thirdPersonCamera; characterModel->setDoDraw(thirdPersonCamera);}
 };
 
 

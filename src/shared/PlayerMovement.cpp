@@ -6,7 +6,7 @@ PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0, 150, 0))
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;
 	this->entityHeight = 1.8f;
-    this->Front = glm::vec3(0.0f, 0.0f, -1.0f);
+    this->Front = glm::vec3(0.0f, 0.0f, -1.0f); //not really needed
 	yaw = 0;
 	pitch = 0;
 }
@@ -28,6 +28,8 @@ void PlayerMovement::updatePosition()
     // Minecraft'ish camera. Doesn't move along the Y axis
     glm::vec3 horizontalFront = glm::normalize(glm::vec3(this->Front.x, 0.0f, this->Front.z));
 
+	glm::vec3 prevPosition = this->position;
+
 	// 4 directions
     if (inputs.keys & IN_FORWARD)
         this->position += horizontalFront * velocity;
@@ -43,6 +45,9 @@ void PlayerMovement::updatePosition()
 		this->position.y += this->WorldUp.y * velocity;
 	if (inputs.keys & IN_DOWN)
 		this->position.y -= this->WorldUp.y * velocity; 
+
+	if (prevPosition != this->position)
+		positionUpdated = true;
 }
 
 void PlayerMovement::updateCameraVectors() {
@@ -52,7 +57,6 @@ void PlayerMovement::updateCameraVectors() {
     front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
     this->Front = glm::normalize(front);
     this->Right = glm::normalize(glm::cross(this->Front, this->WorldUp));
-    this->Up    = glm::normalize(glm::cross(this->Right, this->Front));
 }
 
 void PlayerMovement::doJump(const ICommonWorld &world)
@@ -64,8 +68,8 @@ void PlayerMovement::doJump(const ICommonWorld &world)
 	// jump
 	this->jump = lastInputsPktRecvd.keys & IN_UP;
 	const float JUMP_EPS = 0.01f; // TODO (when physics (with pred) work) RECHECK THIS IS USEFUL
-	if (this->jump && onGround && this->verticalVelocity <= JUMP_EPS) {
-		this->verticalVelocity = JUMP_VELOCITY;
+	if (this->jump && onGround && this->velocity.y <= JUMP_EPS) {
+		this->velocity.y = JUMP_VELOCITY;
 		this->onGround = false;
 		jumpBoostApplied = false;
 	}
@@ -129,6 +133,8 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 	constexpr float forehead = 0.3f;
 	float headHeight = this->entityHeight - forehead;
 	this->position.y -= headHeight;
+
+	// TODO : return early if no new packet to read and velocities are 0 and there is no collision with block under. To avoid doing unnecessary calculations. Do the same with every other entity
 
 	if (gamemode == GAMEMODES::SURVIVAL)
 	{

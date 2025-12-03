@@ -15,12 +15,11 @@
 #include "Renderer.hpp"
 #include "UDPClient.hpp"
 #include "Chat.hpp"
+#include "ItemPropEntityManager.hpp"
 #include "WaterFramebuffer.hpp"
 #include "RenderTypeFramebuffer.hpp"
 #include "WaterRenderer.hpp"
-#include "Block.hpp"
 #include "GuiTexture.hpp"
-
 
 #include <fstream>
 #include <sstream>
@@ -58,6 +57,7 @@
     X(TOGGLE_SHADER)		\
     X(TOGGLE_DEBUG)			\
     X(CLOSE_WINDOW)			\
+	X(THIS_PERSON_CAMERA)	\
 
 enum controls {
 #define X(name) name,
@@ -118,6 +118,8 @@ private:
     std::shared_ptr<Camera> camera;
 	GLFWmonitor* monitor;
     const GLFWvidmode* mode;
+
+	std::unique_ptr<ItemPropEntityManager> m_itemPropEntityManager;
 
 	std::shared_ptr<Renderer> renderer;
 	std::unique_ptr<WaterRenderer> waterRenderer;

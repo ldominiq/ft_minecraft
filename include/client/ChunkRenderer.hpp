@@ -3,8 +3,11 @@
 #define CHUNK_RENDERER_HPP
 
 #include <glad/glad.h>
-#include "Chunk.hpp"
+#include <cstring>
+
 #include "GLFW/glfw3.h"
+#include "Chunk.hpp"
+#include "blockRenderingHelperFunctions.hpp"
 
 class ChunkRenderer : public Chunk {
 
@@ -18,7 +21,7 @@ class ChunkRenderer : public Chunk {
 	uint waterMeshVerticesSize = 0;
 	std::vector<float> waterMeshVertices;
 
-	glm::vec2 getTextureOffset(const BlockType type, const int face);
+	// glm::vec2 getTextureOffset(const BlockType type, const int face);
     void addFace(int x, int y, int z, int face); // Add a face to the mesh vertices (solid blocks)
 	void addWaterFace(int x, int y, int z, int face); // Add a face to water mesh
 
@@ -27,12 +30,13 @@ class ChunkRenderer : public Chunk {
 		ChunkRenderer(std::istream& in);
 		~ChunkRenderer();
 
-		const int ATLAS_COLS = 10;
-		const int ATLAS_ROWS = 1;
+		bool needsUpdate = false;
+		bool neighbourNeedUpdate[4] { false };
 
 		// Release GL resources
 		void releaseGL();
 
+		void updateMesh();
 		void buildMesh(); // Build both solid and water meshes
 		void buildMeshData();
 		void uploadMesh();

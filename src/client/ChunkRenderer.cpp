@@ -29,56 +29,49 @@ ChunkRenderer::~ChunkRenderer() {
     }
 }
 
-// This function maps block type + face to UV offset
-glm::vec2 ChunkRenderer::getTextureOffset(const BlockType type, const int face) {
-    int col = 0;
-    int row = 0;
+void ChunkRenderer::updateMesh()
+{
+	buildMesh();
+	needsUpdate = false;
 
-    switch (type) {
-        case BlockType::GRASS:
-            if (face == 2)      { col = 0; row = 0; } // top
-            else if (face == 3) { col = 2; row = 0; } // bottom = dirt
-            else                { col = 1; row = 0; } // side = grass-side
-            break;
+	// //update possible neighbour
+	if (neighbourNeedUpdate[WEST]) {
+		if (auto westChunkBase = getAdjacentChunks()[WEST].lock()) {
+			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
+				if (westChunk->hasAllAdjacentChunkLoaded())
+					westChunk->buildMesh();
+			}
+		}
+	}
 
-        case BlockType::DIRT:
-            col = 2; row = 0;
-            break;
+	if (neighbourNeedUpdate[EAST]) {
+		if (auto eastChunkBase = getAdjacentChunks()[EAST].lock()) {
+			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
+				if (eastChunk->hasAllAdjacentChunkLoaded())
+					eastChunk->buildMesh();
+			}
+		}
+	}
 
-        case BlockType::STONE:
-            col = 3; row = 0;
-            break;
+	if (neighbourNeedUpdate[SOUTH]) {
+		if (auto southChunkBase = getAdjacentChunks()[SOUTH].lock()) {
+			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
+				if (southChunk->hasAllAdjacentChunkLoaded())
+					southChunk->buildMesh();
+			}
+		}
+	}
 
-        case BlockType::SAND:
-            col = 4; row = 0;
-            break;
+	if (neighbourNeedUpdate[NORTH]) {
+		if (auto northChunkBase = getAdjacentChunks()[NORTH].lock()) {
+			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
+				if (northChunk->hasAllAdjacentChunkLoaded())
+					northChunk->buildMesh();
+			}
+		}
+	}
 
-        case BlockType::SNOW:
-            col = 5; row = 0;
-            break;
-
-        case BlockType::WATER:
-            col = 6; row = 0;
-            break;
-            
-        case BlockType::BEDROCK:
-            col = 7; row = 0;
-            break;
-
-        case BlockType::LOG:
-            col = 8; row = 0;
-            break;
-        case BlockType::LEAVES:
-            col = 9; row = 0;
-            break;
-
-        default:
-            col = 0; row = 0;
-            std::cerr << "Unknown BlockType in getTextureOffset: " << static_cast<int>(type) << std::endl;
-            break;
-    }
-
-    return glm::vec2(col, row);
+	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
 }
 
 void ChunkRenderer::addFace(int x, int y, int z, int face) {
@@ -289,9 +282,9 @@ void ChunkRenderer::buildMeshData() {
                 // FRONT (+Z)
                 BlockType neighbor = getBlockOrNeighbor(x, y, z, 0, 0, +1, NORTH);
                 if (isWater) {
-                    // Water: only render face if neighbor is not water
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 0);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    // Water: only render face if neighbor is air
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 0);
+                } else if (!isBlockSolid(neighbor)) {
                     // Solid block: render if neighbor is air or water
                     addFace(x, y, z, 0);
                 }
@@ -299,40 +292,40 @@ void ChunkRenderer::buildMeshData() {
                 // BACK (-Z)
                 neighbor = getBlockOrNeighbor(x, y, z, 0, 0, -1, SOUTH);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 1);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 1);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 1);
                 }
 
                 // TOP (+Y)
                 neighbor = (y == HEIGHT - 1) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, +1, 0, NONE);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 2);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 2);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 2);
                 }
 
                 // BOTTOM (-Y)
                 neighbor = (y == 0) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, -1, 0, NONE);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 3);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 3);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 3);
                 }
 
                 // RIGHT (+X)
                 neighbor = getBlockOrNeighbor(x, y, z, +1, 0, 0, EAST);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 4);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 4);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 4);
                 }
 
                 // LEFT (-X)
                 neighbor = getBlockOrNeighbor(x, y, z, -1, 0, 0, WEST);
                 if (isWater) {
-                    if (neighbor != BlockType::WATER) addWaterFace(x, y, z, 5);
-                } else if (neighbor == BlockType::AIR || neighbor == BlockType::WATER) {
+                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 5);
+                } else if (!isBlockSolid(neighbor)) {
                     addFace(x, y, z, 5);
                 }
             }
