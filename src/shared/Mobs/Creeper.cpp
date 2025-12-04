@@ -6,12 +6,15 @@ Creeper::Creeper(const glm::vec3 &position):	LivingEntity(position)
 	type = CREEPER;
 
 	this->entityWidth = 0.6f;
-	this->entityHeight = 1.8f;
+	this->entityHeight = 20.0f;
 }
 
 Creeper::Creeper(const glm::vec3 &position, float yaw, entityID ID): LivingEntity(position, yaw ,ID)
 {
 	type = CREEPER;
+
+	this->entityWidth = 0.6f;
+	this->entityHeight = 20.0f;
 }
 
 glm::vec3 Creeper::getDesiredMove()

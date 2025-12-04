@@ -16,6 +16,9 @@ PlayerMovement::PlayerMovement(const glm::vec3 &position):	LivingEntity(position
 PlayerMovement::PlayerMovement(const glm::vec3 &position, float yaw, entityID ID): LivingEntity(position, yaw ,ID)
 {
 	type = PLAYER;
+
+	this->entityWidth = 0.6f;
+	this->entityHeight = 1.8f;
 }
 
 PlayerMovement::~PlayerMovement()

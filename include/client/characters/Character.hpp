@@ -38,8 +38,6 @@ class Character
 	bool doDraw = true;
 
 	protected:
-		float characterScale = 0.1;
-
 		float torsoScaleZ = 2.4f;
 		float torsoScaleY = 5.0f;
 
@@ -57,9 +55,13 @@ class Character
 		float legTransZ = 0.5f;
 		float legTransY = -((torsoScaleY/2.0f + legScaleY/2.0f) / legScaleY); // 0.875 = 3 (torso Y scale) / 2 (Y negative/positive) = 1.5, 4 (rightLeg Y scale) / 2 (Y negative/positive). 1.5+2 / 4 (rightleg Y scale as translation goes scale times fast)
 
-	virtual void createCharacterAt(const glm::vec3 &pos);
+		float characterScaleNorm = 1 / (torsoScaleY + headScaleY + legScaleY * 2.0f);
+
+	virtual void createCharacterAt(const glm::vec3 &pos, float characterScale);
 	public:
 		s_character characterBodyParts;
+
+		glm::vec3 YPositionOffset = {};
 
 		const inline void setDoDraw(bool value) {doDraw = value;}
 		const inline bool DoDraw() const {return doDraw;}

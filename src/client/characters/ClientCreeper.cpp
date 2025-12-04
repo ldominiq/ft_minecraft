@@ -3,14 +3,18 @@
 
 ClientCreeper::ClientCreeper(const glm::vec3 &position, float yaw, entityID ID) : Creeper(position, yaw, ID), IClientEntity(position,yaw,ID), Character(position), LivingEntity(position, yaw, ID)
 {
-	createCharacterAt(position);
+	createCharacterAt(position, entityHeight);
 }
 
-void ClientCreeper::createCharacterAt(const glm::vec3 &pos)
+void ClientCreeper::createCharacterAt(const glm::vec3 &pos, float characterScale)
 {
     Space character;
-    character.translation = glm::translate(glm::mat4(1.0f), pos);
-	character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(5));
+
+	float characterHeight = torsoScaleY + headScaleY + legScaleY * 2.0f;
+	float upTranslationRatio = (torsoScaleY / 2.0f + legScaleY * 2.0f) - ((characterHeight) / 2.0f);
+	YPositionOffset = glm::vec3(0, ((upTranslationRatio * characterScale * characterScaleNorm + characterHeight/2.0f) * characterScale * characterScaleNorm), 0);
+    character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
+	character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(characterScale * characterScaleNorm));
 
     // Torso
     auto torso = std::make_shared<Shape>(glm::vec3(0, 255, 0));

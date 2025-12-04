@@ -5,11 +5,16 @@ Character::Character(const glm::vec3 &position)
 {
 }
 
-void Character::createCharacterAt(const glm::vec3 &pos)
+void Character::createCharacterAt(const glm::vec3 &pos, float characterScale)
 {
-    Space character;
-    character.translation = glm::translate(glm::mat4(1.0f), pos);
-	character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(characterScale));
+	Space character;
+
+	//when building the character. First goes the toros which is centered in the middle. But then legs go under it. This next variable helps recentering the whole character whith his center being at 0.0.0
+	//these calculations make no sense. But for now it gives the impression that it works... (only the .scale is good)
+	float upTranslationRatio = (torsoScaleY + headScaleY + legScaleY * 2.0f) / (torsoScaleY / 2.0f + legScaleY * 2.0f);
+	YPositionOffset = glm::vec3(0, -(characterScale * characterScaleNorm * upTranslationRatio * 2), 0);
+    character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
+	character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(characterScale * characterScaleNorm));
 
     // Torso
     auto torso = std::make_shared<Shape>(glm::vec3(1,0,0));

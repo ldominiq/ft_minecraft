@@ -7,7 +7,7 @@
 
 class ClientCreeper : public Creeper, public IClientEntity
 {
-	void createCharacterAt(const glm::vec3 &pos) override;
+	void createCharacterAt(const glm::vec3 &pos, float characterScale) override;
 
 		public :
 

@@ -7,7 +7,7 @@
 
 class ClientPlayer : public PlayerMovement, public IClientEntity
 {
-	// void createCharacterAt(const glm::vec3 &pos) override;
+	// void createCharacterAt(const glm::vec3 &pos, float characterScale) override;
 
 		public :
 
