@@ -2,7 +2,7 @@
 #include "ItemEntity.hpp"
 
 //server
-ItemEntity::ItemEntity(glm::vec3 &position, float yaw, BlockType type, bool isLaunched):	Entity(position)
+ItemEntity::ItemEntity(const glm::vec3 &position, float yaw, BlockType type, bool isLaunched):	Entity(position)
 {
 	this->type = type;
 	this->yaw = yaw;
@@ -21,7 +21,7 @@ ItemEntity::ItemEntity(glm::vec3 &position, float yaw, BlockType type, bool isLa
 }
 
 //client
-ItemEntity::ItemEntity(glm::vec3 &position, float yaw, BlockType type, entityID ID): Entity(position, yaw, ID) 
+ItemEntity::ItemEntity(const glm::vec3 &position, float yaw, BlockType type, entityID ID): Entity(position, yaw, ID) 
 {
 	this->type = type;
 

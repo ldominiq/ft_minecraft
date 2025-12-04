@@ -46,7 +46,7 @@ struct AABB {
 
 class ICommonWorld;
 
-//idManager is shared across all Entity instances. It does not support multythreading in this current form. It could lead to race conditions. Must be single threaded
+//idManager is shared across all Entity instances. It does not support multithreading in this current form. It could lead to race conditions. Must be single threaded
 class ItemEntityIDManager {
 
 	entityID nextID = 1;                 // start from 1 (0 = invalid?)
@@ -74,8 +74,8 @@ class Entity {
 	protected:
 		entityID ID;
 
-		float entityWidth;
-		float entityHeight;
+		float entityWidth = 0;
+		float entityHeight = 0;
 
 		glm::vec3 velocity{};
 
@@ -91,8 +91,8 @@ class Entity {
 		void calculateNewYPosition(const ICommonWorld &world);
 
 	public:
-		Entity(glm::vec3 &position);
-		Entity(glm::vec3 &position, float yaw, entityID ID);
+		Entity(const glm::vec3 &position);
+		Entity(const glm::vec3 &position, float yaw, entityID ID);
 		virtual ~Entity() = 0;
 
 		float yaw, pitch;
@@ -101,7 +101,6 @@ class Entity {
 		bool positionUpdated = true;
 
 		inline virtual EEntityTypes getEntityType() const = 0;
-		inline virtual BlockType getItemType() const { return BlockType::END; } //only used for items; It's here to avoid the cost of dynamically down casting
 		virtual void calculateNewPosition(const ICommonWorld &world);
 		inline const glm::vec3 getPosition() const { return position; }
 		inline const float getEntityWidth() const { return entityWidth; }
@@ -118,7 +117,9 @@ class Entity {
 		glm::vec3 prevPosition{};
 		glm::vec3 nextPosition{};
 		float lastTickClientTime = 0;
+
 		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; };
+		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; };
 };
 
 #endif

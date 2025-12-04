@@ -194,7 +194,6 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 {
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
-	BlockType type = static_cast<BlockType>(pkt.type);
 	entityID ID = pkt.entityID;
 	float yaw = pkt.yaw;
 
@@ -211,6 +210,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 	{
 		if (pkt.eEntityType == EEntityTypes::ITEMS)
 		{
+			BlockType type = static_cast<BlockType>(pkt.type);
 			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
 			entityPtr->lastTickClientTime = lastTickClientTime;
 			itemEntities.push_back(entityPtr);
@@ -218,10 +218,26 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 		}
 		else if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
 		{
-			auto entityPtr = std::make_shared<Character>(position, yaw, ID);
+			LivingEntityType type = static_cast<LivingEntityType>(pkt.type);
+			std::shared_ptr<IClientEntity> entityPtr;
+			switch (type)
+			{
+				case PLAYER:
+					entityPtr = std::make_shared<ClientPlayer>(position, yaw, ID);
+					break;
+				case CREEPER:
+					entityPtr = std::make_shared<ClientCreeper>(position, yaw, ID);
+					break;
+				default:
+					std::cout << "ERROR ERROR MAYDAY WE GOT A PROBLEM" << std::endl;
+					return;
+			}
+
 			livingEntitiesManager.add(entityPtr);
-			livingEntities.push_back(entityPtr);
-			entitiesMap[ID] = entityPtr;
+			// Convert to shared_ptr<LivingEntity> safely
+			std::shared_ptr<LivingEntity> le = static_cast<std::shared_ptr<LivingEntity>>(entityPtr);
+			livingEntities.push_back(le);
+			entitiesMap[ID] = le;
 		}
 	}
 }

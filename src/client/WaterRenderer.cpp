@@ -52,13 +52,13 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     glEnable(GL_CLIP_DISTANCE0);
 
     // Calculate reflected view matrix
-    float distance = 2.0f * (camera->movement.getPosition().y - seaLevel);
-    glm::vec3 reflectCamPos = camera->movement.getPosition();
+    float distance = 2.0f * (camera->getPlayer()->getPosition().y - seaLevel);
+    glm::vec3 reflectCamPos = camera->getPlayer()->getPosition();
     reflectCamPos.y -= distance;
 
     // Construct reflected view matrix with inverted pitch
-    const float yaw = camera->movement.getYaw();
-    const float pitch = -camera->movement.getPitch();  // Inverted pitch for reflection
+    const float yaw = camera->getPlayer()->getYaw();
+    const float pitch = -camera->getPlayer()->getPitch();  // Inverted pitch for reflection
 
     glm::vec3 front;
     front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
@@ -67,8 +67,8 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     front = glm::normalize(front);
 
     const glm::mat4 reflectView = glm::lookAt(reflectCamPos, reflectCamPos + front, glm::vec3(0, 1, 0));
-    distance = 2.0f * (camera->movement.getPosition().y - seaLevel);
-    reflectCamPos = camera->movement.getPosition();
+    distance = 2.0f * (camera->getPlayer()->getPosition().y - seaLevel);
+    reflectCamPos = camera->getPlayer()->getPosition();
     reflectCamPos.y -= distance;
 
     // Set clip plane (only render above water)
@@ -80,7 +80,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     sceneShader->setMat4("projection", projection);
 
     // Calculate reflected camera direction for lighting
-    const glm::vec3 originalDir = camera->movement.getCameraDir();
+    const glm::vec3 originalDir = camera->getPlayer()->getCameraDir();
     const glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
 
     lighting->uploadLightingUniforms(*sceneShader, reflectCamPos, reflectedDir);
@@ -110,7 +110,7 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     sceneShader->setMat4("projection", projection);
 
     // Render refraction scene
-    lighting->uploadLightingUniforms(*sceneShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+    lighting->uploadLightingUniforms(*sceneShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
     renderer->render(sceneShader);
@@ -123,7 +123,7 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     prepareRender();
 
     const glm::mat4 view = camera->getViewMatrix();
-    const glm::vec3 camPos = camera->movement.getPosition();
+    const glm::vec3 camPos = camera->getPlayer()->getPosition();
 
     // Set water shader uniforms
     waterShader->use();

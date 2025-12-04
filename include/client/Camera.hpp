@@ -5,13 +5,10 @@
 #include <memory>
 #include <ranges>
 
-#include "ChunkRenderer.hpp"
-#include "Shader.hpp"
 #include "Protocol.hpp"
 #include "Renderer.hpp"
-#include "PlayerMovement.hpp"
 #include "GLFW/glfw3.h"
-#include "Character.hpp"
+#include "ClientPlayer.hpp"
 
 class Camera {
 
@@ -22,18 +19,15 @@ class Camera {
 	std::unique_ptr<Shader> blockWireframeShader = nullptr;
 
 	int64_t amountOfSnapshotsReceived = 0;
-	glm::vec3 predictedPosition;
-	glm::vec3 previousPosition;
 
 	//TODO : get all the tick logic elsewhere;
 	float serverTick = 0;
 	float prevServerTick = 0;
 
-	std::shared_ptr<Character> characterModel;
+	std::shared_ptr<ClientPlayer> player;
 	bool thirdPersonCamera = false;
 
 public:
-	PlayerMovement movement;
 	std::vector<NetPlayerInputs> inputsList;
 
     float MouseSensitivity;
@@ -58,9 +52,9 @@ public:
 
 	void drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 
-	std::shared_ptr<Character> getCharacter();
 	const inline bool isThirdPersonCameraActive() const {return thirdPersonCamera;}
-	const inline void toggleThirdPersonCamera() {thirdPersonCamera = !thirdPersonCamera; characterModel->setDoDraw(thirdPersonCamera);}
+	const inline void toggleThirdPersonCamera() {thirdPersonCamera = !thirdPersonCamera; player->setDoDraw(thirdPersonCamera);}
+	const inline std::shared_ptr<ClientPlayer> getPlayer() {return player;};
 };
 
 

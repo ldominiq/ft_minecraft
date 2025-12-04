@@ -4,13 +4,13 @@
 
 ItemEntityIDManager Entity::idManager;
 
-Entity::Entity(glm::vec3 &position): position(position), ID(idManager.acquire())
+Entity::Entity(const glm::vec3 &position): position(position), ID(idManager.acquire())
 {
 	yaw = 0;
 	pitch = 0;
 }
 
-Entity::Entity(glm::vec3 &position, float yaw, entityID ID): position(position), yaw(yaw), ID(ID) {}
+Entity::Entity(const glm::vec3 &position, float yaw, entityID ID): position(position), yaw(yaw), ID(ID) {}
 
 Entity::~Entity()
 {

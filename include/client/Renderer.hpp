@@ -17,9 +17,9 @@
 #include "CommonWorld.hpp"
 
 #include "ItemPropEntity.hpp"
-#include "LivingEntity.hpp"
-
 #include "LivingEntitiesManager.hpp"
+#include "ClientPlayer.hpp"
+#include "ClientCreeper.hpp"
 
 // previously half of World
 

@@ -2,13 +2,14 @@
 
 Camera::Camera(glm::vec3 position)
     : MouseSensitivity(0.1f) {
-    movement.updateCameraVectors();
+
+	//TODO position & yaw should be given by server
+	glm::vec3 startingPos = glm::vec3(0,150,0);
+	player = std::make_shared<ClientPlayer>(startingPos, 0, -1);
+    player->updateCameraVectors();
 	initWireframeCube();
 
-	glm::vec3 a(0,0,0);
-	characterModel = std::make_shared<Character>(a, movement.yaw, -1); //-1 get converted to max int cause uint32
-	characterModel->createCharacterAt(movement.getPosition());
-	characterModel->setDoDraw(false);
+	player->setDoDraw(false);
 }
 
 Camera::~Camera() {
@@ -21,21 +22,20 @@ Camera::~Camera() {
 		wireframeVBO = 0;
 		wireframeEBO = 0;
 	}
-
 }
 
 glm::mat4 Camera::getViewMatrix() const
 {
 	if (!thirdPersonCamera)
-		return glm::lookAt(movement.getPosition(), movement.getPosition() + movement.Front, movement.WorldUp);
+		return glm::lookAt(player->getPosition(), player->getPosition() + player->Front, player->WorldUp);
 
 	float cameraDistance = 3.0f;  // behind the player
 	float cameraHeight   = 1.5f;  // slightly above
 
-    glm::vec3 playerPos = movement.getPosition();
+    glm::vec3 playerPos = player->getPosition();
 
-    float yaw   = glm::radians(movement.yaw);
-    float pitch = glm::radians(movement.pitch);
+    float yaw   = glm::radians(player->yaw);
+    float pitch = glm::radians(player->pitch);
 
     // Direction the player is looking
     glm::vec3 forward(
@@ -71,10 +71,10 @@ void Camera::lerpToNextPosition(float deltaTime)
 	// std::cout << serverTick<< std::endl;
 	// std::cout << intraTick << std::endl;
 	// std::cout << std::endl;
-	glm::vec3 renderPos = previousPosition + (predictedPosition - previousPosition) * intraTick;
-	movement.setPosition(renderPos);
+	glm::vec3 renderPos = player->prevPosition + (player->nextPosition - player->prevPosition) * intraTick;
+	player->setPosition(renderPos);
 }
-
+		
 glm::vec3 Camera::lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition)
 {
 	if (prevPosition == glm::vec3{}) return nextPosition;
@@ -124,11 +124,11 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 	velocity.x = pkt.velocityX;
 	velocity.y = pkt.velocityY;
 	velocity.z = pkt.velocityZ;
-	movement.setVelocity(velocity);
+	player->setVelocity(velocity);
 
 	// movement.setPosition(position);
-	previousPosition = predictedPosition;
-	predictedPosition = position;
+	player->prevPosition = player->nextPosition;
+	player->nextPosition = position;
 
 	prevServerTick = serverTick;
 	serverTick = pkt.serverTick * MS_TICK_RATE;
@@ -140,13 +140,13 @@ void Camera::processMouseMovement(float xoffset, float yoffset) {
     xoffset *= MouseSensitivity;
     yoffset *= MouseSensitivity;
 
-    movement.yaw   += xoffset;
-    movement.pitch += yoffset;
+    player->yaw   += xoffset;
+    player->pitch += yoffset;
 
-    if (movement.pitch > 89.0f)  movement.pitch = 89.0f;
-    if (movement.pitch < -89.0f) movement.pitch = -89.0f;
+    if (player->pitch > 89.0f)  player->pitch = 89.0f;
+    if (player->pitch < -89.0f) player->pitch = -89.0f;
 
-	movement.updateCameraVectors();
+	player->updateCameraVectors();
 }
 
 void Camera::initWireframeCube() {
@@ -192,7 +192,7 @@ void Camera::initWireframeCube() {
 void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection) {
 
 	glm::ivec3 blockPos, faceNormal;
-	if (!Renderer->getTargetedBlock(movement.getPosition(), glm::normalize(movement.Front), blockPos, faceNormal))
+	if (!Renderer->getTargetedBlock(player->getPosition(), glm::normalize(player->Front), blockPos, faceNormal))
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));
@@ -205,12 +205,4 @@ void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer,
     glBindVertexArray(wireframeVAO);
     glDrawElements(GL_LINES, 24, GL_UNSIGNED_INT, nullptr);
 	glBindVertexArray(0);
-}
-
-std::shared_ptr<Character> Camera::getCharacter()
-{
-	characterModel->yaw = movement.yaw;
-	characterModel->pitch = movement.pitch;
-	characterModel->setPosition(movement.getPosition());
-	return characterModel;
 }

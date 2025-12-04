@@ -1,5 +1,6 @@
 #include "Server.hpp"
 
+#include "Creeper.hpp"
 Server::Server() {
     createSocket();
     fillServerInfo();
@@ -17,6 +18,10 @@ void Server::run(std::optional<int> &seed) {
 		world = std::make_unique<World>(seed.value());
 	else
 		world = std::make_unique<World>();
+
+	glm::vec3 startingPos = glm::vec3(0,200, 0);
+	std::shared_ptr<Creeper> crep = std::make_shared<Creeper>(startingPos);
+	world->livingEntities.push_back(crep);
 
 	running = true;
 
@@ -229,7 +234,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 		messages.push_back(pkt.message);
 }
 
-// TODO : Multythread
+// TODO : Multithread
 void Server::sendAll()
 {
 	world->amountOfChunksSentThisTick = 0;
@@ -345,7 +350,7 @@ void Server::sendEntitiesPositionDeltas()
 			// TODO : only send if items moved
 			pkt.eEntityType = entity->getEntityType();
 			pkt.entityID = entity->getID();
-			pkt.type = static_cast<ItemID>(entity->getItemType());
+			pkt.type = static_cast<LivingEntityType>(entity->getLivingEntityType());
 
 			pkt.positionX = entity->getPosition().x;
 			pkt.positionY = entity->getPosition().y;

@@ -1,7 +1,7 @@
 
 #include "ItemPropEntity.hpp"
 
-ItemPropEntity::ItemPropEntity(glm::vec3 &position, float yaw, BlockType type, entityID ID) : ItemEntity(position, yaw, type, ID)
+ItemPropEntity::ItemPropEntity(const glm::vec3 &position, float yaw, BlockType type, entityID ID) : ItemEntity(position, yaw, type, ID)
 {
 	nextPosition = position;
 }

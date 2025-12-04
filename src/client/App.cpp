@@ -195,7 +195,7 @@ void App::init() {
 
 	loadControlsFromFile();
 
-	renderer->livingEntitiesManager.add(camera->getCharacter());
+	renderer->livingEntitiesManager.add(camera->getPlayer());
 }
 
 void App::setUdpClientPacketCallback()
@@ -387,7 +387,7 @@ void App::render() {
         lighting->updateSunDirection(deltaTime);
 
         if (lighting->isShadowsEnabled()) {
-            lighting->updateShadowMap(*renderer, camera->movement.getPosition());
+            lighting->updateShadowMap(*renderer, camera->getPlayer()->getPosition());
         }
 
         // Render to debug framebuffers if enabled
@@ -399,7 +399,7 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, texture);
             renderer->render(textureShader);
@@ -414,7 +414,7 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, texture);
             renderer->render(textureShader);
@@ -439,8 +439,8 @@ void App::render() {
     	// Render water with proper shader setup
     	waterRenderer->renderWaterSurface(projection);
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));
+		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
+		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
@@ -501,7 +501,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     glDisable(GL_CLIP_DISTANCE0);
 
     // Render sky first
-    lighting->drawSky(view, projection, camera->movement.getPosition());
+    lighting->drawSky(view, projection, camera->getPlayer()->getPosition());
 
     // Render solid blocks
     glEnable(GL_DEPTH_TEST);
@@ -509,15 +509,15 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     activeShader->setVec4("clipPlane", clipPlane);
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
-    lighting->uploadLightingUniforms(*activeShader, camera->movement.getPosition(), camera->movement.getCameraDir());
+    lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
     renderer->render(activeShader);
 
     lighting->drawLightCubes(view, projection);
 
-	const int currentChunkX = static_cast<int>(std::floor(camera->movement.getPosition().x / Chunk::WIDTH));
-	const int currentChunkZ = static_cast<int>(std::floor(camera->movement.getPosition().z / Chunk::DEPTH));
+	const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
+	const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 	renderer->buildChunks();
 	renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
@@ -545,10 +545,6 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 		// if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
 	}
 
-	if (camera->isThirdPersonCameraActive())
-	{
-		camera->getCharacter(); //updates f5 player character...
-	}
 	renderer->drawCharacters(projection, view, deltaTime);
 }
 
@@ -569,7 +565,7 @@ void App::debugWindow() {
                 appliedDefaultFontSize = true;
             }
 
-            glm::vec3 pos = camera->movement.getPosition();
+            glm::vec3 pos = camera->getPlayer()->getPosition();
             int wx = static_cast<int>(std::floor(pos.x));
             int wz = static_cast<int>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
@@ -657,7 +653,7 @@ void App::debugWindow() {
                         ImGui::InputFloat("Y", &tmpY);
                         ImGui::InputFloat("Z", &tmpZ);
                         if (ImGui::Button("Teleport")) {
-                            camera->movement.setPosition(glm::vec3(tmpX, tmpY, tmpZ));
+                            camera->getPlayer()->setPosition(glm::vec3(tmpX, tmpY, tmpZ));
                         }
                     }
 
@@ -1037,7 +1033,7 @@ void App::loadControlsDefaults() {
     controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_TAB;
     controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
-	controlsArray[THIS_PERSON_CAMERA]	= GLFW_KEY_F5;
+	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
 }
 
 void App::loadControlsFromFile(const char* filename) {
@@ -1104,8 +1100,8 @@ NetPlayerInputs App::buildPlayerInputsPacket()
         keys |= IN_DROP;
 
 	inputs.keys = keys;
-	inputs.pitch = camera->movement.getPitch();
-	inputs.yaw = camera->movement.getYaw();
+	inputs.pitch = camera->getPlayer()->getPitch();
+	inputs.yaw = camera->getPlayer()->getYaw();
 	inputs.loadRadius = camera->getLoadRadius();
 
 	camera->inputsList.push_back(inputs);
@@ -1194,11 +1190,11 @@ void App::processInput() {
         f4Held = false;
     }
 
-	if (glfwGetKey(window, controlsArray[THIS_PERSON_CAMERA]) == GLFW_PRESS && !ThirdPersonCameraKeyActive) {
+	if (glfwGetKey(window, controlsArray[THIRD_PERSON_CAMERA]) == GLFW_PRESS && !ThirdPersonCameraKeyActive) {
 		ThirdPersonCameraKeyActive = true;
 		camera->toggleThirdPersonCamera();
 	}
-	if (glfwGetKey(window, controlsArray[THIS_PERSON_CAMERA]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
+	if (glfwGetKey(window, controlsArray[THIRD_PERSON_CAMERA]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
 		ThirdPersonCameraKeyActive = false;
 	}
 

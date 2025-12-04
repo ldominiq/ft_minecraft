@@ -1,14 +1,24 @@
 
 #include "PlayerMovement.hpp"
 
-PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0, 150, 0))
+PlayerMovement::PlayerMovement(const glm::vec3 &position):	LivingEntity(position)
 {
+	type = PLAYER;
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;
 	this->entityHeight = 1.8f;
     this->Front = glm::vec3(0.0f, 0.0f, -1.0f); //not really needed
 	yaw = 0;
 	pitch = 0;
+}
+
+//client
+PlayerMovement::PlayerMovement(const glm::vec3 &position, float yaw, entityID ID): LivingEntity(position, yaw ,ID)
+{
+	type = PLAYER;
+
+	this->entityWidth = 0.6f;
+	this->entityHeight = 1.8f;
 }
 
 PlayerMovement::~PlayerMovement()

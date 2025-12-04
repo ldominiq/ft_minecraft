@@ -16,8 +16,8 @@ class ItemEntity : public Entity
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::ITEMS; }
 		BlockType inline getItemType() const { return type; }
 
-		ItemEntity(glm::vec3 &position, float yaw, BlockType type, bool isLaunched = false);
-		ItemEntity(glm::vec3 &position, float yaw, BlockType type, entityID ID);
+		ItemEntity(const glm::vec3 &position, float yaw, BlockType type, bool isLaunched = false);
+		ItemEntity(const glm::vec3 &position, float yaw, BlockType type, entityID ID);
 		virtual ~ItemEntity();
 };
 

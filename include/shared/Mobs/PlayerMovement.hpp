@@ -13,7 +13,7 @@ enum class GAMEMODES {
 	SPECTATOR,
 };
 
-struct PlayerMovement final : public LivingEntity {
+struct PlayerMovement : public virtual LivingEntity {
 
 	NetPlayerInputs lastInputsPktRecvd = {};
 
@@ -39,8 +39,9 @@ struct PlayerMovement final : public LivingEntity {
 	inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {lastInputsPktRecvd = pkt; }
 	inline void setGamemode(GAMEMODES mode) {gamemode = mode; }
 
-	PlayerMovement();
-	~PlayerMovement();
+	PlayerMovement(const glm::vec3 &position);
+	PlayerMovement(const glm::vec3 &position, float yaw, entityID ID);
+	virtual ~PlayerMovement();
 };
 
 #endif
