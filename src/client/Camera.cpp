@@ -1,11 +1,15 @@
 #include "Camera.hpp"
 
 Camera::Camera(glm::vec3 position)
-    : Position(position), WorldUp(0.0f, 1.0f, 0.0f),
-      Yaw(0.0f), Pitch(0.0f), MovementSpeed(5.0f), MouseSensitivity(0.1f) {
-    Front = glm::vec3(0.0f, 0.0f, -1.0f);
-    updateCameraVectors();
+    : MouseSensitivity(0.1f) {
+
+	//TODO position & yaw should be given by server
+	glm::vec3 startingPos = glm::vec3(0,150,0);
+	player = std::make_shared<ClientPlayer>(startingPos, 0, -1);
+    player->updateCameraVectors();
 	initWireframeCube();
+
+	player->setDoDraw(false);
 }
 
 Camera::~Camera() {
@@ -18,39 +22,131 @@ Camera::~Camera() {
 		wireframeVBO = 0;
 		wireframeEBO = 0;
 	}
-
 }
 
-glm::mat4 Camera::getViewMatrix() const {
-    return glm::lookAt(Position, Position + Front, Up);
-}
-
-void Camera::updatePosition(NetPlayerMove &pkt)
+glm::mat4 Camera::getViewMatrix() const
 {
-	Position = glm::vec3(pkt.positionX, pkt.positionY, pkt.positionZ);
+	if (!thirdPersonCamera)
+		return glm::lookAt(player->getPosition(), player->getPosition() + player->Front, player->WorldUp);
+
+	float cameraDistance = 3.0f;  // behind the player
+	float cameraHeight   = 1.5f;  // slightly above
+
+    glm::vec3 playerPos = player->getPosition();
+
+    float yaw   = glm::radians(player->yaw);
+    float pitch = glm::radians(player->pitch);
+
+    // Direction the player is looking
+    glm::vec3 forward(
+        cos(pitch) * cos(yaw),
+        sin(pitch),
+        cos(pitch) * sin(yaw)
+    );
+
+    // Camera position BEHIND the player, opposite of forward
+    glm::vec3 camPos =
+        playerPos
+        - forward * cameraDistance  // behind
+        + glm::vec3(0, cameraHeight, 0); // slight upward offset
+
+    return glm::lookAt(
+        camPos,
+        playerPos + forward * 10.0f,   // look where the player is looking
+        glm::vec3(0, 1, 0)
+    );
+}
+
+void Camera::lerpToNextPosition(float deltaTime)
+{
+	if (prevServerTick == 0) return ;
+
+	float currTime = prevServerTick + deltaTime * 1000;
+	currTime = std::clamp(currTime, prevServerTick, serverTick);
+	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
+
+	// std::cout << deltaTime << std::endl;
+	// std::cout << currTime << std::endl;
+	// std::cout << prevServerTick << std::endl;
+	// std::cout << serverTick<< std::endl;
+	// std::cout << intraTick << std::endl;
+	// std::cout << std::endl;
+	glm::vec3 renderPos = player->prevPosition + (player->nextPosition - player->prevPosition) * intraTick;
+	player->setPosition(renderPos);
+}
+		
+glm::vec3 Camera::lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition)
+{
+	if (prevPosition == glm::vec3{}) return nextPosition;
+
+	float currTime = prevServerTick + deltaTime * 1000;
+	currTime = std::clamp(currTime, prevServerTick, serverTick);
+	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
+
+	glm::vec3 renderPos = prevPosition + (nextPosition - prevPosition) * intraTick;
+	return renderPos;
+}
+
+// Remove prediction for now. 
+void Camera::predictNTicks(const Renderer &world)
+{
+	// previousPosition = predictedPosition;
+	// static int diff;
+	// diff = serverCurrTick ? tickDiff(currTick, serverCurrTick) : diff; //assumes ping remains constant... this whole logic is... frail
+	// serverCurrTick = currTick - diff;
+
+	// for(auto itr = inputsList.cbegin(); itr != inputsList.cend();) {
+	// if (itr->tick < serverCurrTick) {
+	// 	itr = inputsList.erase(itr);
+	// } else
+	// 	++itr;
+	// }
+
+	// for(int i = 0; i < diff - 1; i++)
+	// {
+	// 	if (inputsList.size() > i)
+	// 		movement.lastInputsPktRecvd = inputsList[i];
+	// }
+	// predictedPosition = movement.getPosition();
+	// movement.setPosition(previousPosition);
+}
+
+void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
+{
+	amountOfSnapshotsReceived++;
+
+	glm::vec3 position;
+	position.x = pkt.positionX;
+	position.y = pkt.positionY;
+	position.z = pkt.positionZ;
+
+	glm::vec3 velocity;
+	velocity.x = pkt.velocityX;
+	velocity.y = pkt.velocityY;
+	velocity.z = pkt.velocityZ;
+	player->setVelocity(velocity);
+
+	// movement.setPosition(position);
+	player->prevPosition = player->nextPosition;
+	player->nextPosition = position;
+
+	prevServerTick = serverTick;
+	serverTick = pkt.serverTick * MS_TICK_RATE;
+
+	predictNTicks(world);
 }
 
 void Camera::processMouseMovement(float xoffset, float yoffset) {
     xoffset *= MouseSensitivity;
     yoffset *= MouseSensitivity;
 
-    Yaw   += xoffset;
-    Pitch += yoffset;
+    player->yaw   += xoffset;
+    player->pitch += yoffset;
 
-    if (Pitch > 89.0f)  Pitch = 89.0f;
-    if (Pitch < -89.0f) Pitch = -89.0f;
+    if (player->pitch > 89.0f)  player->pitch = 89.0f;
+    if (player->pitch < -89.0f) player->pitch = -89.0f;
 
-    updateCameraVectors();
-}
-
-void Camera::updateCameraVectors() {
-    glm::vec3 front;
-    front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-    front.y = sin(glm::radians(Pitch));
-    front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-    Front = glm::normalize(front);
-    Right = glm::normalize(glm::cross(Front, WorldUp));
-    Up    = glm::normalize(glm::cross(Right, Front));
+	player->updateCameraVectors();
 }
 
 void Camera::initWireframeCube() {
@@ -93,10 +189,10 @@ void Camera::initWireframeCube() {
 	blockWireframeShader = std::make_unique<Shader>("shaders/simpleWireframe.vert", "shaders/simpleWireframe.frag");
 }
 
-void Camera::drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection) {
+void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection) {
 
 	glm::ivec3 blockPos, faceNormal;
-	if (!Renderer->getTargetedBlock(Position, glm::normalize(Front), blockPos, faceNormal))
+	if (!Renderer->getTargetedBlock(player->getPosition(), glm::normalize(player->Front), blockPos, faceNormal))
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));

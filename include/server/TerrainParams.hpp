@@ -5,7 +5,7 @@
 #ifndef TERRAIN_PARAMS_HPP
 #define TERRAIN_PARAMS_HPP
 
-#include "Block.hpp"
+#include "Item.hpp"
 #include <vector>
 #include <cstdint>
 

@@ -55,9 +55,23 @@ void App::init() {
 
 	renderer = std::make_unique<Renderer>();
 
+	// ********************Water Renderer setup******************************
+	waterFramebuffer = std::make_shared<WaterFramebuffer>(windowedWidth, windowedHeight);
+	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
+	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
+
+	// ********************Render Type Debug Framebuffers********************
+	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
+
+	loader = std::make_unique<Loader>();
+	// GUI textures are now dynamically managed based on debug flags
+    guiRenderer = std::make_unique<GuiRenderer>(*loader);
+
     lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
 
     chat = std::make_unique<Chat>(windowedWidth, windowedHeight);
+
+	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>();
 
     glEnable(GL_DEPTH_TEST);
     
@@ -94,7 +108,8 @@ void App::init() {
         app->lastY = ypos;
         app->camera->processMouseMovement(xoffset, yoffset);
 
-		app->keyPressedRecently = true;
+		app->mouseMovedRecently = true;
+		app->lastMouseMoveTime = glfwGetTime();
     });
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -124,6 +139,7 @@ void App::init() {
 				case GLFW_KEY_SPACE: return IN_UP;   // jump
 				case GLFW_KEY_LEFT_SHIFT: return IN_RUN;
 				case GLFW_KEY_LEFT_CONTROL: return IN_DOWN;
+				case GLFW_KEY_Q: return IN_DROP;
 				default: return 0; // key not tracked
 			}
 		};
@@ -186,6 +202,7 @@ void App::init() {
 	loadControlsFromFile();
 
     glGenQueries(1, &timeQuery);
+	renderer->livingEntitiesManager.add(camera->getPlayer());
 }
 
 void App::setUdpClientPacketCallback()
@@ -193,6 +210,16 @@ void App::setUdpClientPacketCallback()
 	udpClient->setCallback([this](const PacketPtr& pkt) {
 
 		switch (pkt->type) {
+
+			case PacketType::GROUP: {
+				auto& g = static_cast<NetPacketGroup&>(*pkt);
+				for (auto& inner : g.unpack()) {
+					if (udpClient->onPacket)
+						udpClient->onPacket({ std::move(inner) });
+				}
+				break;
+			}
+
 			case PacketType::NET_ACCEPT: {
 				auto& p = static_cast<NetAccept&>(*pkt);
 				std::cout << "Client accepted! id=" << p.clientId << "\n";
@@ -216,7 +243,14 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
-				camera->updatePosition(p);
+				lastTickClientTime = glfwGetTime();
+				camera->onSnapshot(p, *renderer);
+				break;
+			}
+
+			case PacketType::NET_ENTITY_MOVE: {
+				auto& p = static_cast<NetEntityMove&>(*pkt);
+				renderer->onEntity(p, lastTickClientTime);
 				break;
 			}
 
@@ -252,7 +286,7 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
-    texture = loadTexture("assets/textures/textures.png");
+    texture = activeShader->loadTexture("assets/textures/textures.png");
 
     activeShader = textureShader;
 
@@ -265,24 +299,53 @@ void App::loadResources() {
     textureShader->setInt("diffuseTexture", 0);
     textureShader->setInt("shadowMap", 1);
     lighting->initShadowDebugShader();
+
+	waterRenderer->setDependencies(lighting, renderer, camera);
+}
+
+void App::gameTick() {
+	// sending/receiving packets and stuff
+
+	udpClient->receivePacket();
+	if ((keyPressedRecently || mouseMovedRecently) && !menuManager)
+	{
+		NetPlayerInputs inputs = buildPlayerInputsPacket();
+		udpClient->sendPacket(inputs);
+	}
+
+	static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
+	static float waveSpeed = waterRenderer->waveStrength;
+	waterMoveOffset += waveSpeed * deltaTime;
+	if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
+	waterRenderer->setWaterMoveFactor(waterMoveOffset);
 }
 
 void App::render() {
 
     while (!glfwWindowShouldClose(window)) {
 
-		// sending/receiving packets and stuff
-		udpClient->receivePacket();
-		if (keyPressedRecently && !menuManager)
-		{
-			NetPlayerInputs inputs = buildPlayerInputsPacket();
-			udpClient->sendPacket(inputs);
-		}
-
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+		//Tick logic
+		float tickDuration = 1.0f / TPS; // 0.05s per tick
+		static float accumulator = 0.0f;
+		accumulator += deltaTime;
+
+		while (accumulator >= tickDuration) //should never be more than 1 tick...
+		{
+			// Advance one tick
+			gameTick();
+			accumulator -= tickDuration;
+		}
+
+		camera->lerpToNextPosition(glfwGetTime() - lastTickClientTime);
+
+		// const double mouseIdleThreshold = 0.2; // seconds
+		// if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
+		// 	mouseMovedRecently = false;
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -318,18 +381,16 @@ void App::render() {
 		if (menuManager != chat)
         	processInput();
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-
         // window aspect / uniforms
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-        const float aspect = static_cast<float>(width) / static_cast<float>(height);
+        glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
+        const float aspect = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
         glm::mat4 view = camera->getViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
+		glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
 
-        lighting->setViewportSize(width, height);
+
+        lighting->setViewportSize(screenWidth, screenHeight);
         lighting->updateSunDirection(deltaTime);
 
         glBeginQuery(GL_TIME_ELAPSED, timeQuery);
@@ -350,42 +411,100 @@ void App::render() {
 
 
         if (lighting->isShadowsEnabled()) {
-            lighting->updateShadowMap(*renderer, camera->Position);
+            lighting->updateShadowMap(*renderer, camera->getPlayer()->getPosition());
         }
 
-        // Set the uniform matrices in the shader
-        activeShader->use();
-        activeShader->setMat4("view", view);
-        activeShader->setMat4("projection", projection);
+        // Render to debug framebuffers if enabled
+        if (showNormalsTexture) {
+            renderTypeFramebuffer->bindNormalsFrameBuffer();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            textureShader->use();
+            textureShader->setInt("renderType", 1); // Normals mode
+            textureShader->setVec4("clipPlane", clipPlane);
+            textureShader->setMat4("view", view);
+            textureShader->setMat4("projection", projection);
+            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            renderer->render(textureShader);
+            renderTypeFramebuffer->unbindCurrentFrameBuffer();
+        }
 
-        lighting->uploadLightingUniforms(*textureShader, camera->Position, camera->Front);
+        if (showDepthTexture) {
+            renderTypeFramebuffer->bindDepthFrameBuffer();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            textureShader->use();
+            textureShader->setInt("renderType", 2); // Depth mode
+            textureShader->setVec4("clipPlane", clipPlane);
+            textureShader->setMat4("view", view);
+            textureShader->setMat4("projection", projection);
+            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            renderer->render(textureShader);
+            renderTypeFramebuffer->unbindCurrentFrameBuffer();
+        }
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
+        // Restore main renderType for normal scene rendering
+        if (textureShader) {
+            textureShader->use();
+            textureShader->setInt("renderType", 0); // Normal lighting mode
+        }
 
-        renderer->render(activeShader);
+    	// Render reflection texture
+    	waterRenderer->renderWaterReflectionPass(activeShader, projection, texture);
 
-		if (lighting->isShadowMapEnabled())
-    		lighting->drawShadowMapPreview();
+    	// render refraction texture
+    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, texture);
 
-        lighting->drawLightCubes(view, projection);
+    	// render to screen
+    	renderScene(view, projection, clipPlane);
+    	
+    	// Render water with proper shader setup
+    	waterRenderer->renderWaterSurface(projection);
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->Position.x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->Position.z / Chunk::DEPTH));
+		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
+		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
-
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+
         glBindVertexArray(0);
+        {
+    		// Dynamically build GUI textures based on debug flags
+    		guis.clear();
+    		if (showReflectionTexture) {
+    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showRefractionTexture) {
+    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(-0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showRefractionDepthTexture) {
+    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showShadowMapTexture && lighting) {
+    			guis.emplace_back(lighting->getShadowMapTexture(), glm::vec2(-0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showNormalsTexture && renderTypeFramebuffer) {
+    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.0f, 0.75f), glm::vec2(0.25f, 0.25f));
+    		}
+    		if (showDepthTexture && renderTypeFramebuffer) {
+    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.0f, -0.75f), glm::vec2(0.25f, 0.25f));
+    		}
+
+    		guiRenderer->render(guis);
+        }
 
         if (showDebugWindow) {
-            //ImGui::ShowDemoWindow();
             debugWindow();
         }
 
-        // Finalize the ImGui frame and draw it.  Even if the overlay is
-        // non-interactive the draw data will be present, so draw it always.
+    	if (lighting->isShadowMapEnabled())
+    		lighting->drawShadowMapPreview();
+
+
+        // Finalize ImGui rendering
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -398,6 +517,59 @@ void App::render() {
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+}
+
+void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
+    glViewport(0, 0, screenWidth, screenHeight);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_CLIP_DISTANCE0);
+
+    // Render sky first
+    lighting->drawSky(view, projection, camera->getPlayer()->getPosition());
+
+    // Render solid blocks
+    glEnable(GL_DEPTH_TEST);
+    activeShader->use();
+    activeShader->setVec4("clipPlane", clipPlane);
+    activeShader->setMat4("view", view);
+    activeShader->setMat4("projection", projection);
+    lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    renderer->render(activeShader);
+
+    lighting->drawLightCubes(view, projection);
+
+	const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
+	const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
+
+	renderer->buildChunks();
+	renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
+
+    camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+    glBindVertexArray(0);
+
+	//THIS CODE IS AWFULLY BAD
+	//items
+	for (auto &entity : renderer->itemEntities)
+	{
+		if (!entity->positionUpdated) continue ;
+		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+		entity->setPosition(newEntityPos);
+		if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+	}
+	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
+
+	//mobs
+	for (auto &entity : renderer->livingEntities)
+	{
+		if (!entity->positionUpdated) continue ;
+		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+		entity->setPosition(newEntityPos);
+		// if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+	}
+
+	renderer->drawCharacters(projection, view, deltaTime);
 }
 
 void App::debugWindow() {
@@ -417,7 +589,7 @@ void App::debugWindow() {
                 appliedDefaultFontSize = true;
             }
 
-            glm::vec3 pos = camera->Position;
+            glm::vec3 pos = camera->getPlayer()->getPosition();
             int wx = static_cast<int>(std::floor(pos.x));
             int wz = static_cast<int>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
@@ -466,7 +638,25 @@ void App::debugWindow() {
                 const size_t visibleChunks = renderer->getVisibleChunkCount();
                 const size_t totalChunks   = renderer->getTotalChunkCount();
                 ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
+
+                size_t solidVertices = 0;
+                size_t waterVertices = 0;
+                for (auto& weakChunk : renderer->getRenderedChunks()) {
+                    if (auto chunk = weakChunk.lock()) {
+                        solidVertices += chunk->getMeshVerticesSize() / 9;
+                        waterVertices += chunk->getWaterMeshVerticesSize() / 9;
+                    }
+                }
+                
+                size_t totalVertices = solidVertices + waterVertices;
+                size_t totalTriangles = totalVertices / 3;
+                size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
+                
+                ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
+                ImGui::Text("Triangles: %zu", totalTriangles);
+                ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
             }
+
             // Display memory usage in megabytes.  We call a static helper to
             // obtain the current resident set size (RSS).
             {
@@ -488,7 +678,7 @@ void App::debugWindow() {
                         ImGui::InputFloat("Y", &tmpY);
                         ImGui::InputFloat("Z", &tmpZ);
                         if (ImGui::Button("Teleport")) {
-                            camera->Position = glm::vec3(tmpX, tmpY, tmpZ);
+                            camera->getPlayer()->setPosition(glm::vec3(tmpX, tmpY, tmpZ));
                         }
                     }
 
@@ -623,6 +813,18 @@ void App::debugWindow() {
                         //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
                         //     }
                         // }
+
+                        ImGui::Separator();
+                        ImGui::Text("Framebuffer Debug Views");
+                        ImGui::Checkbox("Show Reflection Texture", &showReflectionTexture);
+                        ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
+                        ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
+                        ImGui::Checkbox("Show Shadow Map", &showShadowMapTexture);
+                        
+                        ImGui::Separator();
+                        ImGui::Text("Render Type Debug Views");
+                        ImGui::Checkbox("Show Normals View", &showNormalsTexture);
+                        ImGui::Checkbox("Show Depth View", &showDepthTexture);
                     }
 
                     // Lighting controls: direction and colours.  The direction vector
@@ -775,6 +977,13 @@ void App::debugWindow() {
                         ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
                     }
 
+                	ImGui::Separator();
+                	if (ImGui::CollapsingHeader("Water")) {
+                		ImGui::SliderFloat("Water wave strength", &waterRenderer->waveStrength, 0.000f, 0.09f, "%.3f");
+                		ImGui::SliderFloat("Water dudv tiling", &waterRenderer->dudvTiling, 0.000f, 0.09f, "%.2f");
+
+                	}
+
                     ImGui::EndTabItem();
                 }
                 if (ImGui::BeginTabItem("Settings")) {
@@ -785,6 +994,24 @@ void App::debugWindow() {
                 }
                 ImGui::EndTabBar();
             }
+
+			static bool spectator = false;
+			ImGui::Separator();
+			if (ImGui::Checkbox("Survival", &spectator))
+			{
+				if (spectator)
+				{
+					NetMessage pkt;
+					pkt.message = "/gamemode survival";
+					udpClient->sendPacket(pkt);
+				}
+				else
+				{
+					NetMessage pkt;
+					pkt.message = "/gamemode spectator";
+					udpClient->sendPacket(pkt);
+				}
+			}
 
 
             ImGui::End();
@@ -831,6 +1058,7 @@ void App::loadControlsDefaults() {
     controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_TAB;
     controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
+	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
 }
 
 void App::loadControlsFromFile(const char* filename) {
@@ -892,16 +1120,20 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 
 	if (glfwGetKey(window, controlsArray[MOVE_FAST]) == GLFW_PRESS)
 		keys |= IN_RUN;
+	
+	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+        keys |= IN_DROP;
 
 	inputs.keys = keys;
-	inputs.pitch = camera->getPitch();
-	inputs.yaw = camera->getYaw();
+	inputs.pitch = camera->getPlayer()->getPitch();
+	inputs.yaw = camera->getPlayer()->getYaw();
 	inputs.loadRadius = camera->getLoadRadius();
+
+	camera->inputsList.push_back(inputs);
 
 	return inputs;
 }
 
-// TODO: make menus managed by a pointer or container later
 void App::processInputsMenus(int key, int action) {
 
 	// HANDLE EVENTS WHEN CHAT OPEN
@@ -936,9 +1168,8 @@ void App::processInput() {
     static bool f1Held  = false;
     static bool f2Held  = false;
     static bool f4Held  = false;
+	static bool ThirdPersonCameraKeyActive = false;
     static bool tabHeld = false;
-    static bool leftMousePressedLastFrame = false;
-	static bool rightMousePressedLastFrame = false;
 
 	//reload chunk. F3 + A; TODO : also add the neighbours logic. Otherwise some "walls" could be rendered
 	if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS &&
@@ -983,6 +1214,14 @@ void App::processInput() {
     if (glfwGetKey(window, GLFW_KEY_F4) == GLFW_RELEASE) {
         f4Held = false;
     }
+
+	if (glfwGetKey(window, controlsArray[THIRD_PERSON_CAMERA]) == GLFW_PRESS && !ThirdPersonCameraKeyActive) {
+		ThirdPersonCameraKeyActive = true;
+		camera->toggleThirdPersonCamera();
+	}
+	if (glfwGetKey(window, controlsArray[THIRD_PERSON_CAMERA]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
+		ThirdPersonCameraKeyActive = false;
+	}
 
     // Start by getting the ImGui IO structure.  We will respect its capture flags
     // when deciding whether to process game inputs.  Note: this call is valid
@@ -1072,32 +1311,6 @@ void App::toggleDisplayMode() {
         glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
         displayMode = DisplayMode::Windowed;
     }
-}
-
-unsigned int App::loadTexture(const char* path) {
-    GLuint texID;
-    glGenTextures(1, &texID);
-    glBindTexture(GL_TEXTURE_2D, texID);
-
-    int w, h, ch;
-    stbi_set_flip_vertically_on_load(true);
-    unsigned char* data = stbi_load(path, &w, &h, &ch, 0);
-    if (data) {
-        const GLenum format = ch == 4 ? GL_RGBA : GL_RGB;
-        glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-    } else {
-        std::cerr << "Failed to load texture: " << path << "\n";
-    }
-    
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    
-    stbi_image_free(data);
-    
-    return texID;
 }
 
 // static

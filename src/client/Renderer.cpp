@@ -46,40 +46,17 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
     std::shared_ptr<ChunkRenderer> currChunk = it->second;
 
     currChunk->setBlock(x, y, z, type);
-	currChunk->buildMesh();
+	currChunk->needsUpdate = true;
 
 	// //update possible neighbour
-	if (x == 0) {
-		if (auto westChunkBase = currChunk->getAdjacentChunks()[WEST].lock()) {
-			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
-				westChunk->buildMesh();
-			}
-		}
-	}
-
-	if (x == Chunk::WIDTH - 1) {
-		if (auto eastChunkBase = currChunk->getAdjacentChunks()[EAST].lock()) {
-			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
-				eastChunk->buildMesh();
-			}
-		}
-	}
-
-	if (z == 0) {
-		if (auto southChunkBase = currChunk->getAdjacentChunks()[SOUTH].lock()) {
-			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
-				southChunk->buildMesh();
-			}
-		}
-	}
-
-	if (z == Chunk::DEPTH - 1) {
-		if (auto northChunkBase = currChunk->getAdjacentChunks()[NORTH].lock()) {
-			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
-				northChunk->buildMesh();
-			}
-		}
-	}
+	if (x == 0)
+		currChunk->neighbourNeedUpdate[WEST] = true;
+	if (x == Chunk::WIDTH - 1)
+		currChunk->neighbourNeedUpdate[EAST] = true;
+	if (z == 0)
+		currChunk->neighbourNeedUpdate[SOUTH] = true;
+	if (z == Chunk::DEPTH - 1)
+		currChunk->neighbourNeedUpdate[NORTH] = true;
 }
 
 std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
@@ -206,6 +183,79 @@ void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, co
 void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 	for (auto& weakChunk : renderedChunks) {
 		if (auto chunk = weakChunk.lock())
+		{
+			if (chunk->needsUpdate)
+				chunk->updateMesh();
 			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+		}
 	}
+}
+
+void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
+{
+	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
+	entityID ID = pkt.entityID;
+	float yaw = pkt.yaw;
+
+	auto entity = entitiesMap.find(ID);
+	if (entity != entitiesMap.end())
+	{
+		entity->second->prevPosition = entity->second->nextPosition;
+		entity->second->nextPosition = position;
+		entity->second->yaw = yaw;
+		entity->second->positionUpdated = true;
+		entity->second->lastTickClientTime = lastTickClientTime;
+	}
+	else
+	{
+		if (pkt.eEntityType == EEntityTypes::ITEMS)
+		{
+			BlockType type = static_cast<BlockType>(pkt.type);
+			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
+			entityPtr->lastTickClientTime = lastTickClientTime;
+			itemEntities.push_back(entityPtr);
+			entitiesMap[ID] = entityPtr;
+		}
+		else if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
+		{
+			LivingEntityType type = static_cast<LivingEntityType>(pkt.type);
+			std::shared_ptr<IClientEntity> entityPtr;
+			switch (type)
+			{
+				case PLAYER:
+					entityPtr = std::make_shared<ClientPlayer>(position, yaw, ID);
+					break;
+				case CREEPER:
+					entityPtr = std::make_shared<ClientCreeper>(position, yaw, ID);
+					break;
+				default:
+					std::cout << "ERROR ERROR MAYDAY WE GOT A PROBLEM" << std::endl;
+					return;
+			}
+
+			livingEntitiesManager.add(entityPtr);
+			// Convert to shared_ptr<LivingEntity> safely
+			std::shared_ptr<LivingEntity> le = static_cast<std::shared_ptr<LivingEntity>>(entityPtr);
+			livingEntities.push_back(le);
+			entitiesMap[ID] = le;
+		}
+	}
+}
+
+void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime)
+{
+	livingEntitiesManager.draw(projection, view, deltatime);
+}
+
+void Renderer::renderWater() const {
+	glDisable(GL_CULL_FACE);
+    for (const auto& weakChunk : renderedChunks) {
+        if (auto chunk = weakChunk.lock()) {
+            if (chunk->getWaterMeshVerticesSize() > 0) {
+                glBindVertexArray(chunk->getWaterVao());
+                glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 9);
+            }
+        }
+    }
+	glEnable(GL_CULL_FACE);
 }

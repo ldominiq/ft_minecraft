@@ -8,6 +8,15 @@ Chunk::Chunk(std::istream& in) : blockIndices(WIDTH * HEIGHT * DEPTH, 4)
 
 Chunk::~Chunk() {}
 
+bool Chunk::hasAllAdjacentChunkLoaded() const {
+    for (const auto& adj : adjacentChunks) {
+        if (adj.expired()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 BlockType Chunk::getBlock(int x, int y, int z) const {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH) {
         return BlockType::AIR; // Out of bounds returns air
@@ -38,36 +47,37 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
     blockIndices.set(index, paletteIndex);
 }
 
-// TODO, change if (!neighbor) return BlockType::AIR; to if (!neighbor) return BlockType::END;
 bool Chunk::isBlockVisible(glm::ivec3 pos) {
     int x = pos.x, y = pos.y, z = pos.z;
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH)
         return false;
 
-    if (getBlock(x,y,z) == BlockType::AIR)
+	if (!hasAllAdjacentChunkLoaded()) return false;
+
+    if (!isBlockSolid(getBlock(x,y,z)))
         return false;
 
     auto getBlockOrNeighbor = [&](int dx, int dy, int dz, Direction dir) -> BlockType {
         if (x + dx < 0 || x + dx >= WIDTH ||
             z + dz < 0 || z + dz >= DEPTH) 
         {
-            // auto neighbor = adjacentChunks[dir].lock();
-            // if (!neighbor) return BlockType::AIR;
-            // int nx = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : x));
-            // int nz = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : z));
-            // return neighbor->getBlock(nx, y + dy, nz);
+            auto neighbor = adjacentChunks[dir].lock();
+            if (!neighbor) return BlockType::END;
+            int nx = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : x));
+            int nz = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : z));
+            return neighbor->getBlock(nx, y + dy, nz);
         }
         if (y + dy < 0 || y + dy >= HEIGHT)
             return BlockType::AIR;
 		return getBlock(x + dx, y + dy, z + dz);
     };
 
-    return getBlockOrNeighbor(0, 0, +1, NORTH) == BlockType::AIR ||
-           getBlockOrNeighbor(0, 0, -1, SOUTH) == BlockType::AIR ||
-           y == HEIGHT - 1 || getBlockOrNeighbor(0, +1, 0, NONE) == BlockType::AIR ||
-           y == 0 || getBlockOrNeighbor(0, -1, 0, NONE) == BlockType::AIR ||
-           getBlockOrNeighbor(+1, 0, 0, EAST) == BlockType::AIR ||
-           getBlockOrNeighbor(-1, 0, 0, WEST) == BlockType::AIR;
+    return !isBlockSolid(getBlockOrNeighbor(0, 0, +1, NORTH)) ||
+           !isBlockSolid(getBlockOrNeighbor(0, 0, -1, SOUTH)) ||
+           y == HEIGHT - 1 || !isBlockSolid(getBlockOrNeighbor(0, +1, 0, NONE)) ||
+           y == 0 || !isBlockSolid(getBlockOrNeighbor(0, -1, 0, NONE)) ||
+           !isBlockSolid(getBlockOrNeighbor(+1, 0, 0, EAST)) ||
+           !isBlockSolid(getBlockOrNeighbor(-1, 0, 0, WEST));
 }
 
 void Chunk::saveToStream(std::ostream& out) const {

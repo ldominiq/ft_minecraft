@@ -16,8 +16,9 @@
 #include <queue>
 #include <memory>
 
-#include "Block.hpp"
+#include "Item.hpp"
 #include "BitPackedArray.hpp"
+#include "LiquidsManager.hpp"
 
 class BlockStorage;
 
@@ -60,6 +61,8 @@ class Chunk {
 
 	public:
 
+		std::vector<s_liquid> liquids; //TODO put this in the bitpacker.
+
 		Chunk(int chunkX, int chunkZ, int bitsPerEntry = 4)
         : originX(chunkX * WIDTH),
           originZ(chunkZ * DEPTH),
@@ -72,6 +75,13 @@ class Chunk {
 		static constexpr int DEPTH = 16; // Depth of the chunck in blocks
 
 		static constexpr int BLOCK_COUNT = WIDTH * HEIGHT * DEPTH;
+
+		template <typename ChunkT>
+		void setAdjacentChunks(int direction, std::shared_ptr<ChunkT> const& chunk) {
+			static_assert(std::is_base_of_v<Chunk, ChunkT>, "T must derive from Chunk");
+			adjacentChunks[direction] = chunk;
+		}
+		bool hasAllAdjacentChunkLoaded() const;
 
 		BlockType getBlock(int x, int y, int z) const;
 		void setBlock(int x, int y, int z, BlockType block);

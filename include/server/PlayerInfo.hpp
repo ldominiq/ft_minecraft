@@ -9,47 +9,29 @@
 #include <chrono>
 
 #include "ChunkGeneration.hpp"
-#include "Protocol.hpp"
-
-#define FLY_SPEED 50.0f
-#define DEFAULT_SPEED 5.0f
+#include "PlayerMovement.hpp"
 
 class CPlayerInfo
 {
-	//camera
-	glm::vec3 position;
-    glm::vec3 Front;
-    glm::vec3 Up;
-    glm::vec3 Right;
-    glm::vec3 WorldUp;
-
-	float yaw, pitch;
-	float movementSpeed;
-
-	void updateCameraVectors();
-
 	public:
 
 		CPlayerInfo();
 
 		int id;
 		sockaddr_in addr;
-		std::chrono::_V2::steady_clock::time_point lastPktRecvTick;
 
 		std::string name;
-		uint8_t loadRadius;
+		uint8_t loadRadius; // TODO : set setter on new packet
 
-		glm::vec3 lastPositionSent;
 		int health; //unused
+
+		glm::vec3 startingPosition = glm::vec3(0,150,0);
+		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>(startingPosition);
 
 		std::unordered_set<ChunkPos> loadedChunks;
 		std::vector<ChunkPos> rdyChunks;
 
 		bool connected; //unused
-
-		void updatePosition(NetPlayerInputs &inputs, float &deltaTime);
-		inline const glm::vec3 getPosition() const { return position; }
-		inline const glm::vec3 getCameraDir() const { return Front; }
 };
 
 #endif

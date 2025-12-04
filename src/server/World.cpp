@@ -172,19 +172,29 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
 	}
 }
 
-
 World::World() {
     std::mt19937 rng(time(nullptr));
     terrainParams.seed = rng();
 
-	regionDirName = "region-" + std::to_string(terrainParams.seed);
-	// std::filesystem::create_directories(regionDirName);
+	std::string regionsDirName = "Regions/";
+	regionDirName = regionsDirName + "region-" + std::to_string(terrainParams.seed);
+	if (SAVES_ACTIVE)
+	{
+		std::filesystem::create_directories(regionsDirName);
+		std::filesystem::create_directories(regionDirName);
+	}
     std::cout << "World seed: " << terrainParams.seed << std::endl;
 }
 
 World::World(int seed) {
-	regionDirName = "region-" + std::to_string(seed);
-	// std::filesystem::create_directories(regionDirName);
+	std::cout << "World seed: " << seed << std::endl;
+	std::string regionsDirName = "Regions/";
+	regionDirName = regionsDirName + "region-" + std::to_string(seed);
+	if (SAVES_ACTIVE)
+	{
+		std::filesystem::create_directories(regionsDirName);
+		std::filesystem::create_directories(regionDirName);
+	}
     terrainParams.seed = seed;
 }
 
@@ -220,14 +230,32 @@ void World::handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadi
 	}
 }
 
+void World::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneration> &chunk) {
+
+    const int dirX[] = { 0, 0, 1, -1 };
+    const int dirZ[] = { 1, -1, 0, 0 };
+    const int opp[]  = { SOUTH, NORTH, WEST, EAST };
+
+    for (int dir = 0; dir < 4; ++dir) {
+        int nx = chunkX + dirX[dir];
+        int nz = chunkZ + dirZ[dir];
+
+        std::shared_ptr<ChunkGeneration> neighbor = getChunk(nx, nz);
+
+        chunk->setAdjacentChunks(static_cast<Direction>(dir), neighbor);
+        if (neighbor) {
+            neighbor->setAdjacentChunks(opp[dir], chunk);
+        }
+    }
+}
 
 void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
 {
     int unloadRadius = player.loadRadius + 16;
 
     // convert player position (world coords) to chunk coords
-    int playerChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-    int playerChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+    int playerChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+    int playerChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
     for (auto it = player.loadedChunks.begin(); it != player.loadedChunks.end(); )
     {
@@ -249,12 +277,12 @@ void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
 void World::setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates,
                           const CPlayerInfo &player)
 {
-    glm::vec2 camDir = glm::normalize(glm::vec2(player.getCameraDir().x, player.getCameraDir().z));
+    glm::vec2 camDir = glm::normalize(glm::vec2(player.movement->getCameraDir().x, player.movement->getCameraDir().z));
     float maxDist = static_cast<float>(player.loadRadius);
 
     // Get player’s current chunk position
-    int baseChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-    int baseChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+    int baseChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+    int baseChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
     for (int dx = -player.loadRadius; dx <= player.loadRadius; ++dx) {
         for (int dz = -player.loadRadius; dz <= player.loadRadius; ++dz) {
@@ -312,8 +340,8 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
     // in a circular distance from the camera are removed.  We copy the keys
     // to a temporary list to avoid invalidating the iterator while erasing.
 
-	const int currentChunkX = static_cast<int>(std::floor(player.getPosition().x / Chunk::WIDTH));
-	const int currentChunkZ = static_cast<int>(std::floor(player.getPosition().z / Chunk::DEPTH));
+	const int currentChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+	const int currentChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
 	handleOutOfMemory(currentChunkX, currentChunkZ, player.loadRadius);
 	
@@ -363,6 +391,8 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 			auto result = fut.get();
 			// generatingChunks.insert(result.first);
 			chunks[result.first] = result.second;
+			linkNeighbors(result.first.first, result.first.second, result.second);
+
 			plannedChunks.erase(result.first);
 
 			it = generationFutures.erase(it);
@@ -374,10 +404,196 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 	}
 }
 
+// finds the shortest (at most 4 blocks away) path to fall
+// This is being done iteratively
+//todo: if perf is an issue also add a check for depth <= currPropagation
+std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialBlockPos)
+{
+	std::vector<s_waterPath> furthestsBlocksPath;
+	std::vector<s_waterPath> newFurthestsBlocksPath;
+	std::unordered_set<glm::ivec3> visited;
+	std::vector<s_waterPath> finalPaths;
+
+	glm::ivec3 down(0, -1, 0);
+
+	static const glm::ivec3 directions[5] = {
+		{ 0, -1,  0}, // Down
+		{-1,  0,  0}, // Left
+		{ 1,  0,  0}, // Right
+		{ 0,  0,  1}, // Front
+		{ 0,  0, -1}  // Back
+	};
+
+	int depth = 0;
+	bool pathFound = false;
+
+	furthestsBlocksPath.push_back({});
+
+	while (depth <= 4 && !pathFound)
+	{
+		for (auto &currPath : furthestsBlocksPath)
+		{
+			for (auto &dir : directions)
+			{
+				s_waterPath newPath = currPath;
+				newPath.currBlockPos += dir;
+				newPath.currPath.push_back(dir);
+
+				glm::ivec3 newPosition(newPath.currBlockPos + initialBlockPos);
+				if (visited.contains(newPosition)) continue;
+				visited.insert(newPosition);
+
+				BlockType type = getBlockWorld(newPosition);
+
+				if (type == BlockType::AIR)
+				{
+					if (dir == down)
+					{
+						pathFound = true;
+						finalPaths.push_back(newPath);
+					}
+					else
+						newFurthestsBlocksPath.push_back(newPath);
+				}
+			}
+		}
+		furthestsBlocksPath = std::move(newFurthestsBlocksPath);
+		depth++;
+	}
+
+	return finalPaths;
+}
+
+std::vector<std::shared_ptr<s_liquid>> World::waterFlowTowardsShortestPath(const glm::ivec3 &initialBlockPos, const std::shared_ptr<s_liquid> &liquid, const std::vector<s_waterPath> &paths)
+{
+	std::unordered_map<glm::ivec3, std::shared_ptr<s_liquid>> newLiquids;
+
+	glm::ivec3 down(0, -1, 0);
+
+	for (auto &path : paths)
+	{
+		if (path.currPath.empty()) continue ;
+
+		glm::ivec3 pos = path.currPath.front();
+		glm::ivec3 position = pos + initialBlockPos;
+
+		if (getBlockWorld(position) != BlockType::AIR) continue ;
+
+		int newLiquidPropagationValue = liquid->currPropagation - 1;
+		if (path.currPath.size() == 2 && path.currPath.back() == down) // if propagation goes to 0 but last is down. make sure it goes down and doesn't keep floating
+			newLiquidPropagationValue = liquid->currPropagation;
+		if (pos == down)
+			newLiquidPropagationValue = s_liquid{}.currPropagation;
+
+		s_waterPath newWaterPath;
+		newWaterPath.currPath = std::vector<glm::ivec3>(
+			path.currPath.begin() + 1, path.currPath.end());
+
+		auto it = liquidsManager.liquids.find(position);
+		if (it == liquidsManager.liquids.end())
+		{
+			std::shared_ptr<s_liquid> newLiquidPtr = std::make_shared<s_liquid>();
+			newLiquidPtr->currPropagation = newLiquidPropagationValue;
+			newLiquidPtr->liquidType = BlockType::WATER;
+			newLiquidPtr->position = position;
+			newLiquidPtr->source = liquid;
+			if (!newWaterPath.currPath.empty())
+				newLiquidPtr->currentPaths.push_back(newWaterPath);
+
+			newLiquids[position] = newLiquidPtr;
+		}
+		else // if liquid already exists just add the path to it
+			it->second->currentPaths.push_back(newWaterPath);
+	}
+
+	std::vector<std::shared_ptr<s_liquid>> newLiquidsVector;
+	newLiquidsVector.reserve(newLiquids.size());
+	for (auto &[pos, liquid] : newLiquids)
+		newLiquidsVector.push_back(liquid);
+
+	return newLiquidsVector;
+}
+
+// update liquids. TODO: maybe separate liquid creation and deletion. current flow could end up MAYBE creating issues?
+void World::updateLiquids()
+{
+	glm::ivec3 down(0, -1, 0);
+
+	static const glm::ivec3 directions[5] = {
+		{ 0, -1,  0}, // Down
+		{-1,  0,  0}, // Left
+		{ 1,  0,  0}, // Right
+		{ 0,  0,  1}, // Front
+		{ 0,  0, -1}  // Back
+	};
+
+	std::unordered_set<glm::ivec3> visitedPositions;
+	std::vector<glm::ivec3> liquidsToRemove;
+
+	std::vector<std::shared_ptr<s_liquid>> newLiquids;
+	for (auto &[pos, liquid] : liquidsManager.liquidsToUpdate)
+	{
+		if (liquid->source.expired())
+		{
+			liquidsToRemove.push_back(pos);
+			continue ;
+		}
+
+		if (liquid->currentPaths.empty())
+		{
+			std::vector<s_waterPath> paths = findShortestWaterPath(pos);
+			if (!paths.empty())
+				liquid->currentPaths = paths;
+		}
+		if (!liquid->currentPaths.empty())
+		{
+			std::vector<std::shared_ptr<s_liquid>> extraLiquids = waterFlowTowardsShortestPath(pos, liquid, liquid->currentPaths);
+			newLiquids.insert(newLiquids.end(),
+					extraLiquids.begin(),
+					extraLiquids.end());
+			liquid->currentPaths.clear();
+			continue ;
+		}
+
+		for (const auto &dir : directions)
+		{
+			glm::ivec3 newPosition(pos + dir);
+			if (visitedPositions.contains(newPosition)) continue;
+			visitedPositions.insert(newPosition);
+
+			BlockType neighbor = getBlockWorld(newPosition);
+			if (neighbor == BlockType::AIR)
+			{
+				std::shared_ptr<s_liquid> newLiquidPtr = std::make_shared<s_liquid>();
+				newLiquidPtr->currPropagation = liquid->currPropagation - 1;
+				newLiquidPtr->liquidType = liquid->liquidType;
+				newLiquidPtr->position = newPosition;
+				newLiquidPtr->source = liquidsManager.liquids[liquid->position];
+				newLiquids.push_back(newLiquidPtr);
+			}
+		}
+	}
+	liquidsManager.liquidsToUpdate.clear();
+
+	for (auto liquidKey : liquidsToRemove)
+	{
+		setBlockWorld(liquidKey, std::nullopt, BlockType::AIR);
+		liquidsManager.liquids.erase(liquidKey);
+	}
+
+	for (auto &liquidPtr : newLiquids)
+	{
+		liquidsManager.addNewLiquid(liquidPtr->position, liquidPtr);
+		if (liquidPtr->currPropagation >= 0)
+			setWaterWorld(liquidPtr->position, std::nullopt, liquidPtr->liquidType);
+	}
+}
+
 void World::saveRegionsOnExit()
 {
+	if (!SAVES_ACTIVE) return;
     for (auto it = loadedRegions.begin(); it != loadedRegions.end();) {
-        //saveRegion(it->first, it->second);
+        saveRegion(it->first, it->second);
         it = loadedRegions.erase(it);
     }
 }
@@ -405,9 +621,10 @@ void World::updateRegionStreaming(int currentChunkX, int currentChunkZ) {
     }
 
     // Unload regions that are not in the 3x3 grid
+	// TODO : saveRegions if no player is in it...? Or something like that
     for (auto it = loadedRegions.begin(); it != loadedRegions.end();) {
         if (!regionsToKeep.count(*it)) {
-            //saveRegion(it->first, it->second);
+            // saveRegion(it->first, it->second);
             it = loadedRegions.erase(it);
         } else {
             ++it;
@@ -415,30 +632,29 @@ void World::updateRegionStreaming(int currentChunkX, int currentChunkZ) {
     }
 }
 
-//TODO handle the throws or change them to returns
 void World::saveRegion(int regionX, int regionZ) {
-    std::string filename = getRegionFilename(regionX, regionZ);
-    std::ofstream out(filename, std::ios::binary | std::ios::trunc);
-    if (!out) throw std::runtime_error("Cannot open region file for writing: " + filename);
+	std::string filename = getRegionFilename(regionX, regionZ);
 
-    // --- Write metadata ---
-    RegionFileMetadata metadata;
-    out.write(reinterpret_cast<const char*>(&metadata), sizeof(metadata));
+	// Write into memory buffer first
+	std::ostringstream oss(std::ios::binary);
 
-    // --- Reserve header space ---
-    std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE); // all zeroed
-    out.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
+	// --- Write metadata ---
+	RegionFileMetadata metadata;
+	oss.write(reinterpret_cast<const char*>(&metadata), sizeof(metadata));
 
-    // --- Write chunks ---
+	// --- Reserve header space ---
+	std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE);
+	oss.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
+
+	// --- Write chunks ---
 	for (int x = regionX * REGION_SIZE; x < (regionX + 1) * REGION_SIZE; x++) {
-		for (int z = regionZ * REGION_SIZE; z < (regionZ + 1) * REGION_SIZE; z++)
-		{
+		for (int z = regionZ * REGION_SIZE; z < (regionZ + 1) * REGION_SIZE; z++) {
 			auto it = chunks.find(Chunk::toKey(x, z));
-			if (it == chunks.end()) continue ;
-			
-			std::streampos currPos = out.tellp();
-			it->second->saveToStream(out);
-			std::streampos newPos = out.tellp();
+			if (it == chunks.end()) continue;
+
+			std::streampos currPos = oss.tellp();
+			it->second->saveToStream(oss);
+			std::streampos newPos = oss.tellp();
 
 			ChunkEntry entry;
 			entry.X = it->first.first;
@@ -446,7 +662,6 @@ void World::saveRegion(int regionX, int regionZ) {
 			entry.offset = static_cast<std::uint32_t>(currPos);
 			entry.size   = static_cast<std::uint32_t>(newPos - currPos);
 
-			//int idx = (x % REGION_SIZE) * REGION_SIZE + z;
 			int localX = x - regionX * REGION_SIZE;
 			int localZ = z - regionZ * REGION_SIZE;
 			int idx = localZ * REGION_SIZE + localX;
@@ -457,41 +672,80 @@ void World::saveRegion(int regionX, int regionZ) {
 		}
 	}
 
+	// --- Rewrite header in memory ---
+	oss.seekp(sizeof(metadata));
+	oss.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
 
-    // --- Rewrite header with correct entries ---
-    out.seekp(sizeof(metadata));
-    out.write(reinterpret_cast<const char*>(header.data()), header.size() * sizeof(ChunkEntry));
+	// === Compress entire buffer ===
+	std::string rawData = oss.str();
+	size_t maxCompressedSize = ZSTD_compressBound(rawData.size());
+	std::vector<uint8_t> compressed(maxCompressedSize);
+
+	size_t compressedSize = ZSTD_compress(compressed.data(), maxCompressedSize,
+										rawData.data(), rawData.size(), /*level*/ 3);
+	if (ZSTD_isError(compressedSize)) {
+		throw std::runtime_error("ZSTD compression failed: " + std::string(ZSTD_getErrorName(compressedSize)));
+	}
+	compressed.resize(compressedSize);
+
+	// === Write compressed file ===
+	std::ofstream out(filename, std::ios::binary | std::ios::trunc);
+	if (!out) throw std::runtime_error("Cannot open region file for writing: " + filename);
+
+	out.write(reinterpret_cast<const char*>(compressed.data()), compressed.size());
 }
 
-
 void World::loadRegion(int regionX, int regionZ) {
-    std::string filename = getRegionFilename(regionX, regionZ);
-    std::ifstream in(filename, std::ios::binary);
-    if (!in) return ;
+	std::string filename = getRegionFilename(regionX, regionZ);
+	std::ifstream in(filename, std::ios::binary);
+	if (!in) return;
 
-    // --- Read metadata ---
-    RegionFileMetadata metadata;
-    in.read(reinterpret_cast<char*>(&metadata), sizeof(metadata));
-    if (std::strncmp(metadata.magic, "RGN1", 4) != 0)
-        throw std::runtime_error("Invalid region file magic in " + filename);
+	// Read whole compressed file into memory
+	std::vector<uint8_t> compressed((std::istreambuf_iterator<char>(in)), {});
+	if (compressed.empty()) return;
 
-    // --- Read header ---
-    std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE);
-    in.read(reinterpret_cast<char*>(header.data()), header.size() * sizeof(ChunkEntry));
+	// Figure out decompressed size (if stored in frame)
+	unsigned long long decompressedSize = ZSTD_getFrameContentSize(compressed.data(), compressed.size());
+	if (decompressedSize == ZSTD_CONTENTSIZE_ERROR) {
+		throw std::runtime_error("Not a valid ZSTD stream: " + filename);
+	}
+	if (decompressedSize == ZSTD_CONTENTSIZE_UNKNOWN) {
+		throw std::runtime_error("Unknown decompressed size for: " + filename);
+	}
 
-    // --- Load each chunk ---
-    for (const auto& entry : header) {
-        if (entry.size == 0 || entry.offset == 0) continue; // empty slot
+	std::vector<uint8_t> decompressed(decompressedSize);
 
-        // Seek to the chunk data
-        in.seekg(entry.offset);
-        auto chunk = std::make_shared<ChunkGeneration>(entry.X, entry.Z, terrainParams, false);
-        chunk->loadFromStream(in);
+	size_t actualSize = ZSTD_decompress(decompressed.data(), decompressedSize,
+										compressed.data(), compressed.size());
+	if (ZSTD_isError(actualSize)) {
+		throw std::runtime_error("ZSTD decompression failed: " + std::string(ZSTD_getErrorName(actualSize)));
+	}
 
-        // Insert into chunk map
-        ChunkPos pos(entry.X, entry.Z);
-        chunks[pos] = chunk;
-    }
+	// Now parse from memory (like a file stream)
+	std::istringstream iss(std::string(reinterpret_cast<char*>(decompressed.data()), actualSize));
+
+	// --- Read metadata ---
+	RegionFileMetadata metadata;
+	iss.read(reinterpret_cast<char*>(&metadata), sizeof(metadata));
+	if (std::strncmp(metadata.magic, "RGN1", 4) != 0)
+		throw std::runtime_error("Invalid region file magic in " + filename);
+
+	// --- Read header ---
+	std::vector<ChunkEntry> header(REGION_SIZE * REGION_SIZE);
+	iss.read(reinterpret_cast<char*>(header.data()), header.size() * sizeof(ChunkEntry));
+
+	// --- Load chunks ---
+	for (const auto& entry : header) {
+		if (entry.size == 0 || entry.offset == 0) continue;
+
+		iss.seekg(entry.offset);
+		auto chunk = std::make_shared<ChunkGeneration>(entry.X, entry.Z, terrainParams, false);
+		chunk->loadFromStream(iss);
+		linkNeighbors(entry.X, entry.Z, chunk);
+
+		ChunkPos pos(entry.X, entry.Z);
+		chunks[pos] = chunk;
+	}
 }
 
 std::string World::getRegionFilename(int regionX, int regionZ) const {
@@ -521,12 +775,123 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 
     std::shared_ptr<Chunk> currChunk = it->second;
 
-	updatedBlocks.push_back({glm::ivec3(targetCoords.x, targetCoords.y, targetCoords.z), type});
+	updatedBlocks.push_back({targetCoords, type});
     currChunk->setBlock(x, y, z, type);
+
+	// update neat water blocks
+	static const glm::ivec3 directions[6] = {
+		{ 0, -1,  0}, // Down
+		{ 0,  1,  0}, // Up
+		{-1,  0,  0}, // Left
+		{ 1,  0,  0}, // Right
+		{ 0,  0,  1}, // Front
+		{ 0,  0, -1}  // Back
+	};
+
+	if (type == BlockType::WATER)
+	{
+		auto liquidPtr = std::make_shared<s_liquid>();
+
+		liquidPtr->liquidType = BlockType::WATER;
+		liquidPtr->position = targetCoords;
+		liquidPtr->source = liquidPtr;
+
+		liquidsManager.addNewLiquid(targetCoords, liquidPtr);
+	}
+	else
+	{
+		// if water was there, removed it
+		auto liquidIt = liquidsManager.liquids.find(targetCoords);
+		if (liquidIt != liquidsManager.liquids.end())
+			liquidsManager.liquids.erase(targetCoords);
+
+		// if water is near update it
+		for (auto &dir : directions)
+		{
+			auto it = liquidsManager.liquids.find(targetCoords + dir);
+			if (it != liquidsManager.liquids.end())
+				liquidsManager.liquidsToUpdate[it->first] = it->second;
+			else if (it == liquidsManager.liquids.end() && getBlockWorld(targetCoords + dir) == BlockType::WATER) //create new water if we have updated a block next to a generated water block
+			{
+				auto liquidPtr = std::make_shared<s_liquid>();
+
+				liquidPtr->liquidType = BlockType::WATER;
+				liquidPtr->position = targetCoords + dir;
+				liquidPtr->source = liquidPtr;
+
+				liquidsManager.addNewLiquid(targetCoords + dir, liquidPtr);
+			}
+		}
+	}
+}
+
+void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
+{
+	// Offset the global coordinates in the direction of the face normal
+	glm::ivec3 targetCoords = globalCoords;
+	if (faceNormal.has_value()) {
+		targetCoords += *faceNormal;
+	}
+
+	int x, y, z;
+	int chunkX, chunkZ;
+	globalCoordsToLocalCoords(x, y, z, 
+		targetCoords.x, targetCoords.y, targetCoords.z, 
+		chunkX, chunkZ);
+
+	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
+	if (it == chunks.end())
+		return;
+
+	std::shared_ptr<Chunk> currChunk = it->second;
+
+	updatedBlocks.push_back({targetCoords, type});
+	currChunk->setBlock(x, y, z, type);
 }
 
 void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
 {
-	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.getPosition(), player.getCameraDir());
-	if (pkt.mouseButtons & IN_LEFT_CLICK) removeTargettedBlock(player.getPosition(), player.getCameraDir());
+	//Repetition. Not clean. And not performance friendly either.
+	glm::ivec3 blockPos, faceNormal;
+	getTargetedBlock(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal);
+	BlockType dropped = getBlockWorld(blockPos);
+
+	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
+	if (pkt.mouseButtons & IN_LEFT_CLICK)
+	{
+		if (removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir()) && player.movement->gamemode == GAMEMODES::SURVIVAL)
+		{
+			// random generator
+			static std::mt19937 rng(std::random_device{}());
+			std::uniform_real_distribution<float> angleDist(0.0f, 360.0f);
+			std::uniform_real_distribution<float> offsetDist(-0.25f, 0.25f);
+
+			// pick a random yaw angle (in degrees)
+			float randomAngle = angleDist(rng);
+
+			// convert to radians for glm
+			float yawRad = glm::radians(randomAngle);
+
+			// small position offset from the block center
+			glm::vec3 positionOffset = glm::normalize(glm::vec3(std::cos(yawRad), 0.0f, std::sin(yawRad))) 
+									* 0.15f; // radius offset
+
+			// optional: add some slight random variation so they don’t stack perfectly
+			positionOffset.x += offsetDist(rng);
+			positionOffset.z += offsetDist(rng);
+
+			// spawn the entity at block center + offset
+			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
+
+			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped));
+		}
+	}
+}
+
+void World:: updateEntitiesPosition()
+{
+	for (auto &entity : livingEntities)
+		entity->calculateNewPosition(*this);
+	for (auto &entity : itemEntities)
+		entity->calculateNewPosition(*this);
 }

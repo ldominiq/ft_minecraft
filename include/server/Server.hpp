@@ -8,20 +8,14 @@
 #include <cstring>
 #include <iostream>
 #include <fcntl.h>
-#include <chrono>
 #include <thread>
 #include <zstd.h>
 
 #include "Protocol.hpp"
 #include "World.hpp"
 #include "PlayerInfo.hpp"
-
-#define PORT 1234
-
-using TickDuration = std::chrono::steady_clock::duration;
-constexpr TickDuration TICK_RATE = std::chrono::duration_cast<TickDuration>(
-    std::chrono::duration<double>(1.0 / 60.0)
-);
+#include "ItemEntity.hpp"
+#include "Config.hpp"
 
 class Server {
 private:
@@ -36,6 +30,7 @@ private:
 
 	bool running = false;
 
+	int32_t tick = 0;
 	float deltaTime;
 
 	void gameTick();
@@ -50,9 +45,10 @@ private:
 	void receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr);
 	void receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &clieaddr);
 	void receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &clieddr);
-	void receiveMessage(NetMessage &pkt);
+	void receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr);
 
 	void sendAll();
+	void sendNewGroupPacketTo(std::vector<PacketPtr> &pkts, const sockaddr_in &cliaddr);
 	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
 	void sendAccept(const sockaddr_in &cliaddr);
 	
@@ -61,13 +57,14 @@ private:
 	void sendChunk(CPlayerInfo &player);
 	void sendPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player);
-
-	void saveWorldOnExit();
+	void sendEntitiesPositionDeltas();
 
 public:
     Server();
     ~Server();
-    void run(); // start server
+    void run(std::optional<int> &seed); // start server
+
+	void saveWorldOnExit();
 };
 
 namespace NetUtils {

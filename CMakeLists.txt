@@ -170,14 +170,17 @@ file(GLOB_RECURSE SERVER_SRC
 add_executable(ft_minecraft ${CLIENT_SRC})
 target_include_directories(ft_minecraft PRIVATE
     ${CMAKE_SOURCE_DIR}/include/client
+	${CMAKE_SOURCE_DIR}/include/client/characters
+	${CMAKE_SOURCE_DIR}/include/client/items
+	${CMAKE_SOURCE_DIR}/include/client/menus
     ${CMAKE_SOURCE_DIR}/include/shared
+	${CMAKE_SOURCE_DIR}/include/shared/Mobs
     ${glm_SOURCE_DIR}
     ${fastnoise_SOURCE_DIR}/Cpp
     ${glad_SOURCE_DIR}/include
     ${stb_SOURCE_DIR}
 	${zstd_SOURCE_DIR}/lib
     ${imgui_SOURCE_DIR}
-	${CMAKE_SOURCE_DIR}/include/client/menus
 	${freetype_SOURCE_DIR}/include
 )
 
@@ -195,6 +198,7 @@ add_executable(ft_minecraft_server ${SERVER_SRC})
 target_include_directories(ft_minecraft_server PRIVATE
     ${CMAKE_SOURCE_DIR}/include/server
     ${CMAKE_SOURCE_DIR}/include/shared
+	${CMAKE_SOURCE_DIR}/include/shared/Mobs
     ${glm_SOURCE_DIR}
     ${fastnoise_SOURCE_DIR}/Cpp
 	${zstd_SOURCE_DIR}/lib
@@ -203,3 +207,5 @@ target_include_directories(ft_minecraft_server PRIVATE
 target_link_libraries(ft_minecraft_server PRIVATE
 	libzstd
 )
+
+# TODO : LOOK INTO COMPILING WITH FLAGS. ONLY OUR CODE NO LIBS

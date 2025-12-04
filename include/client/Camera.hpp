@@ -3,33 +3,33 @@
 
 #include <glm/glm.hpp>
 #include <memory>
+#include <ranges>
 
-#include "ChunkRenderer.hpp"
-#include "Shader.hpp"
 #include "Protocol.hpp"
 #include "Renderer.hpp"
 #include "GLFW/glfw3.h"
-
+#include "ClientPlayer.hpp"
 
 class Camera {
 
 	GLuint wireframeVAO, wireframeVBO, wireframeEBO;
 
 	void initWireframeCube();
+	void predictNTicks(const Renderer &world);
 	std::unique_ptr<Shader> blockWireframeShader = nullptr;
 
-	//""Temporarily"" put some chunks in Camera.
-	std::unordered_map<ChunkPos, std::shared_ptr<ChunkRenderer>> chunks;
+	int64_t amountOfSnapshotsReceived = 0;
+
+	//TODO : get all the tick logic elsewhere;
+	float serverTick = 0;
+	float prevServerTick = 0;
+
+	std::shared_ptr<ClientPlayer> player;
+	bool thirdPersonCamera = false;
 
 public:
-    glm::vec3 Position;
-    glm::vec3 Front;
-    glm::vec3 Up;
-    glm::vec3 Right;
-    glm::vec3 WorldUp;
+	std::vector<NetPlayerInputs> inputsList;
 
-    float Yaw, Pitch;
-    float MovementSpeed;
     float MouseSensitivity;
 
 	uint8_t loadRadius = 12; // 4 - 32
@@ -39,14 +39,22 @@ public:
 
     glm::mat4 getViewMatrix() const;
     void processMouseMovement(float xoffset, float yoffset);
-    void updateCameraVectors();
-	void updatePosition(NetPlayerMove &pkt);
+	void onSnapshot(NetPlayerMove &pkt, const Renderer &world);
+	void lerpToNextPosition(float deltaTime);
 
-	inline const float getYaw() const { return Yaw; }
-	inline const float getPitch() const { return Pitch; }
+	//maybe refactor some day and put somewhere else
+	glm::vec3 lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition);
+
 	inline const uint8_t getLoadRadius() const { return loadRadius; }
+	// inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
 
-	void drawWireframeSelectedBlockFace(std::unique_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
+	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
+
+	void drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
+
+	const inline bool isThirdPersonCameraActive() const {return thirdPersonCamera;}
+	const inline void toggleThirdPersonCamera() {thirdPersonCamera = !thirdPersonCamera; player->setDoDraw(thirdPersonCamera);}
+	const inline std::shared_ptr<ClientPlayer> getPlayer() {return player;};
 };
 
 
