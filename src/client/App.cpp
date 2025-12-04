@@ -1033,7 +1033,7 @@ void App::loadControlsDefaults() {
     controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_TAB;
     controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
-	controlsArray[THIS_PERSON_CAMERA]	= GLFW_KEY_F5;
+	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
 }
 
 void App::loadControlsFromFile(const char* filename) {
@@ -1190,11 +1190,11 @@ void App::processInput() {
         f4Held = false;
     }
 
-	if (glfwGetKey(window, controlsArray[THIS_PERSON_CAMERA]) == GLFW_PRESS && !ThirdPersonCameraKeyActive) {
+	if (glfwGetKey(window, controlsArray[THIRD_PERSON_CAMERA]) == GLFW_PRESS && !ThirdPersonCameraKeyActive) {
 		ThirdPersonCameraKeyActive = true;
 		camera->toggleThirdPersonCamera();
 	}
-	if (glfwGetKey(window, controlsArray[THIS_PERSON_CAMERA]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
+	if (glfwGetKey(window, controlsArray[THIRD_PERSON_CAMERA]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
 		ThirdPersonCameraKeyActive = false;
 	}
 

@@ -22,7 +22,7 @@ void Server::run(std::optional<int> &seed) {
 	glm::vec3 startingPos = glm::vec3(0,200, 0);
 	std::shared_ptr<Creeper> crep = std::make_shared<Creeper>(startingPos);
 	world->livingEntities.push_back(crep);
-	
+
 	running = true;
 
     loop();
@@ -234,7 +234,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 		messages.push_back(pkt.message);
 }
 
-// TODO : Multythread
+// TODO : Multithread
 void Server::sendAll()
 {
 	world->amountOfChunksSentThisTick = 0;

@@ -46,7 +46,7 @@ struct AABB {
 
 class ICommonWorld;
 
-//idManager is shared across all Entity instances. It does not support multythreading in this current form. It could lead to race conditions. Must be single threaded
+//idManager is shared across all Entity instances. It does not support multithreading in this current form. It could lead to race conditions. Must be single threaded
 class ItemEntityIDManager {
 
 	entityID nextID = 1;                 // start from 1 (0 = invalid?)
