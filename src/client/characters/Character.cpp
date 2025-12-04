@@ -9,7 +9,7 @@ void Character::createCharacterAt(const glm::vec3 &pos, float characterScale)
 {
 	Space character;
 
-	//when building the character. First goes the toros which is centered in the middle. But then legs go under it. This next variable helps recentering the whole character whith his center being at 0.0.0
+	//when building the character. First goes the torso which is centered in the middle. But then legs go under it. This next variable helps recentering the whole character with his center being at 0.0.0
 	//these calculations make no sense. But for now it gives the impression that it works... (only the .scale is good)
 	float upTranslationRatio = (torsoScaleY + headScaleY + legScaleY * 2.0f) / (torsoScaleY / 2.0f + legScaleY * 2.0f);
 	YPositionOffset = glm::vec3(0, -(characterScale * characterScaleNorm * upTranslationRatio * 2), 0);

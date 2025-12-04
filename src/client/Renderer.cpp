@@ -230,7 +230,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 					break;
 				default:
 					std::cout << "ERROR ERROR MAYDAY WE GOT A PROBLEM" << std::endl;
-					break;
+					return;
 			}
 
 			livingEntitiesManager.add(entityPtr);
