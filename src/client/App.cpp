@@ -516,8 +516,8 @@ void App::render() {
         glfwSwapBuffers(window);
         glfwPollEvents();
 
-        int readIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
-        profilingCallbackApp(queryDrawSkyPool[readIndex], measuredAverageNsDrawSky, measuredAverageMsDrawSky);;
+        int readIndex = (currentQueryIndex + 2) % QUERY_POOL_SIZE;
+        profilingCallbackApp(queryDrawSkyPool[readIndex], measuredAverageNsDrawSky, measuredAverageMsDrawSky);
         profilingCallbackApp(queryDrawWaterReflectionPool[readIndex], measuredAverageNsDrawWaterReflection, measuredAverageMsDrawWaterReflection);
         profilingCallbackApp(queryRenderShaderPool[readIndex], measuredAverageNsRenderShader, measuredAverageMsRenderShader);
         profilingCallbackApp(queryRenderWaterPool[readIndex], measuredAverageNsRenderWater, measuredAverageMsRenderWater);
@@ -1121,11 +1121,11 @@ void App::cleanup() {
     glDeleteTextures(1, &texture);
 
     // Query objects (profiling)
-    glDeleteQueries(1, &queryDrawEntities[currentQueryIndex]);
-    glDeleteQueries(1, &queryDrawSkyPool[currentQueryIndex]);
-    glDeleteQueries(1, &queryDrawWaterReflectionPool[currentQueryIndex]);
-    glDeleteQueries(1, &queryRenderShaderPool[currentQueryIndex]);
-    glDeleteQueries(1, &queryDrawShadowsPool[currentQueryIndex]);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawEntities);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
 
 	NetDisconnect pkt;
 	pkt.username = "Steve";
