@@ -207,7 +207,7 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 	setPosition(newPos);
 }
 
-void Entity::calculateNewPosition(const ICommonWorld &world)
+void Entity::calculateNewPosition(const ICommonWorld &world, const std::vector<std::shared_ptr<Entity>> &players)
 {
 	// TODO : return early if block stopped. Same as player calculateNewPosition TODO.
 	glm::vec3 desiredPos = getDesiredMove();

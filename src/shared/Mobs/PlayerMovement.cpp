@@ -138,7 +138,7 @@ glm::vec3 PlayerMovement::getDesiredMove()
     return glm::vec3(this->velocity.x, 0.0f, this->velocity.z);
 }
 
-void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
+void PlayerMovement::calculateNewPosition(const ICommonWorld &world, const std::vector<std::shared_ptr<Entity>> &players)
 {
 	constexpr float forehead = 0.3f;
 	float headHeight = this->entityHeight - forehead;

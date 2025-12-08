@@ -27,7 +27,7 @@ struct PlayerMovement : public virtual LivingEntity {
 	void updatePosition();
 
 	void updateCameraVectors();
-	void calculateNewPosition(const ICommonWorld &world) override;
+	void calculateNewPosition(const ICommonWorld &world, const std::vector<std::shared_ptr<Entity>> &players) override;
 
 	inline const glm::vec3 getVelocity() const { return this->velocity; }
 	inline const glm::vec3 getCameraDir() const { return this->Front; }

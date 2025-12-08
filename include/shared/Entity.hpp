@@ -101,7 +101,7 @@ class Entity {
 		bool positionUpdated = true;
 
 		inline virtual EEntityTypes getEntityType() const = 0;
-		virtual void calculateNewPosition(const ICommonWorld &world);
+		virtual void calculateNewPosition(const ICommonWorld &world, const std::vector<std::shared_ptr<Entity>> &players);
 		inline const glm::vec3 getPosition() const { return position; }
 		inline const float getEntityWidth() const { return entityWidth; }
 		inline const float getEntityHeight() const { return entityHeight; }

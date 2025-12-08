@@ -888,10 +888,14 @@ void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerM
 	}
 }
 
-void World:: updateEntitiesPosition()
+void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players)
 {
+	std::vector<std::shared_ptr<Entity>> playerPositions;
+	for (const auto &player : players)
+		playerPositions.push_back(player.movement);
+
 	for (auto &entity : livingEntities)
-		entity->calculateNewPosition(*this);
+		entity->calculateNewPosition(*this, playerPositions);
 	for (auto &entity : itemEntities)
-		entity->calculateNewPosition(*this);
+		entity->calculateNewPosition(*this, playerPositions);
 }

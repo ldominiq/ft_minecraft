@@ -11,8 +11,8 @@ struct Creeper : public virtual LivingEntity {
 		Creeper(const glm::vec3 &position, float yaw, entityID ID);
 		virtual ~Creeper() = default;
 
-		glm::vec3 getDesiredMove() override;
-		void calculateNewPosition(const ICommonWorld &world) override;
+		glm::vec3 getDesiredMove(const std::vector<std::shared_ptr<Entity>> &players);
+		void calculateNewPosition(const ICommonWorld &world, const std::vector<std::shared_ptr<Entity>> &players) override;
 };
 
 #endif

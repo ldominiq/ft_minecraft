@@ -111,7 +111,7 @@ public:
 	std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
 
 	void processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt);
-	void updateEntitiesPosition();	
+	void updateEntitiesPosition(const std::vector<CPlayerInfo> &players);
 
 	void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 	void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
