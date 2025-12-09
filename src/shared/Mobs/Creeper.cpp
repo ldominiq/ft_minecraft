@@ -51,34 +51,34 @@ glm::vec3 Creeper::getDesiredMove(const ICommonWorld &world, const std::vector<s
     }
 
     // Only move if a player was found within range and outside stop distance
-    if (foundPlayer && closestDistSq > STOP_DISTANCE_SQ)
-    {
-        // Move towards the closest player (horizontal movement only)
-        glm::vec3 direction = closestPlayerPos - this->position;
-        direction.y = 0.0f; // Ignore vertical component for movement direction
+    // if (foundPlayer && closestDistSq > STOP_DISTANCE_SQ)
+    // {
+    //     // Move towards the closest player (horizontal movement only)
+    //     glm::vec3 direction = closestPlayerPos - this->position;
+    //     direction.y = 0.0f; // Ignore vertical component for movement direction
         
-        float horizontalDist = glm::length(direction);
-        if (horizontalDist > 0.01f) // Check if direction is non-zero
-        {
-            direction = glm::normalize(direction);
+    //     float horizontalDist = glm::length(direction);
+    //     if (horizontalDist > 0.01f) // Check if direction is non-zero
+    //     {
+    //         direction = glm::normalize(direction);
             
-            // Return position delta for this tick (not velocity)
-            moveVec = direction * WALKING_SPEED * DELTA_TIME;
+    //         // Return position delta for this tick (not velocity)
+    //         moveVec = direction * WALKING_SPEED * DELTA_TIME;
             
-            // Update yaw to face the player
-            this->yaw = glm::degrees(atan2(direction.z, direction.x));
+    //         // Update yaw to face the player
+    //         this->yaw = glm::degrees(atan2(direction.z, direction.x));
 
-            checkObstacleAndJump(world, direction);
-        }
-		// TODO: add some pathfinding to avoid obstacles maybe?
-		// TODO: Add collision checks between creeper and player
-		// TODO: Add collision checks between mobs
-        // TODO: Add explosion logic when close enough to player
+    //         checkObstacleAndJump(world, direction);
+    //     }
+	// 	// TODO: add some pathfinding to avoid obstacles maybe?
+	// 	// TODO: Add collision checks between creeper and player
+	// 	// TODO: Add collision checks between mobs
+    //     // TODO: Add explosion logic when close enough to player
         
-    } else {
+    // } else {
         // No player nearby - wander randomly
         moveVec = getWanderMove(world);
-    }
+    // }
 
     return moveVec;
 }

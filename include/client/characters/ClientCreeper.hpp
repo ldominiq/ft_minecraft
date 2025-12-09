@@ -14,8 +14,8 @@ class ClientCreeper : public Creeper, public IClientEntity
 		ClientCreeper(const glm::vec3 &position, float yaw, entityID ID);
 		~ClientCreeper() = default;
 		
-		// void walkAnimation(float deltaTime) override;
-		// void jumpAnimation(float currentFrame) override;
+		void walkAnimation(float deltaTime) override;
+		void jumpAnimation(float currentFrame) override;
 };
 
 #endif
