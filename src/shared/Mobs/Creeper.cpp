@@ -62,9 +62,6 @@ glm::vec3 Creeper::getDesiredMove(const ICommonWorld &world, const std::vector<s
         {
             direction = glm::normalize(direction);
             
-            // Movement speed in blocks/second, scaled to per-tick delta
-            const float DELTA_TIME = 1.0f / 20.0f; // Server runs at 20 TPS
-            
             // Return position delta for this tick (not velocity)
             moveVec = direction * WALKING_SPEED * DELTA_TIME;
             
@@ -76,10 +73,49 @@ glm::vec3 Creeper::getDesiredMove(const ICommonWorld &world, const std::vector<s
 		// TODO: add some pathfinding to avoid obstacles maybe?
 		// TODO: Add collision checks between creeper and player
 		// TODO: Add collision checks between mobs
-		
+        // TODO: Add explosion logic when close enough to player
+        
+    } else {
+        // No player nearby - wander randomly
+        moveVec = getWanderMove(world);
     }
 
     return moveVec;
+}
+
+glm::vec3 Creeper::getWanderMove(const ICommonWorld &world)
+{
+    const float WANDER_SPEED = WALKING_SPEED * 0.5f; // Slower when wandering
+    const float MIN_WANDER_COOLDOWN = 6.0f; // Minimum seconds between wander direction changes
+    const float MAX_WANDER_COOLDOWN = 20.0f; // Maximum seconds between wander direction changes
+    const float WANDER_DURATION = 3.0f; // Seconds to walk in wander direction
+
+    wanderCooldown -= DELTA_TIME;
+    
+    // If cooldown expired, pick new random direction
+    if (wanderCooldown <= 0.0f)
+    {
+        // Random wait time before next wander
+        float randomWait = MIN_WANDER_COOLDOWN + 
+            static_cast<float>(rand()) / RAND_MAX * (MAX_WANDER_COOLDOWN - MIN_WANDER_COOLDOWN);
+        wanderCooldown = randomWait;
+        wanderDuration = WANDER_DURATION;
+        
+        // Random angle in radians
+        float randomAngle = static_cast<float>(rand()) / RAND_MAX * 2.0f * M_PI;
+        wanderDirection = glm::vec3(cos(randomAngle), 0.0f, sin(randomAngle));
+        this->yaw = glm::degrees(randomAngle);
+    }
+    
+    // Execute wander move if duration hasn't expired
+    if (wanderDuration > 0.0f)
+    {
+        wanderDuration -= DELTA_TIME;
+        checkObstacleAndJump(world, wanderDirection);
+        return wanderDirection * WANDER_SPEED * DELTA_TIME;
+    }
+    
+    return glm::vec3(0.0f);
 }
 
 void Creeper::checkObstacleAndJump(const ICommonWorld &world, const glm::vec3 &direction)
@@ -97,12 +133,8 @@ void Creeper::checkObstacleAndJump(const ICommonWorld &world, const glm::vec3 &d
     // If there's a block ahead at foot level but not at head level, jump
     if (blockAhead != BlockType::AIR && blockAbove == BlockType::AIR || blockAbove == BlockType::WATER)
     {
-        // Check if creeper is on ground before jumping
-        glm::ivec3 blockBelow = glm::floor(this->position - glm::vec3(0, 0.01f, 0));
-        BlockType groundBlock = world.getBlockWorld({blockBelow.x, blockBelow.y, blockBelow.z});
-        if (groundBlock != BlockType::AIR && this->velocity.y <= 0.0f)
+        if (this->velocity.y <= 0.0f)
         {
-            std::cout << "Creeper deciding to jump!" << std::endl;
             this->jump = true;
         }
     }
