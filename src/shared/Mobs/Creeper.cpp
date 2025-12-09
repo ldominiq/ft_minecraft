@@ -1,5 +1,6 @@
 
 #include "Creeper.hpp"
+#include "CommonWorld.hpp"
 
 Creeper::Creeper(const glm::vec3 &position):	LivingEntity(position)
 {
@@ -17,7 +18,7 @@ Creeper::Creeper(const glm::vec3 &position, float yaw, entityID ID): LivingEntit
 	this->entityHeight = 2.0f;
 }
 
-glm::vec3 Creeper::getDesiredMove(const std::vector<std::shared_ptr<Entity>> &players)
+glm::vec3 Creeper::getDesiredMove(const ICommonWorld &world, const std::vector<std::shared_ptr<Entity>> &players)
 {
     glm::vec3 moveVec = glm::vec3(0.0f);
 
@@ -31,7 +32,7 @@ glm::vec3 Creeper::getDesiredMove(const std::vector<std::shared_ptr<Entity>> &pl
 
     const float DETECTION_RANGE = 16.0f; // blocks
     const float DETECTION_RANGE_SQ = DETECTION_RANGE * DETECTION_RANGE;
-    const float STOP_DISTANCE = 1.0f; // Stop when this close to player
+    const float STOP_DISTANCE = 2.0f; // Stop when this close to player
     const float STOP_DISTANCE_SQ = STOP_DISTANCE * STOP_DISTANCE;
 
     for (const auto &player : players)
@@ -69,22 +70,49 @@ glm::vec3 Creeper::getDesiredMove(const std::vector<std::shared_ptr<Entity>> &pl
             
             // Update yaw to face the player
             this->yaw = glm::degrees(atan2(direction.z, direction.x));
+
+            checkObstacleAndJump(world, direction);
         }
 		// TODO: add some pathfinding to avoid obstacles maybe?
-		// TODO: Jump over small obstacles
 		// TODO: Add collision checks between creeper and player
+		// TODO: Add collision checks between mobs
 		
     }
 
     return moveVec;
 }
 
+void Creeper::checkObstacleAndJump(const ICommonWorld &world, const glm::vec3 &direction)
+{
+    // Check blocks ahead at current height and one block up
+    glm::vec3 checkPos = this->position + direction * 0.8f; // Check slightly ahead
+    
+    // Check if there's a solid block at foot level ahead
+    glm::ivec3 blockPosAhead = glm::floor(checkPos);
+    glm::ivec3 blockPosAbove = blockPosAhead + glm::ivec3(0, 1, 0);
+
+    BlockType blockAhead = world.getBlockWorld({blockPosAhead.x, blockPosAhead.y, blockPosAhead.z});
+    BlockType blockAbove = world.getBlockWorld({blockPosAbove.x, blockPosAbove.y, blockPosAbove.z});
+
+    // If there's a block ahead at foot level but not at head level, jump
+    if (blockAhead != BlockType::AIR && blockAbove == BlockType::AIR || blockAbove == BlockType::WATER)
+    {
+        // Check if creeper is on ground before jumping
+        glm::ivec3 blockBelow = glm::floor(this->position - glm::vec3(0, 0.01f, 0));
+        BlockType groundBlock = world.getBlockWorld({blockBelow.x, blockBelow.y, blockBelow.z});
+        if (groundBlock != BlockType::AIR && this->velocity.y <= 0.0f)
+        {
+            std::cout << "Creeper deciding to jump!" << std::endl;
+            this->jump = true;
+        }
+    }
+}
+
 void Creeper::calculateNewPosition(const ICommonWorld &world, const std::vector<std::shared_ptr<Entity>> &players)
 {
-	// jump = true;
+	glm::vec3 desiredMove = getDesiredMove(world, players);
 	doJump(world);
-	glm::vec3 desiredMove = getDesiredMove(players);
 	this->calculateNewXZPosition(world, desiredMove);
 	this->calculateNewYPosition(world);
-	// jump = false;
+	this->jump = false;
 }
