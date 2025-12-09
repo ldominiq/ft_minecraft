@@ -215,6 +215,7 @@ private:
 	};
 
     // PROFILING
+    bool profilingEnabled = false;
     static constexpr int QUERY_POOL_SIZE = 3;
     GLuint queryDrawSkyPool[QUERY_POOL_SIZE];
     GLuint queryDrawWaterReflectionPool[QUERY_POOL_SIZE];

@@ -516,14 +516,15 @@ void App::render() {
         glfwSwapBuffers(window);
         glfwPollEvents();
 
-        int readIndex = (currentQueryIndex + 2) % QUERY_POOL_SIZE;
-        profilingCallbackApp(queryDrawSkyPool[readIndex], measuredAverageNsDrawSky, measuredAverageMsDrawSky);
-        profilingCallbackApp(queryDrawWaterReflectionPool[readIndex], measuredAverageNsDrawWaterReflection, measuredAverageMsDrawWaterReflection);
-        profilingCallbackApp(queryRenderShaderPool[readIndex], measuredAverageNsRenderShader, measuredAverageMsRenderShader);
-        profilingCallbackApp(queryRenderWaterPool[readIndex], measuredAverageNsRenderWater, measuredAverageMsRenderWater);
-        profilingCallbackApp(queryDrawShadowsPool[readIndex], measuredAverageNsDrawShadows, measuredAverageMsDrawShadows);
-        profilingCallbackApp(queryDrawEntities[readIndex], measuredAverageNsDrawEntities, measuredAverageMsDrawEntities);
-
+        if (profilingEnabled) {
+            int readIndex = (currentQueryIndex + 2) % QUERY_POOL_SIZE;
+            profilingCallbackApp(queryDrawSkyPool[readIndex], measuredAverageNsDrawSky, measuredAverageMsDrawSky);
+            profilingCallbackApp(queryDrawWaterReflectionPool[readIndex], measuredAverageNsDrawWaterReflection, measuredAverageMsDrawWaterReflection);
+            profilingCallbackApp(queryRenderShaderPool[readIndex], measuredAverageNsRenderShader, measuredAverageMsRenderShader);
+            profilingCallbackApp(queryRenderWaterPool[readIndex], measuredAverageNsRenderWater, measuredAverageMsRenderWater);
+            profilingCallbackApp(queryDrawShadowsPool[readIndex], measuredAverageNsDrawShadows, measuredAverageMsDrawShadows);
+            profilingCallbackApp(queryDrawEntities[readIndex], measuredAverageNsDrawEntities, measuredAverageMsDrawEntities);
+        }
     }
 }
 
@@ -1029,9 +1030,11 @@ void App::debugWindow() {
 
                 	ImGui::EndTabItem();
                 }
-                if (ImGui::BeginTabItem("Profiling")) {
+                if (ImGui::BeginTabItem("Profiler")) {
                     ImGui::Text("GPU Timings");
                     ImGui::Separator();
+
+                    profilingEnabled = true;
                     
                     // Calculate totals
                     float totalGPU = measuredAverageMsDrawSky + measuredAverageMsRenderShader + 
@@ -1075,6 +1078,8 @@ void App::debugWindow() {
                     }
                     
                     ImGui::EndTabItem();
+                } else {
+                    profilingEnabled = false;
                 }
                 ImGui::EndTabBar();
             }
