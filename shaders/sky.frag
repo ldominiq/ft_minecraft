@@ -116,8 +116,8 @@ vec3 getSkyColor(vec3 eye, vec3 dir, vec3 sunDir) {
         return vec3(0.25, 0.35, 0.6) * 0.2;
     }
 
-    const int SAMPLES = 16;
-    const int SAMPLES_SUN = 8;
+    const int SAMPLES = 6;
+    const int SAMPLES_SUN = 3;
     float segment = farDist / float(SAMPLES);
 
     float optR = 0.0; // optical depth along view (Rayleigh)
