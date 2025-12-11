@@ -15,9 +15,9 @@ void ClientCreeper::createCharacterAt(const glm::vec3 &pos, float characterScale
     const float bodyHeight = 1.2f;
     const float bodyDepth = 0.4f;
     const float headSize = 0.5f;
-    const float legWidth = 0.5f;
-    const float legHeight = 0.5f;
-    const float legDepth = 0.5f;
+    const float legWidth = 0.3f;
+    const float legHeight = 0.4f;
+    const float legDepth = 0.3f;
     const float legOffset = 0.7f; // Distance from body center to leg center (just outside body edge)
 
     // Calculate total height for proper scaling
@@ -50,28 +50,28 @@ void ClientCreeper::createCharacterAt(const glm::vec3 &pos, float characterScale
     frontRightLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(legWidth, legHeight, legDepth));
     // Position: body bottom edge (Y) + leg center offset (half leg height down)
     frontRightLeg->translation = glm::translate(glm::mat4(1.0f), 
-        glm::vec3(legOffset, -bodyHeight/2.0f - legHeight/2.0f, legOffset));
+        glm::vec3(legOffset, -(bodyHeight + legHeight), legOffset));
     character.addChild(frontRightLeg);
 
     // Front-left leg (negative X, positive Z)
     auto frontLeftLeg = std::make_shared<Shape>(glm::vec3(225, 255, 0));
     frontLeftLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(legWidth, legHeight, legDepth));
     frontLeftLeg->translation = glm::translate(glm::mat4(1.0f), 
-        glm::vec3(-legOffset, -bodyHeight/2.0f - legHeight/2.0f, legOffset));
+        glm::vec3(-legOffset, -(bodyHeight + legHeight), legOffset));
     character.addChild(frontLeftLeg);
 
     // Back-right leg (positive X, negative Z)
     auto backRightLeg = std::make_shared<Shape>(glm::vec3(0, 0, 255));
     backRightLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(legWidth, legHeight, legDepth));
     backRightLeg->translation = glm::translate(glm::mat4(1.0f), 
-        glm::vec3(legOffset, -bodyHeight/2.0f - legHeight/2.0f, -legOffset));
+        glm::vec3(legOffset, -(bodyHeight + legHeight), -legOffset));
     character.addChild(backRightLeg);
 
     // Back-left leg (negative X, negative Z)
     auto backLeftLeg = std::make_shared<Shape>(glm::vec3(0, 255, 255));
     backLeftLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(legWidth, legHeight, legDepth));
     backLeftLeg->translation = glm::translate(glm::mat4(1.0f), 
-        glm::vec3(-legOffset, -bodyHeight/2.0f - legHeight/2.0f, -legOffset));
+        glm::vec3(-legOffset, -(bodyHeight + legHeight), -legOffset));
     character.addChild(backLeftLeg);
 
     // Store body parts
@@ -96,8 +96,8 @@ void ClientCreeper::walkAnimation(float deltaTime)
         !characterBodyParts.rightCalf || !characterBodyParts.leftCalf)
         return;
 
-    const float walkSpeed = 5.0f;
-    const float legSwing = glm::radians(30.0f); // Swing angle in radians
+    const float walkSpeed = 4.0f;
+    const float legSwing = glm::radians(15.0f); // Swing angle in radians
     
     characterBodyParts.walkPhase += deltaTime * walkSpeed;
     float swing = sin(characterBodyParts.walkPhase) * legSwing;

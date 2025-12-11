@@ -21,7 +21,12 @@
 enum LivingEntityType : uint16_t
 {
 	PLAYER = 0,
+	ZOMBIE = 1,
+	SKELETON = 2,
+	SPIDER = 3,
 	CREEPER = 4,
+	PIG = 5,
+	COW = 6
 };
 
 class LivingEntity : public Entity

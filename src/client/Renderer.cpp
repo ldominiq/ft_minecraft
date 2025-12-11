@@ -228,6 +228,9 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 				case CREEPER:
 					entityPtr = std::make_shared<ClientCreeper>(position, yaw, ID);
 					break;
+				case ZOMBIE:
+					entityPtr = std::make_shared<ClientZombie>(position, yaw, ID);
+					break;
 				default:
 					std::cout << "ERROR ERROR MAYDAY WE GOT A PROBLEM" << std::endl;
 					return;

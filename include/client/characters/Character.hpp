@@ -41,6 +41,7 @@ class Character
 		float torsoScaleZ = 2.4f;
 		float torsoScaleY = 5.0f;
 
+		float headScale = torsoScaleZ*1.2f;
 		float headScaleZ = torsoScaleZ*1.2f;
 		float headScaleY = headScaleZ;
 		float headTransY = (torsoScaleY/2.0f + headScaleY/2.0f) / headScaleY;

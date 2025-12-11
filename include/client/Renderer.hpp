@@ -20,6 +20,7 @@
 #include "LivingEntitiesManager.hpp"
 #include "ClientPlayer.hpp"
 #include "ClientCreeper.hpp"
+#include "ClientZombie.hpp"
 
 // previously half of World
 

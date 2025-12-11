@@ -18,12 +18,12 @@ void Character::createCharacterAt(const glm::vec3 &pos, float characterScale)
 
     // Torso
     auto torso = std::make_shared<Shape>(glm::vec3(1,0,0));
-    torso->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, torsoScaleY, torsoScaleZ));
+    torso->scale = glm::scale(glm::mat4(1.0f), glm::vec3(torsoScaleZ / 2.0f, torsoScaleY, torsoScaleZ));
     character.addChild(torso);
 
     // Head
     auto head = std::make_shared<Shape>(glm::vec3(0,1,0));
-    head->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, headScaleY, headScaleZ));
+    head->scale = glm::scale(glm::mat4(1.0f), glm::vec3(headScale));
     head->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, headTransY, 0));
     character.addChild(head);
 

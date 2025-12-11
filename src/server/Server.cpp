@@ -1,6 +1,7 @@
 #include "Server.hpp"
 
 #include "Creeper.hpp"
+#include "Zombie.hpp"
 Server::Server() {
     createSocket();
     fillServerInfo();
@@ -19,12 +20,14 @@ void Server::run(std::optional<int> &seed) {
 	else
 		world = std::make_unique<World>();
 
-	// Create a few creepers for testing
+	// Create a few mobs for testing
 	glm::vec3 startingPos = glm::vec3(0, 150, 0);
 	for (int i = 0; i < 50; ++i) {
 		glm::vec3 pos = startingPos + glm::vec3(i * 2.0f, 0.0f, i * 5.0f);
 		std::shared_ptr<Creeper> creeper = std::make_shared<Creeper>(pos);
 		world->livingEntities.push_back(creeper);
+		std::shared_ptr<Zombie> zombie = std::make_shared<Zombie>(pos);
+		world->livingEntities.push_back(zombie);
 	}
 
 	running = true;
