@@ -196,6 +196,14 @@ void App::init() {
 	loadControlsFromFile();
 
 	renderer->livingEntitiesManager.add(camera->getPlayer());
+
+    // Generate query pools
+    glGenQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
+    glGenQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glGenQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
+    glGenQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
+    glGenQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
+    glGenQueries(QUERY_POOL_SIZE, queryDrawEntities);
 }
 
 void App::setUdpClientPacketCallback()
@@ -317,6 +325,9 @@ void App::render() {
 
     while (!glfwWindowShouldClose(window)) {
 
+        // Rotate query index each frame
+        currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
+    
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
@@ -386,8 +397,13 @@ void App::render() {
         lighting->setViewportSize(screenWidth, screenHeight);
         lighting->updateSunDirection(deltaTime);
 
+
         if (lighting->isShadowsEnabled()) {
+            glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
+
             lighting->updateShadowMap(*renderer, camera->getPlayer()->getPosition());
+
+            glEndQuery(GL_TIME_ELAPSED);
         }
 
         // Render to debug framebuffers if enabled
@@ -427,8 +443,13 @@ void App::render() {
             textureShader->setInt("renderType", 0); // Normal lighting mode
         }
 
-    	// Render reflection texture
+        glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
+        
+        // Render reflection texture
     	waterRenderer->renderWaterReflectionPass(activeShader, projection, texture);
+
+        glEndQuery(GL_TIME_ELAPSED);
+
 
     	// render refraction texture
     	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, texture);
@@ -437,7 +458,9 @@ void App::render() {
     	renderScene(view, projection, clipPlane);
     	
     	// Render water with proper shader setup
+        glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
     	waterRenderer->renderWaterSurface(projection);
+        glEndQuery(GL_TIME_ELAPSED);
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
 		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
@@ -492,7 +515,37 @@ void App::render() {
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
         glfwSwapBuffers(window);
         glfwPollEvents();
+
+        if (profilingEnabled) {
+            int readIndex = (currentQueryIndex + 2) % QUERY_POOL_SIZE;
+            profilingCallbackApp(queryDrawSkyPool[readIndex], measuredAverageNsDrawSky, measuredAverageMsDrawSky);
+            profilingCallbackApp(queryDrawWaterReflectionPool[readIndex], measuredAverageNsDrawWaterReflection, measuredAverageMsDrawWaterReflection);
+            profilingCallbackApp(queryRenderShaderPool[readIndex], measuredAverageNsRenderShader, measuredAverageMsRenderShader);
+            profilingCallbackApp(queryRenderWaterPool[readIndex], measuredAverageNsRenderWater, measuredAverageMsRenderWater);
+            profilingCallbackApp(queryDrawShadowsPool[readIndex], measuredAverageNsDrawShadows, measuredAverageMsDrawShadows);
+            profilingCallbackApp(queryDrawEntities[readIndex], measuredAverageNsDrawEntities, measuredAverageMsDrawEntities);
+        }
     }
+}
+
+void profilingCallbackApp(GLuint queryId, double &measuredAverageNs, double &measuredAverageMs)
+{
+    static std::unordered_map<GLuint, GLuint64> totalQueryTimeNs;
+    static std::unordered_map<GLuint, GLuint64> numQueries;
+    
+    // Check if result is available (non-blocking)
+    GLint available = 0;
+    glGetQueryObjectiv(queryId, GL_QUERY_RESULT_AVAILABLE, &available);
+    if (!available) return; // Skip if GPU hasn't finished yet
+    
+    GLuint64 elapsed = 0;
+    glGetQueryObjectui64v(queryId, GL_QUERY_RESULT, &elapsed);
+    
+    numQueries[queryId]++;
+    totalQueryTimeNs[queryId] += elapsed;
+
+    measuredAverageNs = (double)totalQueryTimeNs[queryId] / (double)numQueries[queryId];
+    measuredAverageMs = measuredAverageNs * 1.0e-6;
 }
 
 void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
@@ -500,8 +553,12 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glDisable(GL_CLIP_DISTANCE0);
 
+    glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);
+        
     // Render sky first
     lighting->drawSky(view, projection, camera->getPlayer()->getPosition());
+
+    glEndQuery(GL_TIME_ELAPSED);    
 
     // Render solid blocks
     glEnable(GL_DEPTH_TEST);
@@ -512,7 +569,10 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
+
+    glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
     renderer->render(activeShader);
+    glEndQuery(GL_TIME_ELAPSED);
 
     lighting->drawLightCubes(view, projection);
 
@@ -534,7 +594,9 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 		entity->setPosition(newEntityPos);
 		if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
 	}
+    glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
 	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
+    glEndQuery(GL_TIME_ELAPSED);
 
 	//mobs
 	for (auto &entity : renderer->livingEntities)
@@ -584,6 +646,7 @@ void App::debugWindow() {
                 {
                     // Display smoothed FPS and frame time
                     ImGui::Text("FPS: %.1f (%.3f ms)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
+
                     // Display camera coordinates
                     ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
 
@@ -967,6 +1030,57 @@ void App::debugWindow() {
 
                 	ImGui::EndTabItem();
                 }
+                if (ImGui::BeginTabItem("Profiler")) {
+                    ImGui::Text("GPU Timings");
+                    ImGui::Separator();
+
+                    profilingEnabled = true;
+                    
+                    // Calculate totals
+                    float totalGPU = measuredAverageMsDrawSky + measuredAverageMsRenderShader + 
+                                    measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
+                                    measuredAverageMsRenderWater + measuredAverageMsDrawEntities;
+                    
+                    auto showTimingBar = [&](const char* label, float ms, ImVec4 color) {
+                        float percent = totalGPU > 0.0f ? (ms / totalGPU) * 100.0f : 0.0f;
+                        
+                        // Show label first
+                        ImGui::Text("%-20s", label);
+                        ImGui::SameLine();
+                        
+                        // Progress bar (smaller width)
+                        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color);
+                        ImGui::ProgressBar(ms / 16.67f, ImVec2(200, 0), ""); // Fixed 200px width
+                        ImGui::PopStyleColor();
+                        
+                        ImGui::SameLine();
+                        ImGui::Text("%.3f ms (%.1f%%)", ms, percent);
+                    };
+                    
+                    showTimingBar("Sky", measuredAverageMsDrawSky, ImVec4(0.2f, 0.6f, 1.0f, 1.0f));
+                    showTimingBar("Terrain", measuredAverageMsRenderShader, ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
+                    showTimingBar("Shadows", measuredAverageMsDrawShadows, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+                    showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
+                    showTimingBar("Water Render", measuredAverageMsRenderWater, ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
+                    showTimingBar("Entities", measuredAverageMsDrawEntities, ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
+                    
+                    ImGui::Separator();
+                    ImGui::Text("Total GPU: %.3f ms (%.1f FPS budget)", totalGPU, totalGPU > 0.0f ? 1000.0f / totalGPU : 0.0f);
+                    
+                    // Color-coded frame budget indicator
+                    float targetFrameTime = 16.67f; // 60 FPS
+                    if (totalGPU > targetFrameTime) {
+                        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "WARNING: Over frame budget!");
+                    } else if (totalGPU > targetFrameTime * 0.8f) {
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "CAUTION: Near frame budget");
+                    } else {
+                        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Performance OK");
+                    }
+                    
+                    ImGui::EndTabItem();
+                } else {
+                    profilingEnabled = false;
+                }
                 ImGui::EndTabBar();
             }
 
@@ -1010,6 +1124,13 @@ void App::cleanup() {
     ImGui::DestroyContext();
 
     glDeleteTextures(1, &texture);
+
+    // Query objects (profiling)
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawEntities);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
 
 	NetDisconnect pkt;
 	pkt.username = "Steve";
