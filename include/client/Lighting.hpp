@@ -8,6 +8,7 @@
 
 #include "Shader.hpp"
 #include "Renderer.hpp"
+#include "CloudFramebuffer.hpp"
 
 static constexpr float lightCubeVertices[] = {
     // positions only (36 vertices -> 12 triangles)
@@ -94,6 +95,8 @@ public:
 
     void drawTexturePreviewQuad(unsigned int textureID);
 
+    void renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const;
+
     enum class ShadowQuality {
         Low = 1024,
         Medium = 2048,
@@ -109,7 +112,9 @@ public:
     bool isShadowsEnabled() const { return shadowsEnabled; };
     bool isShadowMapEnabled() const { return showShadowMap; };
     bool isCloudsEnabled() const { return cloudsEnabled; };
+    
     GLuint getShadowMapTexture() const { return depthMap; };
+    GLuint getCloudTexture() const;
 
     glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; };
     glm::vec3 getLightPos() const { return lightPos; };
@@ -135,7 +140,10 @@ public:
     float getCloudDensity() const { return cloudDensity; };
     float getCloudSigmaT() const { return cloudSigmaT; };
     glm::vec3 getCloudAlbedo() const { return cloudAlbedo; };
-    float getCloudStepCount() const { return cloudStepCount; }; 
+    float getCloudStepCount() const { return cloudStepCount; };
+    float getCloudSigmaS() const { return cloudSigmaS; };
+    float getCloudSunStepCount() const { return cloudSunStepCount; };
+    float getCloudPhaseG() const { return cloudPhaseG; };
 
     float getSpotLightConstant() const { return spotLightConstant; };
     float getSpotLightLinear() const { return spotLightLinear; };
@@ -202,6 +210,9 @@ public:
     void setCloudSigmaT(const float sigmaT) { cloudSigmaT = sigmaT; };
     void setCloudAlbedo(const glm::vec3& albedo) { cloudAlbedo = albedo; };
     void setCloudStepCount(const float stepCount) { cloudStepCount = stepCount; };
+    void setCloudSigmaS(const float sigmaS) { cloudSigmaS = sigmaS; };
+    void setCloudSunStepCount(const float sunStepCount) { cloudSunStepCount = sunStepCount; };
+    void setCloudPhaseG(const float phaseG) { cloudPhaseG = phaseG; };
 
     void setPointLightEnabled(int index, bool enabled);
     void setPointLightPosition(int index, const glm::vec3& pos);
@@ -219,12 +230,16 @@ private:
     GLuint debugVAO{};
     GLuint debugVBO{};
     GLuint depthMapFBO{}, depthMap{};
+    GLuint cloudsVAO{};
+
+    std::unique_ptr<CloudFramebuffer> cloudFBO;
 
     std::unique_ptr<Shader> skyShader;
     std::unique_ptr<Shader> lightCubeShader;
     std::shared_ptr<Shader> shadowDepthShader;
     std::shared_ptr<Shader> shadowDebugShader;
     std::shared_ptr<Shader> debugFBOShader;
+    std::shared_ptr<Shader> cloudShader;
 
     // Screen dimensions for sky shader
     int width;
@@ -252,10 +267,16 @@ private:
 
     // Cloud controls
     bool cloudsEnabled = true;
-    float cloudDensity = 0.06f; // overall cloud density (0 = no clouds, 1 = very dense)
-    float cloudSigmaT = 6.0f; // extinction coefficient (controls how quickly light is absorbed/scattered in clouds)
+    float cloudDensity = 0.04f; // overall cloud density (0 = no clouds, 1 = very dense)
+    float cloudSigmaT = 3.0f; // extinction coefficient (controls how quickly light is absorbed/scattered in clouds)
     glm::vec3 cloudAlbedo = glm::vec3(1.0f); // cloud albedo (reflectivity)
     float cloudStepCount = 64.0f; // number of steps for ray marching through clouds (higher = better quality but slower)
+
+    float cloudSigmaS = 3.0f; // scattering coefficient (controls how much light is scattered vs absorbed in clouds)
+    float cloudSunStepCount = 8.0f; // number of steps for sun light scattering
+    float cloudPhaseG = 0.6f; // phase function parameter (controls the shape of the scattering)
+    
+    int cloudDownscale = 4; // downscaling factor for cloud rendering (higher = faster but blurrier)
 
     // Point light (lamp)
     std::vector<bool> pointLightsOn = {true, true, true};

@@ -551,17 +551,23 @@ void profilingCallbackApp(GLuint queryId, double &measuredAverageNs, double &mea
 void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
     glViewport(0, 0, screenWidth, screenHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     glDisable(GL_CLIP_DISTANCE0);
 
-    glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);
-        
-    // Render sky first
-    lighting->drawSky(view, projection, camera->getPlayer()->getPosition());
+    lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
 
-    glEndQuery(GL_TIME_ELAPSED);    
+    lighting->drawTexturePreviewQuad(lighting->getCloudTexture());
+
+    glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);
+    lighting->drawSky(view, projection, camera->getPlayer()->getPosition());
+    glEndQuery(GL_TIME_ELAPSED);
+
+    // Restore state for scene rendering (terrain/water reflection/refraction use clipPlane).
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glEnable(GL_CLIP_DISTANCE0);
 
     // Render solid blocks
-    glEnable(GL_DEPTH_TEST);
     activeShader->use();
     activeShader->setVec4("clipPlane", clipPlane);
     activeShader->setMat4("view", view);
@@ -1001,6 +1007,9 @@ void App::debugWindow() {
                         float cloudSigmaT = lighting->getCloudSigmaT();
                         glm::vec3 cloudAlbedo = lighting->getCloudAlbedo();
                         float cloudStepCount = lighting->getCloudStepCount();
+                        float cloudSigmaS = lighting->getCloudSigmaS();
+                        float cloudSunStepCount = lighting->getCloudSunStepCount();
+                        float cloudPhaseG = lighting->getCloudPhaseG();
 
                         ImGui::Text("Sky Controls");
 
@@ -1014,6 +1023,13 @@ void App::debugWindow() {
                         	lighting->setCloudAlbedo(cloudAlbedo);
                         if (ImGui::SliderFloat("Cloud Step Count", &cloudStepCount, 32.0f, 96.0f, "%.1f"))
                         	lighting->setCloudStepCount(cloudStepCount);
+                            
+                        if (ImGui::SliderFloat("Cloud Sigma S", &cloudSigmaS, 1.0f, 10.0f, "%.1f"))
+                        	lighting->setCloudSigmaS(cloudSigmaS);
+                        if (ImGui::SliderFloat("Cloud Sun Step Count", &cloudSunStepCount, 1.0f, 20.0f, "%.1f"))
+                        	lighting->setCloudSunStepCount(cloudSunStepCount);
+                        if (ImGui::SliderFloat("Cloud Phase G", &cloudPhaseG, 0.0f, 1.0f, "%.1f"))
+                        	lighting->setCloudPhaseG(cloudPhaseG);
 
                         if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                         	lighting->setSkyTimePaused(skyTimePaused);

@@ -6,11 +6,17 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
     glBindVertexArray(skyVAO);
     glBindVertexArray(0);
 
+    glGenVertexArrays(1, &cloudsVAO);
+    glBindVertexArray(cloudsVAO);
+    glBindVertexArray(0);
+
     skyShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
     lightCubeShader = std::make_unique<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
     shadowDepthShader = std::make_shared<Shader>("shaders/shadowDepthShader.vert", "shaders/shadowDepthShader.frag");
     shadowDebugShader = std::make_shared<Shader>("shaders/shadowDebugShader.vert", "shaders/shadowDebugShader.frag");
+    cloudShader = std::make_shared<Shader>("shaders/clouds.vert", "shaders/clouds.frag");
 
+    cloudFBO = std::make_unique<CloudFramebuffer>(width , height, cloudDownscale);
 
     // Light cube setup
     glGenVertexArrays(1, &lightCubeVAO);
@@ -37,6 +43,9 @@ Lighting::~Lighting() {
 
         glDeleteTextures(1, &depthMap);
         glDeleteFramebuffers(1, &depthMapFBO);
+
+        glDeleteVertexArrays(1, &cloudsVAO);
+        
     } else {
         lightCubeVAO = 0;
         lightCubeVBO = 0;
@@ -46,7 +55,72 @@ Lighting::~Lighting() {
         debugVBO = 0;
         depthMap = 0;
         depthMapFBO = 0;
+        cloudFBO = nullptr;
     }
+}
+
+GLuint Lighting::getCloudTexture() const
+{
+    return cloudFBO ? cloudFBO->getColorTexture() : 0;
+}
+
+void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const
+{
+    if (!cloudsEnabled || !cloudFBO || !cloudShader)
+        return;
+
+    cloudFBO->bind();
+    glViewport(0, 0, cloudFBO->getWidth(), cloudFBO->getHeight());
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    // Clear to "no cloud": rgb=0, transmittance=1 (alpha=1)
+    glClearColor(0.f, 0.f, 0.f, 1.f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    cloudShader->use();
+
+    // Keep uniforms consistent with your sky shader usage
+    cloudShader->setVec2("resolution", glm::vec2(cloudFBO->getWidth(), cloudFBO->getHeight()));
+    cloudShader->setFloat("time", skyTimeOffset);
+    cloudShader->setMat4("view", view);
+    cloudShader->setMat4("projection", projection);
+    cloudShader->setVec3("cameraPosWorld", cameraPos);
+    cloudShader->setVec3("sunDir", getDirectionalLightDirection());
+
+    // Same cloud params you already set for sky.frag
+    const glm::vec3 bmin(-80.0f, 120.0f, -80.0f);
+    const glm::vec3 bmax( 80.0f, 170.0f,  80.0f);
+    cloudShader->setVec3("cloudBoxMinWorld", bmin);
+    cloudShader->setVec3("cloudBoxMaxWorld", bmax);
+
+    cloudShader->setFloat("cloudDensity", cloudDensity);
+    cloudShader->setFloat("cloudSigmaT", cloudSigmaT);
+    cloudShader->setVec3("cloudAlbedo", cloudAlbedo);
+    cloudShader->setFloat("cloudStepCount", cloudStepCount);
+
+    cloudShader->setFloat("cloudSigmaS", cloudSigmaS);
+    cloudShader->setFloat("cloudSunStepCount", cloudSunStepCount);
+    cloudShader->setFloat("cloudPhaseG", cloudPhaseG);
+
+    cloudShader->setVec3("cloudAmbientColor", glm::vec3(0.65f, 0.72f, 0.85f));
+    cloudShader->setFloat("cloudAmbientStrength", 0.08f);
+
+    // If your clouds shader uses these (recommended):
+    cloudShader->setVec3("cloudSunColor", glm::vec3(1.0f, 0.98f, 0.95f));
+    cloudShader->setFloat("cloudSunStrength", 15.0f);
+
+    glBindVertexArray(cloudsVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+
+    CloudFramebuffer::unbind();
+
+    // Restore default viewport for subsequent passes
+    glViewport(0, 0, width, height);
 }
 
 void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos) const {
@@ -64,26 +138,14 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     skyShader->setFloat("planetScale", planetScale);
     skyShader->setVec3("sunDir", getDirectionalLightDirection());
 
-    skyShader->setInt("cloudsEnabled", cloudsEnabled);
-    // --- learning clouds: a single world-space cube volume ---
-    if (cloudsEnabled) {
-        // const glm::vec3 center = cameraPos + glm::vec3(0.0f, 80.0f, 0.0f); // above the player
-        // const glm::vec3 halfExtents = glm::vec3(60.0f, 25.0f, 60.0f);      // "big fog block"
-
-        // const glm::vec3 bmin = center - halfExtents;
-        // const glm::vec3 bmax = center + halfExtents;
-
-        // World-anchored test cube
-        const glm::vec3 bmin(-80.0f, 120.0f, -80.0f);
-        const glm::vec3 bmax( 80.0f, 170.0f,  80.0f);
-
-        skyShader->setVec3("cloudBoxMinWorld", bmin);
-        skyShader->setVec3("cloudBoxMaxWorld", bmax);
-
-        skyShader->setFloat("cloudDensity", cloudDensity);     // 0.02..0.2
-        skyShader->setFloat("cloudSigmaT", cloudSigmaT);       // 1..10 (extinction scale)
-        skyShader->setVec3("cloudAlbedo", cloudAlbedo);
-        skyShader->setFloat("cloudStepCount", cloudStepCount);   // 32..96
+    // Cloud composite
+    const bool composite = cloudsEnabled && (getCloudTexture() != 0);
+    skyShader->setInt("cloudsCompositeEnabled", composite ? 1 : 0);
+    
+    if (composite) {
+        glActiveTexture(GL_TEXTURE0 + 7);
+        glBindTexture(GL_TEXTURE_2D, getCloudTexture());
+        skyShader->setInt("cloudTex", 7);
     }
 
     // Disable depth test and writes for background
