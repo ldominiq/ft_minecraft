@@ -556,7 +556,8 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
     lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
 
-    lighting->drawTexturePreviewQuad(lighting->getCloudTexture());
+    // DEBUG
+    // lighting->drawTexturePreviewQuad(lighting->getCloudTexture());
 
     glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);
     lighting->drawSky(view, projection, camera->getPlayer()->getPosition());

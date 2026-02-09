@@ -106,9 +106,16 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     cloudShader->setVec3("cloudAmbientColor", glm::vec3(0.65f, 0.72f, 0.85f));
     cloudShader->setFloat("cloudAmbientStrength", 0.08f);
 
-    // If your clouds shader uses these (recommended):
     cloudShader->setVec3("cloudSunColor", glm::vec3(1.0f, 0.98f, 0.95f));
     cloudShader->setFloat("cloudSunStrength", 15.0f);
+
+    // TODO: add params to imgui
+    cloudShader->setFloat("cloudEdgeFeather", cloudEdgeFeather);
+    cloudShader->setFloat("cloudNoiseScale", cloudNoiseScale);
+    cloudShader->setFloat("cloudNoiseContrastLo", cloudNoiseContrastLo);
+    cloudShader->setFloat("cloudNoiseContrastHi", cloudNoiseContrastHi);
+    cloudShader->setFloat("cloudWindSpeed", cloudWindSpeed);
+    cloudShader->setVec2("cloudWindDir", cloudWindDir);
 
     glBindVertexArray(cloudsVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);

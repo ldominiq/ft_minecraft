@@ -278,6 +278,15 @@ private:
     
     int cloudDownscale = 4; // downscaling factor for cloud rendering (higher = faster but blurrier)
 
+    // Cloud shaping controls (shader)
+    float cloudEdgeFeather = 12.0f;     // world units. Bigger = softer edges, hides box corners
+    float cloudNoiseScale = 0.03f;      // noise frequency. Bigger = smaller puffs
+    float cloudNoiseContrastLo = 0.45f; // smoothstep low threshold
+    float cloudNoiseContrastHi = 0.80f; // smoothstep high threshold
+    float cloudWindSpeed = 6.0f;        // world units per second
+    glm::vec2 cloudWindDir = glm::vec2(1.0f, 0.4f); // will be normalized in shader
+    
+
     // Point light (lamp)
     std::vector<bool> pointLightsOn = {true, true, true};
     glm::vec3 pointLightPositions[3] = {

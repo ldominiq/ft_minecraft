@@ -216,12 +216,12 @@ void main() {
 
     if (cloudsCompositeEnabled != 0)
     {
-        vec2 uv = gl_FragCoord.xy / max(resolution, vec2(1.0));
-        vec4 cloud = texture(cloudTex, uv); // rgb=cloud light, a=transmittance
+        vec2 uv = (gl_FragCoord.xy + vec2(0.5)) / max(resolution, vec2(1.0));
+        vec4 cloud = texture(cloudTex, uv);
         col = cloud.rgb + cloud.a * col;
     }
 
-    
+
     // Simple exposure: 1 - exp(-exposure * color)
     vec3 mapped = vec3(1.0) - exp(-exposure * col);
 
