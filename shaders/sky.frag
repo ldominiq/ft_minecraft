@@ -28,6 +28,85 @@ uniform float atmThickness;  // scales HR/HM (1.0 = Earth-like)
 uniform float planetScale;
 uniform vec3 sunDir;
 
+// --- Cloud (learning) uniforms ---
+uniform int   cloudsEnabled;          // 0/1
+uniform vec3  cloudBoxMinWorld;        // world-space AABB min
+uniform vec3  cloudBoxMaxWorld;        // world-space AABB max
+uniform float cloudDensity;            // base density (try 0.02..0.2)
+uniform float cloudSigmaT;             // extinction coefficient (try 1..10)
+uniform vec3  cloudAlbedo;             // scattering color (try vec3(1.0))
+uniform float cloudStepCount;          // e.g. 48 or 64 (float to avoid int uniform issues)
+
+
+
+// -----------------------------
+// Helpers (add below intersectSphere, phases, etc.)
+// -----------------------------
+bool intersectAABB(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax, out float tEnter, out float tExit)
+{
+    // Slab method
+    vec3 invD = 1.0 / max(abs(rd), vec3(1e-8)) * sign(rd);
+    vec3 t0s = (bmin - ro) * invD;
+    vec3 t1s = (bmax - ro) * invD;
+    vec3 tsmaller = min(t0s, t1s);
+    vec3 tbigger  = max(t0s, t1s);
+    tEnter = max(max(tsmaller.x, tsmaller.y), tsmaller.z);
+    tExit  = min(min(tbigger.x,  tbigger.y),  tbigger.z);
+    return tExit >= max(tEnter, 0.0);
+}
+
+// Constant density inside the cube (first learning step)
+float cloudDensityAt(vec3 pWorld)
+{
+    // Basic “container”: density is constant everywhere inside
+    // Later: add height falloff + noise.
+    return cloudDensity;
+}
+
+// Beer-Lambert raymarch through a cube volume.
+// Returns (cloudColor, transmittanceToBackground).
+vec4 marchCloudCube(vec3 roWorld, vec3 rdWorld)
+{
+    float t0, t1;
+    if (!intersectAABB(roWorld, rdWorld, cloudBoxMinWorld, cloudBoxMaxWorld, t0, t1))
+        return vec4(0.0, 0.0, 0.0, 1.0); // no cloud, fully transparent (T=1)
+
+    float steps = max(1.0, cloudStepCount);
+    float dt = (t1 - t0) / steps;
+
+    vec3  col = vec3(0.0);
+    float T   = 1.0; // transmittance along view ray
+
+    // Very simple lighting: treat as “emissive-looking” scattering proportional to density.
+    // Next step will add proper single scattering + sun transmittance.
+    for (int i = 0; i < 256; ++i)
+    {
+        if (float(i) >= steps) break;
+
+        float t = t0 + (float(i) + 0.5) * dt;
+        vec3  p = roWorld + rdWorld * t;
+
+        float d = max(cloudDensityAt(p), 0.0);
+
+        float sigma_t = cloudSigmaT * d;      // extinction per unit length
+        float Tr = exp(-sigma_t * dt);        // Beer’s law for this step
+
+        // Energy removed from the ray in this segment:
+        float absorbed = 1.0 - Tr;
+
+        // Add a very simple “white” contribution (acts like cheap scattering)
+        col += (T * absorbed) * cloudAlbedo;
+
+        // Update transmittance
+        T *= Tr;
+
+        // Early out if opaque-ish
+        if (T < 0.01) break;
+    }
+
+    return vec4(col, T);
+}
+
 // -----------------------------
 // Constants (O'Neil/GPU Gems 2)
 // -----------------------------
@@ -208,6 +287,18 @@ void main() {
     float halo = exp(-sunAng * 40.0) * 0.4;
     vec3 sunCol = vec3(1.0, 0.98, 0.90) * 30.0;
     col += (disk + halo) * sunCol;
+
+    // --- Composite volumetric clouds over the sky ---
+    if (cloudsEnabled != 0)
+    {
+        // view ray origin in WORLD space for the cloud cube intersection
+        vec3 roWorld = cameraPosWorld;
+        vec3 rdWorld = r;
+
+        vec4 cloud = marchCloudCube(roWorld, rdWorld);
+        // Standard “over”: result = cloudColor + T * background
+        col = cloud.rgb + cloud.a * col;
+    }
 
     // Simple exposure: 1 - exp(-exposure * color)
     vec3 mapped = vec3(1.0) - exp(-exposure * col);

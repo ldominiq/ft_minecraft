@@ -108,6 +108,7 @@ public:
     bool isSpotLightOn() const { return flashlightOn; };
     bool isShadowsEnabled() const { return shadowsEnabled; };
     bool isShadowMapEnabled() const { return showShadowMap; };
+    bool isCloudsEnabled() const { return cloudsEnabled; };
     GLuint getShadowMapTexture() const { return depthMap; };
 
     glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; };
@@ -130,6 +131,11 @@ public:
     float getSkyTimeOffset() const { return skyTimeOffset; };
     float getPlanetScale() const { return planetScale; };
     float getSunYawDeg() const { return sunYawDeg; };
+
+    float getCloudDensity() const { return cloudDensity; };
+    float getCloudSigmaT() const { return cloudSigmaT; };
+    glm::vec3 getCloudAlbedo() const { return cloudAlbedo; };
+    float getCloudStepCount() const { return cloudStepCount; }; 
 
     float getSpotLightConstant() const { return spotLightConstant; };
     float getSpotLightLinear() const { return spotLightLinear; };
@@ -191,6 +197,11 @@ public:
     void setSkyTimePaused(const bool paused) { skyTimePaused = paused; };
     void setSunYawDeg(const float yawDeg) { sunYawDeg = yawDeg; };
     void setPlanetScale(const float scale) { planetScale = scale; };
+    void setCloudsEnabled(const bool enabled) { cloudsEnabled = enabled; };
+    void setCloudDensity(const float density) { cloudDensity = density; };
+    void setCloudSigmaT(const float sigmaT) { cloudSigmaT = sigmaT; };
+    void setCloudAlbedo(const glm::vec3& albedo) { cloudAlbedo = albedo; };
+    void setCloudStepCount(const float stepCount) { cloudStepCount = stepCount; };
 
     void setPointLightEnabled(int index, bool enabled);
     void setPointLightPosition(int index, const glm::vec3& pos);
@@ -238,6 +249,13 @@ private:
     float skyAtmDensity = 19.0f;
     float skyAtmThickness = 1.0f;
     float planetScale = 7900.0f;
+
+    // Cloud controls
+    bool cloudsEnabled = true;
+    float cloudDensity = 0.06f; // overall cloud density (0 = no clouds, 1 = very dense)
+    float cloudSigmaT = 6.0f; // extinction coefficient (controls how quickly light is absorbed/scattered in clouds)
+    glm::vec3 cloudAlbedo = glm::vec3(1.0f); // cloud albedo (reflectivity)
+    float cloudStepCount = 64.0f; // number of steps for ray marching through clouds (higher = better quality but slower)
 
     // Point light (lamp)
     std::vector<bool> pointLightsOn = {true, true, true};

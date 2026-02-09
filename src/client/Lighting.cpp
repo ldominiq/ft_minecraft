@@ -64,6 +64,28 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     skyShader->setFloat("planetScale", planetScale);
     skyShader->setVec3("sunDir", getDirectionalLightDirection());
 
+    skyShader->setInt("cloudsEnabled", cloudsEnabled);
+    // --- learning clouds: a single world-space cube volume ---
+    if (cloudsEnabled) {
+        // const glm::vec3 center = cameraPos + glm::vec3(0.0f, 80.0f, 0.0f); // above the player
+        // const glm::vec3 halfExtents = glm::vec3(60.0f, 25.0f, 60.0f);      // "big fog block"
+
+        // const glm::vec3 bmin = center - halfExtents;
+        // const glm::vec3 bmax = center + halfExtents;
+
+        // World-anchored test cube
+        const glm::vec3 bmin(-80.0f, 120.0f, -80.0f);
+        const glm::vec3 bmax( 80.0f, 170.0f,  80.0f);
+
+        skyShader->setVec3("cloudBoxMinWorld", bmin);
+        skyShader->setVec3("cloudBoxMaxWorld", bmax);
+
+        skyShader->setFloat("cloudDensity", cloudDensity);     // 0.02..0.2
+        skyShader->setFloat("cloudSigmaT", cloudSigmaT);       // 1..10 (extinction scale)
+        skyShader->setVec3("cloudAlbedo", cloudAlbedo);
+        skyShader->setFloat("cloudStepCount", cloudStepCount);   // 32..96
+    }
+
     // Disable depth test and writes for background
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);

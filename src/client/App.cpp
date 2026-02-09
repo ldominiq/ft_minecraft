@@ -996,7 +996,24 @@ void App::debugWindow() {
                     	float skyAtmThickness = lighting->getSkyAtmThickness();
                     	float planetScale = lighting->getPlanetScale();
 
+                        bool cloudsEnabled = lighting->isCloudsEnabled();
+                        float cloudDensity = lighting->getCloudDensity();
+                        float cloudSigmaT = lighting->getCloudSigmaT();
+                        glm::vec3 cloudAlbedo = lighting->getCloudAlbedo();
+                        float cloudStepCount = lighting->getCloudStepCount();
+
                         ImGui::Text("Sky Controls");
+
+                        if (ImGui::Checkbox("Clouds Enabled", &cloudsEnabled))
+                        	lighting->setCloudsEnabled(cloudsEnabled);
+                        if (ImGui::SliderFloat("Cloud Density", &cloudDensity, 0.02f, 0.2f, "%.3f"))
+                        	lighting->setCloudDensity(cloudDensity);
+                        if (ImGui::SliderFloat("Cloud Sigma T", &cloudSigmaT, 1.0f, 10.0f, "%.1f"))
+                        	lighting->setCloudSigmaT(cloudSigmaT);
+                        if (ImGui::ColorEdit3("Cloud Albedo", &cloudAlbedo.x))
+                        	lighting->setCloudAlbedo(cloudAlbedo);
+                        if (ImGui::SliderFloat("Cloud Step Count", &cloudStepCount, 32.0f, 96.0f, "%.1f"))
+                        	lighting->setCloudStepCount(cloudStepCount);
 
                         if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                         	lighting->setSkyTimePaused(skyTimePaused);
