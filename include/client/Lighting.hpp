@@ -144,6 +144,13 @@ public:
     float getCloudSigmaS() const { return cloudSigmaS; };
     float getCloudSunStepCount() const { return cloudSunStepCount; };
     float getCloudPhaseG() const { return cloudPhaseG; };
+    float getCloudEdgeFeather() const { return cloudEdgeFeather; };
+    float getCloudNoiseScale() const { return cloudNoiseScale; };
+    float getCloudNoiseContrastLo() const { return cloudNoiseContrastLo; };
+    float getCloudNoiseContrastHi() const { return cloudNoiseContrastHi; };
+    float getCloudWindSpeed() const { return cloudWindSpeed; };
+    glm::vec2 getCloudWindDir() const { return cloudWindDir; };
+
 
     float getSpotLightConstant() const { return spotLightConstant; };
     float getSpotLightLinear() const { return spotLightLinear; };
@@ -213,6 +220,12 @@ public:
     void setCloudSigmaS(const float sigmaS) { cloudSigmaS = sigmaS; };
     void setCloudSunStepCount(const float sunStepCount) { cloudSunStepCount = sunStepCount; };
     void setCloudPhaseG(const float phaseG) { cloudPhaseG = phaseG; };
+    void setCloudEdgeFeather(const float feather) { cloudEdgeFeather = feather; };
+    void setCloudNoiseScale(const float scale) { cloudNoiseScale = scale; };
+    void setCloudNoiseContrastLo(const float lo) { cloudNoiseContrastLo = lo; };
+    void setCloudNoiseContrastHi(const float hi) { cloudNoiseContrastHi = hi; };
+    void setCloudWindSpeed(const float speed) { cloudWindSpeed = speed; };
+    void setCloudWindDir(const glm::vec2& dir) { cloudWindDir = dir; };
 
     void setPointLightEnabled(int index, bool enabled);
     void setPointLightPosition(int index, const glm::vec3& pos);
@@ -267,24 +280,23 @@ private:
 
     // Cloud controls
     bool cloudsEnabled = true;
-    float cloudDensity = 0.04f; // overall cloud density (0 = no clouds, 1 = very dense)
-    float cloudSigmaT = 3.0f; // extinction coefficient (controls how quickly light is absorbed/scattered in clouds)
+    float cloudDensity = 0.08f; // overall cloud density (increased for more visible clouds)
+    float cloudSigmaT = 2.0f; // extinction coefficient (lower = less absorption, brighter clouds)
     glm::vec3 cloudAlbedo = glm::vec3(1.0f); // cloud albedo (reflectivity)
-    float cloudStepCount = 64.0f; // number of steps for ray marching through clouds (higher = better quality but slower)
+    float cloudStepCount = 48.0f; // number of steps (lower for performance, still good quality)
 
-    float cloudSigmaS = 3.0f; // scattering coefficient (controls how much light is scattered vs absorbed in clouds)
-    float cloudSunStepCount = 8.0f; // number of steps for sun light scattering
-    float cloudPhaseG = 0.6f; // phase function parameter (controls the shape of the scattering)
-    
+    float cloudSigmaS = 2.0f; // scattering coefficient
+    float cloudSunStepCount = 6.0f; // number of steps for sun light scattering (lower for performance)
+    float cloudPhaseG = 0.4f; // phase function (lower = more uniform scattering, less directional)
+
     int cloudDownscale = 4; // downscaling factor for cloud rendering (higher = faster but blurrier)
 
-    // Cloud shaping controls (shader)
-    float cloudEdgeFeather = 12.0f;     // world units. Bigger = softer edges, hides box corners
-    float cloudNoiseScale = 0.03f;      // noise frequency. Bigger = smaller puffs
-    float cloudNoiseContrastLo = 0.45f; // smoothstep low threshold
-    float cloudNoiseContrastHi = 0.80f; // smoothstep high threshold
-    float cloudWindSpeed = 6.0f;        // world units per second
-    glm::vec2 cloudWindDir = glm::vec2(1.0f, 0.4f); // will be normalized in shader
+    float cloudEdgeFeather = 8.0f;      // smaller feather = sharper edges
+    float cloudNoiseScale = 0.015f;     // lower frequency = bigger, chunkier clouds
+    float cloudNoiseContrastLo = 0.50f; // tighter contrast range for more defined shapes
+    float cloudNoiseContrastHi = 0.75f;
+    float cloudWindSpeed = 20.0f;        // slower drift
+    glm::vec2 cloudWindDir = glm::vec2(1.0f, 0.2f); // mostly horizontal drift
     
 
     // Point light (lamp)

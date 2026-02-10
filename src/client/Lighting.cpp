@@ -88,9 +88,13 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     cloudShader->setVec3("cameraPosWorld", cameraPos);
     cloudShader->setVec3("sunDir", getDirectionalLightDirection());
 
-    // Same cloud params you already set for sky.frag
-    const glm::vec3 bmin(-80.0f, 120.0f, -80.0f);
-    const glm::vec3 bmax( 80.0f, 170.0f,  80.0f);
+    // Cloud box follows camera for infinite clouds
+    // Keep clouds at fixed altitude but extend horizontally around camera
+    const float cloudRadius = 500.0f;  // Horizontal extent around camera
+    const float cloudMinY = 120.0f;     // Bottom of cloud layer
+    const float cloudMaxY = 170.0f;     // Top of cloud layer
+    const glm::vec3 bmin(cameraPos.x - cloudRadius, cloudMinY, cameraPos.z - cloudRadius);
+    const glm::vec3 bmax(cameraPos.x + cloudRadius, cloudMaxY, cameraPos.z + cloudRadius);
     cloudShader->setVec3("cloudBoxMinWorld", bmin);
     cloudShader->setVec3("cloudBoxMaxWorld", bmax);
 
@@ -103,11 +107,19 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     cloudShader->setFloat("cloudSunStepCount", cloudSunStepCount);
     cloudShader->setFloat("cloudPhaseG", cloudPhaseG);
 
+    // Modulate ambient by sun elevation (darker at night)
+    glm::vec3 sunDirNorm = glm::normalize(getDirectionalLightDirection());
+    float sunElevation = sunDirNorm.y;  // Can be negative (below horizon)
+    float dayFactor = glm::smoothstep(-0.2f, 0.1f, sunElevation);  // Fade from -0.2 to 0.1
+    float nightAmbient = 0.01f;  // Very low ambient at night
+    float dayAmbient = 0.5f;     // Full ambient during day
+    float ambientStrength = glm::mix(nightAmbient, dayAmbient, dayFactor);
+
     cloudShader->setVec3("cloudAmbientColor", glm::vec3(0.65f, 0.72f, 0.85f));
-    cloudShader->setFloat("cloudAmbientStrength", 0.08f);
+    cloudShader->setFloat("cloudAmbientStrength", ambientStrength);
 
     cloudShader->setVec3("cloudSunColor", glm::vec3(1.0f, 0.98f, 0.95f));
-    cloudShader->setFloat("cloudSunStrength", 15.0f);
+    cloudShader->setFloat("cloudSunStrength", 25.0f);  // Increased from 15.0f for brighter clouds
 
     // TODO: add params to imgui
     cloudShader->setFloat("cloudEdgeFeather", cloudEdgeFeather);
@@ -155,14 +167,15 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
         skyShader->setInt("cloudTex", 7);
     }
 
-    // Disable depth test and writes for background
-    glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
+    // Render sky with depth = far plane, terrain will render in front
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_TRUE);    // Write depth to allow terrain occlusion
     glBindVertexArray(skyVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindVertexArray(0);
+    glDepthFunc(GL_LESS);    // Restore default
     glDepthMask(GL_TRUE);
-    glEnable(GL_DEPTH_TEST);
 }
 
 void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection) const {

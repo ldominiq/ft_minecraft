@@ -160,7 +160,13 @@ vec4 marchCloudCube(vec3 roWorld, vec3 rdWorld)
 
     float mu = dot(-rdWorld, normalize(sunDir));
     float phase = hgPhase(clamp(mu, -1.0, 1.0), clamp(cloudPhaseG, -0.99, 0.99));
-    vec3 sunLight = cloudSunColor * cloudSunStrength;
+
+    // Modulate sun strength by sun elevation (fade at night)
+    vec3 sunDirNorm = normalize(sunDir);
+    // When sun.y < 0, it's below horizon (night time)
+    float sunElevation = sunDirNorm.y;
+    float dayFactor = smoothstep(-0.2, 0.1, sunElevation);  // Fade from -0.2 to 0.1
+    vec3 sunLight = cloudSunColor * cloudSunStrength * dayFactor;
 
     // Jitter: shift sampling by a fraction of dt per pixel (reduces banding)
     float j = hash12(gl_FragCoord.xy + time * 37.0);
@@ -181,12 +187,15 @@ vec4 marchCloudCube(vec3 roWorld, vec3 rdWorld)
         float Tr = exp(-sigma_t * dt);
         float absorbed = 1.0 - Tr;
 
-        vec3 direct  = cloudAlbedo * sunLight * (sigma_s * phase);
-        vec3 ambient = cloudAlbedo * cloudAmbientColor * (sigma_s * cloudAmbientStrength);
+        // Normalize the lighting contribution
+        vec3 direct  = cloudAlbedo * sunLight * phase;
+        vec3 ambient = cloudAlbedo * cloudAmbientColor * cloudAmbientStrength;
 
         float depthBoost = mix(1.0, 3.0, clamp(1.0 - T, 0.0, 1.0));
 
-        col += (T * absorbed) * (direct + ambient * depthBoost);
+        // Scale by sigma_s but normalize by sigma_t to avoid overly dark results
+        float scatterFactor = (sigma_s / max(sigma_t, 0.001));
+        col += (T * absorbed * scatterFactor) * (direct + ambient * depthBoost);
 
         T *= Tr;
         if (T < 0.01) break;

@@ -218,6 +218,7 @@ private:
     bool profilingEnabled = false;
     static constexpr int QUERY_POOL_SIZE = 3;
     GLuint queryDrawSkyPool[QUERY_POOL_SIZE];
+    GLuint queryDrawCloudsPool[QUERY_POOL_SIZE];
     GLuint queryDrawWaterReflectionPool[QUERY_POOL_SIZE];
     GLuint queryDrawShadowsPool[QUERY_POOL_SIZE];
     GLuint queryRenderShaderPool[QUERY_POOL_SIZE];
@@ -228,6 +229,7 @@ private:
     int currentQueryIndex = 0;
 
     double measuredAverageNsDrawSky = 0.0, measuredAverageMsDrawSky = 0.0;
+    double measuredAverageNsDrawClouds = 0.0, measuredAverageMsDrawClouds = 0.0;
     double measuredAverageNsDrawWaterReflection = 0.0, measuredAverageMsDrawWaterReflection = 0.0;
     double measuredAverageNsDrawShadows = 0.0, measuredAverageMsDrawShadows = 0.0;
     double measuredAverageNsRenderShader = 0.0, measuredAverageMsRenderShader = 0.0;

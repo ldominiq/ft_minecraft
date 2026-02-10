@@ -199,6 +199,7 @@ void App::init() {
 
     // Generate query pools
     glGenQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
+    glGenQueries(QUERY_POOL_SIZE, queryDrawCloudsPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
@@ -519,6 +520,7 @@ void App::render() {
         if (profilingEnabled) {
             int readIndex = (currentQueryIndex + 2) % QUERY_POOL_SIZE;
             profilingCallbackApp(queryDrawSkyPool[readIndex], measuredAverageNsDrawSky, measuredAverageMsDrawSky);
+            profilingCallbackApp(queryDrawCloudsPool[readIndex], measuredAverageNsDrawClouds, measuredAverageMsDrawClouds);
             profilingCallbackApp(queryDrawWaterReflectionPool[readIndex], measuredAverageNsDrawWaterReflection, measuredAverageMsDrawWaterReflection);
             profilingCallbackApp(queryRenderShaderPool[readIndex], measuredAverageNsRenderShader, measuredAverageMsRenderShader);
             profilingCallbackApp(queryRenderWaterPool[readIndex], measuredAverageNsRenderWater, measuredAverageMsRenderWater);
@@ -552,18 +554,18 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     glViewport(0, 0, screenWidth, screenHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    // Render sky/clouds first with proper depth
     glDisable(GL_CLIP_DISTANCE0);
 
+    glBeginQuery(GL_TIME_ELAPSED, queryDrawCloudsPool[currentQueryIndex]);
     lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
-
-    // DEBUG
-    // lighting->drawTexturePreviewQuad(lighting->getCloudTexture());
+    glEndQuery(GL_TIME_ELAPSED);
 
     glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);
     lighting->drawSky(view, projection, camera->getPlayer()->getPosition());
     glEndQuery(GL_TIME_ELAPSED);
 
-    // Restore state for scene rendering (terrain/water reflection/refraction use clipPlane).
+    // Now render terrain with depth testing enabled
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
     glEnable(GL_CLIP_DISTANCE0);
@@ -1032,6 +1034,29 @@ void App::debugWindow() {
                         if (ImGui::SliderFloat("Cloud Phase G", &cloudPhaseG, 0.0f, 1.0f, "%.1f"))
                         	lighting->setCloudPhaseG(cloudPhaseG);
 
+                        ImGui::Separator();
+                        ImGui::Text("Cloud Shape & Movement");
+                        float cloudEdgeFeather = lighting->getCloudEdgeFeather();
+                        float cloudNoiseScale = lighting->getCloudNoiseScale();
+                        float cloudNoiseContrastLo = lighting->getCloudNoiseContrastLo();
+                        float cloudNoiseContrastHi = lighting->getCloudNoiseContrastHi();
+                        float cloudWindSpeed = lighting->getCloudWindSpeed();
+                        glm::vec2 cloudWindDir = lighting->getCloudWindDir();
+
+                        if (ImGui::SliderFloat("Cloud Edge Feather", &cloudEdgeFeather, 1.0f, 30.0f, "%.1f"))
+                        	lighting->setCloudEdgeFeather(cloudEdgeFeather);
+                        if (ImGui::SliderFloat("Cloud Noise Scale", &cloudNoiseScale, 0.005f, 0.05f, "%.3f"))
+                        	lighting->setCloudNoiseScale(cloudNoiseScale);
+                        if (ImGui::SliderFloat("Cloud Contrast Lo", &cloudNoiseContrastLo, 0.0f, 1.0f, "%.2f"))
+                        	lighting->setCloudNoiseContrastLo(cloudNoiseContrastLo);
+                        if (ImGui::SliderFloat("Cloud Contrast Hi", &cloudNoiseContrastHi, 0.0f, 1.0f, "%.2f"))
+                        	lighting->setCloudNoiseContrastHi(cloudNoiseContrastHi);
+                        if (ImGui::SliderFloat("Cloud Wind Speed", &cloudWindSpeed, 0.0f, 100.0f, "%.1f"))
+                        	lighting->setCloudWindSpeed(cloudWindSpeed);
+                        if (ImGui::SliderFloat2("Cloud Wind Direction", &cloudWindDir.x, -1.0f, 1.0f, "%.2f"))
+                        	lighting->setCloudWindDir(cloudWindDir);
+
+                        ImGui::Separator();
                         if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                         	lighting->setSkyTimePaused(skyTimePaused);
                         if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
@@ -1071,7 +1096,7 @@ void App::debugWindow() {
                     profilingEnabled = true;
                     
                     // Calculate totals
-                    float totalGPU = measuredAverageMsDrawSky + measuredAverageMsRenderShader + 
+                    float totalGPU = measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
                                     measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
                                     measuredAverageMsRenderWater + measuredAverageMsDrawEntities;
                     
@@ -1092,6 +1117,7 @@ void App::debugWindow() {
                     };
                     
                     showTimingBar("Sky", measuredAverageMsDrawSky, ImVec4(0.2f, 0.6f, 1.0f, 1.0f));
+                    showTimingBar("Clouds", measuredAverageMsDrawClouds, ImVec4(0.8f, 0.8f, 0.9f, 1.0f));
                     showTimingBar("Terrain", measuredAverageMsRenderShader, ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
                     showTimingBar("Shadows", measuredAverageMsDrawShadows, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
                     showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
@@ -1162,6 +1188,7 @@ void App::cleanup() {
     // Query objects (profiling)
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawEntities);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawCloudsPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
