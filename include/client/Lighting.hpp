@@ -142,7 +142,6 @@ public:
     glm::vec3 getCloudAlbedo() const { return cloudAlbedo; };
     float getCloudStepCount() const { return cloudStepCount; };
     float getCloudSigmaS() const { return cloudSigmaS; };
-    float getCloudSunStepCount() const { return cloudSunStepCount; };
     float getCloudPhaseG() const { return cloudPhaseG; };
     float getCloudEdgeFeather() const { return cloudEdgeFeather; };
     float getCloudNoiseScale() const { return cloudNoiseScale; };
@@ -218,7 +217,6 @@ public:
     void setCloudAlbedo(const glm::vec3& albedo) { cloudAlbedo = albedo; };
     void setCloudStepCount(const float stepCount) { cloudStepCount = stepCount; };
     void setCloudSigmaS(const float sigmaS) { cloudSigmaS = sigmaS; };
-    void setCloudSunStepCount(const float sunStepCount) { cloudSunStepCount = sunStepCount; };
     void setCloudPhaseG(const float phaseG) { cloudPhaseG = phaseG; };
     void setCloudEdgeFeather(const float feather) { cloudEdgeFeather = feather; };
     void setCloudNoiseScale(const float scale) { cloudNoiseScale = scale; };
@@ -286,7 +284,6 @@ private:
     float cloudStepCount = 48.0f; // number of steps (lower for performance, still good quality)
 
     float cloudSigmaS = 2.0f; // scattering coefficient
-    float cloudSunStepCount = 6.0f; // number of steps for sun light scattering (lower for performance)
     float cloudPhaseG = 0.4f; // phase function (lower = more uniform scattering, less directional)
 
     int cloudDownscale = 4; // downscaling factor for cloud rendering (higher = faster but blurrier)
@@ -295,7 +292,7 @@ private:
     float cloudNoiseScale = 0.015f;     // lower frequency = bigger, chunkier clouds
     float cloudNoiseContrastLo = 0.50f; // tighter contrast range for more defined shapes
     float cloudNoiseContrastHi = 0.75f;
-    float cloudWindSpeed = 20.0f;        // slower drift
+    float cloudWindSpeed = 100.0f;
     glm::vec2 cloudWindDir = glm::vec2(1.0f, 0.2f); // mostly horizontal drift
     
 

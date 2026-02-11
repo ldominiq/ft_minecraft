@@ -3,9 +3,8 @@
 #define M_PI 3.1415926535897932384626433832795
 
 in vec2 vUV;
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
 
-// Same uniforms you set in Lighting::renderCloudsLowRes
 uniform vec2  resolution;
 uniform float time;
 uniform mat4  view;
@@ -60,7 +59,7 @@ float hgPhase(float mu, float g)
 }
 
 // -----------------------------
-// Cheap noise (optional later). For now: simple vertical profile only.
+// Cheap noise
 // -----------------------------
 
 float hash12(vec2 p)

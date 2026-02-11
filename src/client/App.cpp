@@ -1011,7 +1011,6 @@ void App::debugWindow() {
                         glm::vec3 cloudAlbedo = lighting->getCloudAlbedo();
                         float cloudStepCount = lighting->getCloudStepCount();
                         float cloudSigmaS = lighting->getCloudSigmaS();
-                        float cloudSunStepCount = lighting->getCloudSunStepCount();
                         float cloudPhaseG = lighting->getCloudPhaseG();
 
                         ImGui::Text("Sky Controls");
@@ -1029,8 +1028,6 @@ void App::debugWindow() {
                             
                         if (ImGui::SliderFloat("Cloud Sigma S", &cloudSigmaS, 1.0f, 10.0f, "%.1f"))
                         	lighting->setCloudSigmaS(cloudSigmaS);
-                        if (ImGui::SliderFloat("Cloud Sun Step Count", &cloudSunStepCount, 1.0f, 20.0f, "%.1f"))
-                        	lighting->setCloudSunStepCount(cloudSunStepCount);
                         if (ImGui::SliderFloat("Cloud Phase G", &cloudPhaseG, 0.0f, 1.0f, "%.1f"))
                         	lighting->setCloudPhaseG(cloudPhaseG);
 
@@ -1057,6 +1054,7 @@ void App::debugWindow() {
                         	lighting->setCloudWindDir(cloudWindDir);
 
                         ImGui::Separator();
+                    	ImGui::Text("Atmosphere controls");
                         if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                         	lighting->setSkyTimePaused(skyTimePaused);
                         if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
@@ -1190,6 +1188,7 @@ void App::cleanup() {
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawCloudsPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
 

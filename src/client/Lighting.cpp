@@ -104,7 +104,6 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     cloudShader->setFloat("cloudStepCount", cloudStepCount);
 
     cloudShader->setFloat("cloudSigmaS", cloudSigmaS);
-    cloudShader->setFloat("cloudSunStepCount", cloudSunStepCount);
     cloudShader->setFloat("cloudPhaseG", cloudPhaseG);
 
     // Modulate ambient by sun elevation (darker at night)
@@ -160,7 +159,7 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     // Cloud composite
     const bool composite = cloudsEnabled && (getCloudTexture() != 0);
     skyShader->setInt("cloudsCompositeEnabled", composite ? 1 : 0);
-    
+
     if (composite) {
         glActiveTexture(GL_TEXTURE0 + 7);
         glBindTexture(GL_TEXTURE_2D, getCloudTexture());
