@@ -151,6 +151,9 @@ vec4 marchCloudCube(vec3 roWorld, vec3 rdWorld)
     if (!intersectAABB(roWorld, rdWorld, cloudBoxMinWorld, cloudBoxMaxWorld, t0, t1))
         return vec4(0.0, 0.0, 0.0, 1.0);
 
+    // If inside the box, start marching at the camera to avoid sampling behind it.
+    t0 = max(t0, 0.0);
+
     float len = max(t1 - t0, 0.0);
     float steps = clamp(len / 3.0, 8.0, max(8.0, cloudStepCount));
     float dt = len / steps;
