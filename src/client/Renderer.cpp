@@ -200,11 +200,29 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 	auto entity = entitiesMap.find(ID);
 	if (entity != entitiesMap.end())
 	{
-		entity->second->prevPosition = entity->second->nextPosition;
-		entity->second->nextPosition = position;
-		entity->second->yaw = yaw;
-		entity->second->positionUpdated = true;
-		entity->second->lastTickClientTime = lastTickClientTime;
+		auto ent = entity->second.lock();
+		if (ent) {
+			ent->prevPosition = ent->nextPosition;
+			ent->nextPosition = position;
+			ent->yaw = yaw;
+			ent->positionUpdated = true;
+			ent->lastTickClientTime = lastTickClientTime;
+			if (pkt.type == static_cast<uint16_t>(-1))
+			{
+				ent->removed = true;
+				if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
+				{
+					livingEntities.erase(
+						std::remove_if(livingEntities.begin(), livingEntities.end(),
+							[ID](const std::shared_ptr<Entity>& e){ return e->getID() == ID; }),
+						livingEntities.end()
+					);
+				}
+			}
+		}
+		else if (entity->second.expired()) {
+			entitiesMap.erase(ID);
+		}
 	}
 	else
 	{

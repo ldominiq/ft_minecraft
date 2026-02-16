@@ -23,29 +23,57 @@ ItemPropEntityManager::~ItemPropEntityManager()
 	}
 }
 
-void ItemPropEntityManager::updateMesh(const std::vector<std::shared_ptr<ItemEntity>> &entities)
+void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities)
 {
-    int i = -1;
+	int i = -1;
+	bool itemsRemoved = false; //Needed because when 1 element is removed the order of the elements change. So when 1 element is removed we redo EVERY prop. Shitty solution but it is what is is.
+
+	static std::vector<float> buffer(MAX_CAPACITY * ITEM_SIZE);
+	std::vector<float> vertices(ITEM_SIZE);
+
+
+	for (auto entity = entities.begin(); entity != entities.end();)
+	{
+		if (entity->get()->removed && !entity->get()->positionUpdated)
+		{
+			entity = entities.erase(entity);
+			itemsRemoved = true;
+			continue ;
+		}
+
+		++i;
+		// if (!entity->get()->positionUpdated && !itemsRemoved)
+		// {
+		// 	entity++;
+		// 	continue ;
+		// }
+
+		entity->get()->createMesh(vertices);
+		memcpy(buffer.data() + i * ITEM_SIZE,
+			vertices.data(),
+			ITEM_SIZE * sizeof(float)
+		);
+
+		vertices.clear();
+		++entity;
+	}
+
+	++i;
+	std::memset(
+		buffer.data() + i * ITEM_SIZE,
+		0,
+		(MAX_CAPACITY - i) * ITEM_SIZE * sizeof(float)
+	);
 
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    for (auto &entity : entities)
-	{
-		i++;
-		if (!entity->positionUpdated) continue ;
-
-		std::vector<float> vertices;
-        entity->createMesh(vertices);
-
-		// update the existing data:
-    	glBufferSubData(GL_ARRAY_BUFFER, i*180*sizeof(float), 180*sizeof(float), vertices.data());
-	}
+	void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+	memcpy(ptr, buffer.data(), MAX_CAPACITY * ITEM_SIZE);
+	glUnmapBuffer(GL_ARRAY_BUFFER);
 }
 
 // In your constructor or init function:
 void ItemPropEntityManager::initGL()
 {
-	const int MAX_BUFFER_SIZE = 180 * 10000; // 1 item takes 180 floats.
-
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
 
@@ -53,7 +81,7 @@ void ItemPropEntityManager::initGL()
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
     // Allocate a fixed-size buffer ONCE (say, for up to 1 million floats)
-    glBufferData(GL_ARRAY_BUFFER, MAX_BUFFER_SIZE * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, MAX_BUFFER_SIZE, nullptr, GL_DYNAMIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
     glEnableVertexAttribArray(0);
@@ -64,7 +92,7 @@ void ItemPropEntityManager::initGL()
     glBindVertexArray(0);
 }
 
-void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const std::vector<std::shared_ptr<ItemEntity>> &entities)
+void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &view, std::vector<std::shared_ptr<ItemEntity>> &entities)
 {
 	updateMesh(entities);
 
@@ -72,10 +100,11 @@ void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 
     glBindVertexArray(VAO);
 
+	// probably works without because the previous draw already uses the same texture
 	// glActiveTexture(GL_TEXTURE0);
 	// glBindTexture(GL_TEXTURE_2D, texture);
 
 	shader->setMat4("projection", projection);
 	shader->setMat4("view", view);
-	glDrawArrays(GL_TRIANGLES, 0, entities.size() * 36); // TODO : check if we can pass les than meshVertices.size()
+	glDrawArrays(GL_TRIANGLES, 0, entities.size() * 36);
 }

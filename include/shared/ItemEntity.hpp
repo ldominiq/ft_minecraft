@@ -7,17 +7,26 @@
 
 class ItemEntity : public Entity
 {
+	int32_t spawnTick = 0; //Server tick the prop spawned at.
+
 	protected:
-		BlockType type;
+		ItemType type;
 
 	public:
 		glm::vec3 getDesiredMove() override;
 
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::ITEMS; }
-		BlockType inline getItemType() const { return type; }
+		ItemType inline getItemType() const { return type; }
+		ItemID getItemID() const {
+			return std::visit([](auto& value) -> ItemID {
+				return static_cast<ItemID>(value);
+			}, type);
+		}
 
-		ItemEntity(const glm::vec3 &position, float yaw, BlockType type, bool isLaunched = false);
-		ItemEntity(const glm::vec3 &position, float yaw, BlockType type, entityID ID);
+		inline const int getSpawnTick() const {return spawnTick;}
+
+		ItemEntity(const glm::vec3 &position, float yaw, ItemType type, int32_t spawnTick, bool isLaunched = false);
+		ItemEntity(const glm::vec3 &position, float yaw, ItemType type, entityID ID);
 		virtual ~ItemEntity();
 };
 

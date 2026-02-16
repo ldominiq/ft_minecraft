@@ -11,7 +11,7 @@ class ItemPropEntity : public ItemEntity
 	void createMesh(std::vector<float> &meshVertices);
 
 	public:
-		ItemPropEntity(const glm::vec3 &position, float yaw, BlockType type, entityID ID);
+		ItemPropEntity(const glm::vec3 &position, float yaw, ItemType type, entityID ID);
 		~ItemPropEntity();
 };
 

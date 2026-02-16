@@ -4,6 +4,7 @@
 
 #include "LivingEntity.hpp"
 #include "Protocol.hpp"
+#include "Inventory.hpp"
 
 #define FLY_SPEED 50.0f
 #define DEFAULT_SPEED 5.0f
@@ -16,6 +17,8 @@ enum class GAMEMODES {
 struct PlayerMovement : public virtual LivingEntity {
 
 	NetPlayerInputs lastInputsPktRecvd = {};
+
+	Inventory inv;
 
 	bool jumpBoostApplied = false;
 

@@ -63,7 +63,8 @@ void App::init() {
 
     lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
 
-    chat = std::make_unique<Chat>(windowedWidth, windowedHeight);
+	chat = std::make_shared<Chat>(windowedWidth, windowedHeight);
+	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>();
 
@@ -110,7 +111,8 @@ void App::init() {
 	glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int codepoint) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
-		if (app->menuManager != app->chat) return ;
+		auto manager = app->menuManager.lock();
+		if (manager != app->chat) return ;
 
 		app->chat->addCharToCurrMsg(static_cast<char>(codepoint));
 	});
@@ -119,10 +121,12 @@ void App::init() {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
 
-		if (!app->menuManager && app->controlsArray[CLOSE_WINDOW] == key && action == GLFW_PRESS) glfwSetWindowShouldClose(w, true);
+		auto manager = app->menuManager.lock();
+
+		if (!manager && app->controlsArray[CLOSE_WINDOW] == key && action == GLFW_PRESS) glfwSetWindowShouldClose(w, true);
 
 		app->processInputsMenus(key, action);
-		if (app->menuManager) return ;
+		if (manager) return ;
 
 		auto mapKeyToBit = [](int key) -> uint16_t {
 			switch (key) {
@@ -138,8 +142,18 @@ void App::init() {
 			}
 		};
 
+		bool hotbarUpdated = app->controlsArray[HOTBAR_1] == key ||
+							app->controlsArray[HOTBAR_2] == key ||
+							app->controlsArray[HOTBAR_3] == key ||
+							app->controlsArray[HOTBAR_4] == key ||
+							app->controlsArray[HOTBAR_5] == key ||
+							app->controlsArray[HOTBAR_6] == key ||
+							app->controlsArray[HOTBAR_7] == key ||
+							app->controlsArray[HOTBAR_8] == key ||
+							app->controlsArray[HOTBAR_9] == key;
+
 		uint16_t bit = mapKeyToBit(key);
-		if (!bit) return; // not an input we care about
+		if (!bit && !hotbarUpdated) return; // not an input we care about
 
 		if (action == GLFW_PRESS || action == GLFW_REPEAT) {
 			app->inputMask |= bit;              // set bit
@@ -206,6 +220,7 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::GROUP: {
 				auto& g = static_cast<NetPacketGroup&>(*pkt);
+				std::cout << g.unpack().size() << std::endl;
 				for (auto& inner : g.unpack()) {
 					if (udpClient->onPacket)
 						udpClient->onPacket({ std::move(inner) });
@@ -244,6 +259,15 @@ void App::setUdpClientPacketCallback()
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
 				renderer->onEntity(p, lastTickClientTime);
+				break;
+			}
+
+			case PacketType::NET_INVENTORY: {
+				auto& p = static_cast<NetInventory&>(*pkt);
+				if (p.amount > 0)
+					inventoryUI->insertItemsToSlot(static_cast<BlockType>(p.type), p.slot, p.amount); // This cast is not really great. Won't work when/if there are other types of items that aren't blocks. TODO : check if it's still needed once inventoryUI gets more concrete.
+				else
+					inventoryUI->removeItemsFromSlot(p.slot, -p.amount);
 				break;
 			}
 
@@ -300,7 +324,8 @@ void App::gameTick() {
 	// sending/receiving packets and stuff
 
 	udpClient->receivePacket();
-	if ((keyPressedRecently || mouseMovedRecently) && !menuManager)
+	auto manager = menuManager.lock();
+	if ((keyPressedRecently || mouseMovedRecently) && !manager)
 	{
 		NetPlayerInputs inputs = buildPlayerInputsPacket();
 		udpClient->sendPacket(inputs);
@@ -371,7 +396,8 @@ void App::render() {
 
         updateWindowTitle();
 
-		if (menuManager != chat)
+		auto manager = menuManager.lock();
+		if (manager != chat)
         	processInput();
 
         // window aspect / uniforms
@@ -485,9 +511,11 @@ void App::render() {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		// render menus last
-		if (menuManager) {
-			menuManager->render();
+		if (manager) {
+			manager->render();
 		}
+		else
+			inventoryUI->drawHotbar();
 
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
         glfwSwapBuffers(window);
@@ -532,9 +560,10 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 		if (!entity->positionUpdated) continue ;
 		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
 		entity->setPosition(newEntityPos);
-		if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
 	}
 	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
+	for (auto &entity : renderer->itemEntities)
+		if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
 
 	//mobs
 	for (auto &entity : renderer->livingEntities)
@@ -1034,6 +1063,16 @@ void App::loadControlsDefaults() {
     controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
 	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
+	
+	controlsArray[HOTBAR_1]				= GLFW_KEY_1;
+	controlsArray[HOTBAR_2]				= GLFW_KEY_2;
+	controlsArray[HOTBAR_3]				= GLFW_KEY_3;
+	controlsArray[HOTBAR_4]				= GLFW_KEY_4;
+	controlsArray[HOTBAR_5]				= GLFW_KEY_5;
+	controlsArray[HOTBAR_6]				= GLFW_KEY_6;
+	controlsArray[HOTBAR_7]				= GLFW_KEY_7;
+	controlsArray[HOTBAR_8]				= GLFW_KEY_8;
+	controlsArray[HOTBAR_9]				= GLFW_KEY_9;
 }
 
 void App::loadControlsFromFile(const char* filename) {
@@ -1099,10 +1138,24 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
         keys |= IN_DROP;
 
+	uint8_t activeHotbarSlot = -1;
+	if (glfwGetKey(window, controlsArray[HOTBAR_1]) == GLFW_PRESS) activeHotbarSlot = 0;
+	if (glfwGetKey(window, controlsArray[HOTBAR_2]) == GLFW_PRESS) activeHotbarSlot = 1;
+	if (glfwGetKey(window, controlsArray[HOTBAR_3]) == GLFW_PRESS) activeHotbarSlot = 2;
+	if (glfwGetKey(window, controlsArray[HOTBAR_4]) == GLFW_PRESS) activeHotbarSlot = 3;
+	if (glfwGetKey(window, controlsArray[HOTBAR_5]) == GLFW_PRESS) activeHotbarSlot = 4;
+	if (glfwGetKey(window, controlsArray[HOTBAR_6]) == GLFW_PRESS) activeHotbarSlot = 5;
+	if (glfwGetKey(window, controlsArray[HOTBAR_7]) == GLFW_PRESS) activeHotbarSlot = 6;
+	if (glfwGetKey(window, controlsArray[HOTBAR_8]) == GLFW_PRESS) activeHotbarSlot = 7;
+	if (glfwGetKey(window, controlsArray[HOTBAR_9]) == GLFW_PRESS) activeHotbarSlot = 8;
+
+	if (activeHotbarSlot != (uint8_t)-1) inventoryUI->activeHotbarSlot = activeHotbarSlot;
+
 	inputs.keys = keys;
 	inputs.pitch = camera->getPlayer()->getPitch();
 	inputs.yaw = camera->getPlayer()->getYaw();
 	inputs.loadRadius = camera->getLoadRadius();
+	inputs.activeHotbarSlot = activeHotbarSlot;
 
 	camera->inputsList.push_back(inputs);
 
@@ -1111,8 +1164,10 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 
 void App::processInputsMenus(int key, int action) {
 
+	auto manager = menuManager.lock();
+
 	// HANDLE EVENTS WHEN CHAT OPEN
-	if (menuManager == chat)
+	if (manager == chat)
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 		{
@@ -1129,7 +1184,7 @@ void App::processInputsMenus(int key, int action) {
 	}
 
 	// CHOSE MENU (order here IS important. must do after handling events)
-	if (!menuManager)
+	if (!manager)
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 			menuManager = chat;

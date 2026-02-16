@@ -10,14 +10,14 @@
 class LivingEntitiesManager
 {
 	Shader characterShader; // Should probably reuse another one but it is what it is
-	std::vector<std::shared_ptr<IClientEntity>> characters;
+	std::vector<std::weak_ptr<IClientEntity>> characters;
 
 	public:
 
 		LivingEntitiesManager();
 		~LivingEntitiesManager();
 
-		void add(std::shared_ptr<IClientEntity> character);
+		void add(std::weak_ptr<IClientEntity> character);
 		void draw(const glm::mat4 &projection, const glm::mat4 &view, const float deltatima);
 };
 

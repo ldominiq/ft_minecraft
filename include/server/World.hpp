@@ -77,44 +77,46 @@ class World final : public CommonWorld<ChunkGeneration>
 	void loadRegion(int regionX, int regionZ);
 	std::string getRegionFilename(int regionX, int regionZ) const;
 	std::string regionDirName;
-	
-public:
-	World();
-	World(int seed);
+		
+	public:
+		World();
+		World(int seed);
 
-    ~World();
+		~World();
 
-	int amountOfChunksSentThisTick = 0;
-	s_liquidsManager liquidsManager;
+		int amountOfChunksSentThisTick = 0;
+		s_liquidsManager liquidsManager;
+		std::vector<NetEntityMove> deletedEntitiesPkts; //Not very pretty. Should be entities and not packets but then types are a bit bothering to keep.
+		std::vector<std::pair<sockaddr_in, NetInventory>> pickedUpItems;
 
-    void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
-    void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
+		void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
+		void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
 
-	std::vector<s_waterPath> findShortestWaterPath(const glm::ivec3 &initialBlockPos);
-	std::vector<std::shared_ptr<s_liquid>> waterFlowTowardsShortestPath(const glm::ivec3 &initialBlockPos, const std::shared_ptr<s_liquid> &liquid, const std::vector<s_waterPath> &paths);
-    void updateVisibleChunks(CPlayerInfo &player);
-	void updateLiquids();
+		std::vector<s_waterPath> findShortestWaterPath(const glm::ivec3 &initialBlockPos);
+		std::vector<std::shared_ptr<s_liquid>> waterFlowTowardsShortestPath(const glm::ivec3 &initialBlockPos, const std::shared_ptr<s_liquid> &liquid, const std::vector<s_waterPath> &paths);
+		void updateVisibleChunks(CPlayerInfo &player);
+		void updateLiquids();
 
-    // Get or set the maximum number of chunk generation tasks that can run
-    // simultaneously.  Lower values reduce CPU spikes at the cost of slower
-    // world loading.  Must be at least 1.
-    std::size_t getMaxConcurrentGeneration() const { return maxConcurrentGeneration; }
-    void setMaxConcurrentGeneration(std::size_t n) { maxConcurrentGeneration = std::max<std::size_t>(1, n); }
+		// Get or set the maximum number of chunk generation tasks that can run
+		// simultaneously.  Lower values reduce CPU spikes at the cost of slower
+		// world loading.  Must be at least 1.
+		std::size_t getMaxConcurrentGeneration() const { return maxConcurrentGeneration; }
+		void setMaxConcurrentGeneration(std::size_t n) { maxConcurrentGeneration = std::max<std::size_t>(1, n); }
 
-	void saveRegionsOnExit();
-    // Terrain params for ImGui
-    TerrainGenerationParams& getTerrainParams() { return terrainParams;}
+		void saveRegionsOnExit();
+		// Terrain params for ImGui
+		TerrainGenerationParams& getTerrainParams() { return terrainParams;}
 
-	void setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates, const CPlayerInfo &player);
-	void updatePlannedChunks(CPlayerInfo &player);
+		void setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates, const CPlayerInfo &player);
+		void updatePlannedChunks(CPlayerInfo &player);
 
-	std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
+		std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
 
-	void processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt);
-	void updateEntitiesPosition();	
+		void processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t serverTick);
+		void updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t serverTick);	
 
-	void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
-	void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
+		void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
+		void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
 };
 
 #endif //WORLD_HPP

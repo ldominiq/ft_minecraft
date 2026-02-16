@@ -849,7 +849,7 @@ void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 	currChunk->setBlock(x, y, z, type);
 }
 
-void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
+void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t serverTick)
 {
 	//Repetition. Not clean. And not performance friendly either.
 	glm::ivec3 blockPos, faceNormal;
@@ -883,15 +883,68 @@ void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerM
 			// spawn the entity at block center + offset
 			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
 
-			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped));
+			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, serverTick));
 		}
 	}
 }
 
-void World:: updateEntitiesPosition()
+void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t serverTick)
 {
+	std::vector<std::weak_ptr<PlayerMovement>> playerss;
+	for (auto player : players)
+		playerss.push_back(player.movement);
+
+
 	for (auto &entity : livingEntities)
 		entity->calculateNewPosition(*this);
-	for (auto &entity : itemEntities)
-		entity->calculateNewPosition(*this);
+
+	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
+	{
+		//Checks for every prop if there's a player nearby that can pick it up. TODO: if this is too expensive do it every n ticks instead.
+		if (entityIt->get()->getSpawnTick() + TPS * 3 < serverTick)
+		{
+			bool itemErased = false;
+			for (auto &player : players)
+			{
+				if (player.movement.get()->gamemode != GAMEMODES::SURVIVAL)
+					continue ;
+
+				glm::vec3 diff = player.movement->getPosition() - entityIt->get()->getPosition();
+				if (abs(diff.x) < 2 &&
+					diff.y >= 0 && diff.y < 4 &&
+					abs(diff.z) < 2)
+				{
+					int slotUsed = player.movement->inv.insertItems(entityIt->get()->getItemType(), 1);
+					if (slotUsed == -1) continue ;
+
+					NetEntityMove pkt;
+					pkt.eEntityType = entityIt->get()->getEntityType();
+					pkt.entityID = entityIt->get()->getID();
+					pkt.type = -1;
+
+					pkt.positionX = player.movement->getPosition().x;
+					pkt.positionY = player.movement->getPosition().y;
+					pkt.positionZ = player.movement->getPosition().z;
+					pkt.yaw = entityIt->get()->yaw;
+
+					deletedEntitiesPkts.push_back(pkt);
+
+					entityIt = itemEntities.erase(entityIt);
+					itemErased = true;
+
+					NetInventory pickedUpItem;
+					pickedUpItem.type = entityIt->get()->getItemID();
+					pickedUpItem.amount = 1;
+					pickedUpItem.slot = slotUsed;
+					pickedUpItems.push_back({player.addr, pickedUpItem});
+
+					break ;
+				}
+			}
+			if (itemErased) continue ;
+		}
+
+		entityIt->get()->calculateNewPosition(*this);
+		entityIt++;
+	}
 }

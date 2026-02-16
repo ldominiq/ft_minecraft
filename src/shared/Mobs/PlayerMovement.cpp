@@ -41,14 +41,14 @@ void PlayerMovement::updatePosition()
 	glm::vec3 prevPosition = this->position;
 
 	// 4 directions
-    if (inputs.keys & IN_FORWARD)
-        this->position += horizontalFront * velocity;
-    if (inputs.keys & IN_BACKWARD)
-        this->position -= horizontalFront * velocity;
-    if (inputs.keys & IN_LEFT)
-        this->position -= glm::normalize(glm::cross(horizontalFront, this->WorldUp)) * velocity;
-    if (inputs.keys & IN_RIGHT)
-        this->position += glm::normalize(glm::cross(horizontalFront, this->WorldUp)) * velocity;
+	if (inputs.keys & IN_FORWARD)
+		this->position += horizontalFront * velocity;
+	if (inputs.keys & IN_BACKWARD)
+		this->position -= horizontalFront * velocity;
+	if (inputs.keys & IN_LEFT)
+		this->position -= glm::normalize(glm::cross(horizontalFront, this->WorldUp)) * velocity;
+	if (inputs.keys & IN_RIGHT)
+		this->position += glm::normalize(glm::cross(horizontalFront, this->WorldUp)) * velocity;
 
 	// Up and Down
 	if (inputs.keys & IN_UP)
@@ -61,12 +61,12 @@ void PlayerMovement::updatePosition()
 }
 
 void PlayerMovement::updateCameraVectors() {
-    glm::vec3 front;
-    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    front.y = sin(glm::radians(pitch));
-    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-    this->Front = glm::normalize(front);
-    this->Right = glm::normalize(glm::cross(this->Front, this->WorldUp));
+	glm::vec3 front{};
+	front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+	front.y = sin(glm::radians(pitch));
+	front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+	this->Front = glm::normalize(front);
+	this->Right = glm::normalize(glm::cross(this->Front, this->WorldUp));
 }
 
 void PlayerMovement::doJump(const ICommonWorld &world)

@@ -144,12 +144,13 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 
 void Server::gameTick()
 {
-	world->updateEntitiesPosition();
+	world->updateEntitiesPosition(players, tick);
 	if (world->liquidsManager.tickSinceLastUpdate < tick - 5)
 	{
 		world->liquidsManager.tickSinceLastUpdate = tick;
 		world->updateLiquids();
 	}
+
 	sendAll();
 }
 
@@ -176,6 +177,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 	if (player == players.end())
 		return ;
 
+	const auto &ent = std::find(world->livingEntities.begin(), world->livingEntities.end(), player->movement);
+	world->livingEntities.erase(ent);
 	players.erase(player);
 }
 
@@ -185,10 +188,26 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (player == players.end())
 		return ;
 
+	if (pkt.activeHotbarSlot != (uint8_t)-1)
+		player->movement->inv.activeHotbarSlot = pkt.activeHotbarSlot;
+
 	if (pkt.keys & IN_DROP)
 	{
-		glm::vec3 itemPos = player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f);
-		world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), BlockType::DIRT, true));
+		if (player->movement->inv.removeItemsFromSlot(player->movement->inv.activeHotbarSlot, 1))
+		{
+			glm::vec3 itemPos = player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f);
+			ItemType type = player->movement->inv.getItemAtSlot(player->movement->inv.activeHotbarSlot);
+
+			world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), type, tick, true));
+
+			NetInventory dropItem;
+			dropItem.type = std::visit([](auto& value) -> ItemID {
+				return static_cast<ItemID>(value);
+			}, type);
+			dropItem.amount = -1;
+			dropItem.slot = player->movement->inv.activeHotbarSlot;
+			sendPacketTo(dropItem, cliaddr);
+		}
 	}
 
 	if (pkt.yaw != player->movement->yaw) player->movement->positionUpdated = true;
@@ -205,7 +224,7 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	if (player == players.end())
 		return ;
 
-	world->processPlayerMouseInputs(*player, pkt);
+	world->processPlayerMouseInputs(*player, pkt, tick);
 }
 
 void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
@@ -347,7 +366,6 @@ void Server::sendEntitiesPositionDeltas()
 
 			NetEntityMove pkt;
 
-			// TODO : only send if items moved
 			pkt.eEntityType = entity->getEntityType();
 			pkt.entityID = entity->getID();
 			pkt.type = static_cast<LivingEntityType>(entity->getLivingEntityType());
@@ -372,10 +390,10 @@ void Server::sendEntitiesPositionDeltas()
 
 			NetEntityMove pkt;
 
-			// TODO : only send if items moved
 			pkt.eEntityType = entity->getEntityType();
 			pkt.entityID = entity->getID();
-			pkt.type = static_cast<ItemID>(entity->getItemType());
+
+			pkt.type = entity->getItemID();
 
 			pkt.positionX = entity->getPosition().x;
 			pkt.positionY = entity->getPosition().y;
@@ -388,6 +406,18 @@ void Server::sendEntitiesPositionDeltas()
 
 		entity->positionUpdated = false;
 	}
+
+	//todo maybe change this to somehow group the packets to not send so many of them
+	for (auto &deletedEntityPkt : world->deletedEntitiesPkts)
+	{
+		for (CPlayerInfo &p : players)
+			sendPacketTo(deletedEntityPkt, p.addr);
+	}
+	for (auto &pickedUpItems : world->pickedUpItems)
+		sendPacketTo(pickedUpItems.second, pickedUpItems.first);
+
+	world->deletedEntitiesPkts.clear();
+	world->pickedUpItems.clear();
 }
 
 void Server::sendNewlyUpdatedBlocks(CPlayerInfo &player)
@@ -418,7 +448,7 @@ void Server::sendMessage(CPlayerInfo &player)
 void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_in& cliaddr)
 {
     NetPacketGroup group;
-    int currSize = 0; // 2 bytes for group count
+    int currSize = 6; // 6 bytes because technically it's 2 bytes of group packet u16 "count" + 4bytes of outer layer header (u8+u16+u8). probably.
 
     auto it = pkts.begin();
     while (it != pkts.end()) {
@@ -430,7 +460,7 @@ void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_i
             if (!group.rawPackets.empty()) {
                 sendPacketTo(group, cliaddr);
                 group = NetPacketGroup();
-                currSize = 0; // reset
+                currSize = 6; // reset
             }
             continue; // retry current packet
         }
@@ -452,6 +482,74 @@ void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
 
 void Server::sendAccept(const sockaddr_in &cliaddr)
 {
+	std::vector<PacketPtr> groupPkt;
+
+	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (player != players.end())
+	{		
+		//gotta exclude current player
+		for (auto &entity : world->livingEntities)
+		{
+			if (entity == player->movement) continue;
+
+			auto pkt = std::make_unique<NetEntityMove>();
+
+			pkt->eEntityType = entity->getEntityType();
+			pkt->entityID = entity->getID();
+			pkt->type = static_cast<LivingEntityType>(entity->getLivingEntityType());
+
+			pkt->positionX = entity->getPosition().x;
+			pkt->positionY = entity->getPosition().y;
+			pkt->positionZ = entity->getPosition().z;
+
+			pkt->yaw = entity->yaw;
+
+			groupPkt.push_back(std::move(pkt));
+		}
+
+		for (auto &entity : world->itemEntities)
+		{
+			auto pkt = std::make_unique<NetEntityMove>();
+
+			pkt->eEntityType = entity->getEntityType();
+			pkt->entityID = entity->getID();
+			pkt->type = static_cast<ItemID>(entity->getItemID());
+
+			pkt->positionX = entity->getPosition().x;
+			pkt->positionY = entity->getPosition().y;
+			pkt->positionZ = entity->getPosition().z;
+
+			pkt->yaw = entity->yaw;
+
+			groupPkt.push_back(std::move(pkt));
+		}
+
+		player->movement->inv.insertItemsToSlot(BlockType::DIRT, 0, 200);
+		player->movement->inv.insertItemsToSlot(BlockType::WATER, 8, 200);
+		player->movement->inv.insertItemsToSlot(BlockType::STONE, 1, 200);
+
+		auto pkt1 = std::make_unique<NetInventory>();
+		pkt1->amount = 200;
+		pkt1->slot = 0;
+		pkt1->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::DIRT);
+
+		auto pkt2 = std::make_unique<NetInventory>();
+		pkt2->amount = 200;
+		pkt2->slot = 8;
+		pkt2->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::WATER);
+
+		auto pkt3 = std::make_unique<NetInventory>();
+		pkt3->amount = 200;
+		pkt3->slot = 1;
+		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);
+
+		groupPkt.push_back(std::move(pkt1));
+		groupPkt.push_back(std::move(pkt2));
+		groupPkt.push_back(std::move(pkt3));
+	}
+
+	sendNewGroupPacketTo(groupPkt, cliaddr);
+
 	NetAccept acceptPkt;
 	sendPacketTo(acceptPkt, cliaddr);
 }

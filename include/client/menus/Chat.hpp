@@ -5,14 +5,15 @@
 #include "Typer.hpp"
 #include "Menu.hpp"
 
+//menus.. and everything really should use an EBO (indexes) to spare vertices... but it's kinda whatever at this point.
 class Chat : public Menu {
 
-	float scale = 0.3f;
 	float x, y, w, h;
 	std::vector<std::string> chatLog;
 	Typer textRenderer;
+	glm::vec4 chatColor;
 
-	void onRender();
+	void onRender() override;
 
 	public:
 

@@ -60,7 +60,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     const float yaw = camera->getPlayer()->getYaw();
     const float pitch = -camera->getPlayer()->getPitch();  // Inverted pitch for reflection
 
-    glm::vec3 front;
+    glm::vec3 front{};
     front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
     front.y = sin(glm::radians(pitch));
     front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
