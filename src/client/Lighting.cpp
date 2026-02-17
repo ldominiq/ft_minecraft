@@ -6,11 +6,17 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
     glBindVertexArray(skyVAO);
     glBindVertexArray(0);
 
+    glGenVertexArrays(1, &cloudsVAO);
+    glBindVertexArray(cloudsVAO);
+    glBindVertexArray(0);
+
     skyShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
     lightCubeShader = std::make_unique<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
     shadowDepthShader = std::make_shared<Shader>("shaders/shadowDepthShader.vert", "shaders/shadowDepthShader.frag");
     shadowDebugShader = std::make_shared<Shader>("shaders/shadowDebugShader.vert", "shaders/shadowDebugShader.frag");
+    cloudShader = std::make_shared<Shader>("shaders/clouds.vert", "shaders/clouds.frag");
 
+    cloudFBO = std::make_unique<CloudFramebuffer>(width , height, cloudDownscale);
 
     // Light cube setup
     glGenVertexArrays(1, &lightCubeVAO);
@@ -37,6 +43,9 @@ Lighting::~Lighting() {
 
         glDeleteTextures(1, &depthMap);
         glDeleteFramebuffers(1, &depthMapFBO);
+
+        glDeleteVertexArrays(1, &cloudsVAO);
+        
     } else {
         lightCubeVAO = 0;
         lightCubeVBO = 0;
@@ -46,7 +55,90 @@ Lighting::~Lighting() {
         debugVBO = 0;
         depthMap = 0;
         depthMapFBO = 0;
+        cloudFBO = nullptr;
     }
+}
+
+GLuint Lighting::getCloudTexture() const
+{
+    return cloudFBO ? cloudFBO->getColorTexture() : 0;
+}
+
+void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const
+{
+    if (!cloudsEnabled || !cloudFBO || !cloudShader)
+        return;
+
+    cloudFBO->bind();
+    glViewport(0, 0, cloudFBO->getWidth(), cloudFBO->getHeight());
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    // Clear to "no cloud": rgb=0, transmittance=1 (alpha=1)
+    glClearColor(0.f, 0.f, 0.f, 1.f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    cloudShader->use();
+
+    // Keep uniforms consistent with your sky shader usage
+    cloudShader->setVec2("resolution", glm::vec2(cloudFBO->getWidth(), cloudFBO->getHeight()));
+    cloudShader->setFloat("time", skyTimeOffset);
+    cloudShader->setMat4("view", view);
+    cloudShader->setMat4("projection", projection);
+    cloudShader->setVec3("cameraPosWorld", cameraPos);
+    cloudShader->setVec3("sunDir", getDirectionalLightDirection());
+
+    // Cloud box follows camera for infinite clouds
+    // Keep clouds at fixed altitude but extend horizontally around camera
+    const float cloudRadius = 500.0f;  // Horizontal extent around camera
+    const float cloudMinY = 260.0f;     // Bottom of cloud layer
+    const float cloudMaxY = 310.0f;     // Top of cloud layer
+    const glm::vec3 bmin(cameraPos.x - cloudRadius, cloudMinY, cameraPos.z - cloudRadius);
+    const glm::vec3 bmax(cameraPos.x + cloudRadius, cloudMaxY, cameraPos.z + cloudRadius);
+    cloudShader->setVec3("cloudBoxMinWorld", bmin);
+    cloudShader->setVec3("cloudBoxMaxWorld", bmax);
+
+    cloudShader->setFloat("cloudDensity", cloudDensity);
+    cloudShader->setFloat("cloudSigmaT", cloudSigmaT);
+    cloudShader->setVec3("cloudAlbedo", cloudAlbedo);
+    cloudShader->setFloat("cloudStepCount", cloudStepCount);
+
+    cloudShader->setFloat("cloudSigmaS", cloudSigmaS);
+    cloudShader->setFloat("cloudPhaseG", cloudPhaseG);
+
+    // Modulate ambient by sun elevation (darker at night)
+    glm::vec3 sunDirNorm = glm::normalize(getDirectionalLightDirection());
+    float sunElevation = sunDirNorm.y;  // Can be negative (below horizon)
+    float dayFactor = glm::smoothstep(-0.2f, 0.1f, sunElevation);  // Fade from -0.2 to 0.1
+    float nightAmbient = 0.01f;  // Very low ambient at night
+    float dayAmbient = 0.5f;     // Full ambient during day
+    float ambientStrength = glm::mix(nightAmbient, dayAmbient, dayFactor);
+
+    cloudShader->setVec3("cloudAmbientColor", glm::vec3(0.65f, 0.72f, 0.85f));
+    cloudShader->setFloat("cloudAmbientStrength", ambientStrength);
+
+    cloudShader->setVec3("cloudSunColor", glm::vec3(1.0f, 0.98f, 0.95f));
+    cloudShader->setFloat("cloudSunStrength", 25.0f);  // Increased from 15.0f for brighter clouds
+
+    // TODO: add params to imgui
+    cloudShader->setFloat("cloudEdgeFeather", cloudEdgeFeather);
+    cloudShader->setFloat("cloudNoiseScale", cloudNoiseScale);
+    cloudShader->setFloat("cloudNoiseContrastLo", cloudNoiseContrastLo);
+    cloudShader->setFloat("cloudNoiseContrastHi", cloudNoiseContrastHi);
+    cloudShader->setFloat("cloudWindSpeed", cloudWindSpeed);
+    cloudShader->setVec2("cloudWindDir", cloudWindDir);
+
+    glBindVertexArray(cloudsVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+
+    CloudFramebuffer::unbind();
+
+    // Restore default viewport for subsequent passes
+    glViewport(0, 0, width, height);
 }
 
 void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos) const {
@@ -64,14 +156,25 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     skyShader->setFloat("planetScale", planetScale);
     skyShader->setVec3("sunDir", getDirectionalLightDirection());
 
-    // Disable depth test and writes for background
-    glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
+    // Cloud composite
+    const bool composite = cloudsEnabled && (getCloudTexture() != 0);
+    skyShader->setInt("cloudsCompositeEnabled", composite ? 1 : 0);
+
+    if (composite) {
+        glActiveTexture(GL_TEXTURE0 + 7);
+        glBindTexture(GL_TEXTURE_2D, getCloudTexture());
+        skyShader->setInt("cloudTex", 7);
+    }
+
+    // Render sky with depth = far plane, terrain will render in front
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_TRUE);    // Write depth to allow terrain occlusion
     glBindVertexArray(skyVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindVertexArray(0);
+    glDepthFunc(GL_LESS);    // Restore default
     glDepthMask(GL_TRUE);
-    glEnable(GL_DEPTH_TEST);
 }
 
 void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection) const {

@@ -1,5 +1,7 @@
 #version 460 core
 
+#define M_PI 3.1415926535897932384626433832795
+
 /*
 Accurate Atmospherical Scattering from GPUgems 2
 The two most common forms of scattering in the atmosphere are Rayleigh scattering and Mie scattering.
@@ -28,11 +30,14 @@ uniform float atmThickness;  // scales HR/HM (1.0 = Earth-like)
 uniform float planetScale;
 uniform vec3 sunDir;
 
+// --- Low-res cloud composite ---
+uniform int cloudsCompositeEnabled;   // 0/1
+uniform sampler2D cloudTex;           // RGBA: rgb=cloud light, a=transmittance
+
+
 // -----------------------------
 // Constants (O'Neil/GPU Gems 2)
 // -----------------------------
-const float PI = 3.14159265359;
-
 
 
 // Normalized planet radii (center at 0)
@@ -93,13 +98,13 @@ bool intersectSphere(vec3 ro, vec3 rd, float radius, out float t0, out float t1)
 }
 
 float rayleighPhase(float mu) {
-    return (3.0 / (16.0 * PI)) * (1.0 + mu * mu);
+    return (3.0 / (16.0 * M_PI)) * (1.0 + mu * mu);
 }
 
 float miePhase(float mu) {
     float g2 = G * G;
     float denom = pow(1.0 + g2 - 2.0 * G * mu, 1.5);
-    return (3.0 / (8.0 * PI)) * (1.0 - g2) * (1.0 + mu * mu) / ((2.0 + g2) * denom);
+    return (3.0 / (8.0 * M_PI)) * (1.0 - g2) * (1.0 + mu * mu) / ((2.0 + g2) * denom);
 }
 
 // Integrate scattering along the eye ray using O'Neil's approach
@@ -208,6 +213,41 @@ void main() {
     float halo = exp(-sunAng * 40.0) * 0.4;
     vec3 sunCol = vec3(1.0, 0.98, 0.90) * 30.0;
     col += (disk + halo) * sunCol;
+
+    if (cloudsCompositeEnabled != 0)
+    {
+        vec2 uv = (gl_FragCoord.xy + vec2(0.5)) / max(resolution, vec2(1.0));
+        vec4 cloud = texture(cloudTex, uv);
+
+        // Compute cloud layer intersection for depth
+        const float cloudY = 145.0;
+        float t = (cloudY - cameraPosWorld.y) / r.y;
+
+        // cloud.a = transmittance (1 = no cloud, 0 = opaque cloud)
+        // cloudOpacity = 1 - cloud.a (0 = no cloud, 1 = opaque cloud)
+        float cloudOpacity = 1.0 - cloud.a;
+
+        if (t > 0.0 && cloudOpacity > 0.01) {
+            // Compute cloud intersection depth
+            vec3 cloudIntersection = cameraPosWorld + t * r;
+            vec4 cloudClip = projection * view * vec4(cloudIntersection, 1.0);
+            float cloudDepthNDC = cloudClip.z / cloudClip.w;
+            float cloudDepth = clamp(cloudDepthNDC * 0.5 + 0.5, 0.0, 1.0);
+
+            // Blend between cloud depth and far plane based on opacity
+            // More opaque clouds -> use cloud depth (terrain can occlude)
+            // Transparent edges -> use far plane (allow terrain to show through)
+            gl_FragDepth = mix(1.0, cloudDepth, cloudOpacity);
+        } else {
+            // Ray pointing away from cloud layer or no cloud at all
+            gl_FragDepth = 1.0;
+        }
+
+        col = cloud.rgb + cloud.a * col;
+    } else {
+        gl_FragDepth = 1.0;
+    }
+
 
     // Simple exposure: 1 - exp(-exposure * color)
     vec3 mapped = vec3(1.0) - exp(-exposure * col);

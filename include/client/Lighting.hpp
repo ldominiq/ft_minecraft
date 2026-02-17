@@ -8,6 +8,7 @@
 
 #include "Shader.hpp"
 #include "Renderer.hpp"
+#include "CloudFramebuffer.hpp"
 
 static constexpr float lightCubeVertices[] = {
     // positions only (36 vertices -> 12 triangles)
@@ -94,6 +95,8 @@ public:
 
     void drawTexturePreviewQuad(unsigned int textureID);
 
+    void renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const;
+
     enum class ShadowQuality {
         Low = 1024,
         Medium = 2048,
@@ -108,7 +111,10 @@ public:
     bool isSpotLightOn() const { return flashlightOn; };
     bool isShadowsEnabled() const { return shadowsEnabled; };
     bool isShadowMapEnabled() const { return showShadowMap; };
+    bool isCloudsEnabled() const { return cloudsEnabled; };
+    
     GLuint getShadowMapTexture() const { return depthMap; };
+    GLuint getCloudTexture() const;
 
     glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; };
     glm::vec3 getLightPos() const { return lightPos; };
@@ -130,6 +136,20 @@ public:
     float getSkyTimeOffset() const { return skyTimeOffset; };
     float getPlanetScale() const { return planetScale; };
     float getSunYawDeg() const { return sunYawDeg; };
+
+    float getCloudDensity() const { return cloudDensity; };
+    float getCloudSigmaT() const { return cloudSigmaT; };
+    glm::vec3 getCloudAlbedo() const { return cloudAlbedo; };
+    float getCloudStepCount() const { return cloudStepCount; };
+    float getCloudSigmaS() const { return cloudSigmaS; };
+    float getCloudPhaseG() const { return cloudPhaseG; };
+    float getCloudEdgeFeather() const { return cloudEdgeFeather; };
+    float getCloudNoiseScale() const { return cloudNoiseScale; };
+    float getCloudNoiseContrastLo() const { return cloudNoiseContrastLo; };
+    float getCloudNoiseContrastHi() const { return cloudNoiseContrastHi; };
+    float getCloudWindSpeed() const { return cloudWindSpeed; };
+    glm::vec2 getCloudWindDir() const { return cloudWindDir; };
+
 
     float getSpotLightConstant() const { return spotLightConstant; };
     float getSpotLightLinear() const { return spotLightLinear; };
@@ -191,6 +211,19 @@ public:
     void setSkyTimePaused(const bool paused) { skyTimePaused = paused; };
     void setSunYawDeg(const float yawDeg) { sunYawDeg = yawDeg; };
     void setPlanetScale(const float scale) { planetScale = scale; };
+    void setCloudsEnabled(const bool enabled) { cloudsEnabled = enabled; };
+    void setCloudDensity(const float density) { cloudDensity = density; };
+    void setCloudSigmaT(const float sigmaT) { cloudSigmaT = sigmaT; };
+    void setCloudAlbedo(const glm::vec3& albedo) { cloudAlbedo = albedo; };
+    void setCloudStepCount(const float stepCount) { cloudStepCount = stepCount; };
+    void setCloudSigmaS(const float sigmaS) { cloudSigmaS = sigmaS; };
+    void setCloudPhaseG(const float phaseG) { cloudPhaseG = phaseG; };
+    void setCloudEdgeFeather(const float feather) { cloudEdgeFeather = feather; };
+    void setCloudNoiseScale(const float scale) { cloudNoiseScale = scale; };
+    void setCloudNoiseContrastLo(const float lo) { cloudNoiseContrastLo = lo; };
+    void setCloudNoiseContrastHi(const float hi) { cloudNoiseContrastHi = hi; };
+    void setCloudWindSpeed(const float speed) { cloudWindSpeed = speed; };
+    void setCloudWindDir(const glm::vec2& dir) { cloudWindDir = dir; };
 
     void setPointLightEnabled(int index, bool enabled);
     void setPointLightPosition(int index, const glm::vec3& pos);
@@ -208,12 +241,16 @@ private:
     GLuint debugVAO{};
     GLuint debugVBO{};
     GLuint depthMapFBO{}, depthMap{};
+    GLuint cloudsVAO{};
+
+    std::unique_ptr<CloudFramebuffer> cloudFBO;
 
     std::unique_ptr<Shader> skyShader;
     std::unique_ptr<Shader> lightCubeShader;
     std::shared_ptr<Shader> shadowDepthShader;
     std::shared_ptr<Shader> shadowDebugShader;
     std::shared_ptr<Shader> debugFBOShader;
+    std::shared_ptr<Shader> cloudShader;
 
     // Screen dimensions for sky shader
     int width;
@@ -238,6 +275,26 @@ private:
     float skyAtmDensity = 19.0f;
     float skyAtmThickness = 1.0f;
     float planetScale = 7900.0f;
+
+    // Cloud controls
+    bool cloudsEnabled = true;
+    float cloudDensity = 0.08f; // overall cloud density (increased for more visible clouds)
+    float cloudSigmaT = 2.0f; // extinction coefficient (lower = less absorption, brighter clouds)
+    glm::vec3 cloudAlbedo = glm::vec3(1.0f); // cloud albedo (reflectivity)
+    float cloudStepCount = 48.0f; // number of steps (lower for performance, still good quality)
+
+    float cloudSigmaS = 2.0f; // scattering coefficient
+    float cloudPhaseG = 0.4f; // phase function (lower = more uniform scattering, less directional)
+
+    int cloudDownscale = 4; // downscaling factor for cloud rendering (higher = faster but blurrier)
+
+    float cloudEdgeFeather = 8.0f;      // smaller feather = sharper edges
+    float cloudNoiseScale = 0.005f;     // lower frequency = bigger, chunkier clouds
+    float cloudNoiseContrastLo = 0.58f; // tighter contrast range for more defined shapes
+    float cloudNoiseContrastHi = 1.0f;
+    float cloudWindSpeed = 100.0f;
+    glm::vec2 cloudWindDir = glm::vec2(1.0f, 0.2f); // mostly horizontal drift
+    
 
     // Point light (lamp)
     std::vector<bool> pointLightsOn = {true, true, true};
