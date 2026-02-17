@@ -91,8 +91,8 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     // Cloud box follows camera for infinite clouds
     // Keep clouds at fixed altitude but extend horizontally around camera
     const float cloudRadius = 500.0f;  // Horizontal extent around camera
-    const float cloudMinY = 120.0f;     // Bottom of cloud layer
-    const float cloudMaxY = 170.0f;     // Top of cloud layer
+    const float cloudMinY = 260.0f;     // Bottom of cloud layer
+    const float cloudMaxY = 310.0f;     // Top of cloud layer
     const glm::vec3 bmin(cameraPos.x - cloudRadius, cloudMinY, cameraPos.z - cloudRadius);
     const glm::vec3 bmax(cameraPos.x + cloudRadius, cloudMaxY, cameraPos.z + cloudRadius);
     cloudShader->setVec3("cloudBoxMinWorld", bmin);

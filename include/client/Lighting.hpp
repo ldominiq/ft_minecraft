@@ -289,9 +289,9 @@ private:
     int cloudDownscale = 4; // downscaling factor for cloud rendering (higher = faster but blurrier)
 
     float cloudEdgeFeather = 8.0f;      // smaller feather = sharper edges
-    float cloudNoiseScale = 0.015f;     // lower frequency = bigger, chunkier clouds
-    float cloudNoiseContrastLo = 0.50f; // tighter contrast range for more defined shapes
-    float cloudNoiseContrastHi = 0.75f;
+    float cloudNoiseScale = 0.005f;     // lower frequency = bigger, chunkier clouds
+    float cloudNoiseContrastLo = 0.58f; // tighter contrast range for more defined shapes
+    float cloudNoiseContrastHi = 1.0f;
     float cloudWindSpeed = 100.0f;
     glm::vec2 cloudWindDir = glm::vec2(1.0f, 0.2f); // mostly horizontal drift
     
