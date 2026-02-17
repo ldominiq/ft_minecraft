@@ -9,6 +9,8 @@
 
 #include "Item.hpp"
 
+constexpr int16_t INVALID_SLOT = -1;
+
 class Inventory {
 
 	protected:
@@ -32,6 +34,8 @@ class Inventory {
 
 		std::pair<ItemType, uint8_t> getSlot(uint8_t slot);
 		ItemType getItemAtSlot(int slot);
+		ItemType getActiveItem();
+		ItemID getActiveItemID();
 
 		int insertItems(ItemType, int amount);
 		bool removeItemsFromSlot(int slotNumber, int amount);

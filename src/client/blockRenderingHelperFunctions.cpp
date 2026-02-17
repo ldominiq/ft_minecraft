@@ -78,7 +78,7 @@ void addInventoryFace(
         glm::vec2 pos = origin + basePos * scale;
 
         glm::vec2 uv = {
-            uvTemplate[i].x * TILE_W + uvOffset.x,
+            uvTemplate[i].x * TILE_W + uvOffset.x + 10,
             uvTemplate[i].y * TILE_H + uvOffset.y
         };
 

@@ -8,6 +8,7 @@
 #include "Chunk.hpp"
 #include "ItemEntity.hpp"
 #include "LivingEntity.hpp"
+#include "Item.hpp"
 
 class ICommonWorld {
 public:
@@ -30,7 +31,7 @@ class CommonWorld : public ICommonWorld{
 
 		bool getTargetedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100);
 		bool removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir);
-		void setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir);
+		void setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block);
 
 		// Return the total number of chunks currently loaded in the world (in memory).
 		inline std::size_t getTotalChunkCount() const {

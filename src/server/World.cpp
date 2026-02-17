@@ -849,14 +849,21 @@ void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 	currChunk->setBlock(x, y, z, type);
 }
 
-void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t serverTick)
+bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t serverTick)
 {
 	//Repetition. Not clean. And not performance friendly either.
 	glm::ivec3 blockPos, faceNormal;
 	getTargetedBlock(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal);
 	BlockType dropped = getBlockWorld(blockPos);
 
-	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
+	ItemType item = player.movement->inv.getItemAtSlot(player.movement->inv.activeHotbarSlot);
+
+	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
+	{
+		setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir(), std::get<BlockType>(item));
+		player.movement->inv.removeItemsFromSlot(player.movement->inv.activeHotbarSlot, 1);
+		return true;
+	}
 	if (pkt.mouseButtons & IN_LEFT_CLICK)
 	{
 		if (removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir()) && player.movement->gamemode == GAMEMODES::SURVIVAL)
@@ -886,6 +893,7 @@ void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerM
 			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, serverTick));
 		}
 	}
+	return false;
 }
 
 void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t serverTick)
@@ -915,7 +923,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					abs(diff.z) < 2)
 				{
 					int slotUsed = player.movement->inv.insertItems(entityIt->get()->getItemType(), 1);
-					if (slotUsed == -1) continue ;
+					if (slotUsed == INVALID_SLOT) continue ;
 
 					NetEntityMove pkt;
 					pkt.eEntityType = entityIt->get()->getEntityType();
@@ -929,14 +937,14 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 
 					deletedEntitiesPkts.push_back(pkt);
 
-					entityIt = itemEntities.erase(entityIt);
-					itemErased = true;
-
 					NetInventory pickedUpItem;
 					pickedUpItem.type = entityIt->get()->getItemID();
 					pickedUpItem.amount = 1;
 					pickedUpItem.slot = slotUsed;
 					pickedUpItems.push_back({player.addr, pickedUpItem});
+
+					entityIt = itemEntities.erase(entityIt);
+					itemErased = true;
 
 					break ;
 				}

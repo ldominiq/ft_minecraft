@@ -29,6 +29,18 @@ InventoryUI::InventoryUI(float width, float height): Inventory(), Menu(width, he
 	hotbarColor = glm::vec4(0,0,0,0.5f);
 }
 
+InventoryUI::~InventoryUI()
+{
+	if (glfwGetCurrentContext()) {
+		glDeleteTextures(1, &texture);
+		glDeleteVertexArrays(1, &inventoryTextureVAO);
+		glDeleteBuffers(1, &inventoryTextureVBO);
+	} else {
+		inventoryTextureVAO = 0;
+		inventoryTextureVBO = 0;
+	}
+}
+
 void InventoryUI::initGL()
 {
 	glGenVertexArrays(1, &inventoryTextureVAO);
@@ -96,7 +108,7 @@ void InventoryUI::drawHotbar()
 
 	std::vector<float> meshVertices;
 
-	// drawSimpleQuad(hotbarX, hotbarY, hotbarW, hotbarH, hotbarColor);
+	// drawSimpleQuad(hotbarX, hotbarY, hotbarW, hotbarH, glm::vec4(0,0,0,0));
 	uint8_t i = 0;
 	for (auto &hotbarSlotCoord : hotbarSlots)
 	{

@@ -40,7 +40,7 @@ class InventoryUI : public Inventory, public Menu
 	public:
 
 		InventoryUI(float width, float height);
-		~InventoryUI() = default;
+		~InventoryUI();
 
 		void drawHotbar();
 		void drawInventory() const;

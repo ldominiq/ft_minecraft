@@ -220,7 +220,6 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::GROUP: {
 				auto& g = static_cast<NetPacketGroup&>(*pkt);
-				std::cout << g.unpack().size() << std::endl;
 				for (auto& inner : g.unpack()) {
 					if (udpClient->onPacket)
 						udpClient->onPacket({ std::move(inner) });

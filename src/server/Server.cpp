@@ -193,10 +193,10 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 
 	if (pkt.keys & IN_DROP)
 	{
+		ItemType type = player->movement->inv.getItemAtSlot(player->movement->inv.activeHotbarSlot);
 		if (player->movement->inv.removeItemsFromSlot(player->movement->inv.activeHotbarSlot, 1))
 		{
 			glm::vec3 itemPos = player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f);
-			ItemType type = player->movement->inv.getItemAtSlot(player->movement->inv.activeHotbarSlot);
 
 			world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), type, tick, true));
 
@@ -224,7 +224,14 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	if (player == players.end())
 		return ;
 
-	world->processPlayerMouseInputs(*player, pkt, tick);
+	if (world->processPlayerMouseInputs(*player, pkt, tick))
+	{
+		NetInventory dropItem;
+		dropItem.type = player->movement->inv.getActiveItemID();
+		dropItem.amount = -1;
+		dropItem.slot = player->movement->inv.activeHotbarSlot;
+		sendPacketTo(dropItem, cliaddr);
+	}
 }
 
 void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
