@@ -15,7 +15,7 @@ glm::vec2 getTextureOffset(BlockType type, int face) {
             break;
 
         case BlockType::LOG:
-            if (face == 2 || face == 3) { col = 10; row = 0; } // top/bottom = rings
+            if (face == 2 || face == 3) { col = 8; row = 1; } // top/bottom = rings
             else                        { col = 8; row = 0; }  // sides = bark
             break;
 
