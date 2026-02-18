@@ -54,7 +54,7 @@ class ItemEntityIDManager {
 
 	public:
 		entityID acquire() {
-			if (!freeIDs.empty() && freeIDs.size() > 5000) { // 5000 offset so there's no risk of conflicts between clientIDs and server IDs reuses.
+			if (!freeIDs.empty() && freeIDs.size() > 1000) { // 1000 offset so there's no risk of conflicts between clientIDs and server IDs reuses.
 				entityID id = freeIDs.front();
 				freeIDs.pop();
 				return id;

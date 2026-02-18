@@ -898,11 +898,6 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 
 void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t serverTick)
 {
-	std::vector<std::weak_ptr<PlayerMovement>> playerss;
-	for (auto player : players)
-		playerss.push_back(player.movement);
-
-
 	for (auto &entity : livingEntities)
 		entity->calculateNewPosition(*this);
 
