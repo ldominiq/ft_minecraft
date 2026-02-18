@@ -30,6 +30,7 @@ struct PlayerMovement : public virtual LivingEntity {
 	void updatePosition();
 
 	void updateCameraVectors();
+	void applyFallDamage() override;
 	void calculateNewPosition(const ICommonWorld &world) override;
 
 	inline const glm::vec3 getVelocity() const { return this->velocity; }

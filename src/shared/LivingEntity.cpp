@@ -18,6 +18,30 @@ void LivingEntity::doJump(const ICommonWorld &world)
 		this->velocity.y = JUMP_VELOCITY;
 }
 
+void LivingEntity::applyFallDamage()
+{
+	const uint16_t FALL_DAMAGE_MULTIPLIER = 1; //temporally here just to give the idea in case it ends up being used
+	float fallDamage = std::max(0, (int)std::ceil((accumulatedFallDistance - 3.0f) * FALL_DAMAGE_MULTIPLIER));
+	auto prevH = health;
+	health -= fallDamage;
+	if (prevH != health)
+		std::cout << "HEALTH DROPPED BY : " << fallDamage << "\n";
+}
+
+void LivingEntity::calculateNewYPosition(const ICommonWorld &world)
+{
+	Entity::calculateNewYPosition(world);
+
+	// Each tick
+	if (velocity.y < 0 && !onGround)
+		accumulatedFallDistance += -velocity.y;
+	else if (onGround)
+	{
+		applyFallDamage();
+		accumulatedFallDistance = 0.0f;
+	}
+}
+
 glm::vec3 LivingEntity::getDesiredMove()
 {
 	// TODO . just like DoJump....

@@ -151,6 +151,15 @@ void Server::gameTick()
 		world->updateLiquids();
 	}
 
+	for (auto le : world->livingEntities)
+	{
+		if (le->health <= 0)
+		{
+			le->health = 20;
+			messages.push_back("Someone has died miserably");
+		}
+	}
+
 	sendAll();
 }
 

@@ -88,7 +88,7 @@ class Entity {
 
 		virtual glm::vec3 getDesiredMove() = 0;
 		void calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove);
-		void calculateNewYPosition(const ICommonWorld &world);
+		virtual void calculateNewYPosition(const ICommonWorld &world);
 
 	public:
 		Entity(const glm::vec3 &position);

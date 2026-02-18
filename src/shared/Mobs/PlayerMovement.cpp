@@ -69,6 +69,12 @@ void PlayerMovement::updateCameraVectors() {
 	this->Right = glm::normalize(glm::cross(this->Front, this->WorldUp));
 }
 
+void PlayerMovement::applyFallDamage()
+{
+	if (gamemode == GAMEMODES::SURVIVAL)
+		LivingEntity::applyFallDamage();
+}
+
 void PlayerMovement::doJump(const ICommonWorld &world)
 {
 	// Determine if on ground by testing a tiny epsilon below feet
