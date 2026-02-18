@@ -731,6 +731,9 @@ void App::debugWindow() {
 
                     ImGui::Separator();
 
+                    // Need to expose terrainParams from the server to the client..
+                    // ImGui::Checkbox("Debug: Ores Only", &terrainParams.debugOresOnly);
+
                     // if (ImGui::CollapsingHeader("Noise Generation")) {
                     //     if (ImGui::CollapsingHeader("Continentalness Parameters")) {
                     //         ImGui::SliderFloat("frequency", &params.continentalnessFrequency, 0.001f, 0.01f);

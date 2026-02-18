@@ -109,7 +109,22 @@ struct TerrainGenerationParams {
     float forestMoistureThreshold = 0.60f;
     float snowTemperatureThreshold = 0.28f;
 
+    bool debugOresOnly = false; // if true, strip all other solid blocks to AIR
+};
 
+struct OreParams {
+    BlockType type;
+    int minY;           // Minimum Y level for ore generation
+    int maxY;           // Maximum Y level for ore generation
+    int veinSize;       // Number of blocks in a single vein
+    int veinsPerChunk;  // Number of veins per chunk
+};
+
+static const std::vector<OreParams> oreTable = {
+    { BlockType::IRON,      5, 64, 9, 20 },
+    { BlockType::GOLD,      3, 32, 9, 2 },
+    { BlockType::DIAMOND,   1, 16, 8, 1 },
+    { BlockType::URANIUM,   1, 16, 4, 1 },
 };
 
 #endif // TERRAIN_PARAMS_HPP

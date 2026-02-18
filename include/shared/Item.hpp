@@ -20,6 +20,7 @@ enum class BiomeType {
 	MOUNTAIN
 };
 
+// Maybe careful in the futur to not break the ordering of blocks for world saves : append new blocks at the end
 enum class BlockType : ItemID {
 	BEGIN = 0,
 	AIR,
