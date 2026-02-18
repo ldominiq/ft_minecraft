@@ -755,7 +755,7 @@ std::string World::getRegionFilename(int regionX, int regionZ) const {
     return ss.str();
 }
 
-void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
+bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
     // Offset the global coordinates in the direction of the face normal
     glm::ivec3 targetCoords = globalCoords;
@@ -771,7 +771,7 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 
     auto it = chunks.find(std::make_pair(chunkX, chunkZ));
     if (it == chunks.end())
-        return;
+        return false;
 
     std::shared_ptr<Chunk> currChunk = it->second;
 
@@ -823,6 +823,8 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 			}
 		}
 	}
+
+	return true;
 }
 
 void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
@@ -860,9 +862,12 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 
 	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
 	{
-		setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir(), std::get<BlockType>(item));
-		player.movement->inv.removeItemsFromSlot(player.movement->inv.activeHotbarSlot, 1);
-		return true;
+		if (setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir(), std::get<BlockType>(item)))
+		{
+			player.movement->inv.removeItemsFromSlot(player.movement->inv.activeHotbarSlot, 1);
+			return true;
+		}
+		return false;
 	}
 	if (pkt.mouseButtons & IN_LEFT_CLICK)
 	{
@@ -904,7 +909,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{
 		//Checks for every prop if there's a player nearby that can pick it up. TODO: if this is too expensive do it every n ticks instead.
-		if (entityIt->get()->getSpawnTick() + TPS * 3 < serverTick)
+		if (entityIt->get()->getSpawnTick() + TPS * 1.5 < serverTick)
 		{
 			bool itemErased = false;
 			for (auto &player : players)

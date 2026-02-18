@@ -18,15 +18,15 @@ InventoryUI::InventoryUI(float width, float height): Inventory(), Menu(width, he
 
 	for (int i = 0; i < MAX_SLOTS ; i++)
 	{
-		hotbarSlots[i].hotbarSlotW = hotbarW  / (MAX_SLOTS + 1);
-		hotbarSlots[i].hotbarSlotH = hotbarH - hotbarH / 10.f;
+		hotbarSlots[i].width = hotbarW  / (MAX_SLOTS + 1);
+		hotbarSlots[i].height = hotbarH - hotbarH / 10.f;
 
-		hotbarSlots[i].hotbarSlotX = hotbarX + ((hotbarW  / (MAX_SLOTS)) / MAX_SLOTS) + ((hotbarSlots[i].hotbarSlotW / MAX_SLOTS) + hotbarSlots[i].hotbarSlotW) * i;
-		hotbarSlots[i].hotbarSlotY = hotbarY + (hotbarH  - hotbarSlots[i].hotbarSlotH) / 2.0f;
+		hotbarSlots[i].x = hotbarX + ((hotbarW  / (MAX_SLOTS)) / MAX_SLOTS) + ((hotbarSlots[i].width / MAX_SLOTS) + hotbarSlots[i].width) * i;
+		hotbarSlots[i].y = hotbarY + (hotbarH  - hotbarSlots[i].height) / 2.0f;
 	}
 	// textRenderer.renderText("12345", width/2.0f, height/2.0f, glm::vec3(1.0f));
 
-	hotbarColor = glm::vec4(0,0,0,0.5f);
+	hotbarColor = glm::vec4(0.0f,0.0f,0.0f,0.5f);
 }
 
 InventoryUI::~InventoryUI()
@@ -112,15 +112,15 @@ void InventoryUI::drawHotbar()
 	uint8_t i = 0;
 	for (auto &hotbarSlotCoord : hotbarSlots)
 	{
-		drawSimpleQuad(hotbarSlotCoord.hotbarSlotX, hotbarSlotCoord.hotbarSlotY, hotbarSlotCoord.hotbarSlotW, hotbarSlotCoord.hotbarSlotH, hotbarColor);
-		textRenderer.renderText(std::to_string(getSlot(i).second), hotbarSlotCoord.hotbarSlotX, hotbarSlotCoord.hotbarSlotY + hotbarH * (1 - textScale), glm::vec3(1.0f));
+		drawSimpleQuad(hotbarSlotCoord.x, hotbarSlotCoord.y, hotbarSlotCoord.width, hotbarSlotCoord.height, hotbarColor);
+		textRenderer.renderText(std::to_string(getSlot(i).second), hotbarSlotCoord.x, hotbarSlotCoord.y + hotbarH * (1 - textScale), glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
 		std::visit([&](const auto& value) {
 			using T = std::decay_t<decltype(value)>;
 			if constexpr (std::is_same_v<T, BlockType>) {
 				if (value != BlockType::BEGIN)
-					build2DInventoryCube(meshVertices, glm::vec2(hotbarSlotCoord.hotbarSlotX + 18, hotbarSlotCoord.hotbarSlotY + 5), 40, value);
+					build2DInventoryCube(meshVertices, glm::vec2(hotbarSlotCoord.x + 18, hotbarSlotCoord.y + 5), 40, value);
 			} else if constexpr (std::is_same_v<T, WeaponType>) {
 				// handle WeaponType
 			} else {
@@ -129,7 +129,7 @@ void InventoryUI::drawHotbar()
 		}, getItemAtSlot(i));
 
 		if (i == activeHotbarSlot)
-			drawSimpleQuad(hotbarSlotCoord.hotbarSlotX, hotbarSlotCoord.hotbarSlotY, hotbarSlotCoord.hotbarSlotW, hotbarSlotCoord.hotbarSlotH, glm::vec4(0,0,0,0.3f));
+			drawSimpleQuad(hotbarSlotCoord.x, hotbarSlotCoord.y, hotbarSlotCoord.width, hotbarSlotCoord.height, glm::vec4(0,0,0,0.4f));
 
 		i++;
 	}

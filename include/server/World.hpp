@@ -116,7 +116,7 @@ class World final : public CommonWorld<ChunkGeneration>
 		bool processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t serverTick);
 		void updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t serverTick);	
 
-		void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
+		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 		void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
 };
 

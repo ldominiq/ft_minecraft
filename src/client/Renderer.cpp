@@ -25,7 +25,7 @@ void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRender
     }
 }
 
-void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
+bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
     // Offset the global coordinates in the direction of the face normal
     glm::ivec3 targetCoords = globalCoords;
@@ -41,7 +41,7 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 
     auto it = chunks.find(std::make_pair(chunkX, chunkZ));
     if (it == chunks.end())
-        return;
+        return false;
 
     std::shared_ptr<ChunkRenderer> currChunk = it->second;
 
@@ -57,6 +57,8 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 		currChunk->neighbourNeedUpdate[SOUTH] = true;
 	if (z == Chunk::DEPTH - 1)
 		currChunk->neighbourNeedUpdate[NORTH] = true;
+
+	return true;
 }
 
 std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()

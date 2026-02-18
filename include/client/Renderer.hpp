@@ -61,7 +61,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void prepareChunk(const NetChunkHeader& pkt);
 		void receiveChunk(const NetChunkData& pkt);
 
-		void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
+		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 
 		inline size_t getVisibleChunkCount() const {
 			return renderedChunks.size();

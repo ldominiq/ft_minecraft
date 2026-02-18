@@ -26,12 +26,12 @@ class CommonWorld : public ICommonWorld{
 		void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ) const;
 		std::shared_ptr<ChunkT> getChunk(int chunkX, int chunkZ);
 		BlockType getBlockWorld(glm::ivec3 globalCoords) const;
-		virtual void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) = 0;
+		virtual bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) = 0;
 		bool isBlockVisibleWorld(glm::ivec3 globalCoords);
 
 		bool getTargetedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance = 100);
 		bool removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir);
-		void setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block);
+		bool setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block);
 
 		// Return the total number of chunks currently loaded in the world (in memory).
 		inline std::size_t getTotalChunkCount() const {

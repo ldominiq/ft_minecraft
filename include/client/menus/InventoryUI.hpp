@@ -18,10 +18,10 @@ class InventoryUI : public Inventory, public Menu
 
 	struct hotbarSlotCoords
 	{
-		int hotbarSlotX;
-		int hotbarSlotY;
-		int hotbarSlotW;
-		int hotbarSlotH;
+		int x;
+		int y;
+		int width;
+		int height;
 	};
 	hotbarSlotCoords hotbarSlots[MAX_SLOTS];
 
