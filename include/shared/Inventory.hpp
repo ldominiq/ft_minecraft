@@ -9,6 +9,7 @@
 
 #include "Item.hpp"
 
+//careaful, there might be a confusion with (uint)-1 used for when activeHotbarSlot isn't set
 constexpr int16_t INVALID_SLOT = -1;
 
 class Inventory {
@@ -28,7 +29,7 @@ class Inventory {
 
 	public:
 		Inventory();
-		~Inventory() = default;
+		virtual ~Inventory() = default;
 
 		uint8_t activeHotbarSlot = 0; // 0 to 35?
 

@@ -16,13 +16,6 @@ Chat::Chat(float width, float height) : Menu(width, height), textRenderer("fonts
 
 Chat::~Chat()
 {
-	if (glfwGetCurrentContext()) {
-		glDeleteVertexArrays(1, &VAO);
-		glDeleteBuffers(1, &VBO);
-	} else {
-		VAO = 0;
-		VBO = 0;
-	}
 }
 
 void Chat::onRender()

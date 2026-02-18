@@ -13,6 +13,7 @@ std::pair<ItemType, uint8_t> Inventory::getSlot(uint8_t slot)
 
 ItemType Inventory::getItemAtSlot(int slot)
 {
+	if (slot >= rows * cols) return BlockType::BEGIN;
 	return grid[slot].first;
 }
 

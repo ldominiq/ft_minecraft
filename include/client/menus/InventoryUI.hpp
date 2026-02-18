@@ -1,5 +1,5 @@
 #ifndef INVENTORY_UI
-#define INVENNTORY_UI
+#define INVENTORY_UI
 
 #include "Inventory.hpp"
 #include "Menu.hpp"
