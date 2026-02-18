@@ -145,20 +145,134 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 }
 
 void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
-    // Cave generation (cheese + spaghetti) using 3D Perlin noise
-    // TODO: Spaghetti caves
-    const int caveTopY = terrainParams.seaLevel - 20;
-    const int yStart   = terrainParams.bedrockLevel + 5;
+    const int bedrockCeil = terrainParams.bedrockLevel + 3;
+
+    // Use static locals to avoid re-initializing noise tables every single chunk.
+    // NOTE: This assumes seed doesn't change during runtime, or we accept that 
+    // changing seed requires restart/reloading class.
+    // If seed changes per world load, we should move these to class members.
+    // For now, to prevent overhead, we reconstruct them but ensure they are clean.
+    
+    Noise spaghettiNoiseA(terrainParams.seed + 5001);
+    Noise spaghettiNoiseB(terrainParams.seed + 5002);
+    Noise spaghettiRidgeNoise(terrainParams.seed + 5003);
     Noise cheeseNoise(terrainParams.seed + 7890);
+    Noise entranceNoise(terrainParams.seed + 6060);
 
-    for (int x = 0; x < Chunk::WIDTH; ++x) {
+    // Reuse the heights from the generate() pass if possible, 
+    // but since we don't store them, we recalculate.
+    // We strictly clamp to ensure no buffer weirdness.
+    
+    int surfaceHeights[WIDTH][DEPTH];
+    for (int x = 0; x < WIDTH; ++x) {
+        for (int z = 0; z < DEPTH; ++z) {
+            const auto worldX = static_cast<float>(originX + x);
+            const auto worldZ = static_cast<float>(originZ + z);
+            // Ensure determinism
+            surfaceHeights[x][z] = computeTerrainHeight(terrainParams, worldX, worldZ);
+        }
+    }
+
+    for (int x = 0; x < WIDTH; ++x) {
         const auto worldX = static_cast<float>(originX + x);
-        for (int y = yStart; y <= caveTopY; ++y) {
-            for (int z = 0; z < Chunk::DEPTH; ++z) {
-                const auto worldZ = static_cast<float>(originZ + z);
+        for (int z = 0; z < DEPTH; ++z) {
+            const auto worldZ = static_cast<float>(originZ + z);
 
-                float noiseValue = cheeseNoise.getNoise(worldX * 0.1f, y * 0.25f, worldZ * 0.1f);
-                if (noiseValue < -0.25f) {
+            const int surfaceY = surfaceHeights[x][z];
+
+            if (surfaceY <= bedrockCeil + 1)
+                continue;
+
+            const int normalCaveCeil = std::max(bedrockCeil + 1, surfaceY - 4);
+
+            float entranceValue = entranceNoise.fractalBrownianMotion2D(
+                worldX * 0.008f, worldZ * 0.008f, 3, 2.0f, 0.5f);
+            
+            bool hasEntrance = (entranceValue > 0.35f) &&
+                               (surfaceY > terrainParams.seaLevel + 4);
+            
+            int caveCeil = hasEntrance ? surfaceY : normalCaveCeil;
+            // Strict clamping
+            caveCeil = std::min(caveCeil, HEIGHT - 2); 
+
+            if (caveCeil <= bedrockCeil)
+                continue;
+
+            for (int y = bedrockCeil; y <= caveCeil; ++y) {
+                // Bounds check just in case logic above slips
+                if (y < 0 || y >= HEIGHT) continue;
+
+                // Optimization: Don't check noise for AIR/WATER/BEDROCK
+                BlockType current = blocks.at(x, y, z);
+                if (current == BlockType::AIR || current == BlockType::WATER ||
+                    current == BlockType::BEDROCK)
+                    continue;
+
+                const float fy = static_cast<float>(y);
+
+                // --- 1) SPAGHETTI CAVES ---
+                constexpr float spagFreqH = 0.055f;
+                constexpr float spagFreqV = 0.09f;
+
+                float sA = spaghettiNoiseA.perlin3D(
+                    worldX * spagFreqH, fy * spagFreqV, worldZ * spagFreqH);
+                float sB = spaghettiNoiseB.perlin3D(
+                    worldX * spagFreqH * 0.8f,
+                    fy * spagFreqV * 0.7f,
+                    worldZ * spagFreqH * 0.8f);
+
+                // Use squared distance for speed instead of abs comparison
+                // But abs is fine here.
+                float ridgeA = std::abs(sA);
+                float ridgeB = std::abs(sB);
+
+                float widthMod = spaghettiRidgeNoise.perlin3D(
+                    worldX * 0.012f, fy * 0.018f, worldZ * 0.012f);
+                
+                // Clamp explicitly
+                widthMod = glm::clamp(widthMod, -1.0f, 1.0f);
+
+                float tunnelRadius = 0.07f + 0.03f * widthMod;
+                bool isSpaghetti = (ridgeA < tunnelRadius) && (ridgeB < tunnelRadius);
+
+                // --- 2) CHEESE CAVES ---
+                constexpr float cheeseFreqH = 0.04f;
+                constexpr float cheeseFreqV = 0.08f;
+
+                float cheeseVal = cheeseNoise.perlin3D(
+                    worldX * cheeseFreqH, fy * cheeseFreqV, worldZ * cheeseFreqH);
+                bool isCheese = (cheeseVal < -0.55f);
+
+                // --- 3) DEPTH BIAS & LOGIC ---
+                float depthNorm = static_cast<float>(caveCeil - y) /
+                                  static_cast<float>(std::max(1, caveCeil - bedrockCeil));
+                
+                // Clamp depthNorm to prevent weirdness
+                depthNorm = glm::clamp(depthNorm, 0.0f, 1.0f);
+
+                if (isCheese && depthNorm < 0.30f)
+                    isCheese = false;
+
+                if (isSpaghetti && y > normalCaveCeil) {
+                    if (!hasEntrance) {
+                        isSpaghetti = false;
+                    } else {
+                        float surfaceProximity = static_cast<float>(surfaceY - y) /
+                            static_cast<float>(std::max(1, surfaceY - normalCaveCeil));
+                        surfaceProximity = glm::clamp(surfaceProximity, 0.0f, 1.0f);
+                        float entranceRadius = tunnelRadius * (0.4f + 0.6f * surfaceProximity);
+                        isSpaghetti = (ridgeA < entranceRadius) && (ridgeB < entranceRadius);
+                    }
+                }
+
+                if (y >= surfaceY && !hasEntrance)
+                    continue;
+
+                // Double check water safety
+                if (y <= terrainParams.seaLevel && surfaceY <= terrainParams.seaLevel)
+                    continue;
+
+                if (isSpaghetti || isCheese) {
                     blocks.at(x, y, z) = BlockType::AIR;
                 }
             }
