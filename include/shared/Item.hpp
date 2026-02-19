@@ -20,6 +20,7 @@ enum class BiomeType {
 	MOUNTAIN
 };
 
+// Maybe careful in the futur to not break the ordering of blocks for world saves : append new blocks at the end
 enum class BlockType : ItemID {
 	BEGIN = 0,
 	AIR,
@@ -32,6 +33,10 @@ enum class BlockType : ItemID {
     BEDROCK,
     LOG,
     LEAVES,
+	IRON,
+	GOLD,
+	DIAMOND,
+	URANIUM,
 	LAVA,
 	END
 };
@@ -89,6 +94,10 @@ public:
 		ItemDef{ makeBlock(BlockType::BEDROCK, "Bedrock", 10) },
 		ItemDef{ makeBlock(BlockType::LOG, "Log", 10) },
 		ItemDef{ makeBlock(BlockType::LEAVES, "Leaves", 10) },
+		ItemDef{ makeBlock(BlockType::IRON, "Iron", 10) },
+		ItemDef{ makeBlock(BlockType::GOLD, "Gold", 10) },
+		ItemDef{ makeBlock(BlockType::DIAMOND, "Diamond", 10) },
+		ItemDef{ makeBlock(BlockType::URANIUM, "Uranium", 10) },
 		ItemDef{ makeLiquid(BlockType::LAVA, "Lava", 4) },
 	};
 

@@ -8,7 +8,7 @@
 #include "Item.hpp"
 
 inline constexpr int ATLAS_COLS = 10;
-inline constexpr int ATLAS_ROWS = 1;
+inline constexpr int ATLAS_ROWS = 2;
 
 inline constexpr glm::vec3 unitFacePositions[6][6] = {
     // FRONT (+Z)

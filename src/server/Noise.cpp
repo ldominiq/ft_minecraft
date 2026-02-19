@@ -168,22 +168,29 @@ vector2 Noise::randomGradient(int ix, int iy) {
 }
 
 vector3 Noise::randomGradient(int ix, int iy, int iz) {
-    // No precomputed gradients mean this works for any number of grid coordinates;
+    // Hash all three coordinates together so every axis influences the gradient
     const unsigned w = 8 * sizeof(unsigned);
     const unsigned s = w / 2;
     unsigned a = ix + mSeed;
     unsigned b = iy + mSeed * 31;
     unsigned c = iz + mSeed * 7;
 
-    a *= 3284157443;
+    a *= 3284157443u;
 
     b ^= a << s | a >> (w - s);
-    b *= 1911520717;
+    b *= 1911520717u;
 
     c ^= b << s | b >> (w - s);
-    c *= 2048419325;
+    c *= 2048419325u;
 
-    // Convert hash to two random floats in [0,1]
+    // Feed c back into a so all three axes are fully mixed
+    a ^= c << s | c >> (w - s);
+    a *= 1136930381u;
+
+    b ^= a << s | a >> (w - s);
+    b *= 3537845939u;
+
+    // Now a and b both depend on ix, iy, AND iz
     float rnd1 = (a & 0xFFFFFF) / float(0xFFFFFF);
     float rnd2 = (b & 0xFFFFFF) / float(0xFFFFFF);
 

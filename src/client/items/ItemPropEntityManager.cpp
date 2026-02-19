@@ -56,7 +56,6 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 			ITEM_SIZE * sizeof(float)
 		);
 
-		std::cout << vertices.size() << "\n";
 		vertices.clear();
 		++entity;
 	}

@@ -4,8 +4,9 @@
 
 #include "TerrainParams.hpp"
 #include "Noise.hpp"
-
 #include "Chunk.hpp"
+
+#include <algorithm>
 
 class ChunkGeneration : public Chunk {
 
@@ -17,6 +18,7 @@ class ChunkGeneration : public Chunk {
 
 		void generate(const TerrainGenerationParams& terrainParams);
 		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
+		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 
 		bool preGenerated = false;
 

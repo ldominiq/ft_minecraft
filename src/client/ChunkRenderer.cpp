@@ -133,7 +133,8 @@ void ChunkRenderer::addFace(int x, int y, int z, int face) {
 
     // Determine UV offset in atlas based on block type and face
     glm::vec2 tileCoord = getTextureOffset(type, face);
-    glm::vec2 offset = { tileCoord.x * TILE_W, tileCoord.y * TILE_H };
+    const float flippedRow = static_cast<float>(ATLAS_ROWS - 1) - tileCoord.y;
+    glm::vec2 offset = { tileCoord.x * TILE_W, flippedRow * TILE_H };
 
     // Build six vertices for this face using the computed light
     for (int i = 0; i < 6; ++i) {
