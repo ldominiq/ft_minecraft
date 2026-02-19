@@ -858,13 +858,13 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 	getTargetedBlock(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal);
 	BlockType dropped = getBlockWorld(blockPos);
 
-	ItemType item = player.movement->inv.getItemAtSlot(player.movement->inv.activeHotbarSlot);
+	ItemType item = player.movement->inventory.getItemAtSlot(player.movement->inventory.activeHotbarSlot);
 
 	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
 	{
 		if (setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir(), std::get<BlockType>(item)))
 		{
-			player.movement->inv.removeItemsFromSlot(player.movement->inv.activeHotbarSlot, 1);
+			player.movement->inventory.removeItemsFromSlot(player.movement->inventory.activeHotbarSlot, 1);
 			return true;
 		}
 		return false;
@@ -922,7 +922,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					diff.y >= 0 && diff.y < 4 &&
 					abs(diff.z) < 2)
 				{
-					int slotUsed = player.movement->inv.insertItems(entityIt->get()->getItemType(), 1);
+					int slotUsed = player.movement->inventory.insertItems(entityIt->get()->getItemType(), 1);
 					if (slotUsed == INVALID_SLOT) continue ;
 
 					NetEntityMove pkt;

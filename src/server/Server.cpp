@@ -189,12 +189,12 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
-		player->movement->inv.activeHotbarSlot = pkt.activeHotbarSlot;
+		player->movement->inventory.activeHotbarSlot = pkt.activeHotbarSlot;
 
 	if (pkt.keys & IN_DROP)
 	{
-		ItemType type = player->movement->inv.getItemAtSlot(player->movement->inv.activeHotbarSlot);
-		if (player->movement->inv.removeItemsFromSlot(player->movement->inv.activeHotbarSlot, 1))
+		ItemType type = player->movement->inventory.getItemAtSlot(player->movement->inventory.activeHotbarSlot);
+		if (player->movement->inventory.removeItemsFromSlot(player->movement->inventory.activeHotbarSlot, 1))
 		{
 			glm::vec3 itemPos = player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f);
 
@@ -205,7 +205,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 				return static_cast<ItemID>(value);
 			}, type);
 			dropItem.amount = -1;
-			dropItem.slot = player->movement->inv.activeHotbarSlot;
+			dropItem.slot = player->movement->inventory.activeHotbarSlot;
 			sendPacketTo(dropItem, cliaddr);
 		}
 	}
@@ -227,9 +227,9 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	if (world->processPlayerMouseInputs(*player, pkt, tick))
 	{
 		NetInventory dropItem;
-		dropItem.type = player->movement->inv.getActiveItemID();
+		dropItem.type = player->movement->inventory.getActiveItemID();
 		dropItem.amount = -1;
-		dropItem.slot = player->movement->inv.activeHotbarSlot;
+		dropItem.slot = player->movement->inventory.activeHotbarSlot;
 		sendPacketTo(dropItem, cliaddr);
 	}
 }
@@ -531,9 +531,9 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			groupPkt.push_back(std::move(pkt));
 		}
 
-		player->movement->inv.insertItemsToSlot(BlockType::DIRT, 0, 200);
-		player->movement->inv.insertItemsToSlot(BlockType::WATER, 8, 200);
-		player->movement->inv.insertItemsToSlot(BlockType::STONE, 1, 200);
+		player->movement->inventory.insertItemsToSlot(BlockType::DIRT, 0, 200);
+		player->movement->inventory.insertItemsToSlot(BlockType::WATER, 8, 200);
+		player->movement->inventory.insertItemsToSlot(BlockType::STONE, 1, 200);
 
 		auto pkt1 = std::make_unique<NetInventory>();
 		pkt1->amount = 200;
