@@ -145,12 +145,7 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 }
 
 void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
-    // ---------------------------------------------------------------------------
-    //  Two 3D noise fields. A block is carved where BOTH values are
-    //  independently close to zero → long winding tube-shaped tunnels.
-    //  Depth fade keeps surface openings narrow.
-    // ---------------------------------------------------------------------------
-
+    // Maybe check based on biome or something to skip cave generation for some biomes (e.g. ocean)
     const int yStart = terrainParams.bedrockLevel + 3;
 
     // Cache surface height per column
@@ -163,22 +158,18 @@ void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGeneratio
         }
     }
 
-    // Use static locals to avoid re-initializing noise tables every single chunk.
-    // NOTE: This assumes seed doesn't change during runtime, or we accept that
-    // changing seed requires restart/reloading class.
-    // If seed changes per world load, we should move these to class members.
     static Noise noiseA(terrainParams.seed + 7890);
     static Noise noiseB(terrainParams.seed + 4561);
 
     // Tuning – Perlin3D output is ~[-0.7, 0.7], so thresholds must be tight
-    constexpr float spagScaleH    = 0.01f;      // horizontal frequency (higher = smaller features)
-    constexpr float spagScaleV    = 0.01f;     // vertical frequency
-    constexpr float threshDeep    = 0.04f;      // deep underground threshold
-    constexpr float threshSurface = 0.018f;     // narrow surface entrances
-    constexpr float fadeBlocks    = 12.0f;
+    constexpr float spagScaleH    = 0.01f;       // horizontal frequency
+    constexpr float spagScaleV    = 0.01f;       // vertical frequency
+    constexpr float threshDeep    = 0.025f;      // deep underground threshold
+    constexpr float threshSurface = 0.01f;      // narrow surface entrances
+    constexpr float fadeBlocks    = 4.0f;
     // Second field at different scale to break regularity
-    constexpr float bScaleHMul    = 1.6f;
-    constexpr float bScaleVMul    = 0.7f;
+    constexpr float bScaleHMul    = 1.4f;
+    constexpr float bScaleVMul    = 2.2f;
 
     for (int x = 0; x < Chunk::WIDTH; ++x) {
         const float wx = static_cast<float>(originX + x);
@@ -206,6 +197,9 @@ void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGeneratio
                     wz * spagScaleH * bScaleHMul);
 
                 if (std::abs(nA) < thresh && std::abs(nB) < thresh) {
+                    // Don't carve if the block directly above is water (prevent water flooding)
+                    if (y + 1 < Chunk::HEIGHT && blocks.at(x, y + 1, z) == BlockType::WATER)
+                        continue;
                     blocks.at(x, y, z) = BlockType::AIR;
                 }
             }
