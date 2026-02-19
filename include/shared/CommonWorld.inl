@@ -128,8 +128,8 @@ bool CommonWorld<ChunkT>::setTargettedBlock(const glm::vec3 &rayOrigin, const gl
 	{
 		for (auto &entity : livingEntities)
 			if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
-		if (setBlockWorld(blockPos, faceNormal, block));
-			return true ;
+		if (setBlockWorld(blockPos, faceNormal, block))
+			return true;
 	}
-	return false ;
+	return false;
 }
