@@ -145,20 +145,61 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 }
 
 void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
-    // Cave generation (cheese + spaghetti) using 3D Perlin noise
-    // TODO: Spaghetti caves
-    const int caveTopY = terrainParams.seaLevel - 20;
-    const int yStart   = terrainParams.bedrockLevel + 5;
-    Noise cheeseNoise(terrainParams.seed + 7890);
+    // Maybe check based on biome or something to skip cave generation for some biomes (e.g. ocean)
+    const int yStart = terrainParams.bedrockLevel + 3;
 
+    // Cache surface height per column
+    int surfaceCache[Chunk::WIDTH][Chunk::DEPTH];
     for (int x = 0; x < Chunk::WIDTH; ++x) {
         const auto worldX = static_cast<float>(originX + x);
-        for (int y = yStart; y <= caveTopY; ++y) {
-            for (int z = 0; z < Chunk::DEPTH; ++z) {
-                const auto worldZ = static_cast<float>(originZ + z);
+        for (int z = 0; z < Chunk::DEPTH; ++z) {
+            const auto worldZ = static_cast<float>(originZ + z);
+            surfaceCache[x][z] = computeTerrainHeight(terrainParams, worldX, worldZ);
+        }
+    }
 
-                float noiseValue = cheeseNoise.getNoise(worldX * 0.1f, y * 0.25f, worldZ * 0.1f);
-                if (noiseValue < -0.25f) {
+    static Noise noiseA(terrainParams.seed + 7890);
+    static Noise noiseB(terrainParams.seed + 4561);
+
+    // Tuning – Perlin3D output is ~[-0.7, 0.7], so thresholds must be tight
+    constexpr float spagScaleH    = 0.01f;       // horizontal frequency
+    constexpr float spagScaleV    = 0.01f;       // vertical frequency
+    constexpr float threshDeep    = 0.025f;      // deep underground threshold
+    constexpr float threshSurface = 0.01f;      // narrow surface entrances
+    constexpr float fadeBlocks    = 4.0f;
+    // Second field at different scale to break regularity
+    constexpr float bScaleHMul    = 1.4f;
+    constexpr float bScaleVMul    = 2.2f;
+
+    for (int x = 0; x < Chunk::WIDTH; ++x) {
+        const float wx = static_cast<float>(originX + x);
+        for (int z = 0; z < Chunk::DEPTH; ++z) {
+            const float wz = static_cast<float>(originZ + z);
+            const int surfaceY = surfaceCache[x][z];
+            const int caveTopY = std::min(surfaceY, Chunk::HEIGHT - 1);
+
+            for (int y = yStart; y <= caveTopY; ++y) {
+                const BlockType cur = blocks.at(x, y, z);
+                if (cur == BlockType::AIR || cur == BlockType::WATER ||
+                    cur == BlockType::BEDROCK)
+                    continue;
+
+                const float fy = static_cast<float>(y);
+                const float depth = static_cast<float>(surfaceY - y);
+                const float depthFade = glm::smoothstep(0.0f, fadeBlocks, depth);
+                const float thresh = threshSurface + depthFade * (threshDeep - threshSurface);
+
+                const float nA = noiseA.perlin3D(
+                    wx * spagScaleH, fy * spagScaleV, wz * spagScaleH);
+                const float nB = noiseB.perlin3D(
+                    wx * spagScaleH * bScaleHMul,
+                    fy * spagScaleV * bScaleVMul,
+                    wz * spagScaleH * bScaleHMul);
+
+                if (std::abs(nA) < thresh && std::abs(nB) < thresh) {
+                    // Don't carve if the block directly above is water (prevent water flooding)
+                    if (y + 1 < Chunk::HEIGHT && blocks.at(x, y + 1, z) == BlockType::WATER)
+                        continue;
                     blocks.at(x, y, z) = BlockType::AIR;
                 }
             }
@@ -225,7 +266,7 @@ float ChunkGeneration::interpolateSpline(float noise, const std::vector<std::pai
 }
 
 float ChunkGeneration::getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise baseNoise(terrainParams.seed);
+    static Noise baseNoise(terrainParams.seed);
 
     float fbm = baseNoise.fractalBrownianMotion2D(
         wx * terrainParams.continentalnessFrequency,
@@ -243,7 +284,7 @@ float ChunkGeneration::getContinentalness(const TerrainGenerationParams& terrain
 }
 
 float ChunkGeneration::getErosion(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise erosionNoise(terrainParams.seed + 237);
+    static Noise erosionNoise(terrainParams.seed + 237);
 
     float erosion = erosionNoise.fractalBrownianMotion2D(
         wx * terrainParams.erosionFrequency,
@@ -258,7 +299,7 @@ float ChunkGeneration::getErosion(const TerrainGenerationParams& terrainParams, 
 }
 
 float ChunkGeneration::getPV(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise peakValleyNoise(terrainParams.seed + 98789);
+    static Noise peakValleyNoise(terrainParams.seed + 98789);
 
     float peakValley = peakValleyNoise.fractalBrownianMotion2D(
         wx * terrainParams.peakValleyFrequency,
@@ -274,7 +315,7 @@ float ChunkGeneration::getPV(const TerrainGenerationParams& terrainParams, float
 }
 
 float ChunkGeneration::getTemperature(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise tempNoise(terrainParams.seed + 123);
+    static Noise tempNoise(terrainParams.seed + 123);
 
     float temperature = tempNoise.fractalBrownianMotion2D(
         wx * terrainParams.temperatureFrequency,
@@ -288,7 +329,7 @@ float ChunkGeneration::getTemperature(const TerrainGenerationParams& terrainPara
 }
 
 float ChunkGeneration::getHumidity(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise humidNoise(terrainParams.seed + 456);
+    static Noise humidNoise(terrainParams.seed + 456);
 
     float humidity = humidNoise.fractalBrownianMotion2D(
         wx * terrainParams.humidityFrequency,
@@ -319,8 +360,8 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     // biomeScaleChunks controls how many chunks make up a biome patch; use an extra multiplier to ensure broad bands.
     if (height <= terrainParams.seaLevel) return BiomeType::OCEAN;
 
-    Noise tempNoise(terrainParams.seed + 45);
-    Noise humidNoise(terrainParams.seed + 964);
+    static Noise tempNoise(terrainParams.seed + 45);
+    static Noise humidNoise(terrainParams.seed + 964);
 
     const float chunks = glm::max(1, terrainParams.biomeScaleChunks);
     const float worldUnitsPerPatch = chunks * Chunk::WIDTH * 8.0f;
@@ -331,7 +372,7 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     float humidCoarse = (humidNoise.fractalBrownianMotion2D(worldX * freqCoarse * 0.9f,    worldZ * freqCoarse * 0.9f,    4, 2.0f, 0.5f) + 1.0f) * 0.5f;
 
     // Small regional bias
-    Noise regionBias(terrainParams.seed + 4242);
+    static Noise regionBias(terrainParams.seed + 4242);
     float bias = (regionBias.fractalBrownianMotion2D(worldX * freqCoarse * 0.6f, worldZ * freqCoarse * 0.6f, 3, 2.0f, 0.5f) + 1.0f) * 0.5f;
 
     float climate = glm::clamp(glm::mix(tempCoarse, 1.0f - humidCoarse, 0.35f) * 0.7f + bias * 0.3f, 0.0f, 1.0f);
