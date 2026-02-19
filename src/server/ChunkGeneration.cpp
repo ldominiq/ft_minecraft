@@ -145,134 +145,67 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 }
 
 void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
-    const int bedrockCeil = terrainParams.bedrockLevel + 3;
+    // ---------------------------------------------------------------------------
+    //  Two 3D noise fields. A block is carved where BOTH values are
+    //  independently close to zero → long winding tube-shaped tunnels.
+    //  Depth fade keeps surface openings narrow.
+    // ---------------------------------------------------------------------------
 
-    // Use static locals to avoid re-initializing noise tables every single chunk.
-    // NOTE: This assumes seed doesn't change during runtime, or we accept that 
-    // changing seed requires restart/reloading class.
-    // If seed changes per world load, we should move these to class members.
-    // For now, to prevent overhead, we reconstruct them but ensure they are clean.
-    
-    Noise spaghettiNoiseA(terrainParams.seed + 5001);
-    Noise spaghettiNoiseB(terrainParams.seed + 5002);
-    Noise spaghettiRidgeNoise(terrainParams.seed + 5003);
-    Noise cheeseNoise(terrainParams.seed + 7890);
-    Noise entranceNoise(terrainParams.seed + 6060);
+    const int yStart = terrainParams.bedrockLevel + 3;
 
-    // Reuse the heights from the generate() pass if possible, 
-    // but since we don't store them, we recalculate.
-    // We strictly clamp to ensure no buffer weirdness.
-    
-    int surfaceHeights[WIDTH][DEPTH];
-    for (int x = 0; x < WIDTH; ++x) {
-        for (int z = 0; z < DEPTH; ++z) {
-            const auto worldX = static_cast<float>(originX + x);
+    // Cache surface height per column
+    int surfaceCache[Chunk::WIDTH][Chunk::DEPTH];
+    for (int x = 0; x < Chunk::WIDTH; ++x) {
+        const auto worldX = static_cast<float>(originX + x);
+        for (int z = 0; z < Chunk::DEPTH; ++z) {
             const auto worldZ = static_cast<float>(originZ + z);
-            // Ensure determinism
-            surfaceHeights[x][z] = computeTerrainHeight(terrainParams, worldX, worldZ);
+            surfaceCache[x][z] = computeTerrainHeight(terrainParams, worldX, worldZ);
         }
     }
 
-    for (int x = 0; x < WIDTH; ++x) {
-        const auto worldX = static_cast<float>(originX + x);
-        for (int z = 0; z < DEPTH; ++z) {
-            const auto worldZ = static_cast<float>(originZ + z);
+    // Use static locals to avoid re-initializing noise tables every single chunk.
+    // NOTE: This assumes seed doesn't change during runtime, or we accept that
+    // changing seed requires restart/reloading class.
+    // If seed changes per world load, we should move these to class members.
+    static Noise noiseA(terrainParams.seed + 7890);
+    static Noise noiseB(terrainParams.seed + 4561);
 
-            const int surfaceY = surfaceHeights[x][z];
+    // Tuning – Perlin3D output is ~[-0.7, 0.7], so thresholds must be tight
+    constexpr float spagScaleH    = 0.01f;      // horizontal frequency (higher = smaller features)
+    constexpr float spagScaleV    = 0.01f;     // vertical frequency
+    constexpr float threshDeep    = 0.04f;      // deep underground threshold
+    constexpr float threshSurface = 0.018f;     // narrow surface entrances
+    constexpr float fadeBlocks    = 12.0f;
+    // Second field at different scale to break regularity
+    constexpr float bScaleHMul    = 1.6f;
+    constexpr float bScaleVMul    = 0.7f;
 
-            if (surfaceY <= bedrockCeil + 1)
-                continue;
+    for (int x = 0; x < Chunk::WIDTH; ++x) {
+        const float wx = static_cast<float>(originX + x);
+        for (int z = 0; z < Chunk::DEPTH; ++z) {
+            const float wz = static_cast<float>(originZ + z);
+            const int surfaceY = surfaceCache[x][z];
+            const int caveTopY = std::min(surfaceY, Chunk::HEIGHT - 1);
 
-            const int normalCaveCeil = std::max(bedrockCeil + 1, surfaceY - 4);
-
-            float entranceValue = entranceNoise.fractalBrownianMotion2D(
-                worldX * 0.008f, worldZ * 0.008f, 3, 2.0f, 0.5f);
-            
-            bool hasEntrance = (entranceValue > 0.35f) &&
-                               (surfaceY > terrainParams.seaLevel + 4);
-            
-            int caveCeil = hasEntrance ? surfaceY : normalCaveCeil;
-            // Strict clamping
-            caveCeil = std::min(caveCeil, HEIGHT - 2); 
-
-            if (caveCeil <= bedrockCeil)
-                continue;
-
-            for (int y = bedrockCeil; y <= caveCeil; ++y) {
-                // Bounds check just in case logic above slips
-                if (y < 0 || y >= HEIGHT) continue;
-
-                // Optimization: Don't check noise for AIR/WATER/BEDROCK
-                BlockType current = blocks.at(x, y, z);
-                if (current == BlockType::AIR || current == BlockType::WATER ||
-                    current == BlockType::BEDROCK)
+            for (int y = yStart; y <= caveTopY; ++y) {
+                const BlockType cur = blocks.at(x, y, z);
+                if (cur == BlockType::AIR || cur == BlockType::WATER ||
+                    cur == BlockType::BEDROCK)
                     continue;
 
                 const float fy = static_cast<float>(y);
+                const float depth = static_cast<float>(surfaceY - y);
+                const float depthFade = glm::smoothstep(0.0f, fadeBlocks, depth);
+                const float thresh = threshSurface + depthFade * (threshDeep - threshSurface);
 
-                // --- 1) SPAGHETTI CAVES ---
-                constexpr float spagFreqH = 0.055f;
-                constexpr float spagFreqV = 0.09f;
+                const float nA = noiseA.perlin3D(
+                    wx * spagScaleH, fy * spagScaleV, wz * spagScaleH);
+                const float nB = noiseB.perlin3D(
+                    wx * spagScaleH * bScaleHMul,
+                    fy * spagScaleV * bScaleVMul,
+                    wz * spagScaleH * bScaleHMul);
 
-                float sA = spaghettiNoiseA.perlin3D(
-                    worldX * spagFreqH, fy * spagFreqV, worldZ * spagFreqH);
-                float sB = spaghettiNoiseB.perlin3D(
-                    worldX * spagFreqH * 0.8f,
-                    fy * spagFreqV * 0.7f,
-                    worldZ * spagFreqH * 0.8f);
-
-                // Use squared distance for speed instead of abs comparison
-                // But abs is fine here.
-                float ridgeA = std::abs(sA);
-                float ridgeB = std::abs(sB);
-
-                float widthMod = spaghettiRidgeNoise.perlin3D(
-                    worldX * 0.012f, fy * 0.018f, worldZ * 0.012f);
-                
-                // Clamp explicitly
-                widthMod = glm::clamp(widthMod, -1.0f, 1.0f);
-
-                float tunnelRadius = 0.07f + 0.03f * widthMod;
-                bool isSpaghetti = (ridgeA < tunnelRadius) && (ridgeB < tunnelRadius);
-
-                // --- 2) CHEESE CAVES ---
-                constexpr float cheeseFreqH = 0.04f;
-                constexpr float cheeseFreqV = 0.08f;
-
-                float cheeseVal = cheeseNoise.perlin3D(
-                    worldX * cheeseFreqH, fy * cheeseFreqV, worldZ * cheeseFreqH);
-                bool isCheese = (cheeseVal < -0.55f);
-
-                // --- 3) DEPTH BIAS & LOGIC ---
-                float depthNorm = static_cast<float>(caveCeil - y) /
-                                  static_cast<float>(std::max(1, caveCeil - bedrockCeil));
-                
-                // Clamp depthNorm to prevent weirdness
-                depthNorm = glm::clamp(depthNorm, 0.0f, 1.0f);
-
-                if (isCheese && depthNorm < 0.30f)
-                    isCheese = false;
-
-                if (isSpaghetti && y > normalCaveCeil) {
-                    if (!hasEntrance) {
-                        isSpaghetti = false;
-                    } else {
-                        float surfaceProximity = static_cast<float>(surfaceY - y) /
-                            static_cast<float>(std::max(1, surfaceY - normalCaveCeil));
-                        surfaceProximity = glm::clamp(surfaceProximity, 0.0f, 1.0f);
-                        float entranceRadius = tunnelRadius * (0.4f + 0.6f * surfaceProximity);
-                        isSpaghetti = (ridgeA < entranceRadius) && (ridgeB < entranceRadius);
-                    }
-                }
-
-                if (y >= surfaceY && !hasEntrance)
-                    continue;
-
-                // Double check water safety
-                if (y <= terrainParams.seaLevel && surfaceY <= terrainParams.seaLevel)
-                    continue;
-
-                if (isSpaghetti || isCheese) {
+                if (std::abs(nA) < thresh && std::abs(nB) < thresh) {
                     blocks.at(x, y, z) = BlockType::AIR;
                 }
             }
@@ -339,7 +272,7 @@ float ChunkGeneration::interpolateSpline(float noise, const std::vector<std::pai
 }
 
 float ChunkGeneration::getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise baseNoise(terrainParams.seed);
+    static Noise baseNoise(terrainParams.seed);
 
     float fbm = baseNoise.fractalBrownianMotion2D(
         wx * terrainParams.continentalnessFrequency,
@@ -357,7 +290,7 @@ float ChunkGeneration::getContinentalness(const TerrainGenerationParams& terrain
 }
 
 float ChunkGeneration::getErosion(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise erosionNoise(terrainParams.seed + 237);
+    static Noise erosionNoise(terrainParams.seed + 237);
 
     float erosion = erosionNoise.fractalBrownianMotion2D(
         wx * terrainParams.erosionFrequency,
@@ -372,7 +305,7 @@ float ChunkGeneration::getErosion(const TerrainGenerationParams& terrainParams, 
 }
 
 float ChunkGeneration::getPV(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise peakValleyNoise(terrainParams.seed + 98789);
+    static Noise peakValleyNoise(terrainParams.seed + 98789);
 
     float peakValley = peakValleyNoise.fractalBrownianMotion2D(
         wx * terrainParams.peakValleyFrequency,
@@ -388,7 +321,7 @@ float ChunkGeneration::getPV(const TerrainGenerationParams& terrainParams, float
 }
 
 float ChunkGeneration::getTemperature(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise tempNoise(terrainParams.seed + 123);
+    static Noise tempNoise(terrainParams.seed + 123);
 
     float temperature = tempNoise.fractalBrownianMotion2D(
         wx * terrainParams.temperatureFrequency,
@@ -402,7 +335,7 @@ float ChunkGeneration::getTemperature(const TerrainGenerationParams& terrainPara
 }
 
 float ChunkGeneration::getHumidity(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    Noise humidNoise(terrainParams.seed + 456);
+    static Noise humidNoise(terrainParams.seed + 456);
 
     float humidity = humidNoise.fractalBrownianMotion2D(
         wx * terrainParams.humidityFrequency,
@@ -433,8 +366,8 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     // biomeScaleChunks controls how many chunks make up a biome patch; use an extra multiplier to ensure broad bands.
     if (height <= terrainParams.seaLevel) return BiomeType::OCEAN;
 
-    Noise tempNoise(terrainParams.seed + 45);
-    Noise humidNoise(terrainParams.seed + 964);
+    static Noise tempNoise(terrainParams.seed + 45);
+    static Noise humidNoise(terrainParams.seed + 964);
 
     const float chunks = glm::max(1, terrainParams.biomeScaleChunks);
     const float worldUnitsPerPatch = chunks * Chunk::WIDTH * 8.0f;
@@ -445,7 +378,7 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     float humidCoarse = (humidNoise.fractalBrownianMotion2D(worldX * freqCoarse * 0.9f,    worldZ * freqCoarse * 0.9f,    4, 2.0f, 0.5f) + 1.0f) * 0.5f;
 
     // Small regional bias
-    Noise regionBias(terrainParams.seed + 4242);
+    static Noise regionBias(terrainParams.seed + 4242);
     float bias = (regionBias.fractalBrownianMotion2D(worldX * freqCoarse * 0.6f, worldZ * freqCoarse * 0.6f, 3, 2.0f, 0.5f) + 1.0f) * 0.5f;
 
     float climate = glm::clamp(glm::mix(tempCoarse, 1.0f - humidCoarse, 0.35f) * 0.7f + bias * 0.3f, 0.0f, 1.0f);
