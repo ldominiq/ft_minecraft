@@ -122,6 +122,24 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
     generateCaves(blocks, terrainParams);
 
+    generateOres(blocks, terrainParams);
+
+    // DEBUG: strip everything except ores so they're visible in isolation
+    if (terrainParams.debugOresOnly) {
+        // Build a set of ore block types for fast lookup
+        std::unordered_set<BlockType> oreTypes;
+        for (const auto &ore : oreTable)
+            oreTypes.insert(ore.type);
+
+        for (int x = 0; x < WIDTH; ++x)
+            for (int y = 0; y < HEIGHT; ++y)
+                for (int z = 0; z < DEPTH; ++z) {
+                    BlockType b = blocks.at(x, y, z);
+                    if (b != BlockType::AIR && oreTypes.find(b) == oreTypes.end())
+                        blocks.at(x, y, z) = BlockType::AIR;
+                }
+    }
+
     // encode palette and block data (same as before)
     blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
 }
@@ -143,6 +161,47 @@ void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGeneratio
                 if (noiseValue < -0.25f) {
                     blocks.at(x, y, z) = BlockType::AIR;
                 }
+            }
+        }
+    }
+}
+
+void ChunkGeneration::generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
+    for (const auto &ore : oreTable) {
+        // Deterministic RNG per ore type per chunk
+        std::seed_seq seedData{
+            static_cast<uint32_t>(terrainParams.seed),
+            static_cast<uint32_t>(originX),
+            static_cast<uint32_t>(originZ),
+            static_cast<uint32_t>(ore.type)
+        };
+        std::mt19937 rng(seedData);
+
+        std::uniform_int_distribution<int> distX(0, WIDTH - 1);
+        std::uniform_int_distribution<int> distZ(0, DEPTH - 1);
+        std::uniform_int_distribution<int> distY(ore.minY, ore.maxY);
+        std::uniform_int_distribution<int> spread(-1, 1);
+
+        for (int v = 0; v < ore.veinsPerChunk; ++v) {
+            int cx = distX(rng);
+            int cy = distY(rng);
+            int cz = distZ(rng);
+
+            // Only place ore where there is already stone
+            for (int i = 0; i < ore.veinSize; ++i) {
+                // Clamp to chunk bounds
+                int bx = std::clamp(cx, 0, WIDTH - 1);
+                int by = std::clamp(cy, 0, HEIGHT - 1);
+                int bz = std::clamp(cz, 0, DEPTH - 1);
+
+                if (blocks.at(bx, by, bz) == BlockType::STONE) {
+                    blocks.at(bx, by, bz) = ore.type;
+                }
+
+                // Random walk to next block in vein
+                cx += spread(rng);
+                cy += spread(rng);
+                cz += spread(rng);
             }
         }
     }
