@@ -52,7 +52,7 @@ void UDPClient::sendConnect() {
 }
 
 void UDPClient::receivePacket() {
-    std::vector<uint8_t> buffer(MAXLINE);
+    std::vector<uint8_t> buffer(MAXLINE + 64); // extra room for packet headers beyond payload
     socklen_t addrlen = sizeof(servaddr);
 
     while (true) {

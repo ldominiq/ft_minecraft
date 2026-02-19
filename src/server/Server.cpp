@@ -297,7 +297,8 @@ void Server::sendChunk(CPlayerInfo &player) {
 		sendPacketTo(CH, player.addr);
 
         // 3. Split into packets , not really needed for now as data will be smaller than MAXLINE but oh well!
-        size_t payloadCapacity = MAXLINE;
+        // Account for packet encoding overhead: 1 (type) + 2 (seq) + 1 (flags) + 4 (X) + 4 (Z) + 4 (data len) = 16 bytes
+        size_t payloadCapacity = MAXLINE - 16;
         uint16_t sequence = 0;
 
         for (size_t offset = 0; offset < compressed.size(); offset += payloadCapacity) {
