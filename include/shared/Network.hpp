@@ -15,13 +15,15 @@
 
 #define MAXLINE 1400
 
+//For no reason at all half the messages start with NET and the others do not
 enum class PacketType : uint8_t {
 	NET_CONNECT = 1,	// C2S
 	NET_ACCEPT,			// S2C
 	PLAYER_INPUT,		// C2S
 	PLAYER_MOUSE_INPUT,	// C2S
 	PLAYER_MOVE,		// S2C
-	NET_ENTITY_MOVE,	// S2C TODO : put it inside a snapshot and send multiple at once.
+	NET_ENTITY_MOVE,	// S2C TODO : put it inside a group and send multiple at once.
+	NET_INVENTORY,		// S2C
 	CHUNK_HEADER,		// S2C
 	CHUNK_DATA,			// S2C
 	MODIFIED_BLOCK_DATA,// S2C
@@ -78,6 +80,7 @@ constexpr auto to_under(E e) noexcept {
     return static_cast<std::underlying_type_t<E>>(e);
 }
 
+//TODO: Change this for an int packer instead
 // --- Buffer primitives (network byte order: big-endian) ---
 struct BufferWriter {
     std::vector<uint8_t> buf;

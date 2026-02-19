@@ -755,7 +755,7 @@ std::string World::getRegionFilename(int regionX, int regionZ) const {
     return ss.str();
 }
 
-void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
+bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
     // Offset the global coordinates in the direction of the face normal
     glm::ivec3 targetCoords = globalCoords;
@@ -771,7 +771,7 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 
     auto it = chunks.find(std::make_pair(chunkX, chunkZ));
     if (it == chunks.end())
-        return;
+        return false;
 
     std::shared_ptr<Chunk> currChunk = it->second;
 
@@ -823,6 +823,8 @@ void World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 			}
 		}
 	}
+
+	return true;
 }
 
 void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
@@ -849,14 +851,24 @@ void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 	currChunk->setBlock(x, y, z, type);
 }
 
-void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerMouseInputs &pkt)
+bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t serverTick)
 {
 	//Repetition. Not clean. And not performance friendly either.
 	glm::ivec3 blockPos, faceNormal;
 	getTargetedBlock(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal);
 	BlockType dropped = getBlockWorld(blockPos);
 
-	if (pkt.mouseButtons & IN_RIGHT_CLICK) setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir());
+	ItemType item = player.movement->inventory.getItemAtSlot(player.movement->inventory.activeHotbarSlot);
+
+	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
+	{
+		if (setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir(), std::get<BlockType>(item)))
+		{
+			player.movement->inventory.removeItemsFromSlot(player.movement->inventory.activeHotbarSlot, 1);
+			return true;
+		}
+		return false;
+	}
 	if (pkt.mouseButtons & IN_LEFT_CLICK)
 	{
 		if (removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir()) && player.movement->gamemode == GAMEMODES::SURVIVAL)
@@ -883,15 +895,64 @@ void World::processPlayerMouseInputs(const CPlayerInfo &player, const NetPlayerM
 			// spawn the entity at block center + offset
 			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
 
-			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped));
+			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, serverTick));
 		}
 	}
+	return false;
 }
 
-void World:: updateEntitiesPosition()
+void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t serverTick)
 {
 	for (auto &entity : livingEntities)
 		entity->calculateNewPosition(*this);
-	for (auto &entity : itemEntities)
-		entity->calculateNewPosition(*this);
+
+	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
+	{
+		//Checks for every prop if there's a player nearby that can pick it up. TODO: if this is too expensive do it every n ticks instead.
+		if (entityIt->get()->getSpawnTick() + TPS * 1.5 < serverTick)
+		{
+			bool itemErased = false;
+			for (auto &player : players)
+			{
+				if (player.movement.get()->gamemode != GAMEMODES::SURVIVAL)
+					continue ;
+
+				glm::vec3 diff = player.movement->getPosition() - entityIt->get()->getPosition();
+				if (abs(diff.x) < 2 &&
+					diff.y >= 0 && diff.y < 4 &&
+					abs(diff.z) < 2)
+				{
+					int slotUsed = player.movement->inventory.insertItems(entityIt->get()->getItemType(), 1);
+					if (slotUsed == INVALID_SLOT) continue ;
+
+					NetEntityMove pkt;
+					pkt.eEntityType = entityIt->get()->getEntityType();
+					pkt.entityID = entityIt->get()->getID();
+					pkt.type = -1;
+
+					pkt.positionX = player.movement->getPosition().x;
+					pkt.positionY = player.movement->getPosition().y;
+					pkt.positionZ = player.movement->getPosition().z;
+					pkt.yaw = entityIt->get()->yaw;
+
+					deletedEntitiesPkts.push_back(pkt);
+
+					NetInventory pickedUpItem;
+					pickedUpItem.type = entityIt->get()->getItemID();
+					pickedUpItem.amount = 1;
+					pickedUpItem.slot = slotUsed;
+					pickedUpItems.push_back({player.addr, pickedUpItem});
+
+					entityIt = itemEntities.erase(entityIt);
+					itemErased = true;
+
+					break ;
+				}
+			}
+			if (itemErased) continue ;
+		}
+
+		entityIt->get()->calculateNewPosition(*this);
+		entityIt++;
+	}
 }

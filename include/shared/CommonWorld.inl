@@ -63,8 +63,8 @@ bool CommonWorld<ChunkT>::getTargetedBlock(const glm::vec3 &rayOrigin, const glm
     glm::ivec3 blockPos = glm::floor(rayOrigin);
 
     glm::vec3 deltaDist = glm::abs(glm::vec3(1.0f) / rayDir);
-    glm::ivec3 step;
-    glm::vec3 sideDist;
+    glm::ivec3 step{};
+    glm::vec3 sideDist{};
 
     for (int i = 0; i < 3; ++i) {
         if (rayDir[i] < 0) {
@@ -93,7 +93,7 @@ bool CommonWorld<ChunkT>::getTargetedBlock(const glm::vec3 &rayOrigin, const glm
         sideDist[axis] += deltaDist[axis];
 
         // Track face direction
-        faceNormal = glm::ivec3(0);
+        faceNormal = glm::ivec3{};
         faceNormal[axis] = -step[axis];
 
 		distanceTraveled = glm::min(glm::min(sideDist.x, sideDist.y), sideDist.z);
@@ -121,13 +121,15 @@ bool CommonWorld<ChunkT>::removeTargettedBlock(const glm::vec3 &rayOrigin, const
 }
 
 template <typename ChunkT>
-void CommonWorld<ChunkT>::setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir)
+bool CommonWorld<ChunkT>::setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block)
 {
 	glm::ivec3 blockPos, faceNormal;
 	if (getTargetedBlock(rayOrigin, rayDir, blockPos, faceNormal))
 	{
 		for (auto &entity : livingEntities)
-			if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return ; //only checks collision with living entities
-		setBlockWorld(blockPos, faceNormal, BlockType::DIAMOND);
+			if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
+		if (setBlockWorld(blockPos, faceNormal, block));
+			return true ;
 	}
+	return false ;
 }

@@ -19,12 +19,12 @@ Creeper::Creeper(const glm::vec3 &position, float yaw, entityID ID): LivingEntit
 
 glm::vec3 Creeper::getDesiredMove()
 {
-	return glm::vec3(0,0,0.1f);
+	return glm::vec3(0,0,0);
 }
 
 void Creeper::calculateNewPosition(const ICommonWorld &world)
 {
-	jump = true;
+	jump = false;
 	doJump(world);
 	glm::vec3 desiredMove = getDesiredMove();
 	this->calculateNewXZPosition(world, desiredMove);

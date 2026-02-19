@@ -191,7 +191,9 @@ void Camera::initWireframeCube() {
 
 void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection) {
 
-	glm::ivec3 blockPos, faceNormal;
+	glm::ivec3 blockPos{};
+	glm::ivec3 faceNormal{};
+
 	if (!Renderer->getTargetedBlock(player->getPosition(), glm::normalize(player->Front), blockPos, faceNormal))
 		return ;
 

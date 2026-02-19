@@ -100,6 +100,7 @@ struct NetPlayerInputs final : public Packet {
     static constexpr PacketType ID = PacketType::PLAYER_INPUT;
 
 	uint16_t keys = 0;	// bitfield
+	uint8_t activeHotbarSlot = -1;
     float pitch = 0.0f;   // absolute rotation around X axis
     float yaw = 0.0f;     // absolute rotation around Y axis
 	uint8_t loadRadius = 4; // maybe this should go elsewhere. Oh well!
@@ -108,6 +109,7 @@ struct NetPlayerInputs final : public Packet {
 
     void encode(BufferWriter& w) const override {
         w.write_u16(keys);
+		w.write_u8(activeHotbarSlot);
         w.write_f32(pitch);
         w.write_f32(yaw);
 		w.write_u8(loadRadius);
@@ -115,6 +117,7 @@ struct NetPlayerInputs final : public Packet {
 
     void decode(BufferReader& r) override {
         keys = r.read_u16();
+		activeHotbarSlot = r.read_u8();
         pitch = r.read_f32();
         yaw = r.read_f32();
 		loadRadius = r.read_u8();
@@ -182,7 +185,7 @@ struct NetEntityMove final : public Packet {
 
 	EEntityTypes eEntityType;
 	uint32_t entityID;
-	uint16_t type = 0;	//Maybe only send if Item?; Same size as ItemID in Item.hpp
+	uint16_t type = 0;	// stone/dirt/etc.. for block - zombie/creeper/etc... for living entity. -1 to erase the entity
 
 	//position
 	float positionX;
@@ -213,6 +216,29 @@ struct NetEntityMove final : public Packet {
     }
 };
 inline AutoRegister<NetEntityMove> _reg_NetEntityMove;
+
+struct NetInventory final : public Packet {
+	static constexpr PacketType ID = PacketType::NET_INVENTORY;
+
+	uint16_t type = 0;
+	int16_t amount = 0;
+	uint8_t slot = 0;
+
+	NetInventory() : Packet(ID) {}
+
+	void encode(BufferWriter& w) const override {
+		w.write_u16(type);
+		w.write_i16(amount);
+		w.write_u8(slot);
+    }
+
+	void decode(BufferReader& r) override {
+		type = r.read_u16();
+		amount = r.read_i16();
+		slot = r.read_u8();
+    }
+};
+inline AutoRegister<NetInventory> _reg_NetInventory;
 
 struct NetChunkHeader final : public Packet {
     static constexpr PacketType ID = PacketType::CHUNK_HEADER;

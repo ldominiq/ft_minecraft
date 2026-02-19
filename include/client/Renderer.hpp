@@ -40,7 +40,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
 
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
-	std::unordered_map<ItemID, std::shared_ptr<Entity>> entitiesMap; //fast lookup
+	std::unordered_map<ItemID, std::weak_ptr<Entity>> entitiesMap; //fast lookup
 
 	public:
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
@@ -61,7 +61,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void prepareChunk(const NetChunkHeader& pkt);
 		void receiveChunk(const NetChunkData& pkt);
 
-		void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
+		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 
 		inline size_t getVisibleChunkCount() const {
 			return renderedChunks.size();

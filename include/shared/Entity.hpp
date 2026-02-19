@@ -54,7 +54,7 @@ class ItemEntityIDManager {
 
 	public:
 		entityID acquire() {
-			if (!freeIDs.empty()) {
+			if (!freeIDs.empty() && freeIDs.size() > 1000) { // 1000 offset so there's no risk of conflicts between clientIDs and server IDs reuses.
 				entityID id = freeIDs.front();
 				freeIDs.pop();
 				return id;
@@ -95,7 +95,9 @@ class Entity {
 		Entity(const glm::vec3 &position, float yaw, entityID ID);
 		virtual ~Entity() = 0;
 
-		float yaw, pitch;
+		float yaw = 0;
+		float pitch = 0;
+
 		bool entityCollidesWithBlock(const glm::vec3 blockPos);
 		// position has been changed since last check.
 		bool positionUpdated = true;
@@ -117,9 +119,10 @@ class Entity {
 		glm::vec3 prevPosition{};
 		glm::vec3 nextPosition{};
 		float lastTickClientTime = 0;
-
-		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; };
-		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; };
+		
+		bool removed = false; //item entities only
+		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
+		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //living entities only
 };
 
 #endif

@@ -20,6 +20,7 @@
 #include "RenderTypeFramebuffer.hpp"
 #include "WaterRenderer.hpp"
 #include "GuiTexture.hpp"
+#include "InventoryUI.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -58,6 +59,16 @@
     X(TOGGLE_DEBUG)			\
     X(CLOSE_WINDOW)			\
 	X(THIRD_PERSON_CAMERA)	\
+							\
+	X(HOTBAR_1)				\
+	X(HOTBAR_2)				\
+	X(HOTBAR_3)				\
+	X(HOTBAR_4)				\
+	X(HOTBAR_5)				\
+	X(HOTBAR_6)				\
+	X(HOTBAR_7)				\
+	X(HOTBAR_8)				\
+	X(HOTBAR_9)				\
 
 enum controls {
 #define X(name) name,
@@ -133,8 +144,9 @@ private:
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
 
 	//menus
-	std::shared_ptr<Menu> menuManager;
+	std::weak_ptr<Menu> menuManager;
 	std::shared_ptr<Chat> chat;
+	std::shared_ptr<InventoryUI> inventoryUI;
 
 	std::shared_ptr<Loader> loader;
 	// GUI

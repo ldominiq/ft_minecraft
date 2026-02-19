@@ -60,6 +60,51 @@ void buildCube(
 	addFace(meshVertices, x, y, z, originX, originZ, type, 5, isIlluminated);
 }
 
+void build2DInventoryCube(
+	std::vector<float>& meshVertices,
+	glm::vec2 origin,
+	float scale,
+	BlockType type)
+{
+	addInventoryFace(meshVertices, origin, scale, type, 2);
+	addInventoryFace(meshVertices, origin, scale, type, 1);
+	addInventoryFace(meshVertices, origin, scale, type, 0);
+}
+
+void addInventoryFace(
+	std::vector<float>& meshVertices,
+	glm::vec2 origin,				// inventory slot position
+	float scale,
+	BlockType type,
+	int face)
+{
+    const float TILE_W = 1.0f / ATLAS_COLS;
+    const float TILE_H = 1.0f / ATLAS_ROWS;
+
+    glm::vec2 atlasOffset = getTextureOffset(type, face);
+    const float flippedRow = static_cast<float>(ATLAS_ROWS - 1) - atlasOffset.y;
+    glm::vec2 uvOffset = { atlasOffset.x * TILE_W, flippedRow * TILE_H };
+
+    constexpr int quadToTri[6] = { 0,1,2, 2,3,0 };
+
+    for (int i = 0; i < 6; ++i)
+    {
+        int v = quadToTri[i];
+
+        glm::vec2 basePos = unitFacePositionsInventory[face][v];
+        glm::vec2 pos = origin + basePos * scale;
+
+        glm::vec2 uv = {
+            uvTemplate[i].x * TILE_W + uvOffset.x + 10,
+            uvTemplate[i].y * TILE_H + uvOffset.y
+        };
+
+        meshVertices.push_back(pos.x);
+        meshVertices.push_back(pos.y);
+        meshVertices.push_back(uv.x);
+        meshVertices.push_back(uv.y);
+    }
+}
 
 void addFace(
 	std::vector<float>& meshVertices,
@@ -68,8 +113,8 @@ void addFace(
     BlockType type, int face,
     bool isIlluminated)
 {
-    const float TILE_W = 1.0f / ATLAS_COLS;
-    const float TILE_H = 1.0f / ATLAS_ROWS;
+	const float TILE_W = 1.0f / ATLAS_COLS;
+	const float TILE_H = 1.0f / ATLAS_ROWS;
 
     glm::vec2 atlasOffset = getTextureOffset(type, face);
     const float flippedRow = static_cast<float>(ATLAS_ROWS - 1) - atlasOffset.y;
