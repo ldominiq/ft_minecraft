@@ -170,10 +170,10 @@ void ChunkGeneration::generateOres(BlockStorage &blocks, const TerrainGeneration
     for (const auto &ore : oreTable) {
         // Deterministic RNG per ore type per chunk
         std::seed_seq seedData{
-            static_cast<unsigned>(terrainParams.seed),
-            static_cast<unsigned>(originX),
-            static_cast<unsigned>(originZ),
-            static_cast<unsigned>(ore.type)
+            static_cast<uint32_t>(terrainParams.seed),
+            static_cast<uint32_t>(originX),
+            static_cast<uint32_t>(originZ),
+            static_cast<uint32_t>(ore.type)
         };
         std::mt19937 rng(seedData);
 
