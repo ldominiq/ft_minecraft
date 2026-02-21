@@ -121,13 +121,15 @@ bool CommonWorld<ChunkT>::removeTargettedBlock(const glm::vec3 &rayOrigin, const
 }
 
 template <typename ChunkT>
-void CommonWorld<ChunkT>::setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block)
+bool CommonWorld<ChunkT>::setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block)
 {
 	glm::ivec3 blockPos, faceNormal;
 	if (getTargetedBlock(rayOrigin, rayDir, blockPos, faceNormal))
 	{
 		for (auto &entity : livingEntities)
-			if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return ; //only checks collision with living entities
-		setBlockWorld(blockPos, faceNormal, block);
+			if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
+		if (setBlockWorld(blockPos, faceNormal, block))
+			return true;
 	}
+	return false;
 }

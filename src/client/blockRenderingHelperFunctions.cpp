@@ -1,26 +1,45 @@
 
 #include "blockRenderingHelperFunctions.hpp"
 
+// {col, row} for each BlockType, indexed by (int)BlockType
+// Multi-face blocks (GRASS, LOG) are handled in the switch below
+static constexpr glm::ivec2 atlasMap[] = {
+    {0, 0}, // BEGIN (unused)
+    {0, 0}, // AIR   (unused)
+    {1, 0}, // GRASS (default: side, overridden per-face below)
+    {2, 0}, // DIRT
+    {3, 0}, // STONE
+    {4, 0}, // SAND
+    {5, 0}, // SNOW
+    {6, 0}, // WATER
+    {7, 0}, // BEDROCK
+    {8, 0}, // LOG   (default: bark, overridden per-face below)
+    {9, 0}, // LEAVES
+    {0, 1}, // IRON
+    {1, 1}, // GOLD
+    {2, 1}, // DIAMOND
+    {3, 1}, // URANIUM
+};
+
+
 glm::vec2 getTextureOffset(BlockType type, int face) {
-	static int grassOffset = 1; //grass takes 2 blocks.. same with logs potentially :/
-    int id = -grassOffset + static_cast<int>(type) - static_cast<int>(BlockType::BEGIN);
-    int col = id % ATLAS_COLS;
-    int row = id / ATLAS_COLS;
+	int idx = static_cast<int>(type);
+    int col = atlasMap[idx].x;
+    int row = atlasMap[idx].y;
+
 
     switch (type) {
         case BlockType::GRASS:
             if (face == 2)      { col = 0; row = 0; } // top
             else if (face == 3) { col = 2; row = 0; } // bottom = dirt
-            else                { col = 1; row = 0; } // side = grass-side
-            break;
+            break; // sides: use atlasMap default {1, 0}
 
         case BlockType::LOG:
-            if (face == 2 || face == 3) { col = 10; row = 0; } // top/bottom = rings
-            else                        { col = 8; row = 0; }  // sides = bark
-            break;
+            if (face == 2 || face == 3) { col = 8; row = 1; } // top/bottom = rings
+            break; // sides: use atlasMap default {8, 0}
 
         default:
-            break; // use auto-calculated col/row
+            break;
     }
 
     return glm::vec2(col, row);
@@ -63,10 +82,8 @@ void addInventoryFace(
     const float TILE_H = 1.0f / ATLAS_ROWS;
 
     glm::vec2 atlasOffset = getTextureOffset(type, face);
-    glm::vec2 uvOffset = {
-        atlasOffset.x * TILE_W,
-        atlasOffset.y * TILE_H
-    };
+    const float flippedRow = static_cast<float>(ATLAS_ROWS - 1) - atlasOffset.y;
+    glm::vec2 uvOffset = { atlasOffset.x * TILE_W, flippedRow * TILE_H };
 
     constexpr int quadToTri[6] = { 0,1,2, 2,3,0 };
 
@@ -99,8 +116,9 @@ void addFace(
 	const float TILE_W = 1.0f / ATLAS_COLS;
 	const float TILE_H = 1.0f / ATLAS_ROWS;
 
-	glm::vec2 atlasOffset = getTextureOffset(type, face);
-	glm::vec2 uvOffset = { atlasOffset.x * TILE_W, atlasOffset.y * TILE_H };
+    glm::vec2 atlasOffset = getTextureOffset(type, face);
+    const float flippedRow = static_cast<float>(ATLAS_ROWS - 1) - atlasOffset.y;
+    glm::vec2 uvOffset = { atlasOffset.x * TILE_W, flippedRow * TILE_H };
 
     glm::vec3 normal = faceNormals[face];
 
@@ -121,8 +139,10 @@ void addFace(
 				+ glm::vec3(0.0f, 0.5f * scale, 0.0f);
 		}
 
-        glm::vec2 uv = { uvTemplate[i].x * TILE_W + uvOffset.x,
-                         uvTemplate[i].y * TILE_H + uvOffset.y };
+        glm::vec2 uv = {
+            uvTemplate[i].x * TILE_W + uvOffset.x,
+            uvTemplate[i].y * TILE_H + uvOffset.y
+        };
 
         // Pack vertex attributes
         meshVertices.push_back(pos.x);

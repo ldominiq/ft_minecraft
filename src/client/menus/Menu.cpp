@@ -14,6 +14,17 @@ Menu::Menu(float width, float height) : width(width), height(height) {
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 }
 
+Menu::~Menu()
+{
+	if (glfwGetCurrentContext()) {
+		glDeleteVertexArrays(1, &VAO);
+		glDeleteBuffers(1, &VBO);
+	} else {
+		VAO = 0;
+		VBO = 0;
+	}
+}
+
 //no texture quad
 void Menu::drawSimpleQuad(float x, float y, float w, float h, const glm::vec4 &color) const
 {

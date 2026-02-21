@@ -1,5 +1,5 @@
 #ifndef INVENTORY_UI
-#define INVENNTORY_UI
+#define INVENTORY_UI
 
 #include "Inventory.hpp"
 #include "Menu.hpp"
@@ -18,10 +18,10 @@ class InventoryUI : public Inventory, public Menu
 
 	struct hotbarSlotCoords
 	{
-		int hotbarSlotX;
-		int hotbarSlotY;
-		int hotbarSlotW;
-		int hotbarSlotH;
+		int x;
+		int y;
+		int width;
+		int height;
 	};
 	hotbarSlotCoords hotbarSlots[MAX_SLOTS];
 

@@ -29,8 +29,8 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 	bool itemsRemoved = false; //Needed because when 1 element is removed the order of the elements change. So when 1 element is removed we redo EVERY prop. Shitty solution but it is what is is.
 
 	static std::vector<float> buffer(MAX_CAPACITY * ITEM_SIZE);
-	std::vector<float> vertices(ITEM_SIZE);
-
+	std::vector<float> vertices;
+	vertices.reserve(ITEM_SIZE);
 
 	for (auto entity = entities.begin(); entity != entities.end();)
 	{
@@ -42,6 +42,8 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 		}
 
 		++i;
+
+		//attempt to optimize, currently causes rendering issues
 		// if (!entity->get()->positionUpdated && !itemsRemoved)
 		// {
 		// 	entity++;
@@ -67,8 +69,12 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
-	memcpy(ptr, buffer.data(), MAX_CAPACITY * ITEM_SIZE);
-	glUnmapBuffer(GL_ARRAY_BUFFER);
+
+	if (ptr)
+	{
+		memcpy(ptr, buffer.data(), MAX_CAPACITY * ITEM_SIZE);
+		glUnmapBuffer(GL_ARRAY_BUFFER);
+	}
 }
 
 // In your constructor or init function:

@@ -54,7 +54,7 @@ class ItemEntityIDManager {
 
 	public:
 		entityID acquire() {
-			if (!freeIDs.empty() && freeIDs.size() > 5000) { // 5000 offset so there's no risk of conflicts between clientIDs and server IDs reuses.
+			if (!freeIDs.empty() && freeIDs.size() > 1000) { // 1000 offset so there's no risk of conflicts between clientIDs and server IDs reuses.
 				entityID id = freeIDs.front();
 				freeIDs.pop();
 				return id;
@@ -118,7 +118,7 @@ class Entity {
 		//TODO move all of this and get a normal tick on client.
 		glm::vec3 prevPosition{};
 		glm::vec3 nextPosition{};
-		float lastTickClientTime = 0;
+		float glfwTickTime = 0;
 		
 		bool removed = false; //item entities only
 		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only

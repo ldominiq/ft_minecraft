@@ -13,6 +13,7 @@ std::pair<ItemType, uint8_t> Inventory::getSlot(uint8_t slot)
 
 ItemType Inventory::getItemAtSlot(int slot)
 {
+	if (slot >= rows * cols || slot < 0) return BlockType::BEGIN;
 	return grid[slot].first;
 }
 
@@ -28,15 +29,15 @@ ItemID Inventory::getActiveItemID()
     }, grid[activeHotbarSlot].first);
 }
 
-//only works with inserts of 1 actually. being able to insert more isn't and probably won't ever be support
-//returns the slot which has been used to insert the item. 0 in case insertion was not successful.
+//only works with inserts of 1 actually. being able to insert more isn't and probably won't ever be supported
+//returns the slot which has been used to insert the item. -1 in case insertion was not successful.
 int Inventory::insertItems(ItemType item, int amount) //maybe take a reference to amount so sender can know how many items couldn't fit in slot. TODO?
 {
 	auto itemSlots = itemsIndexes.equal_range(item);
 
 	for(auto itemSlot = itemSlots.first; itemSlot != itemSlots.second; itemSlot++)
 	{
-		if (itemSlot->second + amount <= MAX_STACK_SIZE)
+		if (grid[itemSlot->second].second + amount <= MAX_STACK_SIZE)
 		{
 			grid[itemSlot->second].second += amount;
 			return itemSlot->second;
@@ -55,6 +56,7 @@ int Inventory::insertItems(ItemType item, int amount) //maybe take a reference t
 
 bool Inventory::removeItemsFromSlot(int slotNumber, int amount)
 {
+	if (slotNumber >= rows * cols || slotNumber < 0) return false;
 	if (amount > grid[slotNumber].second) return false;
 
 	grid[slotNumber].second = grid[slotNumber].second - amount;
@@ -80,6 +82,8 @@ bool Inventory::removeItemsFromSlot(int slotNumber, int amount)
 
 bool Inventory::insertItemsToSlot(ItemType item, int slotNumber, int amount)
 {
+	if (slotNumber >= rows * cols || slotNumber < 0) return false;
+
 	//check if item - slotNumber is already registered.
 	auto range = itemsIndexes.equal_range(item);
 	bool exists = false;

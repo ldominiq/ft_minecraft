@@ -61,14 +61,14 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void prepareChunk(const NetChunkHeader& pkt);
 		void receiveChunk(const NetChunkData& pkt);
 
-		void setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
+		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 
 		inline size_t getVisibleChunkCount() const {
 			return renderedChunks.size();
 		}
 
 		LivingEntitiesManager livingEntitiesManager;
-		void onEntity(NetEntityMove &pkt, const float &lastTickClientTime);	// handles NetEntityMove packet
+		void onEntity(NetEntityMove &pkt, const float &glfwTickTime);	// handles NetEntityMove packet
 		void drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime);
 };
 

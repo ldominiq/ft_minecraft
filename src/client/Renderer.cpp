@@ -25,7 +25,7 @@ void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRender
     }
 }
 
-void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
+bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
     // Offset the global coordinates in the direction of the face normal
     glm::ivec3 targetCoords = globalCoords;
@@ -41,7 +41,7 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 
     auto it = chunks.find(std::make_pair(chunkX, chunkZ));
     if (it == chunks.end())
-        return;
+        return false;
 
     std::shared_ptr<ChunkRenderer> currChunk = it->second;
 
@@ -57,6 +57,8 @@ void Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 		currChunk->neighbourNeedUpdate[SOUTH] = true;
 	if (z == Chunk::DEPTH - 1)
 		currChunk->neighbourNeedUpdate[NORTH] = true;
+
+	return true;
 }
 
 std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
@@ -191,7 +193,7 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 	}
 }
 
-void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
+void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 {
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
 	entityID ID = pkt.entityID;
@@ -206,7 +208,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 			ent->nextPosition = position;
 			ent->yaw = yaw;
 			ent->positionUpdated = true;
-			ent->lastTickClientTime = lastTickClientTime;
+			ent->glfwTickTime = glfwTickTime;
 			if (pkt.type == static_cast<uint16_t>(-1))
 			{
 				ent->removed = true;
@@ -230,7 +232,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 		{
 			BlockType type = static_cast<BlockType>(pkt.type);
 			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
-			entityPtr->lastTickClientTime = lastTickClientTime;
+			entityPtr->glfwTickTime = glfwTickTime;
 			itemEntities.push_back(entityPtr);
 			entitiesMap[ID] = entityPtr;
 		}

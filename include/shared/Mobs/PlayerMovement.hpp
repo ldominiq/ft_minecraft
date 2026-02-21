@@ -18,7 +18,7 @@ struct PlayerMovement : public virtual LivingEntity {
 
 	NetPlayerInputs lastInputsPktRecvd = {};
 
-	Inventory inv;
+	Inventory inventory;
 
 	bool jumpBoostApplied = false;
 
