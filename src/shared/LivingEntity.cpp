@@ -18,6 +18,11 @@ void LivingEntity::doJump(const ICommonWorld &world)
 		this->velocity.y = JUMP_VELOCITY;
 }
 
+void LivingEntity::onDeath()
+{
+	// TODO : drop something?
+}
+
 void LivingEntity::applyFallDamage()
 {
 	const uint16_t FALL_DAMAGE_MULTIPLIER = 1; //temporally here just to give the idea in case it ends up being used

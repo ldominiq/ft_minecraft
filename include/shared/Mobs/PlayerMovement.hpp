@@ -24,11 +24,14 @@ struct PlayerMovement : public virtual LivingEntity {
 
 	GAMEMODES gamemode = GAMEMODES::SPECTATOR;
 
+	glm::vec3 spawnPosition{};
+
 	glm::vec3 getDesiredMove() override;
 	void doJump(const ICommonWorld &world) override;
 
-	void updatePosition();
+	void onDeath() override;
 
+	void updatePosition();
 	void updateCameraVectors();
 	void applyFallDamage() override;
 	void calculateNewPosition(const ICommonWorld &world) override;

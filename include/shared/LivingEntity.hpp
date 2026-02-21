@@ -48,6 +48,7 @@ class LivingEntity : public Entity
 		glm::vec3 Front = glm::vec3(0, 0, 0);
 		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
+		virtual void onDeath();
 		virtual void applyFallDamage();
 		void calculateNewYPosition(const ICommonWorld &world) override;
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::LIVING_ENTITIES; }

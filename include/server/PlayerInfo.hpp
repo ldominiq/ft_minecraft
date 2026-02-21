@@ -25,8 +25,8 @@ class CPlayerInfo
 
 		int health; //unused
 
-		glm::vec3 startingPosition = glm::vec3(0,150,0);
-		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>(startingPosition);
+		glm::vec3 spawnPosition = glm::vec3(0,150,0);
+		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>(spawnPosition);
 
 		std::unordered_set<ChunkPos> loadedChunks;
 		std::vector<ChunkPos> rdyChunks;

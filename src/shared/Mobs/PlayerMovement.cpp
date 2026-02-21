@@ -8,6 +8,7 @@ PlayerMovement::PlayerMovement(const glm::vec3 &position):	LivingEntity(position
 	this->entityWidth = 0.6f;
 	this->entityHeight = 1.8f;
     this->Front = glm::vec3(0.0f, 0.0f, -1.0f); //not really needed
+	spawnPosition = position;
 	yaw = 0;
 	pitch = 0;
 }
@@ -23,6 +24,12 @@ PlayerMovement::PlayerMovement(const glm::vec3 &position, float yaw, entityID ID
 
 PlayerMovement::~PlayerMovement()
 {
+}
+
+void PlayerMovement::onDeath()
+{
+	position = spawnPosition;
+	health = 20;
 }
 
 //for creative

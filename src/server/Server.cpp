@@ -151,12 +151,19 @@ void Server::gameTick()
 		world->updateLiquids();
 	}
 
-	for (auto le : world->livingEntities)
+	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end(); le++)
 	{
-		if (le->health <= 0)
+		if (le->get()->health <= 0)
 		{
-			le->health = 20;
+			le->get()->onDeath();
 			messages.push_back("Someone has died miserably");
+
+			if (le->get()->getLivingEntityType() != PLAYER)
+			{
+				le = world->livingEntities.erase(le);
+
+				NetEntityMove
+			}
 		}
 	}
 
