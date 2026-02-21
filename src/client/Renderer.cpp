@@ -253,6 +253,12 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 					return;
 			}
 
+			entityPtr->prevPosition = position;
+			entityPtr->nextPosition = position;
+			entityPtr->positionUpdated = true;
+			entityPtr->lastTickClientTime = lastTickClientTime;
+
+			std::cout << entityPtr->getPosition().x << " " << entityPtr->getPosition().y << " " << entityPtr->getPosition().z << "\n";
 			livingEntitiesManager.add(entityPtr);
 			// Convert to shared_ptr<LivingEntity> safely
 			std::shared_ptr<LivingEntity> le = static_cast<std::shared_ptr<LivingEntity>>(entityPtr);

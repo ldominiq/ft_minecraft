@@ -194,6 +194,26 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		return ;
 
 	const auto &ent = std::find(world->livingEntities.begin(), world->livingEntities.end(), player->movement);
+
+	for (CPlayerInfo &p : players)
+	{
+		if (player->movement == p.movement) continue;
+
+		NetEntityMove pkt;
+
+		pkt.eEntityType = ent->get()->getEntityType();
+		pkt.entityID = ent->get()->getID();
+		pkt.type = -1;
+
+		pkt.positionX = ent->get()->getPosition().x;
+		pkt.positionY = ent->get()->getPosition().y;
+		pkt.positionZ = ent->get()->getPosition().z;
+
+		pkt.yaw = ent->get()->yaw;
+
+		sendPacketTo(pkt, p.addr);
+	}
+
 	world->livingEntities.erase(ent);
 	players.erase(player);
 }
