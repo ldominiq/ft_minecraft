@@ -125,7 +125,7 @@ void App::init() {
 
 		if (!manager && app->controlsArray[CLOSE_WINDOW] == key && action == GLFW_PRESS) glfwSetWindowShouldClose(w, true);
 
-		app->processInputsMenus(key, action);
+		app->processInputMenus(key, action);
 		if (manager) return ;
 
 		auto mapKeyToBit = [](int key) -> uint16_t {
@@ -259,14 +259,14 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
-				lastTickClientTime = glfwGetTime();
+				glfwTickTime = glfwGetTime();
 				camera->onSnapshot(p, *renderer);
 				break;
 			}
 
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
-				renderer->onEntity(p, lastTickClientTime);
+				renderer->onEntity(p, glfwTickTime);
 				break;
 			}
 
@@ -370,7 +370,7 @@ void App::render() {
 			accumulator -= tickDuration;
 		}
 
-		camera->lerpToNextPosition(glfwGetTime() - lastTickClientTime);
+		camera->lerpToNextPosition(glfwGetTime() - glfwTickTime);
 
 		// const double mouseIdleThreshold = 0.2; // seconds
 		// if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
@@ -538,7 +538,10 @@ void App::render() {
 			manager->render();
 		}
 		else
+		{
 			inventoryUI->drawHotbar();
+			chat->renderRecentMessages();
+		}
 
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
         glfwSwapBuffers(window);
@@ -626,22 +629,22 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 	for (auto &entity : renderer->itemEntities)
 	{
 		if (!entity->positionUpdated) continue ;
-		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - glfwTickTime, entity->prevPosition, entity->nextPosition);
 		entity->setPosition(newEntityPos);
 	}
     glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
 	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
 	for (auto &entity : renderer->itemEntities)
-		if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+		if (entity->glfwTickTime < glfwTickTime) entity->positionUpdated = false;
 	glEndQuery(GL_TIME_ELAPSED);
 
 	//mobs
 	for (auto &entity : renderer->livingEntities)
 	{
 		if (!entity->positionUpdated) continue ;
-		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - lastTickClientTime, entity->prevPosition, entity->nextPosition);
+		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - glfwTickTime, entity->prevPosition, entity->nextPosition);
 		entity->setPosition(newEntityPos);
-		// if (entity->lastTickClientTime < lastTickClientTime) entity->positionUpdated = false;
+		// if (entity->glfwTickTime < glfwTickTime) entity->positionUpdated = false;
 	}
 
 	renderer->drawCharacters(projection, view, deltaTime);
@@ -1345,7 +1348,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	return inputs;
 }
 
-void App::processInputsMenus(int key, int action) {
+void App::processInputMenus(int key, int action) {
 
 	auto manager = menuManager.lock();
 
@@ -1358,12 +1361,15 @@ void App::processInputsMenus(int key, int action) {
 			NetMessage pkt;
 			pkt.message = chat->currMsg;
 			udpClient->sendPacket(pkt);
-			chat->currMsg.clear();
+
+			chat->cleanMsgSent();
 		}
-		if (key == GLFW_KEY_BACKSPACE && action == GLFW_PRESS)
+		if (key == GLFW_KEY_BACKSPACE)
 			chat->removeCharFromCurrMsg();
 		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 			menuManager.reset();
+		if ((key == GLFW_KEY_UP || key == GLFW_KEY_DOWN) && action == GLFW_PRESS)
+			chat->goThroughchatLog(key);
 	}
 
 	// CHOSE MENU (order here IS important. must do after handling events)
