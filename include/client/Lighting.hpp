@@ -97,6 +97,20 @@ public:
 
     void renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const;
 
+    // CSM
+    static std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
+    glm::mat4 getLightSpaceMatrix(const float nearPlane, const float farPlane, const glm::mat4& view) const;
+    std::vector<glm::mat4> getLightSpaceMatrices(const glm::mat4& cameraView) const;
+    void initCSMResources();
+    void updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView);
+    void uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraView) const;
+    bool debugCascades = true;
+    void drawCSMShadowMapPreview(int cascadeLayer);
+    std::vector<float> shadowCascadeLevels{ 500 / 50.0f, 500 / 25.0f, 500 / 10.0f, 500 / 2.0f };
+    int debugPreviewLayer = 0;
+
+
+
     enum class ShadowQuality {
         Low = 1024,
         Medium = 2048,
@@ -112,6 +126,7 @@ public:
     bool isShadowsEnabled() const { return shadowsEnabled; };
     bool isShadowMapEnabled() const { return showShadowMap; };
     bool isCloudsEnabled() const { return cloudsEnabled; };
+    bool isSunAboveHorizon() const { return directionalLightDir.y > 0.5f; }
     
     GLuint getShadowMapTexture() const { return depthMap; };
     GLuint getCloudTexture() const;
@@ -129,6 +144,9 @@ public:
     float getShadowNearPlane() const { return shadowNearPlane; };
     float getShadowFarPlane() const { return shadowFarPlane; };
     float getMaterialShininess() const { return materialShininess; };
+    float getShadowMapMinBias() const { return MIN_BIAS; }
+    float getShadowMapMaxBias() const { return MAX_BIAS; }
+    float getShadowMapContactOffset () const { return shadowContactOffset; }
 
     float getSkyExposure() const { return skyExposure; };
     float getSkyAtmDensity() const { return skyAtmDensity; };
@@ -174,7 +192,8 @@ public:
     void setShadowMapResolution(int width, int height) { SHADOW_WIDTH = width; SHADOW_HEIGHT = height; };
     void setShadowMapNearPlane(float nearPlane) { shadowNearPlane = nearPlane; };
     void setShadowMapFarPlane(float farPlane) { shadowFarPlane = farPlane; };
-    void setShadowMapBias(float bias) { MIN_BIAS = bias; MAX_BIAS = bias; };
+    void setShadowMapMinBias(float bias) { MIN_BIAS = bias; };
+    void setShadowMapMaxBias(float bias) { MAX_BIAS = bias; };
     void setShadowMapContactOffset(float offset) { shadowContactOffset = offset; };
     void setShadowMapPCFRadius(int radius) { PCF_RADIUS = radius; };
     void setShadowMapPCF(bool enabled) { forceShadowUpdate = enabled; };
@@ -251,8 +270,16 @@ private:
     std::shared_ptr<Shader> shadowDebugShader;
     std::shared_ptr<Shader> debugFBOShader;
     std::shared_ptr<Shader> cloudShader;
+    
+    // CSM
+    std::shared_ptr<Shader> csmDepthShader;
+    GLuint csmFBO = 0;
+    GLuint csmDepthMaps = 0;
+    unsigned int depthMapResolution = 4096;
+    float cameraFarPlane = 500.0f;
+    std::vector<glm::mat4> csmLightSpaceMatrices;
 
-    // Screen dimensions for sky shader
+    // Screen dimensions
     int width;
     int height;
 
@@ -352,8 +379,8 @@ private:
     float shadowFarPlane = 400.0f;
 
     int PCF_RADIUS = 1;          // 1 = 3x3;
-    float MIN_BIAS = 0.00035;
-    float MAX_BIAS = 0.0010;
+    float MIN_BIAS = 0.001;
+    float MAX_BIAS = 0.005;
     float shadowContactOffset = 0.00050f;
 
     int   POISSON_SAMPLES = 16;
