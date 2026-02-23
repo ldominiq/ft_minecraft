@@ -217,6 +217,8 @@ private:
 	bool showNormalsTexture = false;
 	bool showDepthTexture = false;
 
+    int selectedRenderType = 0; // 0 = none, 1 = normals, 2 = depth
+
 	//keeps track of control GLFW values
     int controlsArray[CONTROL_COUNT];
 	//keeps track of control names so they can be inserted/read from the .config file

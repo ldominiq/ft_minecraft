@@ -24,6 +24,7 @@ void GuiRenderer::render(const std::vector<GuiTexture>& guis) {
         glm::mat4 matrix = glm::translate(glm::mat4(1.0f), glm::vec3(gui.getPosition(), 0.0f));
         matrix = glm::scale(matrix, glm::vec3(gui.getScale(), 1.0f));
         shader->setMat4("transformationMatrix", matrix);
+        shader->setInt("flipY", gui.getIsFBO() ? 1 : 0);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, quad.getVertexCount());
     }
     glEnable(GL_DEPTH_TEST);
