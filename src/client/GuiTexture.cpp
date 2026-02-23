@@ -4,7 +4,7 @@
 
 #include "GuiTexture.hpp"
 
-GuiTexture::GuiTexture(const int texture, const glm::vec2 position, const glm::vec2 scale) : texture(texture), position(position), scale(scale) {
+GuiTexture::GuiTexture(const int texture, const glm::vec2 position, const glm::vec2 scale, bool isFBO) : texture(texture), position(position), scale(scale), isFBO(isFBO) {
 
 }
 

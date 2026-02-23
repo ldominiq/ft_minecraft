@@ -466,7 +466,7 @@ void App::render() {
         // Restore main renderType for normal scene rendering
         if (textureShader) {
             textureShader->use();
-            textureShader->setInt("renderType", 0); // Normal lighting mode
+            textureShader->setInt("renderType", selectedRenderType); // Normal lighting mode
         }
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
@@ -503,19 +503,19 @@ void App::render() {
     			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
     		}
     		if (showRefractionTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(-0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(-0.5f, 0.5f), glm::vec2(0.25f, 0.25f), true);
     		}
     		if (showRefractionDepthTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.5f, -0.5f), glm::vec2(0.25f, 0.25f), true);
     		}
     		if (showShadowMapTexture && lighting) {
     			guis.emplace_back(lighting->getShadowMapTexture(), glm::vec2(-0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
     		}
     		if (showNormalsTexture && renderTypeFramebuffer) {
-    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.0f, 0.75f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.0f, 0.75f), glm::vec2(0.25f, 0.25f), true);
     		}
     		if (showDepthTexture && renderTypeFramebuffer) {
-    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.0f, -0.75f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.0f, -0.75f), glm::vec2(0.25f, 0.25f), true);
     		}
 
     		guiRenderer->render(guis);
@@ -844,17 +844,16 @@ void App::debugWindow() {
                         if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
                             activeShader = useGradientShader ? gradientShader : textureShader;
                         }
-                        static int renderType = 0;
-                        ImGui::RadioButton("Lighting render", &renderType, 0); ImGui::SameLine();
-                        ImGui::RadioButton("Normals render",  &renderType, 1); ImGui::SameLine();
-                        ImGui::RadioButton("Depth render",    &renderType, 2);
+                        ImGui::RadioButton("Lighting render", &selectedRenderType, 0); ImGui::SameLine();
+                        ImGui::RadioButton("Normals render",  &selectedRenderType, 1); ImGui::SameLine();
+                        ImGui::RadioButton("Depth render",    &selectedRenderType, 2);
 
                         // Ensure the uniform is applied to the intended program(s),
                         // not whatever was last bound (e.g., selected-face wireframe).
                         auto applyRenderType = [&](const std::shared_ptr<Shader>& s) {
                             if (!s) return;
                             s->use();
-                            s->setInt("renderType", renderType);
+                            s->setInt("renderType", selectedRenderType);
                         };
                         applyRenderType(textureShader);
 
