@@ -16,6 +16,7 @@ public:
     GLuint ID;
 
     Shader(const char* vertexPath, const char* fragmentPath);
+    Shader(const char* vertexPath, const char* geometryPath, const char* fragmentPath);
     void use() const;
 
     void stop() const;

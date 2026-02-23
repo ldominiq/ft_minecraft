@@ -77,6 +77,7 @@ void App::init() {
 
     lighting->initShadowGroundPlane();
 	lighting->initShadowResources();
+    lighting->initCSMResources();
 
 
     // Mouse movement event handling
@@ -424,10 +425,10 @@ void App::render() {
         lighting->updateSunDirection(deltaTime);
 
 
-        if (lighting->isShadowsEnabled()) {
+        if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
-            lighting->updateShadowMap(*renderer, camera->getPlayer()->getPosition());
+            lighting->updateCSMShadowMaps(*renderer, view);
 
             glEndQuery(GL_TIME_ELAPSED);
         }
@@ -526,7 +527,7 @@ void App::render() {
         }
 
     	if (lighting->isShadowMapEnabled())
-    		lighting->drawShadowMapPreview();
+    		lighting->drawCSMShadowMapPreview(lighting->debugPreviewLayer);
 
 
         // Finalize ImGui rendering
@@ -607,6 +608,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
     lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+    lighting->uploadCSMUniforms(*activeShader, view);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
 
@@ -867,6 +869,12 @@ void App::debugWindow() {
                     	bool shadowsEnabled = lighting->isShadowsEnabled();
                         if (ImGui::Checkbox("Shadows", &shadowsEnabled))
 							lighting->setShadowsEnabled(shadowsEnabled);
+
+                        ImGui::Checkbox("Debug Cascades", &lighting->debugCascades);
+
+                        int maxLayer = static_cast<int>(lighting->shadowCascadeLevels.size());
+                        ImGui::SliderInt("Preview Cascade Layer", &lighting->debugPreviewLayer, 0, maxLayer);
+
                     	bool shadowMapEnabled = lighting->isShadowMapEnabled();
                     	if (ImGui::Checkbox("Shadow Map (DEBUG)", &shadowMapEnabled))
                     		lighting->setShowShadowMapEnabled(shadowMapEnabled);
@@ -918,6 +926,10 @@ void App::debugWindow() {
                             	float shadowOrthoRange = lighting->getShadowOrthoRange();
                             	float shadowNearPlane = lighting->getShadowNearPlane();
                             	float shadowFarPlane = lighting->getShadowFarPlane();
+                                float shadowMinBias = lighting->getShadowMapMinBias();
+                                float shadowMaxBias = lighting->getShadowMapMaxBias();
+                                float shadowContactOffset = lighting->getShadowMapContactOffset();
+
                             	ImGui::Text("Shadow Controls");
                                 if (ImGui::SliderInt("Shadow Update Interval (frames)", &shadowUpdateInterval, 1, 60))
                                 	lighting->setShadowUpdateInterval(shadowUpdateInterval);
@@ -927,9 +939,13 @@ void App::debugWindow() {
                                 	lighting->setShadowNearPlane(shadowNearPlane);
                                 if (ImGui::SliderFloat("Shadow Far Plane", &shadowFarPlane, 50.0f, 2000.0f, "%.1f"))
                                 	lighting->setShadowFarPlane(shadowFarPlane);
-                                // ImGui::SliderFloat("Shadow min Bias", &MIN_BIAS, 0.0f, 0.00035f, "%.5f");
-                                // ImGui::SliderFloat("Shadow max Bias", &MAX_BIAS, 0.0f, 0.0010f, "%.4f");
-                                // ImGui::SliderFloat("Shadow Contact Offset", &shadowContactOffset, 0.0f, 0.0015f, "%.5f");
+                                if (ImGui::SliderFloat("Shadow min Bias", &shadowMinBias, 0.0f, 0.0005f, "%.5f"))
+                                	lighting->setShadowMapMinBias(shadowMinBias);
+                                if (ImGui::SliderFloat("Shadow max Bias", &shadowMaxBias, 0.0f, 0.003f, "%.5f"))
+                                	lighting->setShadowMapMaxBias(shadowMaxBias);
+                                if (ImGui::SliderFloat("Shadow Contact Offset", &shadowContactOffset, 0.0f, 0.003f, "%.5f"))
+                                    lighting->setShadowMapContactOffset(shadowContactOffset);
+
                                 // ImGui::SliderInt("Shadow PCF Radius", &PCF_RADIUS, 1, 5);
                                 // ImGui::SliderInt("Shadow Poisson Samples", &POISSON_SAMPLES, 1, 64);
                                 // ImGui::SliderFloat("Shadow Poisson Radius Base", &POISSON_RADIUS_BASE, 0.1f, 5.0f, "%.2f");

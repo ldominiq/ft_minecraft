@@ -4,7 +4,6 @@ in VS_OUT {
     vec3 FragPos;
     vec3 Normal;
     vec2 TexCoord;
-    vec4 FragPosLightSpace;
 } fs_in;
 
 out vec4 FragColor;
@@ -64,6 +63,10 @@ struct Shadows {
 };
 
 #define NR_POINT_LIGHTS 3
+#define MAX_CASCADES 5
+
+uniform bool debugCascades;   // toggle from ImGui
+int debugCascadeLayer = -1;   // set by CSMShadowCalculation
 
 uniform sampler2D atlas;
 uniform DirLight dirLight;
@@ -80,6 +83,14 @@ uniform int renderType;
 uniform bool blinn;
 
 uniform Shadows shadows;
+
+// CSM uniforms
+uniform sampler2DArray shadowMapArray;
+uniform mat4 lightSpaceMatrices[MAX_CASCADES];
+uniform float cascadePlaneDistances[MAX_CASCADES - 1]; // N-1 split points for N cascades
+uniform int cascadeCount;
+uniform float farPlane;
+uniform mat4 view;
 
 vec2 poissonDisk[16] = vec2[]( 
    vec2( -0.94201624, -0.39906216 ), 
@@ -123,6 +134,7 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir);
 vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
 vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
 float ShadowCalculation(Shadows shadows, vec4 fragPosLightSpace);
+float CSMShadowCalculation(vec3 fragPosWorldSpace);
 
 void main()
 {    
@@ -157,6 +169,24 @@ void main()
         FragColor = vec4(result * color, 1.0);
     }
 
+    // ── Cascade debug overlay ──
+    // Tints each cascade a different color so you can see the boundaries
+    if (debugCascades && debugCascadeLayer >= 0)
+    {
+        vec3 cascadeColor;
+        if (debugCascadeLayer == 0)
+            cascadeColor = vec3(1.0, 0.0, 0.0);  // Red   — closest
+        else if (debugCascadeLayer == 1)
+            cascadeColor = vec3(0.0, 1.0, 0.0);  // Green
+        else if (debugCascadeLayer == 2)
+            cascadeColor = vec3(0.0, 0.0, 1.0);  // Blue
+        else
+            cascadeColor = vec3(1.0, 1.0, 0.0);  // Yellow — farthest
+
+        // Mix: 80% original color + 20% cascade tint
+        FragColor = vec4(mix(FragColor.rgb, cascadeColor, 0.2), FragColor.a);
+    }
+
     //FragColor = vec4(lighting, texColor.a); // Lighting
     //FragColor = vec4(fs_in.TexCoord, 0.0, 1.0); // Visualize texture coordinates
 
@@ -177,6 +207,85 @@ vec2 rotate(vec2 v, float a) {
     return vec2(c*v.x - s*v.y, s*v.x + c*v.y);
 }
 
+float CSMShadowCalculation(vec3 fragPosWorldSpace)
+{
+    // 1. Find fragment depth in VIEW SPACE.
+    //    We need to know how far this fragment is from the camera
+    //    so we can pick the right cascade.
+    vec4 fragPosViewSpace = view * vec4(fragPosWorldSpace, 1.0);
+    float depthValue = abs(fragPosViewSpace.z);
+
+    // 2. Select the cascade layer.
+    //    Walk through the split distances until we find the first
+    //    cascade whose far plane is beyond our depth.
+    //
+    //    cascadePlaneDistances[] has (cascadeCount - 1) entries:
+    //      cascade 0: near      → cascadePlaneDistances[0]
+    //      cascade 1: cpd[0]    → cascadePlaneDistances[1]
+    //      ...
+    //      cascade N: cpd[N-1]  → farPlane
+    int layer = cascadeCount - 1;
+    for (int i = 0; i < cascadeCount - 1; ++i)
+    {
+        if (depthValue < cascadePlaneDistances[i])
+        {
+            layer = i;
+            break;
+        }
+    }
+
+    // Store for debug visualization
+    debugCascadeLayer = layer;
+
+    // 3. Project fragment into the selected cascade's light space.
+    vec4 fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
+
+    // Perspective divide (ortho makes w=1, but good practice)
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+
+    // Transform from [-1,1] NDC to [0,1] texture coordinates
+    projCoords = projCoords * 0.5 + 0.5;
+
+    // 4. Beyond the last cascade → no shadow
+    if (projCoords.z > 1.0)
+    {
+        return 0.0;
+    }
+
+    float currentDepth = projCoords.z;
+
+    // 5. Bias — scale per cascade.
+    //    Larger cascades cover more world space per texel,
+    //    so they need more bias to avoid shadow acne.
+    vec3 normal = normalize(fs_in.Normal);
+    vec3 lightDir = normalize(-dirLight.direction);
+    float ndotl = max(dot(normal, lightDir), 0.0);
+    float baseBias = max(shadows.MAX_BIAS * (1.0 - ndotl), shadows.MIN_BIAS);
+
+    // Scale bias by the cascade's far plane distance —
+    // farther cascades have larger texels so need more bias
+    float bias = baseBias * float(layer + 1);
+
+    // 6. PCF (Percentage Closer Filtering).
+    //    Sample neighboring texels for softer shadow edges.
+    //    texture() with a vec3: xy = position, z = layer index.
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / vec2(textureSize(shadowMapArray, 0));
+    for (int x = -1; x <= 1; ++x)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            float pcfDepth = texture(
+                shadowMapArray,
+                vec3(projCoords.xy + vec2(x, y) * texelSize, layer)
+            ).r;
+            shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
+
+    return shadow;
+}
 
 float ShadowCalculation(Shadows shadows, vec4 fragPosLightSpace)
 {
@@ -252,7 +361,10 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     // calculate shadow
     float shadow = 0.0;
     if (shadows.enabled)
-        shadow = ShadowCalculation(shadows, fs_in.FragPosLightSpace);       
+        if (light.direction.y < 0.0)
+        {
+            shadow = CSMShadowCalculation(fs_in.FragPos);
+        }   
     vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular));    
     return (lighting);
 }

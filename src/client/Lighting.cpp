@@ -45,7 +45,10 @@ Lighting::~Lighting() {
         glDeleteFramebuffers(1, &depthMapFBO);
 
         glDeleteVertexArrays(1, &cloudsVAO);
-        
+
+        glDeleteTextures(1, &csmDepthMaps);
+        glDeleteFramebuffers(1, &csmFBO);
+
     } else {
         lightCubeVAO = 0;
         lightCubeVBO = 0;
@@ -56,6 +59,8 @@ Lighting::~Lighting() {
         depthMap = 0;
         depthMapFBO = 0;
         cloudFBO = nullptr;
+        csmDepthMaps = 0;
+        csmFBO = 0;
     }
 }
 
@@ -240,7 +245,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
 
     if (shadowsEnabled) {
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
     }
 
     // Lighting uniforms
@@ -383,9 +388,11 @@ void Lighting::updateShadowMap(const Renderer& renderer, const glm::vec3& camera
         shadowDepthShader->setMat4("model", model);
         glBindVertexArray(planeVAO);
         glDrawArrays(GL_TRIANGLES, 0, 6);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glCullFace(GL_BACK);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 
         // Immediately restore viewport after unbinding framebuffer
         glViewport(0, 0, width, height);
@@ -453,6 +460,26 @@ void Lighting::drawShadowMapPreview() {
     drawTexturePreviewQuad(depthMap);
 }
 
+void Lighting::drawCSMShadowMapPreview(int cascadeLayer)
+{
+    // Use the shadow debug shader but bind a specific layer
+    // For now, just show which layer is selected in ImGui
+    // A proper implementation needs a shader that samples
+    // texture(sampler2DArray, vec3(uv, layer))
+    
+    // Quick hack: use glTextureView to create a 2D view of one layer
+    GLuint layerView;
+    glGenTextures(1, &layerView);
+    glTextureView(layerView, GL_TEXTURE_2D, csmDepthMaps,
+                  GL_DEPTH_COMPONENT32F,
+                  0, 1,           // mip levels
+                  cascadeLayer, 1); // one layer
+    
+    drawTexturePreviewQuad(layerView);
+    
+    glDeleteTextures(1, &layerView);
+}
+
 void Lighting::initShadowDebugShader() const {
     shadowDebugShader->use();
     shadowDebugShader->setInt("depthMap", 0);
@@ -507,6 +534,252 @@ void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
     glBindVertexArray(0);
 
     if (depthEnabled) glEnable(GL_DEPTH_TEST);
+}
+
+// CSM
+std::vector<glm::vec4> Lighting::getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view)
+{
+    //  We know the coordinates of the corners of the NDC cube: the coordinates are in the range [-1,1] on the three axes.
+    //  Because matrix multiplication is a reversible process, we can apply the inverse of the view and projection matrices
+    //  on the corner points of the NDC cube to get the frustum corners in world space.
+    const auto inv = glm::inverse(proj * view);
+    
+    std::vector<glm::vec4> frustumCorners;
+    for (unsigned int x = 0; x < 2; ++x)
+    {
+        for (unsigned int y = 0; y < 2; ++y)
+        {
+            for (unsigned int z = 0; z < 2; ++z)
+            {
+                const glm::vec4 pt = 
+                    inv * glm::vec4(
+                        2.0f * x - 1.0f,
+                        2.0f * y - 1.0f,
+                        2.0f * z - 1.0f,
+                        1.0f);
+                frustumCorners.push_back(pt / pt.w);
+            }
+        }
+    }
+    
+    return frustumCorners;
+}
+
+glm::mat4 Lighting::getLightSpaceMatrix(const float nearPlane, const float farPlane, const glm::mat4& view) const {
+    const auto proj = glm::perspective(
+        glm::radians(80.0f),
+        (float) width / (float) height,
+        nearPlane,
+        farPlane
+    );
+
+    std::vector<glm::vec4> corners = getFrustumCornersWorldSpace(proj, view);
+
+    glm::vec3 center = glm::vec3(0, 0, 0);
+    for (const auto& v : corners)
+    {
+        center += glm::vec3(v);
+    }
+    center /= corners.size();
+
+    const glm::vec3 lightDir = getDirectionalLightDirection();
+    const auto lightView = glm::lookAt(
+        center + lightDir,
+        center,
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+
+
+    float minX = std::numeric_limits<float>::max();
+    float maxX = std::numeric_limits<float>::lowest();
+    float minY = std::numeric_limits<float>::max();
+    float maxY = std::numeric_limits<float>::lowest();
+    float minZ = std::numeric_limits<float>::max();
+    float maxZ = std::numeric_limits<float>::lowest();
+    for (const auto& v : corners)
+    {
+        const auto trf = lightView * v;
+        minX = std::min(minX, trf.x);
+        maxX = std::max(maxX, trf.x);
+        minY = std::min(minY, trf.y);
+        maxY = std::max(maxY, trf.y);
+        minZ = std::min(minZ, trf.z);
+        maxZ = std::max(maxZ, trf.z);
+    }
+
+    // Before creating the actual projection matrix we are going to increase the size of the space covered by the near and far
+    // plane of the light frustum. We do this by "pulling back" the near plane, and "pushing away" the far plane.
+    // We achieve this by dividing or multiplying by zMult. This is because we want to include geometry which is behind
+    // or in front of our frustum in camera space. Not only geometry which is in the frustum can cast shadows on a surface
+    // in the frustum
+    
+    // Tune this parameter according to the scene
+    constexpr float zMult = 10.0f;
+    if (minZ < 0)
+    {
+        minZ *= zMult;
+    }
+    else
+    {
+        minZ /= zMult;
+    }
+    if (maxZ < 0)
+    {
+        maxZ /= zMult;
+    }
+    else
+    {
+        maxZ *= zMult;
+    }
+    
+    const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+
+    return lightProjection * lightView;
+}
+
+std::vector<glm::mat4> Lighting::getLightSpaceMatrices(const glm::mat4& cameraView) const
+{
+    std::vector<glm::mat4> matrices;
+
+    // Number of cascades = shadowCascadeLevels.size() + 1
+    // Cascade 0: cameraNearPlane → shadowCascadeLevels[0]
+    // Cascade 1: shadowCascadeLevels[0] → shadowCascadeLevels[1]
+    // ...
+    // Cascade N: shadowCascadeLevels[N-1] → cameraFarPlane
+
+    for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i)
+    {
+        float near = (i == 0) ? 0.1f : shadowCascadeLevels[i - 1];
+        float far  = (i < shadowCascadeLevels.size()) ? shadowCascadeLevels[i] : cameraFarPlane;
+        matrices.push_back(getLightSpaceMatrix(near, far, cameraView));
+    }
+
+    return matrices;
+}
+
+void Lighting::initCSMResources()
+{
+    // Depth shader with geometry shader for layered rendering
+    csmDepthShader = std::make_shared<Shader>(
+        "shaders/csmDepth.vert",
+        "shaders/csmDepth.geom",
+        "shaders/csmDepth.frag");
+    // NOTE: you'll also need to attach a geometry shader — see below for options
+
+    // Texture array: one layer per cascade
+    glGenTextures(1, &csmDepthMaps);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
+    glTexImage3D(
+        GL_TEXTURE_2D_ARRAY,
+        0,                          // mip level
+        GL_DEPTH_COMPONENT32F,      // internal format (32-bit float depth)
+        depthMapResolution,         // width per layer
+        depthMapResolution,         // height per layer
+        int(shadowCascadeLevels.size()) + 1,                // number of layers
+        0,                          // border
+        GL_DEPTH_COMPONENT,         // format
+        GL_FLOAT,                   // type
+        nullptr                     // no data yet
+    );
+
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+    // FBO — we'll attach layers individually or use layered rendering
+    glGenFramebuffers(1, &csmFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
+    
+    // Attach the ENTIRE texture array (all layers) as the depth attachment.
+    // This is what enables "layered rendering" — the geometry shader picks
+    // which layer each triangle goes to via gl_Layer.
+    glFramebufferTexture(
+        GL_FRAMEBUFFER,
+        GL_DEPTH_ATTACHMENT,
+        csmDepthMaps,
+        0                           // mip level
+    );
+
+    // We only write depth, no color output
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "ERROR::CSM::FRAMEBUFFER_NOT_COMPLETE\n";
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // lightSpaceMatrices.resize(CSM_NUM_CASCADES);
+    // cascadeSplits.resize(CSM_NUM_CASCADES + 1);
+}
+
+void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView)
+{
+    // 1. Compute all light-space matrices for current camera position
+    csmLightSpaceMatrices = getLightSpaceMatrices(cameraView);
+
+    // 2. Bind shader and upload matrices
+    csmDepthShader->use();
+    for (size_t i = 0; i < csmLightSpaceMatrices.size(); ++i)
+    {
+        csmDepthShader->setMat4(
+            "lightSpaceMatrices[" + std::to_string(i) + "]",
+            csmLightSpaceMatrices[i]);
+    }
+
+    // 3. Bind FBO and render
+    glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
+    glViewport(0, 0, depthMapResolution, depthMapResolution);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    // glCullFace(GL_FRONT);  // peter panning fix
+
+    renderer.render(csmDepthShader);
+
+    // glCullFace(GL_BACK);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // Restore viewport
+    glViewport(0, 0, width, height);
+}
+
+void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraView) const
+{
+    shader.use();
+
+    shader.setMat4("view", cameraView);
+
+    // Upload all light-space matrices
+    for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i)
+    {
+        shader.setMat4(
+            "lightSpaceMatrices[" + std::to_string(i) + "]",
+            csmLightSpaceMatrices[i]);
+    }
+
+    // Upload the cascade far-plane distances (view-space Z values).
+    // The fragment shader compares the fragment's view-space depth
+    // against these to pick the right cascade.
+    for (size_t i = 0; i < shadowCascadeLevels.size(); ++i)
+    {
+        shader.setFloat(
+            "cascadePlaneDistances[" + std::to_string(i) + "]",
+            shadowCascadeLevels[i]);
+    }
+
+    shader.setInt("cascadeCount", static_cast<int>(shadowCascadeLevels.size()) + 1);
+    shader.setFloat("farPlane", cameraFarPlane);
+
+    // Bind the shadow map array to a texture unit
+    // You're already using GL_TEXTURE0 (block atlas) and GL_TEXTURE1 (old shadow map)
+    // Let's use GL_TEXTURE2 for the CSM array
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
+    shader.setInt("shadowMapArray", 2);
+
+    shader.setInt("debugCascades", debugCascades);
 }
 
 // Setters
