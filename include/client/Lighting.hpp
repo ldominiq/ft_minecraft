@@ -106,7 +106,9 @@ public:
     void uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraView) const;
     bool debugCascades = true;
     void drawCSMShadowMapPreview(int cascadeLayer);
-    std::vector<float> shadowCascadeLevels{ 500 / 50.0f, 500 / 25.0f, 500 / 10.0f, 500 / 2.0f };
+    void drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cameraFront, const glm::mat4& cameraView);
+    bool showCSMDebugView = false;
+    std::vector<float> shadowCascadeLevels{ 25.0f, 100.0f };  // 2 splits → 3 cascades: [0.1–25], [25–100], [100–500]
     int debugPreviewLayer = 0;
 
 
@@ -126,7 +128,7 @@ public:
     bool isShadowsEnabled() const { return shadowsEnabled; };
     bool isShadowMapEnabled() const { return showShadowMap; };
     bool isCloudsEnabled() const { return cloudsEnabled; };
-    bool isSunAboveHorizon() const { return directionalLightDir.y > 0.5f; }
+    bool isSunAboveHorizon() const { return directionalLightDir.y > 0.1f; }
     
     GLuint getShadowMapTexture() const { return depthMap; };
     GLuint getCloudTexture() const;
@@ -275,7 +277,7 @@ private:
     std::shared_ptr<Shader> csmDepthShader;
     GLuint csmFBO = 0;
     GLuint csmDepthMaps = 0;
-    unsigned int depthMapResolution = 4096;
+    unsigned int depthMapResolution = 2048;
     float cameraFarPlane = 500.0f;
     std::vector<glm::mat4> csmLightSpaceMatrices;
 

@@ -122,6 +122,7 @@ target_link_libraries(imgui PUBLIC glfw ${CMAKE_DL_LIBS})
 file(GLOB_RECURSE SHADER_FILES
         "${CMAKE_SOURCE_DIR}/shaders/*.vert"
         "${CMAKE_SOURCE_DIR}/shaders/*.frag"
+        "${CMAKE_SOURCE_DIR}/shaders/*.geom"
 )
 
 add_custom_target(update_shaders DEPENDS ${SHADER_FILES})
