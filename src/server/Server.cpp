@@ -178,6 +178,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		return ;
 
 	const auto &ent = std::find(world->livingEntities.begin(), world->livingEntities.end(), player->movement);
+	if (ent == world->livingEntities.end())
+		return ;
 
 	for (CPlayerInfo &p : players)
 	{
@@ -197,8 +199,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 
 		sendPacketTo(pkt, p.addr);
 	}
-
 	world->livingEntities.erase(ent);
+
 	players.erase(player);
 }
 
