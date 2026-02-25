@@ -256,7 +256,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 			entityPtr->prevPosition = position;
 			entityPtr->nextPosition = position;
 			entityPtr->positionUpdated = true;
-			entityPtr->lastTickClientTime = lastTickClientTime;
+			entityPtr->glfwTickTime = glfwTickTime;
 			livingEntitiesManager.add(entityPtr);
 
 			// Convert to shared_ptr<LivingEntity> safely
