@@ -199,8 +199,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 
 		sendPacketTo(pkt, p.addr);
 	}
-	world->livingEntities.erase(ent);
 
+	world->livingEntities.erase(ent);
 	players.erase(player);
 }
 
