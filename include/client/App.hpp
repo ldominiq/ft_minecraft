@@ -230,6 +230,7 @@ private:
 
     // PROFILING
     bool profilingEnabled = false;
+    bool showProfilerWindow = false;
     static constexpr int QUERY_POOL_SIZE = 3;
     GLuint queryDrawSkyPool[QUERY_POOL_SIZE];
     GLuint queryDrawCloudsPool[QUERY_POOL_SIZE];
