@@ -1,4 +1,7 @@
 #include "Lighting.hpp"
+#include <algorithm>
+#include <cmath>
+#include <imgui.h>
 
 Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screenWidth), height(screenHeight) {
     // VAO for fullscreen triangle (no attributes needed)
@@ -223,6 +226,9 @@ void Lighting::updateSunDirection(const float deltaTime) {
         sunDirLocal.x * std::sin(sunYawRad) + sunDirLocal.z * std::cos(sunYawRad)
     ));
     directionalLightDir = sunDir;
+    // Always keep cachedShadowLightDir in sync so the day/night factor
+    // and shader direction are correct even when shadow rendering is skipped.
+    cachedShadowLightDir = -directionalLightDir;
 }
 
 void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cameraPos, const glm::vec3 cameraFront) const {
@@ -243,10 +249,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     shader.setFloat("shadows.CONTACT_OFFSET", shadowContactOffset);
     shader.setFloat("shadows.enabled", shadowsEnabled);
 
-    if (shadowsEnabled) {
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
-    }
+    // CSM depth maps are bound separately in uploadCSMUniforms()
 
     // Lighting uniforms
     // ====================================
@@ -257,17 +260,19 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     // directional light
     if (directionalLightOn) {
 
-        // day/night factror based on sun elevation
-        float day = glm::clamp(-cachedShadowLightDir.y * 2.0f, 0.0f, 1.0f);
+        // day/night factor based on sun elevation
+        // directionalLightDir.y > 0 means sun above horizon
+        float sunElevation = directionalLightDir.y;
+        float day = glm::clamp(sunElevation * 2.0f, 0.0f, 1.0f);
         // smooth transition near sunset/sunrise
         day = glm::smoothstep(0.0f, 1.0f, day);
 
-        // small ambiant light at night
+        // small ambient light at night
         constexpr float nightAmbientMin = 0.3f;
         const glm::vec3 ambientColor = directionalAmbientColor * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
         const glm::vec3 diffuseColor = directionalDiffuseColor * day;
         const glm::vec3 specularColor = directionalSpecularColor * day;
-        shader.setVec3("dirLight.direction", cachedShadowLightDir);
+        shader.setVec3("dirLight.direction", -directionalLightDir);
         shader.setVec3("dirLight.ambient", ambientColor);
         shader.setVec3("dirLight.diffuse", diffuseColor);
         shader.setVec3("dirLight.specular", specularColor);
@@ -480,6 +485,355 @@ void Lighting::drawCSMShadowMapPreview(int cascadeLayer)
     glDeleteTextures(1, &layerView);
 }
 
+void Lighting::drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cameraFront, const glm::mat4& cameraView)
+{
+    const int numCascades = static_cast<int>(shadowCascadeLevels.size()) + 1;
+
+    // Persistent state across frames
+    static float zoomLevel = 1.0f;
+    static bool showLightFrustums = true;
+    static bool showCameraFrustums = true;
+    static bool showGrid = true;
+    static bool frozen = false;
+    static glm::vec3 frozenCameraPos;
+    static glm::vec3 frozenCameraFront;
+    static glm::mat4 frozenCameraView;
+
+    // When freezing, capture current state; when unfreezing, use live data
+    const glm::vec3& drawPos   = frozen ? frozenCameraPos   : cameraPos;
+    const glm::vec3& drawFront = frozen ? frozenCameraFront : cameraFront;
+    const glm::mat4& drawView  = frozen ? frozenCameraView  : cameraView;
+
+    ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("CSM Cascade Radar", &showCSMDebugView)) {
+        ImGui::End();
+        return;
+    }
+
+    // --- Controls ---
+    if (ImGui::Button(frozen ? "Unfreeze" : "Freeze")) {
+        frozen = !frozen;
+        if (frozen) {
+            frozenCameraPos   = cameraPos;
+            frozenCameraFront = cameraFront;
+            frozenCameraView  = cameraView;
+        }
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("Grid", &showGrid);
+    ImGui::SameLine();
+    ImGui::Checkbox("Camera", &showCameraFrustums);
+    ImGui::SameLine();
+    ImGui::Checkbox("Light", &showLightFrustums);
+
+    ImGui::SliderFloat("Zoom", &zoomLevel, 0.1f, 10.0f, "%.1fx");
+
+    if (frozen) {
+        ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "FROZEN - move camera to compare");
+    }
+
+    // --- Canvas setup ---
+    ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+    ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+    // Reserve space for the stats panel below
+    float statsHeight = 20.0f * numCascades + 30.0f;
+    float side = std::min(canvasSize.x, canvasSize.y - statsHeight);
+    if (side < 80.0f) { ImGui::End(); return; }
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 center(canvasPos.x + side * 0.5f, canvasPos.y + side * 0.5f);
+    float worldRadius = (cameraFarPlane / zoomLevel) * 1.1f;
+
+    // Clip drawing to canvas
+    drawList->PushClipRect(canvasPos, ImVec2(canvasPos.x + side, canvasPos.y + side), true);
+
+    // Background
+    drawList->AddRectFilled(canvasPos, ImVec2(canvasPos.x + side, canvasPos.y + side),
+                            IM_COL32(15, 15, 20, 240));
+
+    // Helper: world XZ → screen pixel (north-up, centered on player)
+    auto worldToRadar = [&](float wx, float wz) -> ImVec2 {
+        float dx = wx - drawPos.x;
+        float dz = wz - drawPos.z;
+        float sx = center.x + (dx / worldRadius) * (side * 0.45f);
+        float sy = center.y + (dz / worldRadius) * (side * 0.45f);
+        return ImVec2(sx, sy);
+    };
+
+    // --- Grid ---
+    if (showGrid) {
+        // Pick a nice grid spacing based on zoom
+        float gridSpacing = 50.0f;
+        if (worldRadius > 400) gridSpacing = 100.0f;
+        if (worldRadius > 800) gridSpacing = 200.0f;
+        if (worldRadius < 100) gridSpacing = 25.0f;
+        if (worldRadius < 50)  gridSpacing = 10.0f;
+
+        float startW = floorf(drawPos.x / gridSpacing - worldRadius / gridSpacing) * gridSpacing;
+        float endW   = ceilf(drawPos.x / gridSpacing + worldRadius / gridSpacing) * gridSpacing;
+
+        for (float w = startW; w <= endW; w += gridSpacing) {
+            ImVec2 a = worldToRadar(w, drawPos.z - worldRadius);
+            ImVec2 b = worldToRadar(w, drawPos.z + worldRadius);
+            drawList->AddLine(a, b, IM_COL32(50, 50, 50, 120), 1.0f);
+        }
+        startW = floorf(drawPos.z / gridSpacing - worldRadius / gridSpacing) * gridSpacing;
+        endW   = ceilf(drawPos.z / gridSpacing + worldRadius / gridSpacing) * gridSpacing;
+        for (float w = startW; w <= endW; w += gridSpacing) {
+            ImVec2 a = worldToRadar(drawPos.x - worldRadius, w);
+            ImVec2 b = worldToRadar(drawPos.x + worldRadius, w);
+            drawList->AddLine(a, b, IM_COL32(50, 50, 50, 120), 1.0f);
+        }
+
+        // Scale label
+        ImVec2 scaleStart = worldToRadar(drawPos.x - gridSpacing * 0.5f, drawPos.z + worldRadius * 0.85f);
+        ImVec2 scaleEnd   = worldToRadar(drawPos.x + gridSpacing * 0.5f, drawPos.z + worldRadius * 0.85f);
+        drawList->AddLine(scaleStart, scaleEnd, IM_COL32(150, 150, 150, 180), 2.0f);
+        char scaleTxt[32];
+        snprintf(scaleTxt, sizeof(scaleTxt), "%.0f blocks", gridSpacing);
+        drawList->AddText(ImVec2((scaleStart.x + scaleEnd.x) * 0.5f - 25, scaleStart.y + 3),
+                          IM_COL32(150, 150, 150, 180), scaleTxt);
+    }
+
+    // --- Cascade colors ---
+    const ImU32 cascadeFills[] = {
+        IM_COL32(255, 80,  80,  35),
+        IM_COL32(80,  255, 80,  35),
+        IM_COL32(80,  80,  255, 35),
+        IM_COL32(255, 255, 80,  35),
+        IM_COL32(255, 80,  255, 35),
+    };
+    const ImU32 cascadeOutlines[] = {
+        IM_COL32(255, 100, 100, 220),
+        IM_COL32(100, 255, 100, 220),
+        IM_COL32(100, 100, 255, 220),
+        IM_COL32(255, 255, 100, 220),
+        IM_COL32(255, 100, 255, 220),
+    };
+    const ImU32 lightBoxFills[] = {
+        IM_COL32(255, 80,  80,  18),
+        IM_COL32(80,  255, 80,  18),
+        IM_COL32(80,  80,  255, 18),
+        IM_COL32(255, 255, 80,  18),
+        IM_COL32(255, 80,  255, 18),
+    };
+    const ImU32 lightBoxOutlines[] = {
+        IM_COL32(255, 100, 100, 120),
+        IM_COL32(100, 255, 100, 120),
+        IM_COL32(100, 100, 255, 120),
+        IM_COL32(255, 255, 100, 120),
+        IM_COL32(255, 100, 255, 120),
+    };
+
+    // Precompute per-cascade data for drawing and stats
+    struct CascadeInfo {
+        float nearP, farP;
+        float orthoW, orthoH;       // light ortho box size in world units
+        float texelsPerUnit;         // resolution utilization
+    };
+    std::vector<CascadeInfo> cascadeInfos(numCascades);
+
+    // --- Draw cascades (back to front so closer ones draw on top) ---
+    for (int c = numCascades - 1; c >= 0; --c) {
+        float nearP = (c == 0) ? 0.1f : shadowCascadeLevels[c - 1];
+        float farP  = (c < static_cast<int>(shadowCascadeLevels.size())) ? shadowCascadeLevels[c] : cameraFarPlane;
+        int colorIdx = c % 5;
+
+        const auto proj = glm::perspective(
+            glm::radians(80.0f),
+            static_cast<float>(width) / static_cast<float>(height),
+            nearP, farP
+        );
+        auto corners = getFrustumCornersWorldSpace(proj, drawView);
+
+        // --- Camera frustum (trapezoid) ---
+        if (showCameraFrustums) {
+            std::vector<ImVec2> pts;
+            pts.reserve(8);
+            for (auto& corner : corners) {
+                pts.push_back(worldToRadar(corner.x, corner.z));
+            }
+            ImVec2 centroid(0, 0);
+            for (auto& p : pts) { centroid.x += p.x; centroid.y += p.y; }
+            centroid.x /= static_cast<float>(pts.size());
+            centroid.y /= static_cast<float>(pts.size());
+            std::sort(pts.begin(), pts.end(), [&](const ImVec2& a, const ImVec2& b) {
+                return atan2f(a.y - centroid.y, a.x - centroid.x) <
+                       atan2f(b.y - centroid.y, b.x - centroid.x);
+            });
+            drawList->AddConvexPolyFilled(pts.data(), static_cast<int>(pts.size()), cascadeFills[colorIdx]);
+            drawList->AddPolyline(pts.data(), static_cast<int>(pts.size()), cascadeOutlines[colorIdx], ImDrawFlags_Closed, 1.5f);
+
+            // Label at centroid
+            char label[8];
+            snprintf(label, sizeof(label), "C%d", c);
+            drawList->AddText(ImVec2(centroid.x - 6, centroid.y - 6), cascadeOutlines[colorIdx], label);
+        }
+
+        // --- Light ortho box ---
+        // Reconstruct the ortho box from the light-space matrix by inverting it
+        // The 8 corners of the NDC cube [-1,1]^3, transformed by inverse(lightSpaceMatrix), give the world-space ortho box
+        if (showLightFrustums && c < static_cast<int>(csmLightSpaceMatrices.size())) {
+            auto lightCorners = getFrustumCornersWorldSpace(
+                glm::mat4(1.0f), // identity view — the lightSpaceMatrix already includes both proj and view
+                csmLightSpaceMatrices[c]
+            );
+            // Note: getFrustumCornersWorldSpace computes inv(proj * view), so passing (identity, lsm)
+            // gives inv(lsm) applied to NDC corners = world-space light box corners
+
+            // Compute ortho dimensions from light-space bounds for stats
+            glm::vec3 lCenter(0);
+            for (auto& v : corners) lCenter += glm::vec3(v);
+            lCenter /= static_cast<float>(corners.size());
+
+            const glm::vec3 lightDir = getDirectionalLightDirection();
+            const auto lightView = glm::lookAt(lCenter + lightDir, lCenter, glm::vec3(0, 1, 0));
+
+            float minX = std::numeric_limits<float>::max(), maxX = std::numeric_limits<float>::lowest();
+            float minY = std::numeric_limits<float>::max(), maxY = std::numeric_limits<float>::lowest();
+            for (auto& v : corners) {
+                auto trf = lightView * v;
+                minX = std::min(minX, trf.x); maxX = std::max(maxX, trf.x);
+                minY = std::min(minY, trf.y); maxY = std::max(maxY, trf.y);
+            }
+            cascadeInfos[c].nearP = nearP;
+            cascadeInfos[c].farP  = farP;
+            cascadeInfos[c].orthoW = maxX - minX;
+            cascadeInfos[c].orthoH = maxY - minY;
+            cascadeInfos[c].texelsPerUnit = static_cast<float>(depthMapResolution) / std::max(cascadeInfos[c].orthoW, cascadeInfos[c].orthoH);
+
+            // Draw light ortho box projected to XZ (dashed outline)
+            std::vector<ImVec2> lpts;
+            lpts.reserve(8);
+            for (auto& corner : lightCorners) {
+                lpts.push_back(worldToRadar(corner.x, corner.z));
+            }
+            ImVec2 lcentroid(0, 0);
+            for (auto& p : lpts) { lcentroid.x += p.x; lcentroid.y += p.y; }
+            lcentroid.x /= static_cast<float>(lpts.size());
+            lcentroid.y /= static_cast<float>(lpts.size());
+            std::sort(lpts.begin(), lpts.end(), [&](const ImVec2& a, const ImVec2& b) {
+                return atan2f(a.y - lcentroid.y, a.x - lcentroid.x) <
+                       atan2f(b.y - lcentroid.y, b.x - lcentroid.x);
+            });
+            drawList->AddConvexPolyFilled(lpts.data(), static_cast<int>(lpts.size()), lightBoxFills[colorIdx]);
+            // Dashed-look outline (thinner)
+            drawList->AddPolyline(lpts.data(), static_cast<int>(lpts.size()), lightBoxOutlines[colorIdx], ImDrawFlags_Closed, 1.0f);
+        }
+    }
+
+    // --- Player dot ---
+    drawList->AddCircleFilled(center, 5.0f, IM_COL32(255, 255, 255, 255));
+    drawList->AddCircle(center, 5.0f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+
+    // --- Camera direction arrow ---
+    glm::vec2 fwd(drawFront.x, drawFront.z);
+    float fwdLen = glm::length(fwd);
+    if (fwdLen > 0.001f) {
+        fwd /= fwdLen;
+        float arrowLen = side * 0.08f;
+        ImVec2 tip(center.x + fwd.x * arrowLen, center.y + fwd.y * arrowLen);
+        drawList->AddLine(center, tip, IM_COL32(255, 255, 255, 230), 2.5f);
+        glm::vec2 perp(-fwd.y, fwd.x);
+        float hs = 6.0f;
+        ImVec2 left (tip.x - fwd.x * hs + perp.x * hs * 0.5f,
+                     tip.y - fwd.y * hs + perp.y * hs * 0.5f);
+        ImVec2 right(tip.x - fwd.x * hs - perp.x * hs * 0.5f,
+                     tip.y - fwd.y * hs - perp.y * hs * 0.5f);
+        drawList->AddTriangleFilled(tip, left, right, IM_COL32(255, 255, 255, 230));
+    }
+
+    // --- If frozen, show live camera position as a ghost ---
+    if (frozen) {
+        ImVec2 livePos = worldToRadar(cameraPos.x, cameraPos.z);
+        drawList->AddCircleFilled(livePos, 3.0f, IM_COL32(255, 100, 100, 180));
+
+        glm::vec2 liveFwd(cameraFront.x, cameraFront.z);
+        float lfl = glm::length(liveFwd);
+        if (lfl > 0.001f) {
+            liveFwd /= lfl;
+            float al = side * 0.05f;
+            ImVec2 lt(livePos.x + liveFwd.x * al, livePos.y + liveFwd.y * al);
+            drawList->AddLine(livePos, lt, IM_COL32(255, 100, 100, 150), 1.5f);
+        }
+    }
+
+    // --- Sun direction indicator ---
+    glm::vec2 lightXZ(directionalLightDir.x, directionalLightDir.z);
+    float lLen = glm::length(lightXZ);
+    if (lLen > 0.001f) {
+        lightXZ /= lLen;
+        float sunLen = side * 0.44f;
+        ImVec2 sunPos(center.x + lightXZ.x * sunLen, center.y + lightXZ.y * sunLen);
+        drawList->AddCircleFilled(sunPos, 7.0f, IM_COL32(255, 200, 50, 200));
+        drawList->AddCircle(sunPos, 7.0f, IM_COL32(255, 230, 100, 255), 0, 1.5f);
+
+        // Sun direction line from center
+        drawList->AddLine(center, sunPos, IM_COL32(255, 200, 50, 60), 1.0f);
+    }
+
+    // --- Mouse hover: show world coordinate ---
+    ImVec2 mousePos = ImGui::GetMousePos();
+    if (mousePos.x >= canvasPos.x && mousePos.x < canvasPos.x + side &&
+        mousePos.y >= canvasPos.y && mousePos.y < canvasPos.y + side) {
+        float relX = (mousePos.x - center.x) / (side * 0.45f) * worldRadius + drawPos.x;
+        float relZ = (mousePos.y - center.y) / (side * 0.45f) * worldRadius + drawPos.z;
+        char coordTxt[64];
+        snprintf(coordTxt, sizeof(coordTxt), "(%.0f, %.0f)", relX, relZ);
+        drawList->AddText(ImVec2(mousePos.x + 12, mousePos.y - 8), IM_COL32(200, 200, 200, 200), coordTxt);
+    }
+
+    drawList->PopClipRect();
+
+    // Border
+    drawList->AddRect(canvasPos, ImVec2(canvasPos.x + side, canvasPos.y + side),
+                      IM_COL32(80, 80, 80, 255));
+
+    // Reserve canvas space
+    ImGui::Dummy(ImVec2(side, side));
+
+    // --- Per-cascade stats table ---
+    ImGui::Separator();
+    ImGui::Text("Cascade Stats (res: %u)", depthMapResolution);
+    if (ImGui::BeginTable("csm_stats", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("Cascade");
+        ImGui::TableSetupColumn("Near");
+        ImGui::TableSetupColumn("Far");
+        ImGui::TableSetupColumn("Ortho Size");
+        ImGui::TableSetupColumn("Texels/Block");
+        ImGui::TableHeadersRow();
+
+        for (int c = 0; c < numCascades; ++c) {
+            int ci = c % 5;
+            ImVec4 col;
+            col.x = ((cascadeOutlines[ci] >>  0) & 0xFF) / 255.0f;
+            col.y = ((cascadeOutlines[ci] >>  8) & 0xFF) / 255.0f;
+            col.z = ((cascadeOutlines[ci] >> 16) & 0xFF) / 255.0f;
+            col.w = 1.0f;
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn(); ImGui::TextColored(col, "C%d", c);
+            ImGui::TableNextColumn(); ImGui::Text("%.1f", cascadeInfos[c].nearP);
+            ImGui::TableNextColumn(); ImGui::Text("%.1f", cascadeInfos[c].farP);
+            ImGui::TableNextColumn(); ImGui::Text("%.0fx%.0f", cascadeInfos[c].orthoW, cascadeInfos[c].orthoH);
+            ImGui::TableNextColumn();
+            float tpu = cascadeInfos[c].texelsPerUnit;
+            if (tpu > 4.0f)
+                ImGui::TextColored(ImVec4(0.3f, 1, 0.3f, 1), "%.1f", tpu);
+            else if (tpu > 1.0f)
+                ImGui::TextColored(ImVec4(1, 1, 0.3f, 1), "%.1f", tpu);
+            else
+                ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "%.1f", tpu);
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Text("Player: (%.0f, %.0f, %.0f)", drawPos.x, drawPos.y, drawPos.z);
+
+    ImGui::End();
+}
+
 void Lighting::initShadowDebugShader() const {
     shadowDebugShader->use();
     shadowDebugShader->setInt("depthMap", 0);
@@ -607,31 +961,32 @@ glm::mat4 Lighting::getLightSpaceMatrix(const float nearPlane, const float farPl
         maxZ = std::max(maxZ, trf.z);
     }
 
-    // Before creating the actual projection matrix we are going to increase the size of the space covered by the near and far
-    // plane of the light frustum. We do this by "pulling back" the near plane, and "pushing away" the far plane.
-    // We achieve this by dividing or multiplying by zMult. This is because we want to include geometry which is behind
-    // or in front of our frustum in camera space. Not only geometry which is in the frustum can cast shadows on a surface
-    // in the frustum
-    
-    // Tune this parameter according to the scene
-    constexpr float zMult = 10.0f;
-    if (minZ < 0)
-    {
-        minZ *= zMult;
-    }
-    else
-    {
-        minZ /= zMult;
-    }
-    if (maxZ < 0)
-    {
-        maxZ /= zMult;
-    }
-    else
-    {
-        maxZ *= zMult;
-    }
-    
+    // Extend the Z range to capture shadow casters behind the camera frustum.
+    // A fixed extension is more predictable than the old multiplicative zMult=3.0
+    // which wasted resolution by over-expanding the volume.
+    // Pull near plane back to catch casters behind the view frustum,
+    // and push far plane to catch distant casters.
+    constexpr float zExtendBack = 150.0f;   // blocks behind the frustum
+    constexpr float zExtendFront = 50.0f;   // blocks beyond the frustum
+    minZ -= zExtendBack;
+    maxZ += zExtendFront;
+
+    // ── Texel-snapping ──
+    // Without this, as the camera moves the ortho projection shifts by sub-texel
+    // amounts, causing shadows to shimmer/swim.  We quantize the projection so
+    // that each camera movement snaps to whole shadow-map texels.
+    //
+    // Algorithm (from NVIDIA CSM paper & OGLDev tutorial 49):
+    //   1. Compute the world-space size of one shadow-map texel.
+    //   2. Snap minX/maxX and minY/maxY to multiples of that size.
+    const float worldUnitsPerTexelX = (maxX - minX) / static_cast<float>(depthMapResolution);
+    const float worldUnitsPerTexelY = (maxY - minY) / static_cast<float>(depthMapResolution);
+
+    minX = std::floor(minX / worldUnitsPerTexelX) * worldUnitsPerTexelX;
+    maxX = std::floor(maxX / worldUnitsPerTexelX) * worldUnitsPerTexelX;
+    minY = std::floor(minY / worldUnitsPerTexelY) * worldUnitsPerTexelY;
+    maxY = std::floor(maxY / worldUnitsPerTexelY) * worldUnitsPerTexelY;
+
     const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
 
     return lightProjection * lightView;
@@ -659,12 +1014,14 @@ std::vector<glm::mat4> Lighting::getLightSpaceMatrices(const glm::mat4& cameraVi
 
 void Lighting::initCSMResources()
 {
-    // Depth shader with geometry shader for layered rendering
+    // Depth shader — simple vertex + fragment, no geometry shader.
+    // Multi-pass rendering (one draw call per cascade) avoids the
+    // geometry shader overhead that was tripling per-triangle cost.
     csmDepthShader = std::make_shared<Shader>(
         "shaders/csmDepth.vert",
-        "shaders/csmDepth.geom",
         "shaders/csmDepth.frag");
-    // NOTE: you'll also need to attach a geometry shader — see below for options
+
+    const int numCascades = static_cast<int>(shadowCascadeLevels.size()) + 1;
 
     // Texture array: one layer per cascade
     glGenTextures(1, &csmDepthMaps);
@@ -675,7 +1032,7 @@ void Lighting::initCSMResources()
         GL_DEPTH_COMPONENT32F,      // internal format (32-bit float depth)
         depthMapResolution,         // width per layer
         depthMapResolution,         // height per layer
-        int(shadowCascadeLevels.size()) + 1,                // number of layers
+        numCascades,                // number of layers
         0,                          // border
         GL_DEPTH_COMPONENT,         // format
         GL_FLOAT,                   // type
@@ -689,18 +1046,17 @@ void Lighting::initCSMResources()
     float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
     glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
 
-    // FBO — we'll attach layers individually or use layered rendering
+    // FBO — layer attachment is done per-pass in updateCSMShadowMaps()
     glGenFramebuffers(1, &csmFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
-    
-    // Attach the ENTIRE texture array (all layers) as the depth attachment.
-    // This is what enables "layered rendering" — the geometry shader picks
-    // which layer each triangle goes to via gl_Layer.
-    glFramebufferTexture(
+
+    // Attach layer 0 initially so the FBO is complete
+    glFramebufferTextureLayer(
         GL_FRAMEBUFFER,
         GL_DEPTH_ATTACHMENT,
         csmDepthMaps,
-        0                           // mip level
+        0,                          // mip level
+        0                           // layer
     );
 
     // We only write depth, no color output
@@ -711,34 +1067,33 @@ void Lighting::initCSMResources()
         std::cerr << "ERROR::CSM::FRAMEBUFFER_NOT_COMPLETE\n";
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // lightSpaceMatrices.resize(CSM_NUM_CASCADES);
-    // cascadeSplits.resize(CSM_NUM_CASCADES + 1);
 }
 
 void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView)
 {
     // 1. Compute all light-space matrices for current camera position
+    cachedShadowLightDir = -directionalLightDir;
     csmLightSpaceMatrices = getLightSpaceMatrices(cameraView);
 
-    // 2. Bind shader and upload matrices
+    const int numCascades = static_cast<int>(csmLightSpaceMatrices.size());
+
     csmDepthShader->use();
-    for (size_t i = 0; i < csmLightSpaceMatrices.size(); ++i)
+    glViewport(0, 0, depthMapResolution, depthMapResolution);
+
+    // 2. Multi-pass: render each cascade into its own texture array layer.
+    //    This avoids the geometry shader overhead which was tripling per-triangle
+    //    cost and hurting FPS on geometry-heavy voxel scenes.
+    for (int i = 0; i < numCascades; ++i)
     {
-        csmDepthShader->setMat4(
-            "lightSpaceMatrices[" + std::to_string(i) + "]",
-            csmLightSpaceMatrices[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
+        glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                  csmDepthMaps, 0, i);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        csmDepthShader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
+        renderer.render(csmDepthShader);
     }
 
-    // 3. Bind FBO and render
-    glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
-    glViewport(0, 0, depthMapResolution, depthMapResolution);
-    glClear(GL_DEPTH_BUFFER_BIT);
-    // glCullFace(GL_FRONT);  // peter panning fix
-
-    renderer.render(csmDepthShader);
-
-    // glCullFace(GL_BACK);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // Restore viewport

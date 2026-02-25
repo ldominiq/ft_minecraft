@@ -180,8 +180,10 @@ void main()
             cascadeColor = vec3(0.0, 1.0, 0.0);  // Green
         else if (debugCascadeLayer == 2)
             cascadeColor = vec3(0.0, 0.0, 1.0);  // Blue
+        else if (debugCascadeLayer == 3)
+            cascadeColor = vec3(1.0, 1.0, 0.0);  // Yellow
         else
-            cascadeColor = vec3(1.0, 1.0, 0.0);  // Yellow — farthest
+            cascadeColor = vec3(1.0, 0.0, 1.0);  // Magenta — farthest
 
         // Mix: 80% original color + 20% cascade tint
         FragColor = vec4(mix(FragColor.rgb, cascadeColor, 0.2), FragColor.a);
@@ -218,12 +220,6 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
     // 2. Select the cascade layer.
     //    Walk through the split distances until we find the first
     //    cascade whose far plane is beyond our depth.
-    //
-    //    cascadePlaneDistances[] has (cascadeCount - 1) entries:
-    //      cascade 0: near      → cascadePlaneDistances[0]
-    //      cascade 1: cpd[0]    → cascadePlaneDistances[1]
-    //      ...
-    //      cascade N: cpd[N-1]  → farPlane
     int layer = cascadeCount - 1;
     for (int i = 0; i < cascadeCount - 1; ++i)
     {
@@ -254,35 +250,52 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
 
     float currentDepth = projCoords.z;
 
-    // 5. Bias — scale per cascade.
-    //    Larger cascades cover more world space per texel,
-    //    so they need more bias to avoid shadow acne.
+    // 5. Bias — scale proportional to the texel size of this cascade.
+    //    Larger cascades cover more world space per texel, so they
+    //    need proportionally more bias.  We derive the scale from the
+    //    shadow map resolution vs the cascade's projected extent (which
+    //    is encoded implicitly in the texel size of the projCoords).
     vec3 normal = normalize(fs_in.Normal);
     vec3 lightDir = normalize(-dirLight.direction);
     float ndotl = max(dot(normal, lightDir), 0.0);
     float baseBias = max(shadows.MAX_BIAS * (1.0 - ndotl), shadows.MIN_BIAS);
 
-    // Scale bias by the cascade's far plane distance —
-    // farther cascades have larger texels so need more bias
-    float bias = baseBias * float(layer + 1);
+    // Each successive cascade covers roughly 4× the area of the previous,
+    // so texel size doubles.  Scale bias accordingly.
+    float cascadeScale = 1.0 + float(layer) * 0.5;
+    float bias = baseBias * cascadeScale;
 
     // 6. PCF (Percentage Closer Filtering).
     //    Sample neighboring texels for softer shadow edges.
-    //    texture() with a vec3: xy = position, z = layer index.
     float shadow = 0.0;
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMapArray, 0));
-    for (int x = -1; x <= 1; ++x)
+
+    // Use a larger PCF kernel for far cascades where individual
+    // texels cover more world space (reduces blockiness).
+    int pcfRadius = 1 + layer;  // cascade 0→3×3, 1→5×5, 2→7×7
+    float sampleCount = 0.0;
+    for (int x = -pcfRadius; x <= pcfRadius; ++x)
     {
-        for (int y = -1; y <= 1; ++y)
+        for (int y = -pcfRadius; y <= pcfRadius; ++y)
         {
             float pcfDepth = texture(
                 shadowMapArray,
                 vec3(projCoords.xy + vec2(x, y) * texelSize, layer)
             ).r;
             shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
+            sampleCount += 1.0;
         }
     }
-    shadow /= 9.0;
+    shadow /= sampleCount;
+
+    // 7. Fade shadow at the edge of the last cascade to avoid hard cutoff.
+    float maxDist = (layer == cascadeCount - 1) ? farPlane : cascadePlaneDistances[layer];
+    float fadeStart = maxDist * 0.9;
+    if (depthValue > fadeStart && layer == cascadeCount - 1)
+    {
+        float t = (depthValue - fadeStart) / (maxDist - fadeStart);
+        shadow *= 1.0 - clamp(t, 0.0, 1.0);
+    }
 
     return shadow;
 }

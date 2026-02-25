@@ -529,6 +529,11 @@ void App::render() {
     	if (lighting->isShadowMapEnabled())
     		lighting->drawCSMShadowMapPreview(lighting->debugPreviewLayer);
 
+    	if (lighting->showCSMDebugView)
+    		lighting->drawCSMDebugView(
+    			camera->getPlayer()->getPosition(),
+    			camera->getPlayer()->getCameraDir(),
+    			view);
 
         // Finalize ImGui rendering
         ImGui::Render();
@@ -871,6 +876,7 @@ void App::debugWindow() {
 							lighting->setShadowsEnabled(shadowsEnabled);
 
                         ImGui::Checkbox("Debug Cascades", &lighting->debugCascades);
+                        ImGui::Checkbox("CSM Debug View (All Cascades)", &lighting->showCSMDebugView);
 
                         int maxLayer = static_cast<int>(lighting->shadowCascadeLevels.size());
                         ImGui::SliderInt("Preview Cascade Layer", &lighting->debugPreviewLayer, 0, maxLayer);
@@ -939,11 +945,11 @@ void App::debugWindow() {
                                 	lighting->setShadowNearPlane(shadowNearPlane);
                                 if (ImGui::SliderFloat("Shadow Far Plane", &shadowFarPlane, 50.0f, 2000.0f, "%.1f"))
                                 	lighting->setShadowFarPlane(shadowFarPlane);
-                                if (ImGui::SliderFloat("Shadow min Bias", &shadowMinBias, 0.0f, 0.0005f, "%.5f"))
+                                if (ImGui::SliderFloat("Shadow min Bias", &shadowMinBias, -0.005f, 0.0005f, "%.5f"))
                                 	lighting->setShadowMapMinBias(shadowMinBias);
-                                if (ImGui::SliderFloat("Shadow max Bias", &shadowMaxBias, 0.0f, 0.003f, "%.5f"))
+                                if (ImGui::SliderFloat("Shadow max Bias", &shadowMaxBias, -0.003f, 0.003f, "%.5f"))
                                 	lighting->setShadowMapMaxBias(shadowMaxBias);
-                                if (ImGui::SliderFloat("Shadow Contact Offset", &shadowContactOffset, 0.0f, 0.003f, "%.5f"))
+                                if (ImGui::SliderFloat("Shadow Contact Offset", &shadowContactOffset, -0.003f, 0.003f, "%.5f"))
                                     lighting->setShadowMapContactOffset(shadowContactOffset);
 
                                 // ImGui::SliderInt("Shadow PCF Radius", &PCF_RADIUS, 1, 5);
