@@ -741,8 +741,8 @@ void App::debugWindow() {
                 size_t waterVertices = 0;
                 for (auto& weakChunk : renderer->getRenderedChunks()) {
                     if (auto chunk = weakChunk.lock()) {
-                        solidVertices += chunk->getMeshVerticesSize() / 10;
-                        waterVertices += chunk->getWaterMeshVerticesSize() / 10;
+                        solidVertices += chunk->getMeshVerticesSize() / 9;
+                        waterVertices += chunk->getWaterMeshVerticesSize() / 9;
                     }
                 }
                 

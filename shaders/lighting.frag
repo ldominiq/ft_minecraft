@@ -4,7 +4,6 @@ in VS_OUT {
     vec3 FragPos;
     vec3 Normal;
     vec2 TexCoord;
-    float SkyLight;
 } fs_in;
 
 out vec4 FragColor;
@@ -381,14 +380,9 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     if (shadows.enabled)
         if (light.direction.y < 0.0)
         {
-            // If the fragment is underground (skyLight == 0), force full shadow
-            // without querying the shadow map — CSM can't reliably detect
-            // underground blocks at steep sun angles.
-            if (fs_in.SkyLight < 0.5)
-                shadow = 1.0;
-            else
-                shadow = CSMShadowCalculation(fs_in.FragPos);
-        }   
+            shadow = CSMShadowCalculation(fs_in.FragPos);
+        }
+
     vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular));    
     return (lighting);
 }
