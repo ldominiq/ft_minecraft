@@ -74,25 +74,6 @@ void ChunkRenderer::updateMesh()
 	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
 }
 
-void ChunkRenderer::computeHeightMap(const std::vector<BlockType>& blockTypeVector) {
-	// For each XZ column, find the highest opaque (solid) block.
-	// heightMap stores Y+1 of the highest solid block, so any block at Y < heightMap[col]
-	// is considered underground and won't receive directional sunlight.
-	for (int x = 0; x < WIDTH; ++x) {
-		for (int z = 0; z < DEPTH; ++z) {
-			int topY = 0;
-			for (int y = HEIGHT - 1; y >= 0; --y) {
-				int idx = x + WIDTH * (y + HEIGHT * z);
-				if (isBlockSolid(blockTypeVector[idx])) {
-					topY = y + 1;
-					break;
-				}
-			}
-			heightMap[x * DEPTH + z] = topY;
-		}
-	}
-}
-
 void ChunkRenderer::addFace(int x, int y, int z, int face) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
@@ -155,13 +136,6 @@ void ChunkRenderer::addFace(int x, int y, int z, int face) {
     const float flippedRow = static_cast<float>(ATLAS_ROWS - 1) - tileCoord.y;
     glm::vec2 offset = { tileCoord.x * TILE_W, flippedRow * TILE_H };
 
-    // Sky-light: 1.0 if this block face can see the sky, 0.0 if underground.
-    // heightMap[col] = topY+1 of the highest solid block in the column.
-    // A block at Y is the surface block when Y+1 == hm, so it should be lit.
-    // Only blocks fully below the surface (y+1 < hm) are underground.
-    int hm = heightMap[x * DEPTH + z];
-    float skyLight = (y + 1 >= hm) ? 1.0f : 0.0f;
-
     // Build six vertices for this face using the computed light
     for (int i = 0; i < 6; ++i) {
         float px = faceX + faceData[face][i * 3 + 0];
@@ -183,7 +157,6 @@ void ChunkRenderer::addFace(int x, int y, int z, int face) {
         meshVertices.push_back(normal.x);
         meshVertices.push_back(normal.y);
         meshVertices.push_back(normal.z);
-        meshVertices.push_back(skyLight); // sky exposure for shadow determination
     }
 }
 
@@ -241,10 +214,6 @@ void ChunkRenderer::addWaterFace(int x, int y, int z, int face) {
 
     glm::vec3 normal = faceNormals[face];
 
-    // Water sky-light
-    int hm = heightMap[x * DEPTH + z];
-    float skyLight = (y + 1 >= hm) ? 1.0f : 0.0f;
-
     // Build six vertices for this face
     for (int i = 0; i < 6; ++i) {
         float px = faceX + faceData[face][i * 3 + 0];
@@ -263,7 +232,6 @@ void ChunkRenderer::addWaterFace(int x, int y, int z, int face) {
         waterMeshVertices.push_back(normal.x);
         waterMeshVertices.push_back(normal.y);
         waterMeshVertices.push_back(normal.z);
-        waterMeshVertices.push_back(skyLight); // sky exposure
     }
 }
 
@@ -286,9 +254,6 @@ void ChunkRenderer::buildMeshData() {
         uint32_t paletteIndex = decodedIndices[i];
         blockTypeVector[i] = palette[paletteIndex];
     }
-
-    // Build per-column heightmap for sky-light determination
-    computeHeightMap(blockTypeVector);
 
     auto getBlockOrNeighbor = [&](int x, int y, int z, int dx, int dy, int dz, Direction dir) -> BlockType {
         if (x + dx < 0 || x + dx >= WIDTH ||
@@ -380,7 +345,7 @@ void ChunkRenderer::uploadMesh() {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, meshVertices.size() * sizeof(float), meshVertices.data(), GL_STATIC_DRAW);
 
-    GLsizei stride = 10 * sizeof(float);
+    GLsizei stride = 9 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, static_cast<void *>(nullptr));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(3 * sizeof(float)));
@@ -389,8 +354,6 @@ void ChunkRenderer::uploadMesh() {
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(9 * sizeof(float)));
-    glEnableVertexAttribArray(4);
     
     meshVerticesSize = meshVertices.size();
     meshVertices.clear();
@@ -415,8 +378,6 @@ void ChunkRenderer::uploadMesh() {
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
         glEnableVertexAttribArray(3);
-        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(9 * sizeof(float)));
-        glEnableVertexAttribArray(4);
         
         waterMeshVerticesSize = waterMeshVertices.size();
     } else {
