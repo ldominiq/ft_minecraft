@@ -431,6 +431,9 @@ void App::render() {
             lighting->updateCSMShadowMaps(*renderer, view);
 
             glEndQuery(GL_TIME_ELAPSED);
+            shadowQueryIssuedThisFrame[currentQueryIndex] = true;
+        } else {
+            shadowQueryIssuedThisFrame[currentQueryIndex] = false;
         }
 
         // Render to debug framebuffers if enabled
@@ -551,36 +554,49 @@ void App::render() {
         glfwPollEvents();
 
         if (profilingEnabled) {
-            int readIndex = (currentQueryIndex + 2) % QUERY_POOL_SIZE;
-            profilingCallbackApp(queryDrawSkyPool[readIndex], measuredAverageNsDrawSky, measuredAverageMsDrawSky);
-            profilingCallbackApp(queryDrawCloudsPool[readIndex], measuredAverageNsDrawClouds, measuredAverageMsDrawClouds);
-            profilingCallbackApp(queryDrawWaterReflectionPool[readIndex], measuredAverageNsDrawWaterReflection, measuredAverageMsDrawWaterReflection);
-            profilingCallbackApp(queryRenderShaderPool[readIndex], measuredAverageNsRenderShader, measuredAverageMsRenderShader);
-            profilingCallbackApp(queryRenderWaterPool[readIndex], measuredAverageNsRenderWater, measuredAverageMsRenderWater);
-            profilingCallbackApp(queryDrawShadowsPool[readIndex], measuredAverageNsDrawShadows, measuredAverageMsDrawShadows);
-            profilingCallbackApp(queryDrawEntities[readIndex], measuredAverageNsDrawEntities, measuredAverageMsDrawEntities);
+            // Read results from 2 frames ago to give the GPU time to finish
+            int readIndex = (currentQueryIndex + QUERY_POOL_SIZE - 2) % QUERY_POOL_SIZE;
+            float a = profilingEMASmoothing;
+
+            readGPUQueryEMA(queryDrawSkyPool[readIndex], measuredAverageMsDrawSky, a);
+            readGPUQueryEMA(queryDrawCloudsPool[readIndex], measuredAverageMsDrawClouds, a);
+            readGPUQueryEMA(queryDrawWaterReflectionPool[readIndex], measuredAverageMsDrawWaterReflection, a);
+            readGPUQueryEMA(queryRenderShaderPool[readIndex], measuredAverageMsRenderShader, a);
+            readGPUQueryEMA(queryRenderWaterPool[readIndex], measuredAverageMsRenderWater, a);
+            readGPUQueryEMA(queryDrawEntities[readIndex], measuredAverageMsDrawEntities, a);
+
+            // Shadows: only read if the query was actually issued that frame.
+            // Otherwise smoothly decay toward 0 so the display reflects reality.
+            if (shadowQueryIssuedThisFrame[readIndex]) {
+                readGPUQueryEMA(queryDrawShadowsPool[readIndex], measuredAverageMsDrawShadows, a);
+            } else {
+                // Decay toward 0 when shadows are not being rendered
+                measuredAverageMsDrawShadows *= (1.0 - a);
+            }
         }
     }
 }
 
-void profilingCallbackApp(GLuint queryId, double &measuredAverageNs, double &measuredAverageMs)
+bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
 {
-    static std::unordered_map<GLuint, GLuint64> totalQueryTimeNs;
-    static std::unordered_map<GLuint, GLuint64> numQueries;
-    
     // Check if result is available (non-blocking)
     GLint available = 0;
     glGetQueryObjectiv(queryId, GL_QUERY_RESULT_AVAILABLE, &available);
-    if (!available) return; // Skip if GPU hasn't finished yet
-    
+    if (!available) return false;
+
     GLuint64 elapsed = 0;
     glGetQueryObjectui64v(queryId, GL_QUERY_RESULT, &elapsed);
-    
-    numQueries[queryId]++;
-    totalQueryTimeNs[queryId] += elapsed;
 
-    measuredAverageNs = (double)totalQueryTimeNs[queryId] / (double)numQueries[queryId];
-    measuredAverageMs = measuredAverageNs * 1.0e-6;
+    double sampleMs = static_cast<double>(elapsed) * 1.0e-6;
+
+    // Exponential moving average: smoothed = alpha * sample + (1 - alpha) * smoothed
+    // On first sample (smoothedMs == 0), just use the raw value
+    if (smoothedMs <= 0.0)
+        smoothedMs = sampleMs;
+    else
+        smoothedMs = alpha * sampleMs + (1.0 - alpha) * smoothedMs;
+
+    return true;
 }
 
 void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
@@ -1176,29 +1192,35 @@ void App::debugWindow() {
 
         // ── Detachable Profiler Window ──
         if (showProfilerWindow) {
-            ImGui::SetNextWindowSize(ImVec2(520, 320), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(580, 400), ImGuiCond_FirstUseEver);
             ImGui::SetNextWindowPos(ImVec2(600, 10), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("GPU Profiler", &showProfilerWindow)) {
                 ImGui::Text("FPS: %.1f (%.3f ms/frame)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
                 ImGui::Separator();
 
                 // Calculate totals
-                float totalGPU = measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
-                                measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
-                                measuredAverageMsRenderWater + measuredAverageMsDrawEntities;
+                float totalGPU = static_cast<float>(
+                    measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
+                    measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
+                    measuredAverageMsRenderWater + measuredAverageMsDrawEntities);
 
-                auto showTimingBar = [&](const char* label, float ms, ImVec4 color) {
-                    float percent = totalGPU > 0.0f ? (ms / totalGPU) * 100.0f : 0.0f;
+                // Frame budget target
+                static float targetFPS = 60.0f;
+                float targetFrameTime = 1000.0f / targetFPS;
+
+                auto showTimingBar = [&](const char* label, double ms, ImVec4 color) {
+                    float msf = static_cast<float>(ms);
+                    float percent = totalGPU > 0.0f ? (msf / totalGPU) * 100.0f : 0.0f;
 
                     ImGui::Text("%-20s", label);
                     ImGui::SameLine();
 
                     ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color);
-                    ImGui::ProgressBar(ms / 16.67f, ImVec2(200, 0), "");
+                    ImGui::ProgressBar(msf / targetFrameTime, ImVec2(200, 0), "");
                     ImGui::PopStyleColor();
 
                     ImGui::SameLine();
-                    ImGui::Text("%.3f ms (%.1f%%)", ms, percent);
+                    ImGui::Text("%.3f ms (%.1f%%)", msf, percent);
                 };
 
                 showTimingBar("Sky",           measuredAverageMsDrawSky,             ImVec4(0.2f, 0.6f, 1.0f, 1.0f));
@@ -1213,13 +1235,33 @@ void App::debugWindow() {
                 ImGui::Text("Total GPU: %.3f ms (%.1f FPS budget)", totalGPU, totalGPU > 0.0f ? 1000.0f / totalGPU : 0.0f);
 
                 // Color-coded frame budget indicator
-                float targetFrameTime = 16.67f; // 60 FPS
                 if (totalGPU > targetFrameTime) {
                     ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "WARNING: Over frame budget!");
                 } else if (totalGPU > targetFrameTime * 0.8f) {
-                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "CAUTION: Near frame budget");
+                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "CAUTION: Near frame budget (>80%%)");
                 } else {
                     ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Performance OK");
+                }
+
+                // ── Settings ──
+                ImGui::Separator();
+                if (ImGui::CollapsingHeader("Profiler Settings")) {
+                    ImGui::SliderFloat("Smoothing (EMA alpha)", &profilingEMASmoothing, 0.01f, 0.5f, "%.2f");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("?")) {
+                        ImGui::SetTooltip("Lower = smoother/slower, Higher = noisier/faster response");
+                    }
+                    ImGui::SliderFloat("Target FPS", &targetFPS, 30.0f, 240.0f, "%.0f");
+
+                    if (ImGui::Button("Reset Averages")) {
+                        measuredAverageMsDrawSky = 0.0;
+                        measuredAverageMsDrawClouds = 0.0;
+                        measuredAverageMsDrawWaterReflection = 0.0;
+                        measuredAverageMsDrawShadows = 0.0;
+                        measuredAverageMsRenderShader = 0.0;
+                        measuredAverageMsRenderWater = 0.0;
+                        measuredAverageMsDrawEntities = 0.0;
+                    }
                 }
             }
             ImGui::End();

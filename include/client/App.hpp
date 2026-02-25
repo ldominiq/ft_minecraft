@@ -77,7 +77,9 @@ enum controls {
     CONTROL_COUNT
 };
 
-void profilingCallbackApp(GLuint queryId, double &measuredAverageNs, double &measuredAverageMs);
+// Read a GPU timer query result and apply exponential moving average.
+// Returns true if a new sample was read, false if query wasn't ready.
+bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha);
 
 class App {
 public:
@@ -231,26 +233,30 @@ private:
     // PROFILING
     bool profilingEnabled = false;
     bool showProfilerWindow = false;
-    static constexpr int QUERY_POOL_SIZE = 3;
-    GLuint queryDrawSkyPool[QUERY_POOL_SIZE];
-    GLuint queryDrawCloudsPool[QUERY_POOL_SIZE];
-    GLuint queryDrawWaterReflectionPool[QUERY_POOL_SIZE];
-    GLuint queryDrawShadowsPool[QUERY_POOL_SIZE];
-    GLuint queryRenderShaderPool[QUERY_POOL_SIZE];
-    GLuint queryRenderWaterPool[QUERY_POOL_SIZE];
+    static constexpr int QUERY_POOL_SIZE = 4; // 3+ frames of latency to avoid reading before GPU is done
+    GLuint queryDrawSkyPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawCloudsPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawWaterReflectionPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawShadowsPool[QUERY_POOL_SIZE]{};
+    GLuint queryRenderShaderPool[QUERY_POOL_SIZE]{};
+    GLuint queryRenderWaterPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawEntities[QUERY_POOL_SIZE]{};
 
-    GLuint queryDrawEntities[QUERY_POOL_SIZE];
+    // Track which queries were actually issued this frame (conditional passes like shadows)
+    bool shadowQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
 
     int currentQueryIndex = 0;
 
-    double measuredAverageNsDrawSky = 0.0, measuredAverageMsDrawSky = 0.0;
-    double measuredAverageNsDrawClouds = 0.0, measuredAverageMsDrawClouds = 0.0;
-    double measuredAverageNsDrawWaterReflection = 0.0, measuredAverageMsDrawWaterReflection = 0.0;
-    double measuredAverageNsDrawShadows = 0.0, measuredAverageMsDrawShadows = 0.0;
-    double measuredAverageNsRenderShader = 0.0, measuredAverageMsRenderShader = 0.0;
-    double measuredAverageNsRenderWater = 0.0, measuredAverageMsRenderWater = 0.0;
+    // EMA smoothing factor: 0.05 = slow/smooth, 0.3 = fast/responsive
+    float profilingEMASmoothing = 0.1f;
 
-    double measuredAverageNsDrawEntities = 0.0, measuredAverageMsDrawEntities = 0.0;
+    double measuredAverageMsDrawSky = 0.0;
+    double measuredAverageMsDrawClouds = 0.0;
+    double measuredAverageMsDrawWaterReflection = 0.0;
+    double measuredAverageMsDrawShadows = 0.0;
+    double measuredAverageMsRenderShader = 0.0;
+    double measuredAverageMsRenderWater = 0.0;
+    double measuredAverageMsDrawEntities = 0.0;
 };
 
 #endif //APP_HPP
