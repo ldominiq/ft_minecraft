@@ -1140,55 +1140,10 @@ void App::debugWindow() {
                 	ImGui::EndTabItem();
                 }
                 if (ImGui::BeginTabItem("Profiler")) {
-                    ImGui::Text("GPU Timings");
-                    ImGui::Separator();
-
-                    profilingEnabled = true;
-                    
-                    // Calculate totals
-                    float totalGPU = measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
-                                    measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
-                                    measuredAverageMsRenderWater + measuredAverageMsDrawEntities;
-                    
-                    auto showTimingBar = [&](const char* label, float ms, ImVec4 color) {
-                        float percent = totalGPU > 0.0f ? (ms / totalGPU) * 100.0f : 0.0f;
-                        
-                        // Show label first
-                        ImGui::Text("%-20s", label);
-                        ImGui::SameLine();
-                        
-                        // Progress bar (smaller width)
-                        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color);
-                        ImGui::ProgressBar(ms / 16.67f, ImVec2(200, 0), ""); // Fixed 200px width
-                        ImGui::PopStyleColor();
-                        
-                        ImGui::SameLine();
-                        ImGui::Text("%.3f ms (%.1f%%)", ms, percent);
-                    };
-                    
-                    showTimingBar("Sky", measuredAverageMsDrawSky, ImVec4(0.2f, 0.6f, 1.0f, 1.0f));
-                    showTimingBar("Clouds", measuredAverageMsDrawClouds, ImVec4(0.8f, 0.8f, 0.9f, 1.0f));
-                    showTimingBar("Terrain", measuredAverageMsRenderShader, ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
-                    showTimingBar("Shadows", measuredAverageMsDrawShadows, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-                    showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
-                    showTimingBar("Water Render", measuredAverageMsRenderWater, ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
-                    showTimingBar("Entities", measuredAverageMsDrawEntities, ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
-                    
-                    ImGui::Separator();
-                    ImGui::Text("Total GPU: %.3f ms (%.1f FPS budget)", totalGPU, totalGPU > 0.0f ? 1000.0f / totalGPU : 0.0f);
-                    
-                    // Color-coded frame budget indicator
-                    float targetFrameTime = 16.67f; // 60 FPS
-                    if (totalGPU > targetFrameTime) {
-                        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "WARNING: Over frame budget!");
-                    } else if (totalGPU > targetFrameTime * 0.8f) {
-                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "CAUTION: Near frame budget");
-                    } else {
-                        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Performance OK");
-                    }
-                    
+                    ImGui::Checkbox("Open Profiler Window", &showProfilerWindow);
+                    profilingEnabled = showProfilerWindow;
                     ImGui::EndTabItem();
-                } else {
+                } else if (!showProfilerWindow) {
                     profilingEnabled = false;
                 }
                 ImGui::EndTabBar();
@@ -1217,6 +1172,60 @@ void App::debugWindow() {
             if (!uiInteractive) {
                 ImGui::PopStyleVar();
             }
+        }
+
+        // ── Detachable Profiler Window ──
+        if (showProfilerWindow) {
+            ImGui::SetNextWindowSize(ImVec2(520, 320), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowPos(ImVec2(600, 10), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("GPU Profiler", &showProfilerWindow)) {
+                ImGui::Text("FPS: %.1f (%.3f ms/frame)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
+                ImGui::Separator();
+
+                // Calculate totals
+                float totalGPU = measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
+                                measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
+                                measuredAverageMsRenderWater + measuredAverageMsDrawEntities;
+
+                auto showTimingBar = [&](const char* label, float ms, ImVec4 color) {
+                    float percent = totalGPU > 0.0f ? (ms / totalGPU) * 100.0f : 0.0f;
+
+                    ImGui::Text("%-20s", label);
+                    ImGui::SameLine();
+
+                    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color);
+                    ImGui::ProgressBar(ms / 16.67f, ImVec2(200, 0), "");
+                    ImGui::PopStyleColor();
+
+                    ImGui::SameLine();
+                    ImGui::Text("%.3f ms (%.1f%%)", ms, percent);
+                };
+
+                showTimingBar("Sky",           measuredAverageMsDrawSky,             ImVec4(0.2f, 0.6f, 1.0f, 1.0f));
+                showTimingBar("Clouds",        measuredAverageMsDrawClouds,          ImVec4(0.8f, 0.8f, 0.9f, 1.0f));
+                showTimingBar("Terrain",       measuredAverageMsRenderShader,        ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
+                showTimingBar("Shadows",       measuredAverageMsDrawShadows,         ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+                showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
+                showTimingBar("Water Render",  measuredAverageMsRenderWater,         ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
+                showTimingBar("Entities",      measuredAverageMsDrawEntities,        ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
+
+                ImGui::Separator();
+                ImGui::Text("Total GPU: %.3f ms (%.1f FPS budget)", totalGPU, totalGPU > 0.0f ? 1000.0f / totalGPU : 0.0f);
+
+                // Color-coded frame budget indicator
+                float targetFrameTime = 16.67f; // 60 FPS
+                if (totalGPU > targetFrameTime) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "WARNING: Over frame budget!");
+                } else if (totalGPU > targetFrameTime * 0.8f) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "CAUTION: Near frame budget");
+                } else {
+                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Performance OK");
+                }
+            }
+            ImGui::End();
+
+            // Keep profiling active while window is open
+            profilingEnabled = showProfilerWindow;
         }
 }
 
