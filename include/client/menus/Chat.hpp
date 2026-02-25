@@ -24,7 +24,7 @@ class Chat : public Menu {
 
 	void onRender() override;
 	
-	size_t currentchatLogIndex = 0;
+	size_t currentChatLogIndex = 0;
 
 	public:
 
@@ -34,7 +34,7 @@ class Chat : public Menu {
 		std::string currMsg;
 
 		void cleanMsgSent();
-		void goThroughchatLog(const int key);
+		void goThroughChatLog(const int key);
 		void addCharToCurrMsg(const char &c);
 		void removeCharFromCurrMsg();
 		void updateChatlog(const std::string &str);

@@ -1369,7 +1369,7 @@ void App::processInputMenus(int key, int action) {
 		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 			menuManager.reset();
 		if ((key == GLFW_KEY_UP || key == GLFW_KEY_DOWN) && action == GLFW_PRESS)
-			chat->goThroughchatLog(key);
+			chat->goThroughChatLog(key);
 	}
 
 	// CHOSE MENU (order here IS important. must do after handling events)

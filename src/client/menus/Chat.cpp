@@ -21,21 +21,21 @@ Chat::~Chat()
 void Chat::cleanMsgSent()
 {
 	personalChatLog.push_back(currMsg);
-	currentchatLogIndex = personalChatLog.size();
+	currentChatLogIndex = personalChatLog.size();
 	currMsg.clear();
 }
 
-void Chat::goThroughchatLog(const int key)
+void Chat::goThroughChatLog(const int key)
 {
 	if (personalChatLog.empty())
     	return;
 
-	if (key == GLFW_KEY_UP && currentchatLogIndex > 0)
-    	currentchatLogIndex = std::max<size_t>(currentchatLogIndex - 1, 0);
+	if (key == GLFW_KEY_UP && currentChatLogIndex > 0)
+    	currentChatLogIndex = std::max<size_t>(currentChatLogIndex - 1, 0);
 	else if (key == GLFW_KEY_DOWN)
-		currentchatLogIndex = std::min(currentchatLogIndex + 1, personalChatLog.size() - 1);
+		currentChatLogIndex = std::min(currentChatLogIndex + 1, personalChatLog.size() - 1);
 
-	currMsg = personalChatLog[currentchatLogIndex];
+	currMsg = personalChatLog[currentChatLogIndex];
 }
 
 void Chat::onRender()
@@ -98,6 +98,7 @@ void Chat::renderRecentMessages()
 	}
 
 	glDisable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
 }
 
 void Chat::addCharToCurrMsg(const char &c)
