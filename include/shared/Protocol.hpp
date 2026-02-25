@@ -156,6 +156,7 @@ struct NetPlayerMove final : public Packet {
 	float velocityY;
 	float velocityZ;
 
+	float health; // Health shouldn't really be here as it should probably just be sent when it's updated. but it's whatever!
 
 	NetPlayerMove() : Packet(ID) {}
 
@@ -165,8 +166,9 @@ struct NetPlayerMove final : public Packet {
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
 		w.write_f32(velocityX);
-		w.write_f32(velocityZ);
 		w.write_f32(velocityY);
+		w.write_f32(velocityZ);
+		w.write_f32(health);
     }
     void decode(BufferReader& r) override {
 		serverTick = r.read_i32();
@@ -174,11 +176,30 @@ struct NetPlayerMove final : public Packet {
 		positionY = r.read_f32();
 		positionZ = r.read_f32();
 		velocityX = r.read_f32();
-		velocityZ = r.read_f32();
 		velocityY = r.read_f32();
+		velocityZ = r.read_f32();
+		health = r.read_f32();
     }
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;
+
+
+// TODO : add delta compression & put inside of a new Snapshot packet
+// struct NetOnHit final : public Packet {
+// 	static constexpr PacketType ID = PacketType::NET_ON_HIT;
+
+// 	float health;
+
+// 	NetOnHit() : Packet(ID) {}
+
+//     void encode(BufferWriter& w) const override {
+// 		w.write_f32(health);
+//     }
+//     void decode(BufferReader& r) override {
+// 		health = r.read_f32();
+//     }
+// };
+// inline AutoRegister<NetOnHit> _reg_NetOnHit;
 
 struct NetEntityMove final : public Packet {
 	static constexpr PacketType ID = PacketType::NET_ENTITY_MOVE;

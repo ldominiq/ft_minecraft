@@ -126,6 +126,8 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 	velocity.z = pkt.velocityZ;
 	player->setVelocity(velocity);
 
+	player->health = pkt.health;
+
 	// movement.setPosition(position);
 	player->prevPosition = player->nextPosition;
 	player->nextPosition = position;
@@ -193,8 +195,9 @@ void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer,
 
 	glm::ivec3 blockPos{};
 	glm::ivec3 faceNormal{};
+	LivingEntity* livingEntity = nullptr;
 
-	if (!Renderer->getTargetedBlock(player->getPosition(), glm::normalize(player->Front), blockPos, faceNormal))
+	if (Renderer->getTarget(player->getPosition(), glm::normalize(player->Front), blockPos, faceNormal, livingEntity) != TargetType::Block)
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));

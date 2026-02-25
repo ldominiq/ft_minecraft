@@ -7,6 +7,8 @@ Creeper::Creeper(const glm::vec3 &position):	LivingEntity(position)
 
 	this->entityWidth = 0.6f;
 	this->entityHeight = 20.0f;
+
+	SAFE_FALL_DISTANCE = 20;
 }
 
 Creeper::Creeper(const glm::vec3 &position, float yaw, entityID ID): LivingEntity(position, yaw ,ID)
@@ -15,11 +17,13 @@ Creeper::Creeper(const glm::vec3 &position, float yaw, entityID ID): LivingEntit
 
 	this->entityWidth = 0.6f;
 	this->entityHeight = 20.0f;
+
+	SAFE_FALL_DISTANCE = 20;
 }
 
 glm::vec3 Creeper::getDesiredMove()
 {
-	return glm::vec3(0,0,0);
+	return LivingEntity::getDesiredMove();
 }
 
 void Creeper::calculateNewPosition(const ICommonWorld &world)

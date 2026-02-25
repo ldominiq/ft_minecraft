@@ -81,9 +81,9 @@ class Entity {
 
 		glm::vec3 position{};
 
+		float slipperiness_prev = SM_AIRBORNE;
 		bool onGround = false;
 
-		AABB constructAABB(const glm::vec3 &pos);
 		bool aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world);
 
 		virtual glm::vec3 getDesiredMove() = 0;
@@ -98,10 +98,13 @@ class Entity {
 		float yaw = 0;
 		float pitch = 0;
 
+		AABB constructAABB(const glm::vec3 &pos);
 		bool entityCollidesWithBlock(const glm::vec3 blockPos);
+
 		// position has been changed since last check.
 		bool positionUpdated = true;
 
+		void applyImpulse(const glm::vec3& impulse) { velocity += impulse; }
 		inline virtual EEntityTypes getEntityType() const = 0;
 		virtual void calculateNewPosition(const ICommonWorld &world);
 		inline const glm::vec3 getPosition() const { return position; }

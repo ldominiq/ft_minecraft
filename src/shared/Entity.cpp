@@ -113,7 +113,6 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 	// attempt Y movement
 
 	//NOT CURRENTLY DOING STEP LOGIC. But the boilerplate is still there just in case it's needed in the near future..
-	onGround = false;
 	float remainingDy = velocity.y;
 	while (std::abs(remainingDy) > 0.0f + EPS) {
 		float step = remainingDy;// glm::clamp(remainingDy, -0.99f, 0.99f); // at most ~1 block per sub-step
@@ -201,7 +200,7 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 	// apply gravity
 	velocity.y -= GRAVITY; //gravity
 	velocity.y *= DRAG;
-	if (std::abs(velocity.y) < 0.003 || onGround) velocity.y = 0;
+	if (std::abs(velocity.y) < 0.003) velocity.y = 0;
 
 	// Apply final position
 	setPosition(newPos);

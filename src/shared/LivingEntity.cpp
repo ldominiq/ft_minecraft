@@ -12,10 +12,25 @@ LivingEntity::~LivingEntity() {}
 void LivingEntity::doJump(const ICommonWorld &world)
 {
 	AABB boxFeetProbe = this->constructAABB(glm::vec3(this->position.x, this->position.y -EPS - 0.01f, this->position.z));
-	bool onGround = this->aabbCollidesWithWorld(boxFeetProbe, world);
+	onGround = this->aabbCollidesWithWorld(boxFeetProbe, world);
 
 	if (this->jump && onGround)
 		this->velocity.y = JUMP_VELOCITY;
+}
+
+void LivingEntity::attack(LivingEntity &victim)
+{
+	glm::vec3 knockbackDir{
+		std::cos(glm::radians(yaw)),
+		0.0f,
+		std::sin(glm::radians(yaw))
+	};
+
+	constexpr float strength = 0.4f * 25;		//25 is completely arbitrary testing value
+	constexpr float verticalBoost = 0.1 * 5;	//same with 5
+
+	victim.health -= damage;
+	victim.applyImpulse(knockbackDir * strength + glm::vec3(0.0f, verticalBoost, 0.0f));
 }
 
 void LivingEntity::onDeath()
@@ -26,11 +41,12 @@ void LivingEntity::onDeath()
 void LivingEntity::applyFallDamage()
 {
 	const uint16_t FALL_DAMAGE_MULTIPLIER = 1; //temporally here just to give the idea in case it ends up being used
-	float fallDamage = std::max(0, (int)std::ceil((accumulatedFallDistance - 3.0f) * FALL_DAMAGE_MULTIPLIER));
+	float fallDamage = std::max(0, (int)std::ceil((accumulatedFallDistance - SAFE_FALL_DISTANCE) * FALL_DAMAGE_MULTIPLIER));
 	auto prevH = health;
-	health -= fallDamage;
-	if (prevH != health)
-		std::cout << "HEALTH DROPPED BY : " << fallDamage << "\n";
+	if (fallDamage >= health)
+		health = 0;
+	else
+		health -= fallDamage;
 }
 
 void LivingEntity::calculateNewYPosition(const ICommonWorld &world)
@@ -50,5 +66,37 @@ void LivingEntity::calculateNewYPosition(const ICommonWorld &world)
 glm::vec3 LivingEntity::getDesiredMove()
 {
 	// TODO . just like DoJump....
-	return glm::vec3(0,0,0);
+
+	float effectMultiplier = 1.0f; 
+	float slipperiness = SM_DEFAULT; 
+	float slipperiness_prev = slipperiness;
+
+	float movementMultiplier = MM_WALKING;
+
+	glm::vec2 inputWorld; //temporally here while mob still has no movement
+    inputWorld.x = 0;
+    inputWorld.y = 0;
+
+
+	glm::vec2 prevV(this->velocity.x, this->velocity.z);
+    glm::vec2 momentum = prevV * (slipperiness_prev * 0.91f);
+
+	float accelGround = 0.1f * movementMultiplier * effectMultiplier * std::pow(0.6f / slipperiness, 3.0f);
+	float accelAir    = 0.02f * movementMultiplier;
+	float accel = onGround ? accelGround : accelAir;
+
+	float isMoving = 0; //temporally here while mob still has no movement
+	glm::vec2 accelVec = inputWorld * accel * isMoving;
+
+    glm::vec2 newV = momentum + accelVec;
+
+	this->velocity.x = newV.x;
+	this->velocity.z = newV.y;
+
+	slipperiness_prev = slipperiness;
+
+	if (std::abs(this->velocity.x) < EPS) this->velocity.x = 0;
+	if (std::abs(this->velocity.z) < EPS) this->velocity.z = 0;
+
+	return glm::vec3(this->velocity.x,0,this->velocity.z);
 }

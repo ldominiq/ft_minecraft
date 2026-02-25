@@ -86,14 +86,13 @@ void PlayerMovement::doJump(const ICommonWorld &world)
 {
 	// Determine if on ground by testing a tiny epsilon below feet
 	AABB boxFeetProbe = this->constructAABB(glm::vec3(this->position.x, this->position.y -EPS - 0.01f, this->position.z));
-	bool onGround = this->aabbCollidesWithWorld(boxFeetProbe, world);
+	onGround = this->aabbCollidesWithWorld(boxFeetProbe, world);
 
 	// jump
 	this->jump = lastInputsPktRecvd.keys & IN_UP;
 	const float JUMP_EPS = 0.01f; // TODO (when physics (with pred) work) RECHECK THIS IS USEFUL
 	if (this->jump && onGround && this->velocity.y <= JUMP_EPS) {
 		this->velocity.y = JUMP_VELOCITY;
-		this->onGround = false;
 		jumpBoostApplied = false;
 	}
 }
@@ -102,14 +101,11 @@ glm::vec3 PlayerMovement::getDesiredMove()
 {
     NetPlayerInputs inputs = lastInputsPktRecvd;
 
-    bool ground = true;  
- 
-    float effectMultiplier = 1.0f; 
-    float slipperiness = SM_DEFAULT; 
-    float slipperiness_prev = slipperiness;
+	float effectMultiplier = 1.0f; 
+	float slipperiness = onGround ? SM_DEFAULT : SM_AIRBORNE; 
 
-    float movementMultiplier = MM_WALKING;
-    if (inputs.keys & IN_RUN) movementMultiplier = MM_SPRINTING;
+	float movementMultiplier = MM_WALKING;
+	if (inputs.keys & IN_RUN) movementMultiplier = MM_SPRINTING;
 
 	//x and z inverted for some obscure reason
     float lx = 0.0f, lz = 0.0f;
@@ -120,7 +116,7 @@ glm::vec3 PlayerMovement::getDesiredMove()
 
     bool hasMovementInput = (std::abs(lx) > 0.0f || std::abs(lz) > 0.0f);
 
-    glm::vec2 inputDir(lx, lz);
+	glm::vec2 inputDir(lx, lz);
     if (glm::length(inputDir) > 0.0f) inputDir = glm::normalize(inputDir);
 
     float yawRad = glm::radians(yaw);
@@ -128,25 +124,31 @@ glm::vec3 PlayerMovement::getDesiredMove()
     inputWorld.x = inputDir.x * std::cos(yawRad) - inputDir.y * std::sin(yawRad);
     inputWorld.y = inputDir.x * std::sin(yawRad) + inputDir.y * std::cos(yawRad);
 
-    glm::vec2 prevV(this->velocity.x, this->velocity.z);
-    glm::vec2 momentum = prevV * (slipperiness_prev * 0.91f);
+	glm::vec2 prevV(this->velocity.x, this->velocity.z);
+	glm::vec2 momentum = prevV * (slipperiness_prev * 0.91f);
 
-    float accelGround = 0.1f * movementMultiplier * effectMultiplier * std::pow(0.6f / slipperiness, 3.0f);
-    float accelAir    = 0.02f * movementMultiplier * effectMultiplier;
-    float accel = ground ? accelGround : accelAir;
+	float accelGround = 0.1f * movementMultiplier * effectMultiplier * std::pow(0.6f / slipperiness, 3.0f);
+	float accelAir    = 0.02f * movementMultiplier;
+	float accel = onGround ? accelGround : accelAir;
 
-    glm::vec2 accelVec = inputWorld * accel * (hasMovementInput ? 1.0f : 0.0f);
+	glm::vec2 accelVec = inputWorld * accel * (hasMovementInput ? 1.0f : 0.0f);
 
-	glm::vec2 sprintBoost(0.0f);
+	glm::vec2 springBoost(0.0f);
 	if (this->jump && (inputs.keys & IN_RUN) && !jumpBoostApplied) {
-		sprintBoost = glm::vec2(std::cos(yawRad), std::sin(yawRad)) * 0.2f;
+		springBoost = glm::vec2(std::cos(yawRad), std::sin(yawRad)) * (movementMultiplier == MM_SPRINTING ? 0.2f : 0.0f) * (hasMovementInput && !(lx < 0) ? 1.0f : 0.0f);
 		jumpBoostApplied = true;
+		std::cout << slipperiness_prev << "\n";
 	}
 
-    glm::vec2 newV = momentum + accelVec + sprintBoost;
+	glm::vec2 newV = momentum + accelVec + springBoost;
 
-    this->velocity.x = newV.x;
-    this->velocity.z = newV.y;
+	slipperiness_prev = slipperiness;
+
+	this->velocity.x = newV.x;
+	this->velocity.z = newV.y;
+
+	if (std::abs(this->velocity.x) < EPS) this->velocity.x = 0;
+	if (std::abs(this->velocity.z) < EPS) this->velocity.z = 0;
 
     return glm::vec3(this->velocity.x, 0.0f, this->velocity.z);
 }

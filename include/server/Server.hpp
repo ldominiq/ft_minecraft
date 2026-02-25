@@ -52,6 +52,7 @@ private:
 	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
 	void sendAccept(const sockaddr_in &cliaddr);
 	
+	void sendDeaths();
 	void sendMessage(CPlayerInfo &player);
 	void sendImGuiData(CPlayerInfo &player);
 	void sendChunk(CPlayerInfo &player);

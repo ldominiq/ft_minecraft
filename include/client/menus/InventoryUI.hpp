@@ -43,6 +43,7 @@ class InventoryUI : public Inventory, public Menu
 		~InventoryUI();
 
 		void drawHotbar();
+		void drawHealth(float health) const;
 		void drawInventory() const;
 		void onRender() override {};
 };

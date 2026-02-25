@@ -256,7 +256,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 			entityPtr->prevPosition = position;
 			entityPtr->nextPosition = position;
 			entityPtr->positionUpdated = true;
-			entityPtr->lastTickClientTime = lastTickClientTime;
+			entityPtr->glfwTickTime = glfwTickTime;
 
 			std::cout << entityPtr->getPosition().x << " " << entityPtr->getPosition().y << " " << entityPtr->getPosition().z << "\n";
 			livingEntitiesManager.add(entityPtr);

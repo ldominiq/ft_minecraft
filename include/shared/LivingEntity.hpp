@@ -27,9 +27,8 @@ enum LivingEntityType : uint16_t
 class LivingEntity : public Entity
 {
 	protected :
-		float accumulatedFallDistance = 0.0f;
-
 		bool jump = false;
+		float SAFE_FALL_DISTANCE = 3.0f;
 
 		float movementSpeed = WALKING_SPEED; //deprecated?
 		glm::vec3 Right = glm::vec3(0, 0, 0);
@@ -39,7 +38,9 @@ class LivingEntity : public Entity
 		LivingEntityType type;
 
 	public:
-		int16_t health = 20;
+		float health = 20;
+		float damage = 5;
+		float accumulatedFallDistance = 0.0f;
 
 		LivingEntity(const glm::vec3 &position);
 		LivingEntity(const glm::vec3 &position, float yaw, entityID ID);
@@ -48,6 +49,7 @@ class LivingEntity : public Entity
 		glm::vec3 Front = glm::vec3(0, 0, 0);
 		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
+		virtual void attack(LivingEntity &victim);
 		virtual void onDeath();
 		virtual void applyFallDamage();
 		void calculateNewYPosition(const ICommonWorld &world) override;

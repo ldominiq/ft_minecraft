@@ -21,7 +21,9 @@ void Server::run(std::optional<int> &seed) {
 
 	glm::vec3 startingPos = glm::vec3(0,200, 0);
 	std::shared_ptr<Creeper> crep = std::make_shared<Creeper>(startingPos);
+	std::shared_ptr<Creeper> crep2 = std::make_shared<Creeper>(glm::vec3(0,90,0));
 	world->livingEntities.push_back(crep);
+	world->livingEntities.push_back(crep2);
 
 	running = true;
 
@@ -151,22 +153,6 @@ void Server::gameTick()
 		world->updateLiquids();
 	}
 
-	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end(); le++)
-	{
-		if (le->get()->health <= 0)
-		{
-			le->get()->onDeath();
-			messages.push_back("Someone has died miserably");
-
-			if (le->get()->getLivingEntityType() != PLAYER)
-			{
-				le = world->livingEntities.erase(le);
-
-				NetEntityMove
-			}
-		}
-	}
-
 	sendAll();
 }
 
@@ -289,6 +275,10 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 			{
 				auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 				player->movement->setGamemode(itMode->second);
+
+				glm::vec3 vel = player->movement->getVelocity();
+				player->movement->setVelocity(glm::vec3(vel.x, 0.0f, vel.z));
+				player->movement->accumulatedFallDistance = 0.0f;
 			}
 		}
 	}
@@ -300,6 +290,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 void Server::sendAll()
 {
 	world->amountOfChunksSentThisTick = 0;
+	sendDeaths();
 	for (CPlayerInfo &p : players)
 	{
 		world->updateVisibleChunks(p);
@@ -315,6 +306,38 @@ void Server::sendAll()
 	world->updatedBlocks.clear();
 	if (!messages.empty())
 		messages.pop_front();
+}
+
+void Server::sendDeaths()
+{
+	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end(); le++)
+	{
+		if (le->get()->health <= 0)
+		{
+			le->get()->onDeath();
+			messages.push_back("Someone has died miserably");
+
+			if (le->get()->getLivingEntityType() != PLAYER)
+			{
+				NetEntityMove pkt;
+
+				pkt.eEntityType = le->get()->getEntityType();
+				pkt.entityID = le->get()->getID();
+				pkt.type = -1;
+
+				pkt.positionX = le->get()->getPosition().x;
+				pkt.positionY = le->get()->getPosition().y;
+				pkt.positionZ = le->get()->getPosition().z;
+
+				pkt.yaw = le->get()->yaw;
+
+				le = world->livingEntities.erase(le);
+
+				for (auto player : players)
+					sendPacketTo(pkt, player.addr);
+			}
+		}
+	}
 }
 
 void Server::sendImGuiData(CPlayerInfo &player) {
@@ -394,6 +417,8 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.velocityX = player.movement->getVelocity().x;
 	pkt.velocityY = player.movement->getVelocity().y;
 	pkt.velocityZ = player.movement->getVelocity().z;
+
+	pkt.health = player.movement->health;
 
 	sendPacketTo(pkt, player.addr);
 }

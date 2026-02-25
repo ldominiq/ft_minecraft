@@ -540,6 +540,7 @@ void App::render() {
 		else
 		{
 			inventoryUI->drawHotbar();
+			inventoryUI->drawHealth(camera->getPlayer()->health);
 			chat->renderRecentMessages();
 		}
 
@@ -689,6 +690,8 @@ void App::debugWindow() {
 
                     // Display camera coordinates
                     ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
+
+					ImGui::Text("Player YAW: %f", camera->getPlayer()->yaw);
 
                     // ImGui::Text("World SEED: %i", params.seed);
 

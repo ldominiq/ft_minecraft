@@ -13,7 +13,7 @@ InventoryUI::InventoryUI(float width, float height): Inventory(), Menu(width, he
 
 	hotbarX = width / 5.0f;
 	hotbarY = height / 100.0f;;
-	hotbarW = (width / 5.0f) * 3;
+	hotbarW = (width / (5.0f )) * 3;
 	hotbarH = height / 10.0f;
 
 	for (int i = 0; i < MAX_SLOTS ; i++)
@@ -21,7 +21,7 @@ InventoryUI::InventoryUI(float width, float height): Inventory(), Menu(width, he
 		hotbarSlots[i].width = hotbarW  / (MAX_SLOTS + 1);
 		hotbarSlots[i].height = hotbarH - hotbarH / 10.f;
 
-		hotbarSlots[i].x = hotbarX + ((hotbarW  / (MAX_SLOTS)) / MAX_SLOTS) + ((hotbarSlots[i].width / MAX_SLOTS) + hotbarSlots[i].width) * i;
+		hotbarSlots[i].x = hotbarX + ((hotbarSlots[i].width / MAX_SLOTS) + hotbarSlots[i].width) * i;
 		hotbarSlots[i].y = hotbarY + (hotbarH  - hotbarSlots[i].height) / 2.0f;
 	}
 	// textRenderer.renderText("12345", width/2.0f, height/2.0f, glm::vec3(1.0f));
@@ -135,6 +135,27 @@ void InventoryUI::drawHotbar()
 	}
 
 	setupCubes(meshVertices);
+
+	glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+}
+
+void InventoryUI::drawHealth(float health) const
+{
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	float HPBarLenght = (health / 20.0f) * (hotbarW / 2.0f);
+	drawSimpleQuad(hotbarX, hotbarY + hotbarH + 10, HPBarLenght, hotbarH / 5.0f,
+		glm::vec4(
+			210/255.0f,
+			35/255.0f,
+			25/255.0f,
+			1.0f
+		));
+
+	drawSimpleQuad(hotbarX, hotbarY + hotbarH + 10, hotbarW / 2.0f, hotbarH / 5.0f, glm::vec4(0,0,0,0.4f));
 
 	glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
