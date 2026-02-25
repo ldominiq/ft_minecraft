@@ -4,6 +4,7 @@ in VS_OUT {
     vec3 FragPos;
     vec3 Normal;
     vec2 TexCoord;
+    float SkyLight;
 } fs_in;
 
 out vec4 FragColor;
@@ -242,8 +243,12 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
     // Transform from [-1,1] NDC to [0,1] texture coordinates
     projCoords = projCoords * 0.5 + 0.5;
 
-    // 4. Beyond the last cascade → no shadow
-    if (projCoords.z > 1.0)
+    // 4. Out-of-bounds checks.
+    //    If the fragment projects outside the shadow map in XY or beyond
+    //    the far plane in Z, treat it as unshadowed (no data available).
+    if (projCoords.z > 1.0 ||
+        projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0)
     {
         return 0.0;
     }
@@ -376,7 +381,13 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     if (shadows.enabled)
         if (light.direction.y < 0.0)
         {
-            shadow = CSMShadowCalculation(fs_in.FragPos);
+            // If the fragment is underground (skyLight == 0), force full shadow
+            // without querying the shadow map — CSM can't reliably detect
+            // underground blocks at steep sun angles.
+            if (fs_in.SkyLight < 0.5)
+                shadow = 1.0;
+            else
+                shadow = CSMShadowCalculation(fs_in.FragPos);
         }   
     vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular));    
     return (lighting);
