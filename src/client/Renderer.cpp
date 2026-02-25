@@ -179,7 +179,7 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
 void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, const uint &meshVerticesSize) const {
     shader->use();
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 9);
+    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 10);
 }
 
 void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
@@ -273,7 +273,7 @@ void Renderer::renderWater() const {
         if (auto chunk = weakChunk.lock()) {
             if (chunk->getWaterMeshVerticesSize() > 0) {
                 glBindVertexArray(chunk->getWaterVao());
-                glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 9);
+                glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 10);
             }
         }
     }
