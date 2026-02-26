@@ -4,14 +4,16 @@
 
 #include "Typer.hpp"
 #include "Menu.hpp"
-#include "sys/time.h"
+#include <chrono>
 
 //menus.. and everything really should use an EBO (indexes) to spare vertices... but it's kinda whatever at this point.
+
+constexpr double MESSAGE_LIFETIME = 6.0;
 
 struct ChatLine
 {
 	std::string message;
-	time_t time;
+	int64_t time;
 };
 
 class Chat : public Menu {
