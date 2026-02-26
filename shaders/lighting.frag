@@ -4,6 +4,7 @@ in VS_OUT {
     vec3 FragPos;
     vec3 Normal;
     vec2 TexCoord;
+    float SkyLight; // 0.0 = fully underground, 1.0 = open sky
 } fs_in;
 
 out vec4 FragColor;
@@ -382,6 +383,37 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
         {
             shadow = CSMShadowCalculation(fs_in.FragPos);
         }
+
+    // ── Sky-light modulation ────────────────────────────────────
+    // fs_in.SkyLight is 0.0 deep in caves, 1.0 under open sky.
+    // It controls how much natural light (ambient AND direct sun)
+    // reaches this block.
+    //
+    // MIN_CAVE_LIGHT keeps caves from being pitch black — even
+    // deep underground you get a tiny bit of ambient so you can
+    // still see block outlines (like Minecraft does).
+    const float MIN_CAVE_LIGHT = 0.04;
+    float skyFactor = fs_in.SkyLight;
+
+    // Ambient: in a cave (skyFactor ≈ 0) drops to MIN_CAVE_LIGHT.
+    ambient *= max(skyFactor, MIN_CAVE_LIGHT);
+
+    // Diffuse & specular: also scaled by skyFactor.
+    // Without this, caves lit by the sun at an angle (no terrain
+    // between sun and cave interior from the CSM's perspective)
+    // would still receive full diffuse/specular — looking bright
+    // underground.  skyFactor tells us the block is enclosed, so
+    // direct sunlight shouldn't reach it regardless of the shadow
+    // map's opinion.
+    diffuse  *= skyFactor;
+    specular *= skyFactor;
+
+    // Also darken ambient in shadowed areas.  Without this, faces
+    // behind hills/terrain at sunset still glow because diffuse is
+    // near zero (low sun angle) and ambient bypasses the shadow map.
+    // We blend: in shadow, ambient drops to 30% of its value.
+    float ambientShadowFactor = 1.0 - shadow * 0.7;
+    ambient *= ambientShadowFactor;
 
     vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular));    
     return (lighting);
