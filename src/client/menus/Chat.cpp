@@ -6,11 +6,10 @@ constexpr float scale = 0.3f;
 Chat::Chat(float width, float height) : Menu(width, height), textRenderer("fonts/Roboto-Regular.ttf", scale)
 {
 	x = 0.0;
-	y = 0.0f;// + height / 10.0f;;
+	y = 0.0f;
 	w = width / 3.0f;
 	h = height / 3.0f;
 	chatColor = glm::vec4(0,0,0,0.6f);
-	// chatLog.push_back(std::string());
 	textRenderer.setProjection(width, height);
 }
 
@@ -21,21 +20,21 @@ Chat::~Chat()
 void Chat::cleanMsgSent()
 {
 	personalChatLog.push_back(currMsg);
-	currentchatLogIndex = personalChatLog.size();
+	currentChatLogIndex = personalChatLog.size();
 	currMsg.clear();
 }
 
-void Chat::goThroughchatLog(const int key)
+void Chat::goThroughChatLog(const int key)
 {
 	if (personalChatLog.empty())
     	return;
 
-	if (key == GLFW_KEY_UP && currentchatLogIndex > 0)
-    	currentchatLogIndex = std::max<size_t>(currentchatLogIndex - 1, 0);
+	if (key == GLFW_KEY_UP && currentChatLogIndex > 0)
+    	currentChatLogIndex = std::max<size_t>(currentChatLogIndex - 1, 0);
 	else if (key == GLFW_KEY_DOWN)
-		currentchatLogIndex = std::min(currentchatLogIndex + 1, personalChatLog.size() - 1);
+		currentChatLogIndex = std::min(currentChatLogIndex + 1, personalChatLog.size() - 1);
 
-	currMsg = personalChatLog[currentchatLogIndex];
+	currMsg = personalChatLog[currentChatLogIndex];
 }
 
 void Chat::onRender()
@@ -56,8 +55,9 @@ void Chat::onRender()
 
 void Chat::renderRecentMessages()
 {
-	timeval tv;
-	gettimeofday(&tv, nullptr);
+	auto timepoint = std::chrono::system_clock::now();
+	auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(timepoint.time_since_epoch()).count();
+	auto nowS = std::chrono::duration_cast<std::chrono::seconds>(timepoint.time_since_epoch()).count();
 
 	float offset = 10.0f;
 	float charHeight = (48+10)*scale; //48 cause font is 48 and 10 is height offset
@@ -68,20 +68,13 @@ void Chat::renderRecentMessages()
 	glDisable(GL_DEPTH_TEST);
 
 	for (auto msg = chatLog.rbegin();
-		msg != chatLog.rend() && (tv.tv_sec - msg->time) < 6;
+		msg != chatLog.rend() && (nowS - (msg->time/1000)) < 6;
 		++msg)
-	{
-		double now =
-		static_cast<double>(tv.tv_sec) +
-		static_cast<double>(tv.tv_usec) / 1'000'000.0;
-		
-		double msgTime = static_cast<double>(msg->time);
-
-		double age = now - msgTime;        // seconds since message
-		double lifetime = 6.0;             // seconds
+	{	
+		double age = nowMs - msg->time;		// milliseconds since message
 
 		float alpha = static_cast<float>(
-			std::clamp(1.0 - age / lifetime, 0.0, 1.0)
+			std::clamp(1.0 - age / (MESSAGE_LIFETIME * 1000), 0.0, 1.0)
 		);
 
 		drawSimpleQuad(x + offset, y + currHeight - 4, textRenderer.getPixelSizeOfString(msg->message) + 2, charHeight, glm::vec4(0,0,0,alpha/2.0f));
@@ -98,6 +91,7 @@ void Chat::renderRecentMessages()
 	}
 
 	glDisable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
 }
 
 void Chat::addCharToCurrMsg(const char &c)
@@ -115,8 +109,9 @@ void Chat::removeCharFromCurrMsg()
 
 void Chat::updateChatlog(const std::string& str)
 {
-    timeval tv;
-    gettimeofday(&tv, nullptr);
+	auto now = duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
 
-    chatLog.push_back({ str, tv.tv_sec });
+    chatLog.push_back({ str, now});
 }

@@ -120,7 +120,7 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
         }
     }
 
-    generateCaves(blocks, terrainParams);
+    // generateCaves(blocks, terrainParams);
 
     generateOres(blocks, terrainParams);
 

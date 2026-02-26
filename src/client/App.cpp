@@ -1367,12 +1367,12 @@ void App::processInputMenus(int key, int action) {
 
 			chat->cleanMsgSent();
 		}
-		if (key == GLFW_KEY_BACKSPACE)
+		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			chat->removeCharFromCurrMsg();
 		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 			menuManager.reset();
-		if ((key == GLFW_KEY_UP || key == GLFW_KEY_DOWN) && action == GLFW_PRESS)
-			chat->goThroughchatLog(key);
+		if ((key == GLFW_KEY_UP || key == GLFW_KEY_DOWN) && (action == GLFW_PRESS || action == GLFW_REPEAT))
+			chat->goThroughChatLog(key);
 	}
 
 	// CHOSE MENU (order here IS important. must do after handling events)
