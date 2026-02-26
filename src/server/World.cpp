@@ -316,6 +316,12 @@ void World::updatePlannedChunks(CPlayerInfo &player)
 
 	setCandidates(candidates, player);
 
+	// Rebuild plannedChunks from scratch so it only contains chunks that are
+	// actually within the current player's load radius.  This prevents the
+	// set from growing unboundedly as the player moves, which was causing
+	// the generation slots to be consumed by far-away, stale chunks.
+	plannedChunks.clear();
+
 	for (auto [cx, cz, dist, distCore] : candidates)
 	{
 		ChunkPos key = Chunk::toKey(cx, cz);
@@ -344,64 +350,79 @@ void World::updateVisibleChunks(CPlayerInfo &player) {
 	const int currentChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
 
 	handleOutOfMemory(currentChunkX, currentChunkZ, player.loadRadius);
-	
-	// std::unordered_set<ChunkPos> generatingChunks;
-	uint amountOfConcurrentChunksBeingGenerated = 0;
 
 	removeLoadedChunksFromPlayer(player);
 	updatePlannedChunks(player);
-	
-	for (const auto& [cx, cz] : plannedChunks) {
-        ChunkPos key = Chunk::toKey(cx, cz);
-        std::shared_ptr<ChunkGeneration> chunk = getChunk(cx, cz);
 
-        if (!chunk && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) {
-            const int cxCopy = cx;
-            const int czCopy = cz;
-            const ChunkPos keyCopy = key;
-
-            generationFutures.push_back(std::async(std::launch::async, [this,cxCopy,czCopy, keyCopy]() {
-                std::shared_ptr<ChunkGeneration> newChunk = std::make_shared<ChunkGeneration>(cxCopy, czCopy, terrainParams);
-                return std::make_pair(keyCopy, newChunk);
-            }));
-            amountOfConcurrentChunksBeingGenerated++;
-        }
-        else if (chunk && chunk->preGenerated && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) 
-        {
-            // generatingChunks.insert(key);
-            amountOfConcurrentChunksBeingGenerated++;
-            chunk->preGenerated = false;
-        }
-    }
-
-    // Process a limited number of ready futures.  This spreads the cost of
-    // inserting chunks into the world over multiple frames and avoids long
-    // stalls while waiting for all chunks to generate at once.  We loop
-    // through the futures vector, checking each for readiness with a
-    // zero-duration wait. 
-
-	// Set of chunks currently being generated asynchronously.  We use
-    // ChunkKey pairs to avoid scheduling the same chunk multiple times.
-
-	std::size_t processed = 0;
+	// 1. Harvest all completed futures first, so newly generated chunks
+	//    can be sent to the player on this very tick.
 	for (auto it = generationFutures.begin(); it != generationFutures.end(); ) {
 		std::future<std::pair<ChunkPos, std::shared_ptr<ChunkGeneration>>>& fut = *it;
 		
 		if (fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
 			auto result = fut.get();
-			// generatingChunks.insert(result.first);
 			chunks[result.first] = result.second;
 			linkNeighbors(result.first.first, result.first.second, result.second);
-
+			generatingChunks.erase(result.first);
 			plannedChunks.erase(result.first);
 
+			// Queue newly generated chunk for sending if the player needs it
+			if (!player.loadedChunks.contains(result.first))
+			{
+				player.loadedChunks.insert(result.first);
+				player.rdyChunks.push_back(result.first);
+			}
+
 			it = generationFutures.erase(it);
-			processed++;
 		}
 		else {
 			it++;
 		}
 	}
+
+	// 2. Sort planned chunks by distance to the player so that nearby
+	//    chunks are prioritized for generation.
+	std::vector<ChunkPos> sortedPlanned(plannedChunks.begin(), plannedChunks.end());
+	std::sort(sortedPlanned.begin(), sortedPlanned.end(),
+		[currentChunkX, currentChunkZ](const ChunkPos& a, const ChunkPos& b) {
+			int dxA = a.first - currentChunkX, dzA = a.second - currentChunkZ;
+			int dxB = b.first - currentChunkX, dzB = b.second - currentChunkZ;
+			return (dxA * dxA + dzA * dzA) < (dxB * dxB + dzB * dzB);
+		});
+
+	// 3. Schedule new generation tasks, skipping chunks already in-flight.
+	//    Account for futures that are already running from previous ticks.
+	std::size_t currentlyGenerating = generationFutures.size();
+
+	for (const auto& [cx, cz] : sortedPlanned) {
+		if (currentlyGenerating >= maxConcurrentGeneration)
+			break;
+
+        ChunkPos key = Chunk::toKey(cx, cz);
+
+		// Skip if already being generated asynchronously
+		if (generatingChunks.contains(key))
+			continue;
+
+        std::shared_ptr<ChunkGeneration> chunk = getChunk(cx, cz);
+
+        if (!chunk) {
+            const int cxCopy = cx;
+            const int czCopy = cz;
+            const ChunkPos keyCopy = key;
+
+			generatingChunks.insert(keyCopy);
+            generationFutures.push_back(std::async(std::launch::async, [this,cxCopy,czCopy, keyCopy]() {
+                std::shared_ptr<ChunkGeneration> newChunk = std::make_shared<ChunkGeneration>(cxCopy, czCopy, terrainParams);
+                return std::make_pair(keyCopy, newChunk);
+            }));
+            currentlyGenerating++;
+        }
+        else if (chunk->preGenerated)
+        {
+            chunk->preGenerated = false;
+        }
+    }
 }
 
 // finds the shortest (at most 4 blocks away) path to fall
