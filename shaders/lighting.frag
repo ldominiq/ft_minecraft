@@ -52,15 +52,8 @@ struct SpotLight {
 
 struct Shadows {
     bool enabled;
-    int PCF_RADIUS;
     float MIN_BIAS;
     float MAX_BIAS;
-
-    int   POISSON_SAMPLES;
-    float POISSON_RADIUS_BASE;
-    float POISSON_RADIUS_SCALE;
-
-    float CONTACT_OFFSET;
 };
 
 #define NR_POINT_LIGHTS 3
@@ -295,9 +288,7 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     // It controls how much natural light (ambient AND direct sun)
     // reaches this block.
     //
-    // MIN_CAVE_LIGHT keeps caves from being pitch black — even
-    // deep underground you get a tiny bit of ambient so you can
-    // still see block outlines (like Minecraft does).
+    // MIN_CAVE_LIGHT keeps caves from being pitch black.
     const float MIN_CAVE_LIGHT = 0.04;
     float skyFactor = fs_in.SkyLight;
 

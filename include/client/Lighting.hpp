@@ -85,14 +85,6 @@ public:
 
     void uploadLightingUniforms(const Shader& shader, const glm::vec3& cameraPos, glm::vec3 cameraFront) const;
 
-    void updateShadowMap(const Renderer& renderer, const glm::vec3& cameraPos);
-    void refreshShadowResolution();
-
-    void initShadowGroundPlane();
-    void initShadowResources();
-    void drawShadowMapPreview();
-    void initShadowDebugShader() const;
-
     void drawTexturePreviewQuad(unsigned int textureID);
 
     void renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const;
@@ -104,21 +96,13 @@ public:
     void initCSMResources();
     void updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView);
     void uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraView) const;
-    bool debugCascades = true;
     void drawCSMShadowMapPreview(int cascadeLayer);
     void drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cameraFront, const glm::mat4& cameraView);
+    bool debugCascades = false;
     bool showCSMDebugView = false;
     std::vector<float> shadowCascadeLevels{ 25.0f, 100.0f };  // 2 splits → 3 cascades: [0.1–25], [25–100], [100–500]
     int debugPreviewLayer = 0;
 
-
-
-    enum class ShadowQuality {
-        Low = 1024,
-        Medium = 2048,
-        High = 4096,
-        Ultra = 8192
-    };
 
     // GETTERS
     bool isDirectionalLightOn() const { return directionalLightOn; };
@@ -130,7 +114,6 @@ public:
     bool isCloudsEnabled() const { return cloudsEnabled; };
     bool isSunAboveHorizon() const { return directionalLightDir.y > 0.1f; }
     
-    GLuint getShadowMapTexture() const { return depthMap; };
     GLuint getCloudTexture() const;
 
     glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; };
@@ -139,16 +122,9 @@ public:
     glm::vec3 getDirectionalDiffuseColor() const { return directionalDiffuseColor; };
     glm::vec3 getDirectionalSpecularColor() const { return directionalSpecularColor; };
 
-    int getShadowUpdateInterval() const { return shadowUpdateInterval; };
-    int getShadowFrameCounter() const { return shadowFrameCounter; };
-    ShadowQuality getShadowQuality() const { return shadowQuality; };
-    float getShadowOrthoRange() const { return shadowOrthoRange; };
-    float getShadowNearPlane() const { return shadowNearPlane; };
-    float getShadowFarPlane() const { return shadowFarPlane; };
     float getMaterialShininess() const { return materialShininess; };
     float getShadowMapMinBias() const { return MIN_BIAS; }
     float getShadowMapMaxBias() const { return MAX_BIAS; }
-    float getShadowMapContactOffset () const { return shadowContactOffset; }
 
     float getSkyExposure() const { return skyExposure; };
     float getSkyAtmDensity() const { return skyAtmDensity; };
@@ -191,24 +167,12 @@ public:
 
     // SETTERS
     void setShowShadowMapEnabled(bool enabled) { showShadowMap = enabled; };
-    void setShadowMapResolution(int width, int height) { SHADOW_WIDTH = width; SHADOW_HEIGHT = height; };
-    void setShadowMapNearPlane(float nearPlane) { shadowNearPlane = nearPlane; };
-    void setShadowMapFarPlane(float farPlane) { shadowFarPlane = farPlane; };
     void setShadowMapMinBias(float bias) { MIN_BIAS = bias; };
     void setShadowMapMaxBias(float bias) { MAX_BIAS = bias; };
-    void setShadowMapContactOffset(float offset) { shadowContactOffset = offset; };
-    void setShadowMapPCFRadius(int radius) { PCF_RADIUS = radius; };
-    void setShadowMapPCF(bool enabled) { forceShadowUpdate = enabled; };
-    void setShadowMapDebug(bool enabled) { shadowsEnabled = enabled; };
     void setLightPos(const glm::vec3& pos) { lightPos = pos; };
     void setViewportSize(const int screenWidth, const int screenHeight) { width = screenWidth; height = screenHeight; };
 
     void setShadowsEnabled(const bool enabled) { shadowsEnabled = enabled; };
-    void setShadowQuality(const ShadowQuality quality) { shadowQuality = quality; };
-    void setShadowUpdateInterval(const int interval) { shadowUpdateInterval = interval; };
-    void setShadowOrthoRange(const float range) { shadowOrthoRange = range; };
-    void setShadowNearPlane(const float nearPlane) { shadowNearPlane = nearPlane; };
-    void setShadowFarPlane(const float farPlane) { shadowFarPlane = farPlane; };
 
     void setMaterialShininess(const float shininess) { materialShininess = shininess; };
 
@@ -261,15 +225,12 @@ private:
     GLuint planeVAO{};
     GLuint debugVAO{};
     GLuint debugVBO{};
-    GLuint depthMapFBO{}, depthMap{};
     GLuint cloudsVAO{};
 
     std::unique_ptr<CloudFramebuffer> cloudFBO;
 
     std::unique_ptr<Shader> skyShader;
     std::unique_ptr<Shader> lightCubeShader;
-    std::shared_ptr<Shader> shadowDepthShader;
-    std::shared_ptr<Shader> shadowDebugShader;
     std::shared_ptr<Shader> debugFBOShader;
     std::shared_ptr<Shader> cloudShader;
     
@@ -365,29 +326,12 @@ private:
     glm::mat4 lightProjection{}, lightView{};
     glm::mat4 lightSpaceMatrix {1.0f};
     glm::vec3 cachedShadowLightDir {0.0f, -1.0f, 0.0f};
-    int shadowFrameCounter = 0;
-    int shadowUpdateInterval = 4;
 
     bool forceShadowUpdate = false;
     bool shadowsEnabled = true;
-    float shadowOrthoRange = 200.0f;
 
-    ShadowQuality shadowQuality = ShadowQuality::High;
-    int SHADOW_WIDTH = static_cast<int>(shadowQuality);
-    int SHADOW_HEIGHT = static_cast<int>(shadowQuality);
-
-    // Default shadow map near/far plane values
-    float shadowNearPlane = 0.1f;
-    float shadowFarPlane = 400.0f;
-
-    int PCF_RADIUS = 1;          // 1 = 3x3;
     float MIN_BIAS = 0.001;
     float MAX_BIAS = 0.005;
-    float shadowContactOffset = 0.00050f;
-
-    int   POISSON_SAMPLES = 16;
-    float POISSON_RADIUS_BASE = 1.75;   // start radius in texels
-    float POISSON_RADIUS_SCALE = 1.0;   // extra scale factor
 
     // DEBUG
     bool showShadowMap = false;

@@ -215,7 +215,6 @@ private:
 	bool showReflectionTexture = false;
 	bool showRefractionTexture = false;
 	bool showRefractionDepthTexture = false;
-	bool showShadowMapTexture = false;
 	bool showNormalsTexture = false;
 	bool showDepthTexture = false;
 

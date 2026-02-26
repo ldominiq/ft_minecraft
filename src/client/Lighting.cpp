@@ -15,8 +15,6 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
 
     skyShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
     lightCubeShader = std::make_unique<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
-    shadowDepthShader = std::make_shared<Shader>("shaders/shadowDepthShader.vert", "shaders/shadowDepthShader.frag");
-    shadowDebugShader = std::make_shared<Shader>("shaders/shadowDebugShader.vert", "shaders/shadowDebugShader.frag");
     cloudShader = std::make_shared<Shader>("shaders/clouds.vert", "shaders/clouds.frag");
 
     cloudFBO = std::make_unique<CloudFramebuffer>(width , height, cloudDownscale);
@@ -44,9 +42,6 @@ Lighting::~Lighting() {
         glDeleteVertexArrays(1, &planeVAO);
         glDeleteVertexArrays(1, &debugVAO);
 
-        glDeleteTextures(1, &depthMap);
-        glDeleteFramebuffers(1, &depthMapFBO);
-
         glDeleteVertexArrays(1, &cloudsVAO);
 
         glDeleteTextures(1, &csmDepthMaps);
@@ -59,8 +54,6 @@ Lighting::~Lighting() {
         planeVAO = 0;
         debugVAO = 0;
         debugVBO = 0;
-        depthMap = 0;
-        depthMapFBO = 0;
         cloudFBO = nullptr;
         csmDepthMaps = 0;
         csmFBO = 0;
@@ -242,11 +235,6 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     shader.setFloat("shadows.MIN_BIAS", MIN_BIAS);
     shader.setFloat("shadows.MAX_BIAS", MAX_BIAS);
-    shader.setInt("shadows.PCF_RADIUS", PCF_RADIUS);
-    shader.setInt("shadows.POISSON_SAMPLES", POISSON_SAMPLES);
-    shader.setFloat("shadows.POISSON_RADIUS_BASE", POISSON_RADIUS_BASE);
-    shader.setFloat("shadows.POISSON_RADIUS_SCALE", POISSON_RADIUS_SCALE);
-    shader.setFloat("shadows.CONTACT_OFFSET", shadowContactOffset);
     shader.setFloat("shadows.enabled", shadowsEnabled);
 
     // CSM depth maps are bound separately in uploadCSMUniforms()
@@ -321,148 +309,6 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
         shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
         shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
     }
-}
-
-void Lighting::updateShadowMap(const Renderer& renderer, const glm::vec3& cameraPos) {
-    // Shadow mapping
-    // ====================================
-    // 1. Render the depth of the scene to a texture from the light's perspective.
-    //    This generates a shadow map, which will be sampled in the main render pass
-    //    to determine which fragments are in shadow and apply realistic lighting.
-    // --------------------------------------------------------------
-
-    const float orthoRange = shadowOrthoRange; // how far from center to render shadows
-
-    const bool doUpdate = forceShadowUpdate || (shadowFrameCounter % shadowUpdateInterval) == 0;
-
-    // If shadow quality changed, update shadow resolution and re-create depth texture/FBO
-    static ShadowQuality lastShadowQuality = shadowQuality;
-    if (lastShadowQuality != shadowQuality) {
-        lastShadowQuality = shadowQuality;
-        refreshShadowResolution();
-
-        glGenFramebuffers(1, &depthMapFBO);
-        glGenTextures(1, &depthMap);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-        constexpr float borderColor[] = {1.0f,1.0f,1.0f,1.0f};
-        glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-        glDrawBuffer(GL_NONE);
-        glReadBuffer(GL_NONE);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-
-    if (doUpdate) {
-        forceShadowUpdate = false;
-        cachedShadowLightDir = -directionalLightDir;
-
-
-        // Center the shadow (orthographic) frustum around the player instead of world origin
-        const glm::vec3 center = cameraPos;
-
-
-        setLightPos(center - cachedShadowLightDir * 200.0f);
-        lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 1.0f, 0.0f));
-
-        // Ortho volume still symmetric, but now relative to player-centered lightView
-        lightProjection = glm::ortho(-orthoRange, orthoRange,
-                                     -orthoRange, orthoRange,
-                                     shadowNearPlane,  shadowFarPlane);
-
-        lightSpaceMatrix = lightProjection * lightView;
-
-        // render scene from light's point of view
-        shadowDepthShader->use();
-        shadowDepthShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glClear(GL_DEPTH_BUFFER_BIT);
-
-        glCullFace(GL_FRONT); // required so shadows don't bug through mountains
-
-        renderer.render(shadowDepthShader);
-        // floor
-        constexpr auto model = glm::mat4(1.0f);
-        shadowDepthShader->setMat4("model", model);
-        glBindVertexArray(planeVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
-        glCullFace(GL_BACK);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-
-        // Immediately restore viewport after unbinding framebuffer
-        glViewport(0, 0, width, height);
-    }
-    shadowFrameCounter++;
-}
-
-void Lighting::refreshShadowResolution() {
-    switch (shadowQuality) {
-        case ShadowQuality::Low:    SHADOW_WIDTH = 1024;  SHADOW_HEIGHT = 1024;  break;
-        case ShadowQuality::Medium: SHADOW_WIDTH = 2048;  SHADOW_HEIGHT = 2048;  break;
-        case ShadowQuality::High:   SHADOW_WIDTH = 4096;  SHADOW_HEIGHT = 4096;  break;
-        case ShadowQuality::Ultra:  SHADOW_WIDTH = 8192;  SHADOW_HEIGHT = 8192;  break;
-        default:                    SHADOW_WIDTH = 4096;  SHADOW_HEIGHT = 4096;  break;
-    }
-}
-
-void Lighting::initShadowGroundPlane() {
-    // plane VAO
-    unsigned int planeVBO;
-    glGenVertexArrays(1, &planeVAO);
-    glGenBuffers(1, &planeVBO);
-    glBindVertexArray(planeVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, planeVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(planeVertices), planeVertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), static_cast<void *>(nullptr));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void *>(3 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void *>(6 * sizeof(float)));
-    glBindVertexArray(0);
-}
-
-
-void Lighting::initShadowResources() {
-    refreshShadowResolution(); // Ensure shadowWidth/shadowHeight are set according to shadowQuality
-    glGenFramebuffers(1, &depthMapFBO);
-    // create depth texture
-    glGenTextures(1, &depthMap);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    // Clamp to border to avoid shadow edge sampling artifacts
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    constexpr float borderColor[] = {1.0f,1.0f,1.0f,1.0f};
-    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-    // attach depth texture as FBO's depth buffer
-    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-    glDrawBuffer(GL_NONE);
-    glReadBuffer(GL_NONE);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
-void Lighting::drawShadowMapPreview() {
-    shadowDebugShader->use();
-    shadowDebugShader->setFloat("near_plane", shadowNearPlane);
-    shadowDebugShader->setFloat("far_plane", shadowFarPlane);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
-
-    drawTexturePreviewQuad(depthMap);
 }
 
 void Lighting::drawCSMShadowMapPreview(int cascadeLayer)
@@ -834,10 +680,6 @@ void Lighting::drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cam
     ImGui::End();
 }
 
-void Lighting::initShadowDebugShader() const {
-    shadowDebugShader->use();
-    shadowDebugShader->setInt("depthMap", 0);
-}
 
 // Draws a small textured quad (preview of an FBO texture) in the top-right corner.
 void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
@@ -1128,8 +970,6 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
     shader.setFloat("farPlane", cameraFarPlane);
 
     // Bind the shadow map array to a texture unit
-    // You're already using GL_TEXTURE0 (block atlas) and GL_TEXTURE1 (old shadow map)
-    // Let's use GL_TEXTURE2 for the CSM array
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
     shader.setInt("shadowMapArray", 2);
