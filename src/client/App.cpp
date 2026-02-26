@@ -323,7 +323,6 @@ void App::loadResources() {
     // --------------------
     textureShader->use();
     textureShader->setInt("diffuseTexture", 0);
-    textureShader->setInt("shadowMap", 1);
     lighting->initShadowDebugShader();
 
 	waterRenderer->setDependencies(lighting, renderer, camera);
