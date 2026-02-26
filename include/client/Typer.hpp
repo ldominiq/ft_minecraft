@@ -34,7 +34,7 @@ public:
 
 	uint getPixelSizeOfString(const std::string &str);
 	void setProjection(int width, int height);
-	void renderText(const std::string &text, float x, float y, const glm::vec3 &color);
+	void renderText(const std::string &text, float x, float y, const glm::vec3 &color, const float alpha = 1.0f);
 };
 
 #endif

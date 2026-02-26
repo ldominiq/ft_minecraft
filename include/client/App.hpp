@@ -97,7 +97,7 @@ private:
     void setUdpClientPacketCallback();
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
-	void processInputsMenus(int key, int action);
+	void processInputMenus(int key, int action);
     void updateWindowTitle();
     void toggleDisplayMode();
 
@@ -117,7 +117,7 @@ private:
     bool keyPressedRecently = false;
 	bool mouseMovedRecently = false;
 	float lastMouseMoveTime = 0;
-	float lastTickClientTime = 0;
+	float glfwTickTime = 0;
 
     unsigned int texture;
 
