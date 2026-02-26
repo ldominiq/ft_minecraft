@@ -137,7 +137,6 @@ glm::vec3 PlayerMovement::getDesiredMove()
 	if (this->jump && (inputs.keys & IN_RUN) && !jumpBoostApplied) {
 		springBoost = glm::vec2(std::cos(yawRad), std::sin(yawRad)) * (movementMultiplier == MM_SPRINTING ? 0.2f : 0.0f) * (hasMovementInput && !(lx < 0) ? 1.0f : 0.0f);
 		jumpBoostApplied = true;
-		std::cout << slipperiness_prev << "\n";
 	}
 
 	glm::vec2 newV = momentum + accelVec + springBoost;
