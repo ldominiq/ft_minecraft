@@ -25,6 +25,15 @@ class SSAO {
         /// Returns the blurred texture when available, raw otherwise.
         GLuint getSSAOTexture() const { return ssaoBlurTexture ? ssaoBlurTexture : ssaoColorBuffer; }
 
+        int getKernelSize() const { return kernelSize; }
+        float getRadius() const { return radius; }
+        float getBias() const { return bias; }
+        float getPower() const { return power; }
+        void setKernelSize(int size) { kernelSize = std::min(size, MAX_KERNEL_SIZE); generateKernel(); }
+        void setRadius(float r) { radius = r; }
+        void setBias(float b) { bias = b; }
+        void setPower(float p) { power = p; }
+
     private:
         void generateKernel();
         void generateNoiseTexture();
@@ -62,7 +71,7 @@ class SSAO {
         // Tweakable
         float radius = 0.5f;
         float bias   = 0.025f;
-        // float power  = 1.0f;
+        float power  = 1.0f;
 
         
         

@@ -111,6 +111,7 @@ void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
     ssaoShader->setMat4("projection", projection);
     ssaoShader->setFloat("radius", radius);
     ssaoShader->setFloat("bias", bias);
+    ssaoShader->setFloat("power", power);
     ssaoShader->setVec2("noiseScale", glm::vec2(
         static_cast<float>(SCR_WIDTH) / 4.0f,
         static_cast<float>(SCR_HEIGHT) / 4.0f

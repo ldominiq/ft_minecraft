@@ -947,11 +947,6 @@ void App::debugWindow() {
                                 if (ImGui::Checkbox("SSAO", &ssaoEnabled))
                                     ssao->setEnabled(ssaoEnabled);
 
-                                // Preview the raw SSAO texture
-                                ImGui::Checkbox("Preview SSAO Texture", &showSSAOTexture);
-                                ImGui::Checkbox("Preview GBuffer Position", &showGBufferPositionTexture);
-                                ImGui::Checkbox("Preview GBuffer Normal", &showGBufferNormalTexture);
-
                                 // Changing this will update the far clipping plane.
                                 ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
 
@@ -975,18 +970,52 @@ void App::debugWindow() {
                                 // }
                                 ImGui::EndTabItem();
                             }
+                            if (ImGui::BeginTabItem("SSAO"))
+                            {
+                                bool ssaoEnabled = ssao->isEnabled();
+                                if (ImGui::Checkbox("Enable SSAO", &ssaoEnabled))
+                                    ssao->setEnabled(ssaoEnabled);
+
+                                ImGui::Separator();
+                                ImGui::Text("Parameters");
+
+                                float radius = ssao->getRadius();
+                                if (ImGui::SliderFloat("Radius", &radius, 0.01f, 5.0f, "%.3f"))
+                                    ssao->setRadius(radius);
+
+                                float bias = ssao->getBias();
+                                if (ImGui::SliderFloat("Bias", &bias, 0.0f, 0.2f, "%.4f"))
+                                    ssao->setBias(bias);
+
+                                float power = ssao->getPower();
+                                if (ImGui::SliderFloat("Power", &power, 0.1f, 10.0f, "%.2f"))
+                                    ssao->setPower(power);
+
+                                int kernelSize = ssao->getKernelSize();
+                                if (ImGui::SliderInt("Kernel Size", &kernelSize, 4, 64))
+                                    ssao->setKernelSize(kernelSize);
+
+                                ImGui::EndTabItem();
+                            }
                             if (ImGui::BeginTabItem("Framebuffers"))
                             {
                                 ImGui::Separator();
-                                ImGui::Text("Framebuffer Debug Views");
+                                ImGui::Text("Water");
                                 ImGui::Checkbox("Show Reflection Texture", &showReflectionTexture);
                                 ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
                                 ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
                                 
                                 ImGui::Separator();
-                                ImGui::Text("Render Type Debug Views");
+                                ImGui::Text("Render Type");
                                 ImGui::Checkbox("Show Normals View", &showNormalsTexture);
                                 ImGui::Checkbox("Show Depth View", &showDepthTexture);
+
+                                ImGui::Separator();
+                                ImGui::Text("SSAO");
+                                ImGui::Checkbox("Preview SSAO Texture", &showSSAOTexture);
+                                ImGui::Checkbox("Preview GBuffer Position", &showGBufferPositionTexture);
+                                ImGui::Checkbox("Preview GBuffer Normal", &showGBufferNormalTexture);
+
                                 ImGui::EndTabItem();
                             }
                         }

@@ -13,6 +13,7 @@ uniform vec3 samples[64];
 uniform mat4 projection;
 uniform float bias;
 uniform float radius;
+uniform float power;
 
 // Tile noise texture over screen based on screen dimensions / noise size
 uniform vec2 noiseScale;
@@ -29,6 +30,8 @@ void main() {
     vec3 bitangent  = cross(normal, tangent);
     mat3 TBN        = mat3(tangent, bitangent, normal);
 
+    int adaptiveKernelSize = clamp(int(mix(16.0, float(kernelSize), smoothstep(0.1, 5.0, abs(fragPos.z)))), 8, kernelSize);
+    
     // Using a process called the Gramm-Schmidt process we create an orthogonal basis, each time slightly tilted based on the value of randomVec.
     // Next we iterate over each of the kernel samples, transform the samples from tangent to view-space,
     // add them to the current fragment position, and compare the fragment position's depth with the sample depth stored in the view-space position buffer.
@@ -51,5 +54,5 @@ void main() {
     }
 
     occlusion = 1.0 - (occlusion / kernelSize);
-    FragColor = occlusion;
+    FragColor = pow(occlusion, power);
 }
