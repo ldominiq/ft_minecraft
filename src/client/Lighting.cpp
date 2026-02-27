@@ -162,9 +162,9 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     skyShader->setInt("cloudsCompositeEnabled", composite ? 1 : 0);
 
     if (composite) {
-        glActiveTexture(GL_TEXTURE0 + 7);
+        glActiveTexture(GL_TEXTURE8);
         glBindTexture(GL_TEXTURE_2D, getCloudTexture());
-        skyShader->setInt("cloudTex", 7);
+        skyShader->setInt("cloudTex", 8);
     }
 
     // Render sky with depth = far plane, terrain will render in front
@@ -682,7 +682,7 @@ void Lighting::drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cam
 
 
 // Draws a small textured quad (preview of an FBO texture) in the top-right corner.
-void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
+void Lighting::drawTexturePreviewQuad(const unsigned int textureID, bool grayscale, glm::vec2 offset) {
     if (textureID == 0) return;
 
     if (!debugFBOShader) {
@@ -691,20 +691,20 @@ void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
             "shaders/debugRenderer.frag"
         );
         debugFBOShader->use();
-        debugFBOShader->setInt("texCoords", 0);
+        debugFBOShader->setInt("fboAttachment", 0);
     }
 
     if (debugVAO == 0) {
-        // NDC quad in top-right corner
+        // Small NDC quad in bottom-left corner (0.20 x 0.20 NDC = ~10% screen)
         constexpr float verts[] = {
-            //  pos.xy    uv
-            0.40f, 0.90f, 1.0f, 1.0f,
-            0.40f, 0.40f, 1.0f, 0.0f,
-            0.90f, 0.40f, 0.0f, 0.0f,
+            //  pos.xy       uv
+            -0.98f, -0.58f,  0.0f, 1.0f,
+            -0.98f, -0.98f,  0.0f, 0.0f,
+            -0.58f, -0.98f,  1.0f, 0.0f,
 
-            0.40f, 0.90f, 1.0f, 1.0f,
-            0.90f, 0.40f, 0.0f, 0.0f,
-            0.90f, 0.90f, 0.0f, 1.0f
+            -0.98f, -0.58f,  0.0f, 1.0f,
+            -0.58f, -0.98f,  1.0f, 0.0f,
+            -0.58f, -0.58f,  1.0f, 1.0f
        };
         glGenVertexArrays(1, &debugVAO);
         glGenBuffers(1, &debugVBO);
@@ -725,6 +725,8 @@ void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
     glBindTexture(GL_TEXTURE_2D, textureID);
 
     debugFBOShader->use();
+    debugFBOShader->setInt("isGrayscale", grayscale ? 1 : 0);
+    debugFBOShader->setVec2("offset", offset);
     glBindVertexArray(debugVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
@@ -970,9 +972,9 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
     shader.setFloat("farPlane", cameraFarPlane);
 
     // Bind the shadow map array to a texture unit
-    glActiveTexture(GL_TEXTURE2);
+    glActiveTexture(GL_TEXTURE7);
     glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
-    shader.setInt("shadowMapArray", 2);
+    shader.setInt("shadowMapArray", 7);
 
     shader.setInt("debugCascades", debugCascades);
 }

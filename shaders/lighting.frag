@@ -85,6 +85,10 @@ uniform int cascadeCount;
 uniform float farPlane;
 uniform mat4 view;
 
+// SSAO
+uniform sampler2D ssaoTexture;
+uniform int ssaoEnabled;
+
 float near = 0.1;
 float far  = 100.0;
 
@@ -107,6 +111,14 @@ void main()
     vec3 norm = normalize(fs_in.Normal);
     vec3 viewDir = normalize(viewPos - fs_in.FragPos);
     
+    // SSAO
+    float AmbientOcclusion = 1.0;
+    if (ssaoEnabled == 1) {
+        // Screen-space UV from fragment position
+        vec2 ssaoUV = gl_FragCoord.xy / vec2(textureSize(ssaoTexture, 0));
+        AmbientOcclusion = texture(ssaoTexture, ssaoUV).r;
+    }
+
     // == =====================================================
     // Our lighting is set up in 3 phases: directional, point lights and an optional flashlight
     // For each phase, a calculate function is defined that calculates the corresponding color
@@ -121,6 +133,11 @@ void main()
     // phase 3: spot light
     result += CalcSpotLight(spotLight, norm, fs_in.FragPos, viewDir);    
 
+    // Apply SSAO to ambient component
+    // Modulate the final result's ambient contribution
+    if (ssaoEnabled == 1) {
+        result *= AmbientOcclusion;
+    }
 
     if (renderType == 1) {
         FragColor = vec4(norm * 0.5 + 0.5, 1.0); // Visualize normals
@@ -274,6 +291,13 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     vec3 ambient = light.ambient * vec3(texture(atlas, fs_in.TexCoord));
     vec3 diffuse = light.diffuse * diff * vec3(texture(atlas, fs_in.TexCoord));
     vec3 specular = light.specular * spec * vec3(texture(atlas, fs_in.TexCoord));
+
+    // Apply SSAO to ambient only
+    //if (ssaoEnabled == 1) {
+    //    vec2 ssaoUV = gl_FragCoord.xy / vec2(textureSize(ssaoTexture, 0));
+    //    float ao = texture(ssaoTexture, ssaoUV).r;
+    //    ambient *= ao;
+    //}
 
     // calculate shadow
     float shadow = 0.0;

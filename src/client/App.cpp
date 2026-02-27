@@ -68,6 +68,9 @@ void App::init() {
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>();
 
+    gBuffer = std::make_shared<GBuffer>(windowedWidth, windowedHeight);
+    ssao = std::make_shared<SSAO>(windowedWidth, windowedHeight);
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -218,6 +221,7 @@ void App::init() {
     glGenQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawEntities);
+    glGenQueries(QUERY_POOL_SIZE, querySSAOPool);
 }
 
 void App::setUdpClientPacketCallback()
@@ -323,6 +327,10 @@ void App::loadResources() {
     textureShader->setInt("diffuseTexture", 0);
 
 	waterRenderer->setDependencies(lighting, renderer, camera);
+
+    gBufferShader = std::make_unique<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
+    gBufferShader->use();
+    gBufferShader->setInt("diffuseTexture", 0);
 }
 
 void App::gameTick() {
@@ -469,6 +477,34 @@ void App::render() {
             textureShader->setInt("renderType", selectedRenderType); // Normal lighting mode
         }
 
+        // GBuffer pass
+        if (ssao && ssao->isEnabled()) {
+            gBuffer->resize(screenWidth, screenHeight);
+            ssao->resize(screenWidth, screenHeight);
+
+            gBuffer->bind();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            gBufferShader->use();
+            gBufferShader->setMat4("view", view);
+            gBufferShader->setMat4("projection", projection);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            renderer->render(gBufferShader);
+
+            gBuffer->unbind();
+
+            // SSAO pass
+            glBeginQuery(GL_TIME_ELAPSED, querySSAOPool[currentQueryIndex]);
+
+            ssao->renderSSAO(*gBuffer, projection);
+            // ssao->blurSSAO();
+
+            glEndQuery(GL_TIME_ELAPSED);
+
+
+        }
+
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
         // Render reflection texture
@@ -525,6 +561,15 @@ void App::render() {
     	if (lighting->isShadowMapEnabled())
     		lighting->drawCSMShadowMapPreview(lighting->debugPreviewLayer);
 
+    	if (showSSAOTexture && ssao && ssao->isEnabled())
+    		lighting->drawTexturePreviewQuad(ssao->getSSAOTexture(), true, glm::vec2(0.0f, 0.0f));
+
+    	if (showGBufferPositionTexture && gBuffer)
+    		lighting->drawTexturePreviewQuad(gBuffer->getPositionTexture(), false, glm::vec2(0.42f, 0.0f));
+
+    	if (showGBufferNormalTexture && gBuffer)
+    		lighting->drawTexturePreviewQuad(gBuffer->getNormalTexture(), false, glm::vec2(0.84f, 0.0f));
+
     	if (lighting->showCSMDebugView)
     		lighting->drawCSMDebugView(
     			camera->getPlayer()->getPosition(),
@@ -557,6 +602,8 @@ void App::render() {
             readGPUQueryEMA(queryRenderShaderPool[readIndex], measuredAverageMsRenderShader, a);
             readGPUQueryEMA(queryRenderWaterPool[readIndex], measuredAverageMsRenderWater, a);
             readGPUQueryEMA(queryDrawEntities[readIndex], measuredAverageMsDrawEntities, a);
+            readGPUQueryEMA(querySSAOPool[readIndex], measuredAverageMsSSAO, a);
+
 
             // Shadows: only read if the query was actually issued that frame.
             // Otherwise smoothly decay toward 0 so the display reflects reality.
@@ -619,6 +666,17 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     activeShader->setMat4("projection", projection);
     lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
     lighting->uploadCSMUniforms(*activeShader, view);
+
+    // Bind SSAO texture for the lighting shader (must be after activeShader->use())
+    if (ssao && ssao->isEnabled()) {
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
+        activeShader->setInt("ssaoTexture", 5);
+        activeShader->setInt("ssaoEnabled", 1);
+    } else {
+        activeShader->setInt("ssaoEnabled", 0);
+    }
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
 
@@ -884,6 +942,15 @@ void App::debugWindow() {
                                 bool shadowsEnabled = lighting->isShadowsEnabled();
                                 if (ImGui::Checkbox("Shadows", &shadowsEnabled))
                                     lighting->setShadowsEnabled(shadowsEnabled);
+
+                                bool ssaoEnabled = ssao->isEnabled();
+                                if (ImGui::Checkbox("SSAO", &ssaoEnabled))
+                                    ssao->setEnabled(ssaoEnabled);
+
+                                // Preview the raw SSAO texture
+                                ImGui::Checkbox("Preview SSAO Texture", &showSSAOTexture);
+                                ImGui::Checkbox("Preview GBuffer Position", &showGBufferPositionTexture);
+                                ImGui::Checkbox("Preview GBuffer Normal", &showGBufferNormalTexture);
 
                                 // Changing this will update the far clipping plane.
                                 ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
@@ -1204,7 +1271,7 @@ void App::debugWindow() {
                 showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
                 showTimingBar("Water Render",  measuredAverageMsRenderWater,         ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
                 showTimingBar("Entities",      measuredAverageMsDrawEntities,        ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
-
+                showTimingBar("SSAO",          measuredAverageMsSSAO,                ImVec4(0.6f, 0.2f, 0.8f, 1.0f));
                 ImGui::Separator();
                 ImGui::Text("Total GPU: %.3f ms (%.1f FPS budget)", totalGPU, totalGPU > 0.0f ? 1000.0f / totalGPU : 0.0f);
 
@@ -1235,6 +1302,7 @@ void App::debugWindow() {
                         measuredAverageMsRenderShader = 0.0;
                         measuredAverageMsRenderWater = 0.0;
                         measuredAverageMsDrawEntities = 0.0;
+                        measuredAverageMsSSAO = 0.0;
                     }
                 }
             }
