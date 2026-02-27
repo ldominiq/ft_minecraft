@@ -2,7 +2,7 @@
 
 SSAO::SSAO(int width, int height) : SCR_WIDTH(width), SCR_HEIGHT(height) {
     ssaoShader  = std::make_unique<Shader>("shaders/ssao.vert", "shaders/ssao.frag");
-    // ssaoBlurShader = std::make_unique<Shader>("shaders/ssao.vert", "shaders/ssaoBlur.frag");
+    ssaoBlurShader = std::make_unique<Shader>("shaders/ssao.vert", "shaders/ssaoBlur.frag");
 
     // Empty VAO for fullscreen triangle (uses gl_VertexID)
     glGenVertexArrays(1, &quadVAO);
@@ -82,7 +82,18 @@ void SSAO::generateFramebuffers() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBuffer, 0);
-    
+
+    // Blur FBO
+    glGenFramebuffers(1, &ssaoBlurFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+    glGenTextures(1, &ssaoBlurTexture);
+    glBindTexture(GL_TEXTURE_2D, ssaoBlurTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, SCR_WIDTH, SCR_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoBlurTexture, 0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
@@ -126,6 +137,24 @@ void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+void SSAO::blurSSAO() {
+    glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    ssaoBlurShader->use();
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+    ssaoBlurShader->setInt("ssaoInput", 0);
+
+    glBindVertexArray(quadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 float SSAO::lerp(float a, float b, float f) {
     return a + f * (b - a);
 }
@@ -144,9 +173,9 @@ void SSAO::destroyFramebuffers() {
         glDeleteTextures(1, &ssaoColorBuffer);
         ssaoFBO = ssaoColorBuffer = 0;
     }
-    // if (ssaoBlurFBO) {
-    //     glDeleteFramebuffers(1, &ssaoBlurFBO);
-    //     glDeleteTextures(1, &ssaoBlurTexture);
-    //     ssaoBlurFBO = ssaoBlurTexture = 0;
-    // }
+    if (ssaoBlurFBO) {
+        glDeleteFramebuffers(1, &ssaoBlurFBO);
+        glDeleteTextures(1, &ssaoBlurTexture);
+        ssaoBlurFBO = ssaoBlurTexture = 0;
+    }
 }

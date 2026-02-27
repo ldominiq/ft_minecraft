@@ -498,7 +498,7 @@ void App::render() {
             glBeginQuery(GL_TIME_ELAPSED, querySSAOPool[currentQueryIndex]);
 
             ssao->renderSSAO(*gBuffer, projection);
-            // ssao->blurSSAO();
+            ssao->blurSSAO();
 
             glEndQuery(GL_TIME_ELAPSED);
 

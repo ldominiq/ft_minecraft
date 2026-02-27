@@ -19,9 +19,11 @@ class SSAO {
         bool isEnabled() const { return enabled; }
         void resize(int w, int h);
         void renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection);
+        void blurSSAO();
 
         /// The final SSAO texture to sample in the lighting pass.
-        GLuint getSSAOTexture() const { return ssaoColorBuffer; }
+        /// Returns the blurred texture when available, raw otherwise.
+        GLuint getSSAOTexture() const { return ssaoBlurTexture ? ssaoBlurTexture : ssaoColorBuffer; }
 
     private:
         void generateKernel();
@@ -47,12 +49,12 @@ class SSAO {
         GLuint ssaoColorBuffer = 0;
 
         // Blur FBO
-        // GLuint ssaoBlurFBO = 0;
-        // GLuint ssaoBlurTexture = 0;
+        GLuint ssaoBlurFBO = 0;
+        GLuint ssaoBlurTexture = 0;
 
         // Shaders
         std::unique_ptr<Shader> ssaoShader;
-        // std::unique_ptr<Shader> ssaoBlurShader;
+        std::unique_ptr<Shader> ssaoBlurShader;
 
         // Fullscreen quad VAO (empty, uses gl_VertexID like sky.vert)
         GLuint quadVAO = 0;
