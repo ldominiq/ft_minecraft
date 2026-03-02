@@ -498,7 +498,8 @@ void App::render() {
             glBeginQuery(GL_TIME_ELAPSED, querySSAOPool[currentQueryIndex]);
 
             ssao->renderSSAO(*gBuffer, projection);
-            ssao->blurSSAO();
+            if (ssao->isBlurEnabled())
+                ssao->blurSSAO();
 
             glEndQuery(GL_TIME_ELAPSED);
 
@@ -536,19 +537,19 @@ void App::render() {
     		// Dynamically build GUI textures based on debug flags
     		guis.clear();
     		if (showReflectionTexture) {
-    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.48f, 0.75f), glm::vec2(0.2f, 0.2f));
     		}
     		if (showRefractionTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(-0.5f, 0.5f), glm::vec2(0.25f, 0.25f), true);
+    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(0.48f, 0.3f), glm::vec2(0.2f, 0.2f), true);
     		}
     		if (showRefractionDepthTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.5f, -0.5f), glm::vec2(0.25f, 0.25f), true);
+    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.48f, -0.15f), glm::vec2(0.2f, 0.2f), true, true);
     		}
     		if (showNormalsTexture && renderTypeFramebuffer) {
-    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.0f, 0.75f), glm::vec2(0.25f, 0.25f), true);
+    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.05f, 0.75f), glm::vec2(0.2f, 0.2f), true);
     		}
     		if (showDepthTexture && renderTypeFramebuffer) {
-    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.0f, -0.75f), glm::vec2(0.25f, 0.25f), true);
+    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.05f, 0.3f), glm::vec2(0.2f, 0.2f), true);
     		}
 
     		guiRenderer->render(guis);
@@ -562,13 +563,16 @@ void App::render() {
     		lighting->drawCSMShadowMapPreview(lighting->debugPreviewLayer);
 
     	if (showSSAOTexture && ssao && ssao->isEnabled())
-    		lighting->drawTexturePreviewQuad(ssao->getSSAOTexture(), true, glm::vec2(0.0f, 0.0f));
+    		lighting->drawTexturePreviewQuad(ssao->getSSAOTexture(), true, glm::vec2(0.0f, 0.2f));
+
+    	if (showSSAORawTexture && ssao && ssao->isEnabled())
+    		lighting->drawTexturePreviewQuad(ssao->getRawSSAOTexture(), true, glm::vec2(0.42f, 0.2f));
 
     	if (showGBufferPositionTexture && gBuffer)
-    		lighting->drawTexturePreviewQuad(gBuffer->getPositionTexture(), false, glm::vec2(0.42f, 0.0f));
+    		lighting->drawTexturePreviewQuad(gBuffer->getPositionTexture(), false, glm::vec2(0.84f, 0.2f));
 
     	if (showGBufferNormalTexture && gBuffer)
-    		lighting->drawTexturePreviewQuad(gBuffer->getNormalTexture(), false, glm::vec2(0.84f, 0.0f));
+    		lighting->drawTexturePreviewQuad(gBuffer->getNormalTexture(), false, glm::vec2(1.26f, 0.2f));
 
     	if (lighting->showCSMDebugView)
     		lighting->drawCSMDebugView(
@@ -976,6 +980,10 @@ void App::debugWindow() {
                                 if (ImGui::Checkbox("Enable SSAO", &ssaoEnabled))
                                     ssao->setEnabled(ssaoEnabled);
 
+                                bool blurEnabled = ssao->isBlurEnabled();
+                                if (ImGui::Checkbox("Enable Blur", &blurEnabled))
+                                    ssao->setBlurEnabled(blurEnabled);
+
                                 ImGui::Separator();
                                 ImGui::Text("Parameters");
 
@@ -1013,6 +1021,7 @@ void App::debugWindow() {
                                 ImGui::Separator();
                                 ImGui::Text("SSAO");
                                 ImGui::Checkbox("Preview SSAO Texture", &showSSAOTexture);
+                                ImGui::Checkbox("Preview Raw SSAO (No Blur)", &showSSAORawTexture);
                                 ImGui::Checkbox("Preview GBuffer Position", &showGBufferPositionTexture);
                                 ImGui::Checkbox("Preview GBuffer Normal", &showGBufferNormalTexture);
 

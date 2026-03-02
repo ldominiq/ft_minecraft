@@ -22,8 +22,14 @@ class SSAO {
         void blurSSAO();
 
         /// The final SSAO texture to sample in the lighting pass.
-        /// Returns the blurred texture when available, raw otherwise.
-        GLuint getSSAOTexture() const { return ssaoBlurTexture ? ssaoBlurTexture : ssaoColorBuffer; }
+        /// Returns the blurred texture when available and blur enabled, raw otherwise.
+        GLuint getSSAOTexture() const { return (blurEnabled && ssaoBlurTexture) ? ssaoBlurTexture : ssaoColorBuffer; }
+
+        /// The raw (unblurred) SSAO texture
+        GLuint getRawSSAOTexture() const { return ssaoColorBuffer; }
+
+        void setBlurEnabled(bool e) { blurEnabled = e; }
+        bool isBlurEnabled() const { return blurEnabled; }
 
         int getKernelSize() const { return kernelSize; }
         float getRadius() const { return radius; }
@@ -72,6 +78,7 @@ class SSAO {
         float radius = 0.5f;
         float bias   = 0.025f;
         float power  = 1.0f;
+        bool blurEnabled = true;
 
         
         

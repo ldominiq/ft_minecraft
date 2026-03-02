@@ -225,6 +225,7 @@ private:
 	bool showNormalsTexture = false;
 	bool showDepthTexture = false;
 	bool showSSAOTexture = false;
+	bool showSSAORawTexture = false;
 	bool showGBufferPositionTexture = false;
 	bool showGBufferNormalTexture = false;
 
