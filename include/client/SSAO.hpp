@@ -65,8 +65,8 @@ class SSAO {
         glm::mat4 cachedProjection{0.0f}; // Zero-init so first comparison always triggers upload
 
         // Hemisphere sample kernel
-        static constexpr int MAX_KERNEL_SIZE = 10;
-        int kernelSize = 10;
+        static constexpr int MAX_KERNEL_SIZE = 4;
+        int kernelSize = 4;
         std::vector<glm::vec3> ssaoKernel;
 
         // 4x4 noise texture for random rotation
@@ -88,9 +88,9 @@ class SSAO {
         GLuint quadVAO = 0;
 
         // Tweakable
-        float radius = 0.5f;
-        float bias   = 0.025f;
-        float power  = 1.0f;
+        float radius = 3.63f;
+        float bias   = 0.088f;
+        float power  = 0.25f;
         bool blurEnabled = true;
 
         

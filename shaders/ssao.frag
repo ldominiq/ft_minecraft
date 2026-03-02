@@ -9,7 +9,7 @@ uniform sampler2D gNormal;
 uniform sampler2D texNoise;
 
 uniform int kernelSize;
-uniform vec3 samples[64];
+uniform vec3 samples[4];
 uniform mat4 projection;
 uniform float bias;
 uniform float radius;
