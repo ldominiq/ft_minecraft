@@ -97,6 +97,8 @@ void Renderer::buildChunks()
 	{
 		std::vector<std::future<void>> skyLightFutures;
 		for (auto& [pos, chunk] : toBuild) {
+			if (chunk->hasSkyLight())
+				continue; // Already computed in receiveChunk()
 			auto chunkPtr = chunk; // structured bindings can't be captured directly
 			skyLightFutures.push_back(std::async(std::launch::async, [chunkPtr]() {
 				chunkPtr->computeSkyLight();

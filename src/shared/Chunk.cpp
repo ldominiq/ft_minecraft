@@ -217,7 +217,8 @@ void Chunk::computeSkyLight() {
     // Publish the fully-computed array.  std::swap is fast (just
     // swaps internal pointers) and makes the transition atomic from
     // the perspective of any concurrent reader — they either see the
-    // old empty vector (fallback to 0) or the fully-computed one.
+    // old empty vector (fallback to 15, see getSkyLight()) or the
+    // fully-computed one.
     std::swap(skyLight, localSkyLight);
 }
 
