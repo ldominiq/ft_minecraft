@@ -71,34 +71,47 @@ void SSAO::generateNoiseTexture() {
 // The SSAO shader runs on a 2D screen-filled quad that calculates the occlusion value for each of its fragments.
 // As we need to store the result of the SSAO stage (for use in the final lighting shader)
 void SSAO::generateFramebuffers() {
+    int w = getSSAOWidth();
+    int h = getSSAOHeight();
+
     glGenFramebuffers(1, &ssaoFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
 
     glGenTextures(1, &ssaoColorBuffer);
     glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
     // As the ambient occlusion result is a single grayscale value we'll only need a texture's red component, so we set the color buffer's internal format to GL_RED. 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, SCR_WIDTH, SCR_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);   // Linear for half-res upscaling
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBuffer, 0);
 
-    // Blur FBO
+    // Blur FBO — at full resolution for smooth upscaling
     glGenFramebuffers(1, &ssaoBlurFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
     glGenTextures(1, &ssaoBlurTexture);
     glBindTexture(GL_TEXTURE_2D, ssaoBlurTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, SCR_WIDTH, SCR_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);  // Linear for upscale
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoBlurTexture, 0);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
+    // Rebuild FBOs if half-res setting changed
+    if (resolutionChanged) {
+        resolutionChanged = false;
+        destroyFramebuffers();
+        generateFramebuffers();
+    }
+
+    int w = getSSAOWidth();
+    int h = getSSAOHeight();
+
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
-    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+    glViewport(0, 0, w, h);
     glClear(GL_COLOR_BUFFER_BIT);
 
     ssaoShader->use();
@@ -113,8 +126,8 @@ void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
     ssaoShader->setFloat("bias", bias);
     ssaoShader->setFloat("power", power);
     ssaoShader->setVec2("noiseScale", glm::vec2(
-        static_cast<float>(SCR_WIDTH) / 4.0f,
-        static_cast<float>(SCR_HEIGHT) / 4.0f
+        static_cast<float>(w) / 4.0f,
+        static_cast<float>(h) / 4.0f
     ));
 
     // Bind G-Buffer textures
@@ -139,6 +152,7 @@ void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
 }
 
 void SSAO::blurSSAO() {
+    // Blur FBO is always at full resolution — this upsamples half-res SSAO
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
     glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -161,9 +175,10 @@ float SSAO::lerp(float a, float b, float f) {
 }
 
 void SSAO::resize(int w, int h) {
-    if (w == SCR_WIDTH && h == SCR_HEIGHT) return;
+    if (w == SCR_WIDTH && h == SCR_HEIGHT && !resolutionChanged) return;
     SCR_WIDTH = w;
     SCR_HEIGHT = h;
+    resolutionChanged = false;
     destroyFramebuffers();
     generateFramebuffers();
 }

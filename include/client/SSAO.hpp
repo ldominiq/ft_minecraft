@@ -31,6 +31,9 @@ class SSAO {
         void setBlurEnabled(bool e) { blurEnabled = e; }
         bool isBlurEnabled() const { return blurEnabled; }
 
+        void setHalfResolution(bool e) { halfResolution = e; resolutionChanged = true; }
+        bool isHalfResolution() const { return halfResolution; }
+
         int getKernelSize() const { return kernelSize; }
         float getRadius() const { return radius; }
         float getBias() const { return bias; }
@@ -47,9 +50,15 @@ class SSAO {
         void destroyFramebuffers();
         float lerp(float a, float b, float f);
         
+        /// Returns the actual SSAO render width (half if halfResolution enabled)
+        int getSSAOWidth() const { return halfResolution ? SCR_WIDTH / 2 : SCR_WIDTH; }
+        int getSSAOHeight() const { return halfResolution ? SCR_HEIGHT / 2 : SCR_HEIGHT; }
+
         int SCR_WIDTH;
         int SCR_HEIGHT;
         bool enabled = true;
+        bool halfResolution = true;   // Half-res SSAO for ~4x perf gain
+        bool resolutionChanged = false;
 
         // Hemisphere sample kernel
         static constexpr int MAX_KERNEL_SIZE = 64;

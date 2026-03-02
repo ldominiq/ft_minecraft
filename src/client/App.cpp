@@ -503,6 +503,8 @@ void App::render() {
 
             glEndQuery(GL_TIME_ELAPSED);
 
+            // Restore full-res viewport (SSAO may have rendered at half resolution)
+            glViewport(0, 0, screenWidth, screenHeight);
 
         }
 
@@ -983,6 +985,14 @@ void App::debugWindow() {
                                 bool blurEnabled = ssao->isBlurEnabled();
                                 if (ImGui::Checkbox("Enable Blur", &blurEnabled))
                                     ssao->setBlurEnabled(blurEnabled);
+
+                                bool halfRes = ssao->isHalfResolution();
+                                if (ImGui::Checkbox("Half Resolution", &halfRes))
+                                    ssao->setHalfResolution(halfRes);
+                                ImGui::SameLine();
+                                ImGui::TextDisabled("(?)");
+                                if (ImGui::IsItemHovered())
+                                    ImGui::SetTooltip("Render SSAO at half resolution");
 
                                 ImGui::Separator();
                                 ImGui::Text("Parameters");

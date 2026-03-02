@@ -20,6 +20,14 @@ uniform vec2 noiseScale;
 
 void main() {
     vec3 fragPos    = texture(gPosition, TexCoords).xyz;
+
+    // Sky early-out: fragments with no geometry in the GBuffer
+    // have zero position (cleared to 0). Skip SSAO entirely — no occlusion for sky.
+    if (fragPos == vec3(0.0)) {
+        FragColor = 1.0;
+        return;
+    }
+
     vec3 normal     = texture(gNormal, TexCoords).rgb;
     vec3 randomVec  = texture(texNoise, TexCoords * noiseScale).xyz;
 
@@ -30,13 +38,17 @@ void main() {
     vec3 bitangent  = cross(normal, tangent);
     mat3 TBN        = mat3(tangent, bitangent, normal);
 
-    int adaptiveKernelSize = clamp(int(mix(16.0, float(kernelSize), smoothstep(0.1, 5.0, abs(fragPos.z)))), 8, kernelSize);
+    // Adaptive kernel: use full samples up close (where SSAO matters most),
+    // fewer samples for distant geometry (where it's barely visible).
+    // fragPos.z is negative in view-space, so abs() gives distance from camera.
+    float distFactor = smoothstep(5.0, 50.0, abs(fragPos.z));  // 0 = close, 1 = far
+    int adaptiveKernelSize = clamp(int(mix(float(kernelSize), 4.0, distFactor)), 8, kernelSize);
     
     // Using a process called the Gramm-Schmidt process we create an orthogonal basis, each time slightly tilted based on the value of randomVec.
     // Next we iterate over each of the kernel samples, transform the samples from tangent to view-space,
     // add them to the current fragment position, and compare the fragment position's depth with the sample depth stored in the view-space position buffer.
     float occlusion = 0.0;
-    for (int i = 0; i < kernelSize; ++i) {
+    for (int i = 0; i < adaptiveKernelSize; ++i) {
         // get sample position
         vec3 samplePos = TBN * samples[i]; // from tangent to view-space
         samplePos = fragPos + samplePos * radius;
@@ -53,6 +65,6 @@ void main() {
         occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
     }
 
-    occlusion = 1.0 - (occlusion / kernelSize);
+    occlusion = 1.0 - (occlusion / adaptiveKernelSize);
     FragColor = pow(occlusion, power);
 }
