@@ -74,7 +74,7 @@ void ChunkRenderer::updateMesh()
 	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
 }
 
-void ChunkRenderer::addFace(int x, int y, int z, int face) {
+void ChunkRenderer::addFace(int x, int y, int z, int face, float skyLightLevel) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(originZ + z);
@@ -157,10 +157,11 @@ void ChunkRenderer::addFace(int x, int y, int z, int face) {
         meshVertices.push_back(normal.x);
         meshVertices.push_back(normal.y);
         meshVertices.push_back(normal.z);
+        meshVertices.push_back(skyLightLevel); // sky-light (0.0 = dark, 1.0 = full sun)
     }
 }
 
-void ChunkRenderer::addWaterFace(int x, int y, int z, int face) {
+void ChunkRenderer::addWaterFace(int x, int y, int z, int face, float skyLightLevel) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(originZ + z);
@@ -232,10 +233,15 @@ void ChunkRenderer::addWaterFace(int x, int y, int z, int face) {
         waterMeshVertices.push_back(normal.x);
         waterMeshVertices.push_back(normal.y);
         waterMeshVertices.push_back(normal.z);
+        waterMeshVertices.push_back(skyLightLevel); // sky-light (0.0 = dark, 1.0 = full sun)
     }
 }
 
 void ChunkRenderer::buildMesh() {
+	// When called from updateMesh() (block placed/broken), we need to
+	// recompute sky-light because the terrain changed.  This runs
+	// single-threaded here so there's no race with neighbors.
+	computeSkyLight();
 	buildMeshData();
 	uploadMesh();
 }
@@ -243,6 +249,7 @@ void ChunkRenderer::buildMesh() {
 void ChunkRenderer::buildMeshData() {
 	meshVertices.clear();
 	waterMeshVertices.clear();
+
 	std::vector<BlockType> blockTypeVector;	// unpacked block indices
 
     // Decode palette indices to block types
@@ -270,6 +277,46 @@ void ChunkRenderer::buildMeshData() {
         return blockTypeVector[(x + dx) + WIDTH * ((y + dy) + HEIGHT * (z + dz))];
     };
 
+    // Look up the sky-light value for a face.
+    //
+    // We want the light level of the AIR block that the face is
+    // exposed to — that tells us how much sky exposure this face has.
+    //
+    // For faces within this chunk: straightforward array lookup.
+    //
+    // For faces at chunk borders: we read the adjacent chunk's
+    // skyLight array.  This is safe because computeSkyLight() uses
+    // std::swap — the member array is either the previous fully-
+    // computed result or the new one, never a partial write.
+    // If the neighbor hasn't computed skyLight yet (empty array),
+    // getSkyLight() returns 15 (assume sunlit — corrected on rebuild).
+    auto getSkyLightForFace = [&](int blockX, int blockY, int blockZ,
+                                   int dx, int dy, int dz,
+                                   Direction dir) -> uint8_t {
+        int neighborX = blockX + dx;
+        int neighborY = blockY + dy;
+        int neighborZ = blockZ + dz;
+
+        // Above world top = full sunlight
+        if (neighborY >= HEIGHT) return 15;
+        // Below world bottom = full darkness
+        if (neighborY < 0) return 0;
+
+        // Neighbor is within this chunk → direct lookup
+        if (neighborX >= 0 && neighborX < WIDTH &&
+            neighborZ >= 0 && neighborZ < DEPTH) {
+            return getSkyLight(neighborX, neighborY, neighborZ);
+        }
+
+        // Neighbor is in an adjacent chunk → read its skyLight
+        auto adjacentChunk = adjacentChunks[dir].lock();
+        if (!adjacentChunk) return 15; // Not loaded yet, assume sunlit
+
+        int remappedX = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : blockX));
+        int remappedZ = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : blockZ));
+        return adjacentChunk->getSkyLight(remappedX, neighborY, remappedZ);
+    };
+
     for (int x = 0; x < WIDTH; ++x) {
         for (int y = 0; y < HEIGHT; ++y) {
             for (int z = 0; z < DEPTH; ++z) {
@@ -280,54 +327,82 @@ void ChunkRenderer::buildMeshData() {
 
                 bool isWater = (currentBlock == BlockType::WATER);
 
+                // Helper: convert a sky-light value (0–15) to a 0.0–1.0 float
+                // for the vertex data.  We do this once per face.
+                auto lightToFloat = [](uint8_t lightVal) -> float {
+                    return static_cast<float>(lightVal) / 15.0f;
+                };
+
                 // FRONT (+Z)
-                BlockType neighbor = getBlockOrNeighbor(x, y, z, 0, 0, +1, NORTH);
+                BlockType neighborBlock = getBlockOrNeighbor(x, y, z, 0, 0, +1, NORTH);
+                float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, 0, +1, NORTH));
+
                 if (isWater) {
-                    // Water: only render face if neighbor is air
-                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 0);
-                } else if (!isBlockSolid(neighbor)) {
-                    // Solid block: render if neighbor is air or water
-                    addFace(x, y, z, 0);
+                    if (neighborBlock == BlockType::AIR) {
+                        addWaterFace(x, y, z, 0, faceSkyLight);
+                    }
+                } else if (!isBlockSolid(neighborBlock)) {
+                    addFace(x, y, z, 0, faceSkyLight);
                 }
 
                 // BACK (-Z)
-                neighbor = getBlockOrNeighbor(x, y, z, 0, 0, -1, SOUTH);
+                neighborBlock = getBlockOrNeighbor(x, y, z, 0, 0, -1, SOUTH);
+                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, 0, -1, SOUTH));
+
                 if (isWater) {
-                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 1);
-                } else if (!isBlockSolid(neighbor)) {
-                    addFace(x, y, z, 1);
+                    if (neighborBlock == BlockType::AIR) {
+                        addWaterFace(x, y, z, 1, faceSkyLight);
+                    }
+                } else if (!isBlockSolid(neighborBlock)) {
+                    addFace(x, y, z, 1, faceSkyLight);
                 }
 
                 // TOP (+Y)
-                neighbor = (y == HEIGHT - 1) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, +1, 0, NONE);
+                neighborBlock = (y == HEIGHT - 1) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, +1, 0, NONE);
+                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, +1, 0, NONE));
+
                 if (isWater) {
-                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 2);
-                } else if (!isBlockSolid(neighbor)) {
-                    addFace(x, y, z, 2);
+                    if (neighborBlock == BlockType::AIR) {
+                        addWaterFace(x, y, z, 2, faceSkyLight);
+                    }
+                } else if (!isBlockSolid(neighborBlock)) {
+                    addFace(x, y, z, 2, faceSkyLight);
                 }
 
                 // BOTTOM (-Y)
-                neighbor = (y == 0) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, -1, 0, NONE);
+                neighborBlock = (y == 0) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, -1, 0, NONE);
+                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, -1, 0, NONE));
+
                 if (isWater) {
-                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 3);
-                } else if (!isBlockSolid(neighbor)) {
-                    addFace(x, y, z, 3);
+                    if (neighborBlock == BlockType::AIR) {
+                        addWaterFace(x, y, z, 3, faceSkyLight);
+                    }
+                } else if (!isBlockSolid(neighborBlock)) {
+                    addFace(x, y, z, 3, faceSkyLight);
                 }
 
                 // RIGHT (+X)
-                neighbor = getBlockOrNeighbor(x, y, z, +1, 0, 0, EAST);
+                neighborBlock = getBlockOrNeighbor(x, y, z, +1, 0, 0, EAST);
+                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, +1, 0, 0, EAST));
+
                 if (isWater) {
-                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 4);
-                } else if (!isBlockSolid(neighbor)) {
-                    addFace(x, y, z, 4);
+                    if (neighborBlock == BlockType::AIR) {
+                        addWaterFace(x, y, z, 4, faceSkyLight);
+                    }
+                } else if (!isBlockSolid(neighborBlock)) {
+                    addFace(x, y, z, 4, faceSkyLight);
                 }
 
                 // LEFT (-X)
-                neighbor = getBlockOrNeighbor(x, y, z, -1, 0, 0, WEST);
+                neighborBlock = getBlockOrNeighbor(x, y, z, -1, 0, 0, WEST);
+                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, -1, 0, 0, WEST));
+
                 if (isWater) {
-                    if (neighbor == BlockType::AIR) addWaterFace(x, y, z, 5);
-                } else if (!isBlockSolid(neighbor)) {
-                    addFace(x, y, z, 5);
+                    if (neighborBlock == BlockType::AIR) {
+                        addWaterFace(x, y, z, 5, faceSkyLight);
+                    }
+                } else if (!isBlockSolid(neighborBlock)) {
+                    addFace(x, y, z, 5, faceSkyLight);
                 }
             }
         }
@@ -345,7 +420,13 @@ void ChunkRenderer::uploadMesh() {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, meshVertices.size() * sizeof(float), meshVertices.data(), GL_STATIC_DRAW);
 
-    GLsizei stride = 9 * sizeof(float);
+    // Vertex layout (10 floats per vertex):
+    //   location 0: position  (vec3)  — floats 0-2
+    //   location 1: texCoord  (vec2)  — floats 3-4
+    //   location 2: gradientY (float) — float  5
+    //   location 3: normal    (vec3)  — floats 6-8
+    //   location 4: skyLight  (float) — float  9
+    GLsizei stride = 10 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, static_cast<void *>(nullptr));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(3 * sizeof(float)));
@@ -354,6 +435,8 @@ void ChunkRenderer::uploadMesh() {
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
     glEnableVertexAttribArray(3);
+    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(9 * sizeof(float)));
+    glEnableVertexAttribArray(4);
     
     meshVerticesSize = meshVertices.size();
     meshVertices.clear();
@@ -378,6 +461,8 @@ void ChunkRenderer::uploadMesh() {
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
         glEnableVertexAttribArray(3);
+        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(9 * sizeof(float)));
+        glEnableVertexAttribArray(4);
         
         waterMeshVerticesSize = waterMeshVertices.size();
     } else {

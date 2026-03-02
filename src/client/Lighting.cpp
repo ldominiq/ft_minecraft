@@ -12,8 +12,6 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
 
     skyShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
     lightCubeShader = std::make_unique<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
-    shadowDepthShader = std::make_shared<Shader>("shaders/shadowDepthShader.vert", "shaders/shadowDepthShader.frag");
-    shadowDebugShader = std::make_shared<Shader>("shaders/shadowDebugShader.vert", "shaders/shadowDebugShader.frag");
     cloudShader = std::make_shared<Shader>("shaders/clouds.vert", "shaders/clouds.frag");
 
     cloudFBO = std::make_unique<CloudFramebuffer>(width , height, cloudDownscale);
@@ -41,11 +39,11 @@ Lighting::~Lighting() {
         glDeleteVertexArrays(1, &planeVAO);
         glDeleteVertexArrays(1, &debugVAO);
 
-        glDeleteTextures(1, &depthMap);
-        glDeleteFramebuffers(1, &depthMapFBO);
-
         glDeleteVertexArrays(1, &cloudsVAO);
-        
+
+        glDeleteTextures(1, &csmDepthMaps);
+        glDeleteFramebuffers(1, &csmFBO);
+
     } else {
         lightCubeVAO = 0;
         lightCubeVBO = 0;
@@ -53,9 +51,9 @@ Lighting::~Lighting() {
         planeVAO = 0;
         debugVAO = 0;
         debugVBO = 0;
-        depthMap = 0;
-        depthMapFBO = 0;
         cloudFBO = nullptr;
+        csmDepthMaps = 0;
+        csmFBO = 0;
     }
 }
 
@@ -218,6 +216,9 @@ void Lighting::updateSunDirection(const float deltaTime) {
         sunDirLocal.x * std::sin(sunYawRad) + sunDirLocal.z * std::cos(sunYawRad)
     ));
     directionalLightDir = sunDir;
+    // Always keep cachedShadowLightDir in sync so the day/night factor
+    // and shader direction are correct even when shadow rendering is skipped.
+    cachedShadowLightDir = -directionalLightDir;
 }
 
 void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cameraPos, const glm::vec3 cameraFront) const {
@@ -231,17 +232,9 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     shader.setFloat("shadows.MIN_BIAS", MIN_BIAS);
     shader.setFloat("shadows.MAX_BIAS", MAX_BIAS);
-    shader.setInt("shadows.PCF_RADIUS", PCF_RADIUS);
-    shader.setInt("shadows.POISSON_SAMPLES", POISSON_SAMPLES);
-    shader.setFloat("shadows.POISSON_RADIUS_BASE", POISSON_RADIUS_BASE);
-    shader.setFloat("shadows.POISSON_RADIUS_SCALE", POISSON_RADIUS_SCALE);
-    shader.setFloat("shadows.CONTACT_OFFSET", shadowContactOffset);
     shader.setFloat("shadows.enabled", shadowsEnabled);
 
-    if (shadowsEnabled) {
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
-    }
+    // CSM depth maps are bound separately in uploadCSMUniforms()
 
     // Lighting uniforms
     // ====================================
@@ -252,17 +245,19 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     // directional light
     if (directionalLightOn) {
 
-        // day/night factror based on sun elevation
-        float day = glm::clamp(-cachedShadowLightDir.y * 2.0f, 0.0f, 1.0f);
+        // day/night factor based on sun elevation
+        // directionalLightDir.y > 0 means sun above horizon
+        float sunElevation = directionalLightDir.y;
+        float day = glm::clamp(sunElevation * 2.0f, 0.0f, 1.0f);
         // smooth transition near sunset/sunrise
         day = glm::smoothstep(0.0f, 1.0f, day);
 
-        // small ambiant light at night
+        // small ambient light at night
         constexpr float nightAmbientMin = 0.3f;
         const glm::vec3 ambientColor = directionalAmbientColor * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
         const glm::vec3 diffuseColor = directionalDiffuseColor * day;
         const glm::vec3 specularColor = directionalSpecularColor * day;
-        shader.setVec3("dirLight.direction", cachedShadowLightDir);
+        shader.setVec3("dirLight.direction", -directionalLightDir);
         shader.setVec3("dirLight.ambient", ambientColor);
         shader.setVec3("dirLight.diffuse", diffuseColor);
         shader.setVec3("dirLight.specular", specularColor);
@@ -313,150 +308,375 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     }
 }
 
-void Lighting::updateShadowMap(const Renderer& renderer, const glm::vec3& cameraPos) {
-    // Shadow mapping
-    // ====================================
-    // 1. Render the depth of the scene to a texture from the light's perspective.
-    //    This generates a shadow map, which will be sampled in the main render pass
-    //    to determine which fragments are in shadow and apply realistic lighting.
-    // --------------------------------------------------------------
+void Lighting::drawCSMShadowMapPreview(int cascadeLayer)
+{
+    // Use the shadow debug shader but bind a specific layer
+    // For now, just show which layer is selected in ImGui
+    // A proper implementation needs a shader that samples
+    // texture(sampler2DArray, vec3(uv, layer))
+    
+    // Quick hack: use glTextureView to create a 2D view of one layer
+    GLuint layerView;
+    glGenTextures(1, &layerView);
+    glTextureView(layerView, GL_TEXTURE_2D, csmDepthMaps,
+                  GL_DEPTH_COMPONENT32F,
+                  0, 1,           // mip levels
+                  cascadeLayer, 1); // one layer
+    
+    drawTexturePreviewQuad(layerView);
+    
+    glDeleteTextures(1, &layerView);
+}
 
-    const float orthoRange = shadowOrthoRange; // how far from center to render shadows
+void Lighting::drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cameraFront, const glm::mat4& cameraView)
+{
+    const int numCascades = static_cast<int>(shadowCascadeLevels.size()) + 1;
 
-    const bool doUpdate = forceShadowUpdate || (shadowFrameCounter % shadowUpdateInterval) == 0;
+    // Persistent state across frames
+    static float zoomLevel = 1.0f;
+    static bool showLightFrustums = true;
+    static bool showCameraFrustums = true;
+    static bool showGrid = true;
+    static bool frozen = false;
+    static glm::vec3 frozenCameraPos;
+    static glm::vec3 frozenCameraFront;
+    static glm::mat4 frozenCameraView;
 
-    // If shadow quality changed, update shadow resolution and re-create depth texture/FBO
-    static ShadowQuality lastShadowQuality = shadowQuality;
-    if (lastShadowQuality != shadowQuality) {
-        lastShadowQuality = shadowQuality;
-        refreshShadowResolution();
+    // When freezing, capture current state; when unfreezing, use live data
+    const glm::vec3& drawPos   = frozen ? frozenCameraPos   : cameraPos;
+    const glm::vec3& drawFront = frozen ? frozenCameraFront : cameraFront;
+    const glm::mat4& drawView  = frozen ? frozenCameraView  : cameraView;
 
-        glGenFramebuffers(1, &depthMapFBO);
-        glGenTextures(1, &depthMap);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-        constexpr float borderColor[] = {1.0f,1.0f,1.0f,1.0f};
-        glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-        glDrawBuffer(GL_NONE);
-        glReadBuffer(GL_NONE);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("CSM Cascade Radar", &showCSMDebugView)) {
+        ImGui::End();
+        return;
     }
 
-    if (doUpdate) {
-        forceShadowUpdate = false;
-        cachedShadowLightDir = -directionalLightDir;
-
-
-        // Center the shadow (orthographic) frustum around the player instead of world origin
-        const glm::vec3 center = cameraPos;
-
-
-        setLightPos(center - cachedShadowLightDir * 200.0f);
-        lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 1.0f, 0.0f));
-
-        // Ortho volume still symmetric, but now relative to player-centered lightView
-        lightProjection = glm::ortho(-orthoRange, orthoRange,
-                                     -orthoRange, orthoRange,
-                                     shadowNearPlane,  shadowFarPlane);
-
-        lightSpaceMatrix = lightProjection * lightView;
-
-        // render scene from light's point of view
-        shadowDepthShader->use();
-        shadowDepthShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glClear(GL_DEPTH_BUFFER_BIT);
-
-        glCullFace(GL_FRONT); // required so shadows don't bug through mountains
-
-        renderer.render(shadowDepthShader);
-        // floor
-        constexpr auto model = glm::mat4(1.0f);
-        shadowDepthShader->setMat4("model", model);
-        glBindVertexArray(planeVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        glCullFace(GL_BACK);
-
-        // Immediately restore viewport after unbinding framebuffer
-        glViewport(0, 0, width, height);
+    // --- Controls ---
+    if (ImGui::Button(frozen ? "Unfreeze" : "Freeze")) {
+        frozen = !frozen;
+        if (frozen) {
+            frozenCameraPos   = cameraPos;
+            frozenCameraFront = cameraFront;
+            frozenCameraView  = cameraView;
+        }
     }
-    shadowFrameCounter++;
-}
+    ImGui::SameLine();
+    ImGui::Checkbox("Grid", &showGrid);
+    ImGui::SameLine();
+    ImGui::Checkbox("Camera", &showCameraFrustums);
+    ImGui::SameLine();
+    ImGui::Checkbox("Light", &showLightFrustums);
 
-void Lighting::refreshShadowResolution() {
-    switch (shadowQuality) {
-        case ShadowQuality::Low:    SHADOW_WIDTH = 1024;  SHADOW_HEIGHT = 1024;  break;
-        case ShadowQuality::Medium: SHADOW_WIDTH = 2048;  SHADOW_HEIGHT = 2048;  break;
-        case ShadowQuality::High:   SHADOW_WIDTH = 4096;  SHADOW_HEIGHT = 4096;  break;
-        case ShadowQuality::Ultra:  SHADOW_WIDTH = 8192;  SHADOW_HEIGHT = 8192;  break;
-        default:                    SHADOW_WIDTH = 4096;  SHADOW_HEIGHT = 4096;  break;
+    ImGui::SliderFloat("Zoom", &zoomLevel, 0.1f, 10.0f, "%.1fx");
+
+    if (frozen) {
+        ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "FROZEN - move camera to compare");
     }
+
+    // --- Canvas setup ---
+    ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+    ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+    // Reserve space for the stats panel below
+    float statsHeight = 20.0f * numCascades + 30.0f;
+    float side = std::min(canvasSize.x, canvasSize.y - statsHeight);
+    if (side < 80.0f) { ImGui::End(); return; }
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 center(canvasPos.x + side * 0.5f, canvasPos.y + side * 0.5f);
+    float worldRadius = (cameraFarPlane / zoomLevel) * 1.1f;
+
+    // Clip drawing to canvas
+    drawList->PushClipRect(canvasPos, ImVec2(canvasPos.x + side, canvasPos.y + side), true);
+
+    // Background
+    drawList->AddRectFilled(canvasPos, ImVec2(canvasPos.x + side, canvasPos.y + side),
+                            IM_COL32(15, 15, 20, 240));
+
+    // Helper: world XZ → screen pixel (north-up, centered on player)
+    auto worldToRadar = [&](float wx, float wz) -> ImVec2 {
+        float dx = wx - drawPos.x;
+        float dz = wz - drawPos.z;
+        float sx = center.x + (dx / worldRadius) * (side * 0.45f);
+        float sy = center.y + (dz / worldRadius) * (side * 0.45f);
+        return ImVec2(sx, sy);
+    };
+
+    // --- Grid ---
+    if (showGrid) {
+        // Pick a nice grid spacing based on zoom
+        float gridSpacing = 50.0f;
+        if (worldRadius > 400) gridSpacing = 100.0f;
+        if (worldRadius > 800) gridSpacing = 200.0f;
+        if (worldRadius < 100) gridSpacing = 25.0f;
+        if (worldRadius < 50)  gridSpacing = 10.0f;
+
+        float startW = floorf(drawPos.x / gridSpacing - worldRadius / gridSpacing) * gridSpacing;
+        float endW   = ceilf(drawPos.x / gridSpacing + worldRadius / gridSpacing) * gridSpacing;
+
+        for (float w = startW; w <= endW; w += gridSpacing) {
+            ImVec2 a = worldToRadar(w, drawPos.z - worldRadius);
+            ImVec2 b = worldToRadar(w, drawPos.z + worldRadius);
+            drawList->AddLine(a, b, IM_COL32(50, 50, 50, 120), 1.0f);
+        }
+        startW = floorf(drawPos.z / gridSpacing - worldRadius / gridSpacing) * gridSpacing;
+        endW   = ceilf(drawPos.z / gridSpacing + worldRadius / gridSpacing) * gridSpacing;
+        for (float w = startW; w <= endW; w += gridSpacing) {
+            ImVec2 a = worldToRadar(drawPos.x - worldRadius, w);
+            ImVec2 b = worldToRadar(drawPos.x + worldRadius, w);
+            drawList->AddLine(a, b, IM_COL32(50, 50, 50, 120), 1.0f);
+        }
+
+        // Scale label
+        ImVec2 scaleStart = worldToRadar(drawPos.x - gridSpacing * 0.5f, drawPos.z + worldRadius * 0.85f);
+        ImVec2 scaleEnd   = worldToRadar(drawPos.x + gridSpacing * 0.5f, drawPos.z + worldRadius * 0.85f);
+        drawList->AddLine(scaleStart, scaleEnd, IM_COL32(150, 150, 150, 180), 2.0f);
+        char scaleTxt[32];
+        snprintf(scaleTxt, sizeof(scaleTxt), "%.0f blocks", gridSpacing);
+        drawList->AddText(ImVec2((scaleStart.x + scaleEnd.x) * 0.5f - 25, scaleStart.y + 3),
+                          IM_COL32(150, 150, 150, 180), scaleTxt);
+    }
+
+    // --- Cascade colors ---
+    const ImU32 cascadeFills[] = {
+        IM_COL32(255, 80,  80,  35),
+        IM_COL32(80,  255, 80,  35),
+        IM_COL32(80,  80,  255, 35),
+        IM_COL32(255, 255, 80,  35),
+        IM_COL32(255, 80,  255, 35),
+    };
+    const ImU32 cascadeOutlines[] = {
+        IM_COL32(255, 100, 100, 220),
+        IM_COL32(100, 255, 100, 220),
+        IM_COL32(100, 100, 255, 220),
+        IM_COL32(255, 255, 100, 220),
+        IM_COL32(255, 100, 255, 220),
+    };
+    const ImU32 lightBoxFills[] = {
+        IM_COL32(255, 80,  80,  18),
+        IM_COL32(80,  255, 80,  18),
+        IM_COL32(80,  80,  255, 18),
+        IM_COL32(255, 255, 80,  18),
+        IM_COL32(255, 80,  255, 18),
+    };
+    const ImU32 lightBoxOutlines[] = {
+        IM_COL32(255, 100, 100, 120),
+        IM_COL32(100, 255, 100, 120),
+        IM_COL32(100, 100, 255, 120),
+        IM_COL32(255, 255, 100, 120),
+        IM_COL32(255, 100, 255, 120),
+    };
+
+    // Precompute per-cascade data for drawing and stats
+    struct CascadeInfo {
+        float nearP, farP;
+        float orthoW, orthoH;       // light ortho box size in world units
+        float texelsPerUnit;         // resolution utilization
+    };
+    std::vector<CascadeInfo> cascadeInfos(numCascades);
+
+    // --- Draw cascades (back to front so closer ones draw on top) ---
+    for (int c = numCascades - 1; c >= 0; --c) {
+        float nearP = (c == 0) ? 0.1f : shadowCascadeLevels[c - 1];
+        float farP  = (c < static_cast<int>(shadowCascadeLevels.size())) ? shadowCascadeLevels[c] : cameraFarPlane;
+        int colorIdx = c % 5;
+
+        const auto proj = glm::perspective(
+            glm::radians(80.0f),
+            static_cast<float>(width) / static_cast<float>(height),
+            nearP, farP
+        );
+        auto corners = getFrustumCornersWorldSpace(proj, drawView);
+
+        // --- Camera frustum (trapezoid) ---
+        if (showCameraFrustums) {
+            std::vector<ImVec2> pts;
+            pts.reserve(8);
+            for (auto& corner : corners) {
+                pts.push_back(worldToRadar(corner.x, corner.z));
+            }
+            ImVec2 centroid(0, 0);
+            for (auto& p : pts) { centroid.x += p.x; centroid.y += p.y; }
+            centroid.x /= static_cast<float>(pts.size());
+            centroid.y /= static_cast<float>(pts.size());
+            std::sort(pts.begin(), pts.end(), [&](const ImVec2& a, const ImVec2& b) {
+                return atan2f(a.y - centroid.y, a.x - centroid.x) <
+                       atan2f(b.y - centroid.y, b.x - centroid.x);
+            });
+            drawList->AddConvexPolyFilled(pts.data(), static_cast<int>(pts.size()), cascadeFills[colorIdx]);
+            drawList->AddPolyline(pts.data(), static_cast<int>(pts.size()), cascadeOutlines[colorIdx], ImDrawFlags_Closed, 1.5f);
+
+            // Label at centroid
+            char label[8];
+            snprintf(label, sizeof(label), "C%d", c);
+            drawList->AddText(ImVec2(centroid.x - 6, centroid.y - 6), cascadeOutlines[colorIdx], label);
+        }
+
+        // --- Light ortho box ---
+        // Reconstruct the ortho box from the light-space matrix by inverting it
+        // The 8 corners of the NDC cube [-1,1]^3, transformed by inverse(lightSpaceMatrix), give the world-space ortho box
+        if (showLightFrustums && c < static_cast<int>(csmLightSpaceMatrices.size())) {
+            auto lightCorners = getFrustumCornersWorldSpace(
+                glm::mat4(1.0f), // identity view — the lightSpaceMatrix already includes both proj and view
+                csmLightSpaceMatrices[c]
+            );
+            // Note: getFrustumCornersWorldSpace computes inv(proj * view), so passing (identity, lsm)
+            // gives inv(lsm) applied to NDC corners = world-space light box corners
+
+            // Compute ortho dimensions from light-space bounds for stats
+            glm::vec3 lCenter(0);
+            for (auto& v : corners) lCenter += glm::vec3(v);
+            lCenter /= static_cast<float>(corners.size());
+
+            const glm::vec3 lightDir = getDirectionalLightDirection();
+            const auto lightView = glm::lookAt(lCenter + lightDir, lCenter, glm::vec3(0, 1, 0));
+
+            float minX = std::numeric_limits<float>::max(), maxX = std::numeric_limits<float>::lowest();
+            float minY = std::numeric_limits<float>::max(), maxY = std::numeric_limits<float>::lowest();
+            for (auto& v : corners) {
+                auto trf = lightView * v;
+                minX = std::min(minX, trf.x); maxX = std::max(maxX, trf.x);
+                minY = std::min(minY, trf.y); maxY = std::max(maxY, trf.y);
+            }
+            cascadeInfos[c].nearP = nearP;
+            cascadeInfos[c].farP  = farP;
+            cascadeInfos[c].orthoW = maxX - minX;
+            cascadeInfos[c].orthoH = maxY - minY;
+            cascadeInfos[c].texelsPerUnit = static_cast<float>(depthMapResolution) / std::max(cascadeInfos[c].orthoW, cascadeInfos[c].orthoH);
+
+            // Draw light ortho box projected to XZ (dashed outline)
+            std::vector<ImVec2> lpts;
+            lpts.reserve(8);
+            for (auto& corner : lightCorners) {
+                lpts.push_back(worldToRadar(corner.x, corner.z));
+            }
+            ImVec2 lcentroid(0, 0);
+            for (auto& p : lpts) { lcentroid.x += p.x; lcentroid.y += p.y; }
+            lcentroid.x /= static_cast<float>(lpts.size());
+            lcentroid.y /= static_cast<float>(lpts.size());
+            std::sort(lpts.begin(), lpts.end(), [&](const ImVec2& a, const ImVec2& b) {
+                return atan2f(a.y - lcentroid.y, a.x - lcentroid.x) <
+                       atan2f(b.y - lcentroid.y, b.x - lcentroid.x);
+            });
+            drawList->AddConvexPolyFilled(lpts.data(), static_cast<int>(lpts.size()), lightBoxFills[colorIdx]);
+            // Dashed-look outline (thinner)
+            drawList->AddPolyline(lpts.data(), static_cast<int>(lpts.size()), lightBoxOutlines[colorIdx], ImDrawFlags_Closed, 1.0f);
+        }
+    }
+
+    // --- Player dot ---
+    drawList->AddCircleFilled(center, 5.0f, IM_COL32(255, 255, 255, 255));
+    drawList->AddCircle(center, 5.0f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+
+    // --- Camera direction arrow ---
+    glm::vec2 fwd(drawFront.x, drawFront.z);
+    float fwdLen = glm::length(fwd);
+    if (fwdLen > 0.001f) {
+        fwd /= fwdLen;
+        float arrowLen = side * 0.08f;
+        ImVec2 tip(center.x + fwd.x * arrowLen, center.y + fwd.y * arrowLen);
+        drawList->AddLine(center, tip, IM_COL32(255, 255, 255, 230), 2.5f);
+        glm::vec2 perp(-fwd.y, fwd.x);
+        float hs = 6.0f;
+        ImVec2 left (tip.x - fwd.x * hs + perp.x * hs * 0.5f,
+                     tip.y - fwd.y * hs + perp.y * hs * 0.5f);
+        ImVec2 right(tip.x - fwd.x * hs - perp.x * hs * 0.5f,
+                     tip.y - fwd.y * hs - perp.y * hs * 0.5f);
+        drawList->AddTriangleFilled(tip, left, right, IM_COL32(255, 255, 255, 230));
+    }
+
+    // --- If frozen, show live camera position as a ghost ---
+    if (frozen) {
+        ImVec2 livePos = worldToRadar(cameraPos.x, cameraPos.z);
+        drawList->AddCircleFilled(livePos, 3.0f, IM_COL32(255, 100, 100, 180));
+
+        glm::vec2 liveFwd(cameraFront.x, cameraFront.z);
+        float lfl = glm::length(liveFwd);
+        if (lfl > 0.001f) {
+            liveFwd /= lfl;
+            float al = side * 0.05f;
+            ImVec2 lt(livePos.x + liveFwd.x * al, livePos.y + liveFwd.y * al);
+            drawList->AddLine(livePos, lt, IM_COL32(255, 100, 100, 150), 1.5f);
+        }
+    }
+
+    // --- Sun direction indicator ---
+    glm::vec2 lightXZ(directionalLightDir.x, directionalLightDir.z);
+    float lLen = glm::length(lightXZ);
+    if (lLen > 0.001f) {
+        lightXZ /= lLen;
+        float sunLen = side * 0.44f;
+        ImVec2 sunPos(center.x + lightXZ.x * sunLen, center.y + lightXZ.y * sunLen);
+        drawList->AddCircleFilled(sunPos, 7.0f, IM_COL32(255, 200, 50, 200));
+        drawList->AddCircle(sunPos, 7.0f, IM_COL32(255, 230, 100, 255), 0, 1.5f);
+
+        // Sun direction line from center
+        drawList->AddLine(center, sunPos, IM_COL32(255, 200, 50, 60), 1.0f);
+    }
+
+    // --- Mouse hover: show world coordinate ---
+    ImVec2 mousePos = ImGui::GetMousePos();
+    if (mousePos.x >= canvasPos.x && mousePos.x < canvasPos.x + side &&
+        mousePos.y >= canvasPos.y && mousePos.y < canvasPos.y + side) {
+        float relX = (mousePos.x - center.x) / (side * 0.45f) * worldRadius + drawPos.x;
+        float relZ = (mousePos.y - center.y) / (side * 0.45f) * worldRadius + drawPos.z;
+        char coordTxt[64];
+        snprintf(coordTxt, sizeof(coordTxt), "(%.0f, %.0f)", relX, relZ);
+        drawList->AddText(ImVec2(mousePos.x + 12, mousePos.y - 8), IM_COL32(200, 200, 200, 200), coordTxt);
+    }
+
+    drawList->PopClipRect();
+
+    // Border
+    drawList->AddRect(canvasPos, ImVec2(canvasPos.x + side, canvasPos.y + side),
+                      IM_COL32(80, 80, 80, 255));
+
+    // Reserve canvas space
+    ImGui::Dummy(ImVec2(side, side));
+
+    // --- Per-cascade stats table ---
+    ImGui::Separator();
+    ImGui::Text("Cascade Stats (res: %u)", depthMapResolution);
+    if (ImGui::BeginTable("csm_stats", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("Cascade");
+        ImGui::TableSetupColumn("Near");
+        ImGui::TableSetupColumn("Far");
+        ImGui::TableSetupColumn("Ortho Size");
+        ImGui::TableSetupColumn("Texels/Block");
+        ImGui::TableHeadersRow();
+
+        for (int c = 0; c < numCascades; ++c) {
+            int ci = c % 5;
+            ImVec4 col;
+            col.x = ((cascadeOutlines[ci] >>  0) & 0xFF) / 255.0f;
+            col.y = ((cascadeOutlines[ci] >>  8) & 0xFF) / 255.0f;
+            col.z = ((cascadeOutlines[ci] >> 16) & 0xFF) / 255.0f;
+            col.w = 1.0f;
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn(); ImGui::TextColored(col, "C%d", c);
+            ImGui::TableNextColumn(); ImGui::Text("%.1f", cascadeInfos[c].nearP);
+            ImGui::TableNextColumn(); ImGui::Text("%.1f", cascadeInfos[c].farP);
+            ImGui::TableNextColumn(); ImGui::Text("%.0fx%.0f", cascadeInfos[c].orthoW, cascadeInfos[c].orthoH);
+            ImGui::TableNextColumn();
+            float tpu = cascadeInfos[c].texelsPerUnit;
+            if (tpu > 4.0f)
+                ImGui::TextColored(ImVec4(0.3f, 1, 0.3f, 1), "%.1f", tpu);
+            else if (tpu > 1.0f)
+                ImGui::TextColored(ImVec4(1, 1, 0.3f, 1), "%.1f", tpu);
+            else
+                ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "%.1f", tpu);
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Text("Player: (%.0f, %.0f, %.0f)", drawPos.x, drawPos.y, drawPos.z);
+
+    ImGui::End();
 }
 
-void Lighting::initShadowGroundPlane() {
-    // plane VAO
-    unsigned int planeVBO;
-    glGenVertexArrays(1, &planeVAO);
-    glGenBuffers(1, &planeVBO);
-    glBindVertexArray(planeVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, planeVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(planeVertices), planeVertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), static_cast<void *>(nullptr));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void *>(3 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void *>(6 * sizeof(float)));
-    glBindVertexArray(0);
-}
-
-
-void Lighting::initShadowResources() {
-    refreshShadowResolution(); // Ensure shadowWidth/shadowHeight are set according to shadowQuality
-    glGenFramebuffers(1, &depthMapFBO);
-    // create depth texture
-    glGenTextures(1, &depthMap);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    // Clamp to border to avoid shadow edge sampling artifacts
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    constexpr float borderColor[] = {1.0f,1.0f,1.0f,1.0f};
-    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-    // attach depth texture as FBO's depth buffer
-    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-    glDrawBuffer(GL_NONE);
-    glReadBuffer(GL_NONE);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
-void Lighting::drawShadowMapPreview() {
-    shadowDebugShader->use();
-    shadowDebugShader->setFloat("near_plane", shadowNearPlane);
-    shadowDebugShader->setFloat("far_plane", shadowFarPlane);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
-
-    drawTexturePreviewQuad(depthMap);
-}
-
-void Lighting::initShadowDebugShader() const {
-    shadowDebugShader->use();
-    shadowDebugShader->setInt("depthMap", 0);
-}
 
 // Draws a small textured quad (preview of an FBO texture) in the top-right corner.
 void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
@@ -507,6 +727,251 @@ void Lighting::drawTexturePreviewQuad(const unsigned int textureID) {
     glBindVertexArray(0);
 
     if (depthEnabled) glEnable(GL_DEPTH_TEST);
+}
+
+// CSM
+std::vector<glm::vec4> Lighting::getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view)
+{
+    //  We know the coordinates of the corners of the NDC cube: the coordinates are in the range [-1,1] on the three axes.
+    //  Because matrix multiplication is a reversible process, we can apply the inverse of the view and projection matrices
+    //  on the corner points of the NDC cube to get the frustum corners in world space.
+    const auto inv = glm::inverse(proj * view);
+    
+    std::vector<glm::vec4> frustumCorners;
+    for (unsigned int x = 0; x < 2; ++x)
+    {
+        for (unsigned int y = 0; y < 2; ++y)
+        {
+            for (unsigned int z = 0; z < 2; ++z)
+            {
+                const glm::vec4 pt = 
+                    inv * glm::vec4(
+                        2.0f * x - 1.0f,
+                        2.0f * y - 1.0f,
+                        2.0f * z - 1.0f,
+                        1.0f);
+                frustumCorners.push_back(pt / pt.w);
+            }
+        }
+    }
+    
+    return frustumCorners;
+}
+
+glm::mat4 Lighting::getLightSpaceMatrix(const float nearPlane, const float farPlane, const glm::mat4& view) const {
+    const auto proj = glm::perspective(
+        glm::radians(80.0f),
+        (float) width / (float) height,
+        nearPlane,
+        farPlane
+    );
+
+    std::vector<glm::vec4> corners = getFrustumCornersWorldSpace(proj, view);
+
+    glm::vec3 center = glm::vec3(0, 0, 0);
+    for (const auto& v : corners)
+    {
+        center += glm::vec3(v);
+    }
+    center /= corners.size();
+
+    const glm::vec3 lightDir = getDirectionalLightDirection();
+    const auto lightView = glm::lookAt(
+        center + lightDir,
+        center,
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+
+
+    float minX = std::numeric_limits<float>::max();
+    float maxX = std::numeric_limits<float>::lowest();
+    float minY = std::numeric_limits<float>::max();
+    float maxY = std::numeric_limits<float>::lowest();
+    float minZ = std::numeric_limits<float>::max();
+    float maxZ = std::numeric_limits<float>::lowest();
+    for (const auto& v : corners)
+    {
+        const auto trf = lightView * v;
+        minX = std::min(minX, trf.x);
+        maxX = std::max(maxX, trf.x);
+        minY = std::min(minY, trf.y);
+        maxY = std::max(maxY, trf.y);
+        minZ = std::min(minZ, trf.z);
+        maxZ = std::max(maxZ, trf.z);
+    }
+
+    // Extend the Z range to capture shadow casters behind the camera frustum.
+    // A fixed extension is more predictable than the old multiplicative zMult=3.0
+    // which wasted resolution by over-expanding the volume.
+    // Pull near plane back to catch casters behind the view frustum,
+    // and push far plane to catch distant casters.
+    constexpr float zExtendBack = 150.0f;   // blocks behind the frustum
+    constexpr float zExtendFront = 50.0f;   // blocks beyond the frustum
+    minZ -= zExtendBack;
+    maxZ += zExtendFront;
+
+    // ── Texel-snapping ──
+    // Without this, as the camera moves the ortho projection shifts by sub-texel
+    // amounts, causing shadows to shimmer/swim.  We quantize the projection so
+    // that each camera movement snaps to whole shadow-map texels.
+    //
+    // Algorithm (from NVIDIA CSM paper & OGLDev tutorial 49):
+    //   1. Compute the world-space size of one shadow-map texel.
+    //   2. Snap minX/maxX and minY/maxY to multiples of that size.
+    const float worldUnitsPerTexelX = (maxX - minX) / static_cast<float>(depthMapResolution);
+    const float worldUnitsPerTexelY = (maxY - minY) / static_cast<float>(depthMapResolution);
+
+    minX = std::floor(minX / worldUnitsPerTexelX) * worldUnitsPerTexelX;
+    maxX = std::floor(maxX / worldUnitsPerTexelX) * worldUnitsPerTexelX;
+    minY = std::floor(minY / worldUnitsPerTexelY) * worldUnitsPerTexelY;
+    maxY = std::floor(maxY / worldUnitsPerTexelY) * worldUnitsPerTexelY;
+
+    const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+
+    return lightProjection * lightView;
+}
+
+std::vector<glm::mat4> Lighting::getLightSpaceMatrices(const glm::mat4& cameraView) const
+{
+    std::vector<glm::mat4> matrices;
+
+    // Number of cascades = shadowCascadeLevels.size() + 1
+    // Cascade 0: cameraNearPlane → shadowCascadeLevels[0]
+    // Cascade 1: shadowCascadeLevels[0] → shadowCascadeLevels[1]
+    // ...
+    // Cascade N: shadowCascadeLevels[N-1] → cameraFarPlane
+
+    for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i)
+    {
+        float near = (i == 0) ? 0.1f : shadowCascadeLevels[i - 1];
+        float far  = (i < shadowCascadeLevels.size()) ? shadowCascadeLevels[i] : cameraFarPlane;
+        matrices.push_back(getLightSpaceMatrix(near, far, cameraView));
+    }
+
+    return matrices;
+}
+
+void Lighting::initCSMResources()
+{
+    // Depth shader — simple vertex + fragment, no geometry shader.
+    // Multi-pass rendering (one draw call per cascade) avoids the
+    // geometry shader overhead that was tripling per-triangle cost.
+    csmDepthShader = std::make_shared<Shader>(
+        "shaders/csmDepth.vert",
+        "shaders/csmDepth.frag");
+
+    const int numCascades = static_cast<int>(shadowCascadeLevels.size()) + 1;
+
+    // Texture array: one layer per cascade
+    glGenTextures(1, &csmDepthMaps);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
+    glTexImage3D(
+        GL_TEXTURE_2D_ARRAY,
+        0,                          // mip level
+        GL_DEPTH_COMPONENT32F,      // internal format (32-bit float depth)
+        depthMapResolution,         // width per layer
+        depthMapResolution,         // height per layer
+        numCascades,                // number of layers
+        0,                          // border
+        GL_DEPTH_COMPONENT,         // format
+        GL_FLOAT,                   // type
+        nullptr                     // no data yet
+    );
+
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+    // FBO — layer attachment is done per-pass in updateCSMShadowMaps()
+    glGenFramebuffers(1, &csmFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
+
+    // Attach layer 0 initially so the FBO is complete
+    glFramebufferTextureLayer(
+        GL_FRAMEBUFFER,
+        GL_DEPTH_ATTACHMENT,
+        csmDepthMaps,
+        0,                          // mip level
+        0                           // layer
+    );
+
+    // We only write depth, no color output
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "ERROR::CSM::FRAMEBUFFER_NOT_COMPLETE\n";
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView)
+{
+    // 1. Compute all light-space matrices for current camera position
+    cachedShadowLightDir = -directionalLightDir;
+    csmLightSpaceMatrices = getLightSpaceMatrices(cameraView);
+
+    const int numCascades = static_cast<int>(csmLightSpaceMatrices.size());
+
+    csmDepthShader->use();
+    glViewport(0, 0, depthMapResolution, depthMapResolution);
+
+    // 2. Multi-pass: render each cascade into its own texture array layer.
+    //    This avoids the geometry shader overhead which was tripling per-triangle
+    //    cost and hurting FPS on geometry-heavy voxel scenes.
+    for (int i = 0; i < numCascades; ++i)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
+        glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                  csmDepthMaps, 0, i);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        csmDepthShader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
+        renderer.render(csmDepthShader);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // Restore viewport
+    glViewport(0, 0, width, height);
+}
+
+void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraView) const
+{
+    shader.use();
+
+    shader.setMat4("view", cameraView);
+
+    // Upload all light-space matrices
+    for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i)
+    {
+        shader.setMat4(
+            "lightSpaceMatrices[" + std::to_string(i) + "]",
+            csmLightSpaceMatrices[i]);
+    }
+
+    // Upload the cascade far-plane distances (view-space Z values).
+    // The fragment shader compares the fragment's view-space depth
+    // against these to pick the right cascade.
+    for (size_t i = 0; i < shadowCascadeLevels.size(); ++i)
+    {
+        shader.setFloat(
+            "cascadePlaneDistances[" + std::to_string(i) + "]",
+            shadowCascadeLevels[i]);
+    }
+
+    shader.setInt("cascadeCount", static_cast<int>(shadowCascadeLevels.size()) + 1);
+    shader.setFloat("farPlane", cameraFarPlane);
+
+    // Bind the shadow map array to a texture unit
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
+    shader.setInt("shadowMapArray", 2);
+
+    shader.setInt("debugCascades", debugCascades);
 }
 
 // Setters

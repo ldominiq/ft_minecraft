@@ -74,14 +74,27 @@ void Renderer::updateChunk(const NetModifiedBlockData &pkt)
 
 void Renderer::buildChunks()
 {
-	std::vector<std::future<ChunkPos>> meshFutures;
-
+	// Collect all chunks that need building this frame.
+	std::vector<std::pair<ChunkPos, std::shared_ptr<ChunkRenderer>>> toBuild;
 	for (auto [chunkX, chunkZ] : chunksToBuild) {
 		std::shared_ptr<ChunkRenderer> currChunk = getChunk(chunkX, chunkZ);
 		if (!currChunk) continue;
+		toBuild.push_back({{chunkX, chunkZ}, currChunk});
+	}
 
-		meshFutures.push_back(std::async(std::launch::async, [currChunk, cx = chunkX, cz = chunkZ]() {
-			currChunk->buildMeshData();
+	// Sky-light is already computed for each chunk in receiveChunk()
+	// immediately after deserialization, so every chunk entering
+	// buildChunks() via linkNeighbors() already has a valid skyLight
+	// array.  No need to recompute here.
+
+	// ── Build meshes (all skyLight arrays are valid) ────────────
+	std::vector<std::future<ChunkPos>> meshFutures;
+	for (auto& [pos, chunk] : toBuild) {
+		auto cx = pos.first;
+		auto cz = pos.second;
+		auto chunkPtr = chunk; // structured bindings can't be captured directly
+		meshFutures.push_back(std::async(std::launch::async, [chunkPtr, cx, cz]() {
+			chunkPtr->buildMeshData();
 			return Chunk::toKey(cx, cz);
 		}));
 	}
@@ -168,6 +181,14 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
         std::istringstream iss(std::string(decompressed.begin(), decompressed.end()), std::ios::binary);
 
         std::shared_ptr<ChunkRenderer> newChunk = std::make_shared<ChunkRenderer>(iss);
+		// Compute sky-light immediately so that any neighbor chunk
+		// building its mesh later can read valid skyLight values
+		// from this chunk, even if this chunk isn't in chunksToBuild
+		// yet (e.g. it doesn't have all 4 neighbors loaded).
+		// Without this, neighbors would read fallback=15 from our
+		// empty skyLight array and their border faces would look
+		// incorrectly sunlit.
+		newChunk->computeSkyLight();
 		linkNeighbors(pkt.X, pkt.Z, newChunk);
 		chunks[{pkt.X, pkt.Z}] = newChunk;
 		// newChunk->buildMesh();
@@ -179,7 +200,7 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
 void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, const uint &meshVerticesSize) const {
     shader->use();
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 9);
+    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 10); // 10 floats per vertex
 }
 
 void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
@@ -278,7 +299,7 @@ void Renderer::renderWater() const {
         if (auto chunk = weakChunk.lock()) {
             if (chunk->getWaterMeshVerticesSize() > 0) {
                 glBindVertexArray(chunk->getWaterVao());
-                glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 9);
+                glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 10);
             }
         }
     }
