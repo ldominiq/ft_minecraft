@@ -23,10 +23,10 @@ class SSAO {
 
         /// The final SSAO texture to sample in the lighting pass.
         /// Returns the blurred texture when available and blur enabled, raw otherwise.
-        GLuint getSSAOTexture() const { return (blurEnabled && ssaoBlurTexture) ? ssaoBlurTexture : ssaoColorBuffer; }
+        GLuint getSSAOTexture() const { return (blurEnabled && ssaoBlurTexture) ? ssaoBlurTexture : ssaoBuffer; }
 
         /// The raw (unblurred) SSAO texture
-        GLuint getRawSSAOTexture() const { return ssaoColorBuffer; }
+        GLuint getRawSSAOTexture() const { return ssaoBuffer; }
 
         void setBlurEnabled(bool e) { blurEnabled = e; }
         bool isBlurEnabled() const { return blurEnabled; }
@@ -38,7 +38,7 @@ class SSAO {
         float getRadius() const { return radius; }
         float getBias() const { return bias; }
         float getPower() const { return power; }
-        void setKernelSize(int size) { kernelSize = std::min(size, MAX_KERNEL_SIZE); generateKernel(); }
+        void setKernelSize(int size) { kernelSize = std::min(size, MAX_KERNEL_SIZE); kernelDirty = true; }
         void setRadius(float r) { radius = r; }
         void setBias(float b) { bias = b; }
         void setPower(float p) { power = p; }
@@ -60,17 +60,21 @@ class SSAO {
         bool halfResolution = true;   // Half-res SSAO for ~4x perf gain
         bool resolutionChanged = false;
 
+        // Dirty flags — avoid re-uploading uniforms every frame
+        bool kernelDirty = true;
+        glm::mat4 cachedProjection{0.0f}; // Zero-init so first comparison always triggers upload
+
         // Hemisphere sample kernel
-        static constexpr int MAX_KERNEL_SIZE = 64;
-        int kernelSize = 64;
+        static constexpr int MAX_KERNEL_SIZE = 10;
+        int kernelSize = 10;
         std::vector<glm::vec3> ssaoKernel;
 
         // 4x4 noise texture for random rotation
         GLuint noiseTexture = 0;
 
-        // SSAO FBO (raw occlusion, single-channel)
+        // SSAO FBO (raw occlusion, single-channel grayscale)
         GLuint ssaoFBO = 0;
-        GLuint ssaoColorBuffer = 0;
+        GLuint ssaoBuffer = 0;
 
         // Blur FBO
         GLuint ssaoBlurFBO = 0;

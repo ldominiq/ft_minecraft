@@ -22,9 +22,11 @@ void SSAO::generateKernel() {
 
     std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between [0.0, 1.0]
     std::default_random_engine generator;
-    
 
-    for (unsigned int i = 0; i < 64; ++i) {
+    ssaoKernel.clear();
+    ssaoKernel.reserve(MAX_KERNEL_SIZE);
+
+    for (unsigned int i = 0; i < MAX_KERNEL_SIZE; ++i) {
         glm::vec3 sample(
             randomFloats(generator) * 2.0 - 1.0, // x: random float in range [-1.0, 1.0]
             randomFloats(generator) * 2.0 - 1.0, // y: random float in range [-1.0, 1.0]
@@ -33,12 +35,14 @@ void SSAO::generateKernel() {
         sample = glm::normalize(sample);
         sample *= randomFloats(generator);
 
-        float scale = (float)i / 64.0;
+        float scale = (float)i / (float)MAX_KERNEL_SIZE;
         scale = lerp(0.1f, 1.0f, scale * scale);
         sample *= scale;
 
         ssaoKernel.push_back(sample);
     }
+
+    kernelDirty = true;
 }
 
 // By introducing some randomness onto the sample kernels we largely reduce the number of samples necessary to get good results.
@@ -47,25 +51,24 @@ void SSAO::generateNoiseTexture() {
     std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between [0.0, 1.0]
     std::default_random_engine generator;
     std::vector<glm::vec3> ssaoNoise;
+    ssaoNoise.reserve(16);
 
     for (unsigned int i = 0; i < 16; i++) {
-        glm::vec3 noise (
+        glm::vec3 noise = normalize(glm::vec3(
             randomFloats(generator) * 2.0 - 1.0, // x: random float in range [-1.0, 1.0]
             randomFloats(generator) * 2.0 - 1.0, // y: random float in range [-1.0, 1.0]
-            // As the sample kernel is oriented along the positive z direction in tangent space, we leave the z component at 0.0 so we rotate around the z axis. 
-            0.0f                                 // z: always 0.0
-        );
+            // As the sample kernel is oriented along the positive z direction in tangent space, we leave the z component at 0.0 so we rotate around the z axis.
+            0.0f                                  // z: always 0.0
+        ));
         ssaoNoise.push_back(noise);
     }
 
-    // We then create a 4x4 texture that holds the random rotation vectors
+    // 4x4 texture of random rotation vectors
     glGenTextures(1, &noiseTexture);
     glBindTexture(GL_TEXTURE_2D, noiseTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); 
 }
 
 // The SSAO shader runs on a 2D screen-filled quad that calculates the occlusion value for each of its fragments.
@@ -77,14 +80,15 @@ void SSAO::generateFramebuffers() {
     glGenFramebuffers(1, &ssaoFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
 
-    glGenTextures(1, &ssaoColorBuffer);
-    glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
-    // As the ambient occlusion result is a single grayscale value we'll only need a texture's red component, so we set the color buffer's internal format to GL_RED. 
+    glGenTextures(1, &ssaoBuffer);
+    glBindTexture(GL_TEXTURE_2D, ssaoBuffer);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);   // Linear for half-res upscaling
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // Prevent blur edge artifacts
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBuffer, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoBuffer, 0);
 
     // Blur FBO — at full resolution for smooth upscaling
     glGenFramebuffers(1, &ssaoBlurFBO);
@@ -92,8 +96,10 @@ void SSAO::generateFramebuffers() {
     glGenTextures(1, &ssaoBlurTexture);
     glBindTexture(GL_TEXTURE_2D, ssaoBlurTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, SCR_WIDTH, SCR_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);  // Linear for upscale
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoBlurTexture, 0);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -116,12 +122,21 @@ void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
 
     ssaoShader->use();
 
-    // Upload kernel samples
-    for (int i = 0; i < kernelSize; ++i) {
-        ssaoShader->setVec3("samples[" + std::to_string(i) + "]", ssaoKernel[i]);
+    // Only re-upload kernel samples when they change
+    if (kernelDirty) {
+        for (int i = 0; i < kernelSize; ++i) {
+            ssaoShader->setVec3("samples[" + std::to_string(i) + "]", ssaoKernel[i]);
+        }
+        ssaoShader->setInt("kernelSize", kernelSize);
+        kernelDirty = false;
     }
-    ssaoShader->setInt("kernelSize", kernelSize);
-    ssaoShader->setMat4("projection", projection);
+
+    // Only re-upload projection when it changes
+    if (projection != cachedProjection) {
+        ssaoShader->setMat4("projection", projection);
+        cachedProjection = projection;
+    }
+
     ssaoShader->setFloat("radius", radius);
     ssaoShader->setFloat("bias", bias);
     ssaoShader->setFloat("power", power);
@@ -160,7 +175,7 @@ void SSAO::blurSSAO() {
     ssaoBlurShader->use();
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+    glBindTexture(GL_TEXTURE_2D, ssaoBuffer);
     ssaoBlurShader->setInt("ssaoInput", 0);
 
     glBindVertexArray(quadVAO);
@@ -186,8 +201,8 @@ void SSAO::resize(int w, int h) {
 void SSAO::destroyFramebuffers() {
     if (ssaoFBO) {
         glDeleteFramebuffers(1, &ssaoFBO);
-        glDeleteTextures(1, &ssaoColorBuffer);
-        ssaoFBO = ssaoColorBuffer = 0;
+        glDeleteTextures(1, &ssaoBuffer);
+        ssaoFBO = ssaoBuffer = 0;
     }
     if (ssaoBlurFBO) {
         glDeleteFramebuffers(1, &ssaoBlurFBO);
