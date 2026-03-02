@@ -82,33 +82,12 @@ void Renderer::buildChunks()
 		toBuild.push_back({{chunkX, chunkZ}, currChunk});
 	}
 
-	// ── Phase 1: Compute sky-light for ALL chunks first ─────────
-	// Each chunk's BFS flood-fill is self-contained (only reads its
-	// own block data, never crosses chunk borders).  So these can
-	// run in parallel without any race conditions.
-	//
-	// We do this BEFORE mesh building because buildMeshData() reads
-	// the sky-light of NEIGHBOR chunks for border faces.  If we
-	// computed sky-light inside buildMeshData() (like before), two
-	// concurrent chunks could read each other's still-empty skyLight
-	// arrays and get wrong values.  By computing all sky-light
-	// first, every chunk's array is populated before any mesh build
-	// tries to read it.
-	{
-		std::vector<std::future<void>> skyLightFutures;
-		for (auto& [pos, chunk] : toBuild) {
-			auto chunkPtr = chunk; // structured bindings can't be captured directly
-			skyLightFutures.push_back(std::async(std::launch::async, [chunkPtr]() {
-				chunkPtr->computeSkyLight();
-			}));
-		}
-		// Wait for all sky-light computations to finish.
-		for (auto& future : skyLightFutures) {
-			future.get();
-		}
-	}
+	// Sky-light is already computed for each chunk in receiveChunk()
+	// immediately after deserialization, so every chunk entering
+	// buildChunks() via linkNeighbors() already has a valid skyLight
+	// array.  No need to recompute here.
 
-	// ── Phase 2: Build meshes (all skyLight arrays now valid) ────
+	// ── Build meshes (all skyLight arrays are valid) ────────────
 	std::vector<std::future<ChunkPos>> meshFutures;
 	for (auto& [pos, chunk] : toBuild) {
 		auto cx = pos.first;
@@ -235,7 +214,7 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 	}
 }
 
-void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
+void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 {
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
 	entityID ID = pkt.entityID;
@@ -250,7 +229,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 			ent->nextPosition = position;
 			ent->yaw = yaw;
 			ent->positionUpdated = true;
-			ent->lastTickClientTime = lastTickClientTime;
+			ent->glfwTickTime = glfwTickTime;
 			if (pkt.type == static_cast<uint16_t>(-1))
 			{
 				ent->removed = true;
@@ -274,7 +253,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 		{
 			BlockType type = static_cast<BlockType>(pkt.type);
 			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
-			entityPtr->lastTickClientTime = lastTickClientTime;
+			entityPtr->glfwTickTime = glfwTickTime;
 			itemEntities.push_back(entityPtr);
 			entitiesMap[ID] = entityPtr;
 		}
@@ -295,7 +274,12 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &lastTickClientTime)
 					return;
 			}
 
+			entityPtr->prevPosition = position;
+			entityPtr->nextPosition = position;
+			entityPtr->positionUpdated = true;
+			entityPtr->glfwTickTime = glfwTickTime;
 			livingEntitiesManager.add(entityPtr);
+
 			// Convert to shared_ptr<LivingEntity> safely
 			std::shared_ptr<LivingEntity> le = static_cast<std::shared_ptr<LivingEntity>>(entityPtr);
 			livingEntities.push_back(le);

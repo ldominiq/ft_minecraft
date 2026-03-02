@@ -176,6 +176,11 @@ void main()
 
 float CSMShadowCalculation(vec3 fragPosWorldSpace)
 {
+    if (cascadeCount == 0)
+    {
+        return 0.0;
+    }   
+
     // 1. Find fragment depth in VIEW SPACE.
     //    We need to know how far this fragment is from the camera
     //    so we can pick the right cascade.

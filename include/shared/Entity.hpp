@@ -118,7 +118,7 @@ class Entity {
 		//TODO move all of this and get a normal tick on client.
 		glm::vec3 prevPosition{};
 		glm::vec3 nextPosition{};
-		float lastTickClientTime = 0;
+		float glfwTickTime = 0;
 		
 		bool removed = false; //item entities only
 		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only

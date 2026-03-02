@@ -101,6 +101,9 @@ class Chunk {
 		// Returns 0 for out-of-bounds positions (fully dark).
 		uint8_t getSkyLight(int x, int y, int z) const;
 
+		// Returns true if sky-light has already been computed for this chunk.
+		bool hasSkyLight() const { return !skyLight.empty(); }
+
 		void saveToStream(std::ostream& out) const; // only server? Still great to have it here.
 		void loadFromStream(std::istream& in);
 

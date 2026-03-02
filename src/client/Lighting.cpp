@@ -1,7 +1,4 @@
 #include "Lighting.hpp"
-#include <algorithm>
-#include <cmath>
-#include <imgui.h>
 
 Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screenWidth), height(screenHeight) {
     // VAO for fullscreen triangle (no attributes needed)

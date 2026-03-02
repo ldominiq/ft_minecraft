@@ -109,11 +109,11 @@ uint Typer::getPixelSizeOfString(const std::string &str)
 }
 
 // render line of text
-void Typer::renderText(const std::string &text, float x, float y, const glm::vec3 &color)
+void Typer::renderText(const std::string &text, float x, float y, const glm::vec3 &color, const float alpha /* = 1.0f */)
 {
     // activate corresponding render state	
     shader.use();
-	shader.setFloat3("textColor", color.x, color.y, color.z);
+	shader.setVec4("textColor", glm::vec4(color.x, color.y, color.z, alpha));
 
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(VAO);

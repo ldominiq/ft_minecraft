@@ -5,6 +5,11 @@
 #include <glm/glm.hpp>
 #include <vector>
 #include <memory>
+#include <algorithm>
+#include <cmath>
+#include <imgui.h>
+#include <limits>
+#include <cstdio>
 
 #include "Shader.hpp"
 #include "Renderer.hpp"

@@ -68,7 +68,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		}
 
 		LivingEntitiesManager livingEntitiesManager;
-		void onEntity(NetEntityMove &pkt, const float &lastTickClientTime);	// handles NetEntityMove packet
+		void onEntity(NetEntityMove &pkt, const float &glfwTickTime);	// handles NetEntityMove packet
 		void drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime);
 };
 
