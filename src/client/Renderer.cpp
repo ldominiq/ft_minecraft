@@ -1,4 +1,5 @@
 #include "Renderer.hpp"
+#include <algorithm>
 
 void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk) {
 
@@ -211,6 +212,60 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 				chunk->updateMesh();
 			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 		}
+	}
+}
+
+void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const {
+	for (auto& weakChunk : renderedChunks) {
+		auto chunk = weakChunk.lock();
+		if (!chunk)
+			continue;
+
+		// Skip empty chunks (no geometry to cast shadows)
+		if (chunk->getMeshVerticesSize() == 0)
+			continue;
+
+		// Frustum cull: test the chunk AABB against the light's clip volume.
+		// Chunk world-space AABB:
+		const float x0 = static_cast<float>(chunk->getOriginX());
+		const float z0 = static_cast<float>(chunk->getOriginZ());
+		const float x1 = x0 + static_cast<float>(Chunk::WIDTH);
+		const float z1 = z0 + static_cast<float>(Chunk::DEPTH);
+		constexpr float y0 = 0.0f;
+		constexpr float y1 = static_cast<float>(Chunk::HEIGHT);
+
+		// Transform all 8 AABB corners into light clip space and compute
+		// the min/max of the resulting NDC coordinates.
+		float clipMinX =  1e30f, clipMaxX = -1e30f;
+		float clipMinY =  1e30f, clipMaxY = -1e30f;
+		float clipMinZ =  1e30f, clipMaxZ = -1e30f;
+
+		const glm::vec3 corners[8] = {
+			{x0, y0, z0}, {x1, y0, z0}, {x0, y1, z0}, {x1, y1, z0},
+			{x0, y0, z1}, {x1, y0, z1}, {x0, y1, z1}, {x1, y1, z1},
+		};
+
+		for (const auto& c : corners) {
+			glm::vec4 clip = lightSpaceMatrix * glm::vec4(c, 1.0f);
+			// Ortho projection has w=1, but be safe
+			float invW = 1.0f / clip.w;
+			float nx = clip.x * invW;
+			float ny = clip.y * invW;
+			float nz = clip.z * invW;
+			clipMinX = std::min(clipMinX, nx); clipMaxX = std::max(clipMaxX, nx);
+			clipMinY = std::min(clipMinY, ny); clipMaxY = std::max(clipMaxY, ny);
+			clipMinZ = std::min(clipMinZ, nz); clipMaxZ = std::max(clipMaxZ, nz);
+		}
+
+		// If the AABB is entirely outside any clip plane, skip this chunk.
+		if (clipMaxX < -1.0f || clipMinX > 1.0f ||
+			clipMaxY < -1.0f || clipMinY > 1.0f ||
+			clipMaxZ < -1.0f || clipMinZ > 1.0f)
+			continue;
+
+		if (chunk->needsUpdate)
+			chunk->updateMesh();
+		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 	}
 }
 

@@ -945,8 +945,8 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
     glViewport(0, 0, depthMapResolution, depthMapResolution);
 
     // 2. Multi-pass: render each cascade into its own texture array layer.
-    //    This avoids the geometry shader overhead which was tripling per-triangle
-    //    cost and hurting FPS on geometry-heavy voxel scenes.
+    //    Each pass frustum-culls chunks against the cascade's light-space volume,
+    //    skipping chunks that cannot contribute to this cascade's shadow map.
     for (int i = 0; i < numCascades; ++i)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
@@ -955,7 +955,7 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
         glClear(GL_DEPTH_BUFFER_BIT);
 
         csmDepthShader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
-        renderer.render(csmDepthShader);
+        renderer.renderShadow(csmDepthShader, csmLightSpaceMatrices[i]);
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

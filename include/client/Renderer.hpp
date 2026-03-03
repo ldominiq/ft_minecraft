@@ -46,6 +46,8 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
 
 		void render(const std::shared_ptr<Shader> &shaderProgram) const ;
+		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
+		void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const;
 		void renderWater() const;
 
 		// Get or set the current chunk load radius.  The radius determines how
