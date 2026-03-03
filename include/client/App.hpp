@@ -253,8 +253,9 @@ private:
     GLuint queryDrawEntities[QUERY_POOL_SIZE]{};
     GLuint querySSAOPool[QUERY_POOL_SIZE]{};
 
-    // Track which queries were actually issued this frame (conditional passes like shadows)
+    // Track which queries were actually issued this frame (conditional passes like shadows/SSAO)
     bool shadowQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
+    bool ssaoQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
 
     int currentQueryIndex = 0;
 

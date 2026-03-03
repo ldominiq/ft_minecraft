@@ -502,10 +502,13 @@ void App::render() {
                 ssao->blurSSAO();
 
             glEndQuery(GL_TIME_ELAPSED);
+            ssaoQueryIssuedThisFrame[currentQueryIndex] = true;
 
             // Restore full-res viewport (SSAO may have rendered at half resolution)
             glViewport(0, 0, screenWidth, screenHeight);
 
+        } else {
+            ssaoQueryIssuedThisFrame[currentQueryIndex] = false;
         }
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
@@ -611,7 +614,14 @@ void App::render() {
             readGPUQueryEMA(queryRenderShaderPool[readIndex], measuredAverageMsRenderShader, a);
             readGPUQueryEMA(queryRenderWaterPool[readIndex], measuredAverageMsRenderWater, a);
             readGPUQueryEMA(queryDrawEntities[readIndex], measuredAverageMsDrawEntities, a);
-            readGPUQueryEMA(querySSAOPool[readIndex], measuredAverageMsSSAO, a);
+
+            // SSAO: only read if the query was actually issued that frame.
+            // Otherwise smoothly decay toward 0 so the display reflects reality.
+            if (ssaoQueryIssuedThisFrame[readIndex]) {
+                readGPUQueryEMA(querySSAOPool[readIndex], measuredAverageMsSSAO, a);
+            } else {
+                measuredAverageMsSSAO *= (1.0 - a);
+            }
 
 
             // Shadows: only read if the query was actually issued that frame.
