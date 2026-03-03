@@ -20,6 +20,7 @@
 #include "LivingEntitiesManager.hpp"
 #include "ClientPlayer.hpp"
 #include "ClientCreeper.hpp"
+#include "Frustum.hpp"
 
 // previously half of World
 
@@ -38,12 +39,27 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::unordered_map<ChunkPos, chunkData> chunksData; //building chunk
 	std::unordered_set<ChunkPos> chunksToBuild; // chunk to build and upload mesh
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
+	Frustum cameraFrustum;
+	bool frustumCullingEnabled = true;
 
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
 	std::unordered_map<ItemID, std::weak_ptr<Entity>> entitiesMap; //fast lookup
 
 	public:
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
+
+		/// Update the camera frustum for culling. Call once per frame before render().
+		void updateFrustum(const glm::mat4& viewProjection) { cameraFrustum.update(viewProjection); }
+
+		/// Get the current camera frustum (for debug visualization).
+		const Frustum& getFrustum() const { return cameraFrustum; }
+
+		bool isFrustumCullingEnabled() const { return frustumCullingEnabled; }
+		void setFrustumCullingEnabled(bool enabled) { frustumCullingEnabled = enabled; }
+
+		/// Draw a top-down ImGui radar showing which chunks pass frustum culling.
+		void drawFrustumCullingDebug(const glm::vec3& cameraPos, const glm::vec3& cameraFront,
+		                             float fovDeg, float aspectRatio, float nearP, float farP);
 
 		void render(const std::shared_ptr<Shader> &shaderProgram) const ;
 		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
