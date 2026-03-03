@@ -9,7 +9,7 @@ uniform sampler2D gNormal;
 uniform sampler2D texNoise;
 
 uniform int kernelSize;
-uniform vec3 samples[4];
+uniform vec3 samples[64];
 uniform mat4 projection;
 uniform float bias;
 uniform float radius;
@@ -42,7 +42,8 @@ void main() {
     // fewer samples for distant geometry (where it's barely visible).
     // fragPos.z is negative in view-space, so abs() gives distance from camera.
     float distFactor = smoothstep(5.0, 50.0, abs(fragPos.z));  // 0 = close, 1 = far
-    int adaptiveKernelSize = clamp(int(mix(float(kernelSize), 4.0, distFactor)), 8, kernelSize);
+    int minSamples = max(4, kernelSize / 4);  // at least 4, scale with kernel size
+    int adaptiveKernelSize = clamp(int(mix(float(kernelSize), float(minSamples), distFactor)), minSamples, kernelSize);
     
     // Using a process called the Gramm-Schmidt process we create an orthogonal basis, each time slightly tilted based on the value of randomVec.
     // Next we iterate over each of the kernel samples, transform the samples from tangent to view-space,

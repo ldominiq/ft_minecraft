@@ -65,7 +65,7 @@ class SSAO {
         glm::mat4 cachedProjection{0.0f}; // Zero-init so first comparison always triggers upload
 
         // Hemisphere sample kernel
-        static constexpr int MAX_KERNEL_SIZE = 4;
+        static constexpr int MAX_KERNEL_SIZE = 64;
         int kernelSize = 4;
         std::vector<glm::vec3> ssaoKernel;
 
