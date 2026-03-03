@@ -9,18 +9,20 @@
 
 class GuiTexture {
 public:
-    explicit GuiTexture(int texture, glm::vec2 position, glm::vec2 scale, bool fbo = false);
+    explicit GuiTexture(int texture, glm::vec2 position, glm::vec2 scale, bool fbo = false, bool depthTexture = false);
 
     int getTexture() const { return texture; }
     glm::vec2 getPosition() const { return position; }
     glm::vec2 getScale() const { return scale; }
     bool getIsFBO() const { return isFBO; }
+    bool getIsDepthTexture() const { return isDepthTexture; }
 
 private:
     int texture;
     glm::vec2 position;
     glm::vec2 scale;
     bool isFBO = false;
+    bool isDepthTexture = false;
 };
 
 

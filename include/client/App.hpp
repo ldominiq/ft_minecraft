@@ -21,6 +21,8 @@
 #include "WaterRenderer.hpp"
 #include "GuiTexture.hpp"
 #include "InventoryUI.hpp"
+#include "GBuffer.hpp"
+#include "SSAO.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -164,6 +166,11 @@ private:
 	// Render type debug framebuffers
 	std::unique_ptr<RenderTypeFramebuffer> renderTypeFramebuffer;
 
+    // SSAO
+    std::shared_ptr<GBuffer> gBuffer;
+    std::shared_ptr<SSAO> ssao;
+    std::shared_ptr<Shader> gBufferShader;
+
 	std::optional<int> seed;
 
     u_int8_t currentBiome;
@@ -217,6 +224,10 @@ private:
 	bool showRefractionDepthTexture = false;
 	bool showNormalsTexture = false;
 	bool showDepthTexture = false;
+	bool showSSAOTexture = false;
+	bool showSSAORawTexture = false;
+	bool showGBufferPositionTexture = false;
+	bool showGBufferNormalTexture = false;
 
     int selectedRenderType = 0; // 0 = none, 1 = normals, 2 = depth
 
@@ -240,9 +251,11 @@ private:
     GLuint queryRenderShaderPool[QUERY_POOL_SIZE]{};
     GLuint queryRenderWaterPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawEntities[QUERY_POOL_SIZE]{};
+    GLuint querySSAOPool[QUERY_POOL_SIZE]{};
 
-    // Track which queries were actually issued this frame (conditional passes like shadows)
+    // Track which queries were actually issued this frame (conditional passes like shadows/SSAO)
     bool shadowQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
+    bool ssaoQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
 
     int currentQueryIndex = 0;
 
@@ -256,6 +269,7 @@ private:
     double measuredAverageMsRenderShader = 0.0;
     double measuredAverageMsRenderWater = 0.0;
     double measuredAverageMsDrawEntities = 0.0;
+    double measuredAverageMsSSAO = 0.0;
 };
 
 #endif //APP_HPP

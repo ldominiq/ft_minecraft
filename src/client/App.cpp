@@ -68,6 +68,9 @@ void App::init() {
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>();
 
+    gBuffer = std::make_shared<GBuffer>(windowedWidth, windowedHeight);
+    ssao = std::make_shared<SSAO>(windowedWidth, windowedHeight);
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -218,6 +221,7 @@ void App::init() {
     glGenQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawEntities);
+    glGenQueries(QUERY_POOL_SIZE, querySSAOPool);
 }
 
 void App::setUdpClientPacketCallback()
@@ -323,6 +327,10 @@ void App::loadResources() {
     textureShader->setInt("diffuseTexture", 0);
 
 	waterRenderer->setDependencies(lighting, renderer, camera);
+
+    gBufferShader = std::make_shared<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
+    gBufferShader->use();
+    gBufferShader->setInt("diffuseTexture", 0);
 }
 
 void App::gameTick() {
@@ -469,6 +477,40 @@ void App::render() {
             textureShader->setInt("renderType", selectedRenderType); // Normal lighting mode
         }
 
+        // GBuffer pass
+        if (ssao && ssao->isEnabled()) {
+            gBuffer->resize(screenWidth, screenHeight);
+            ssao->resize(screenWidth, screenHeight);
+
+            gBuffer->bind();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            gBufferShader->use();
+            gBufferShader->setMat4("view", view);
+            gBufferShader->setMat4("projection", projection);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            renderer->render(gBufferShader);
+
+            gBuffer->unbind();
+
+            // SSAO pass
+            glBeginQuery(GL_TIME_ELAPSED, querySSAOPool[currentQueryIndex]);
+
+            ssao->renderSSAO(*gBuffer, projection);
+            if (ssao->isBlurEnabled())
+                ssao->blurSSAO();
+
+            glEndQuery(GL_TIME_ELAPSED);
+            ssaoQueryIssuedThisFrame[currentQueryIndex] = true;
+
+            // Restore full-res viewport (SSAO may have rendered at half resolution)
+            glViewport(0, 0, screenWidth, screenHeight);
+
+        } else {
+            ssaoQueryIssuedThisFrame[currentQueryIndex] = false;
+        }
+
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
         // Render reflection texture
@@ -500,22 +542,22 @@ void App::render() {
     		// Dynamically build GUI textures based on debug flags
     		guis.clear();
     		if (showReflectionTexture) {
-    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.48f, 0.75f), glm::vec2(0.2f, 0.2f));
     		}
     		if (showRefractionTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(-0.5f, 0.5f), glm::vec2(0.25f, 0.25f), true);
+    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(0.48f, 0.3f), glm::vec2(0.2f, 0.2f), true);
     		}
     		if (showRefractionDepthTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.5f, -0.5f), glm::vec2(0.25f, 0.25f), true);
+    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.48f, -0.15f), glm::vec2(0.2f, 0.2f), true, true);
     		}
     		if (showNormalsTexture && renderTypeFramebuffer) {
-    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.0f, 0.75f), glm::vec2(0.25f, 0.25f), true);
+    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.05f, 0.75f), glm::vec2(0.2f, 0.2f), true);
     		}
     		if (showDepthTexture && renderTypeFramebuffer) {
-    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.0f, -0.75f), glm::vec2(0.25f, 0.25f), true);
+    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.05f, 0.3f), glm::vec2(0.2f, 0.2f), true);
     		}
 
-    		guiRenderer->render(guis);
+    		guiRenderer->render(guis, 0.1f, renderDistance);
         }
 
         if (showDebugWindow) {
@@ -524,6 +566,18 @@ void App::render() {
 
     	if (lighting->isShadowMapEnabled())
     		lighting->drawCSMShadowMapPreview(lighting->debugPreviewLayer);
+
+    	if (showSSAOTexture && ssao && ssao->isEnabled())
+    		lighting->drawTexturePreviewQuad(ssao->getSSAOTexture(), true, glm::vec2(0.0f, 0.2f));
+
+    	if (showSSAORawTexture && ssao && ssao->isEnabled())
+    		lighting->drawTexturePreviewQuad(ssao->getRawSSAOTexture(), true, glm::vec2(0.42f, 0.2f));
+
+    	if (showGBufferPositionTexture && gBuffer)
+    		lighting->drawTexturePreviewQuad(gBuffer->getPositionTexture(), false, glm::vec2(0.84f, 0.2f));
+
+    	if (showGBufferNormalTexture && gBuffer)
+    		lighting->drawTexturePreviewQuad(gBuffer->getNormalTexture(), false, glm::vec2(1.26f, 0.2f));
 
     	if (lighting->showCSMDebugView)
     		lighting->drawCSMDebugView(
@@ -560,6 +614,15 @@ void App::render() {
             readGPUQueryEMA(queryRenderShaderPool[readIndex], measuredAverageMsRenderShader, a);
             readGPUQueryEMA(queryRenderWaterPool[readIndex], measuredAverageMsRenderWater, a);
             readGPUQueryEMA(queryDrawEntities[readIndex], measuredAverageMsDrawEntities, a);
+
+            // SSAO: only read if the query was actually issued that frame.
+            // Otherwise smoothly decay toward 0 so the display reflects reality.
+            if (ssaoQueryIssuedThisFrame[readIndex]) {
+                readGPUQueryEMA(querySSAOPool[readIndex], measuredAverageMsSSAO, a);
+            } else {
+                measuredAverageMsSSAO *= (1.0 - a);
+            }
+
 
             // Shadows: only read if the query was actually issued that frame.
             // Otherwise smoothly decay toward 0 so the display reflects reality.
@@ -622,6 +685,18 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     activeShader->setMat4("projection", projection);
     lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
     lighting->uploadCSMUniforms(*activeShader, view);
+
+    // Bind SSAO texture for the lighting shader (must be after activeShader->use())
+    if (ssao && ssao->isEnabled()) {
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
+        activeShader->setInt("ssaoTexture", 5);
+        activeShader->setInt("ssaoEnabled", 1);
+        activeShader->setVec2("screenSize", glm::vec2(screenWidth, screenHeight));
+    } else {
+        activeShader->setInt("ssaoEnabled", 0);
+    }
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
 
@@ -888,6 +963,10 @@ void App::debugWindow() {
                                 if (ImGui::Checkbox("Shadows", &shadowsEnabled))
                                     lighting->setShadowsEnabled(shadowsEnabled);
 
+                                bool ssaoEnabled = ssao->isEnabled();
+                                if (ImGui::Checkbox("SSAO", &ssaoEnabled))
+                                    ssao->setEnabled(ssaoEnabled);
+
                                 // Changing this will update the far clipping plane.
                                 ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
 
@@ -911,18 +990,65 @@ void App::debugWindow() {
                                 // }
                                 ImGui::EndTabItem();
                             }
+                            if (ImGui::BeginTabItem("SSAO"))
+                            {
+                                bool ssaoEnabled = ssao->isEnabled();
+                                if (ImGui::Checkbox("Enable SSAO", &ssaoEnabled))
+                                    ssao->setEnabled(ssaoEnabled);
+
+                                bool blurEnabled = ssao->isBlurEnabled();
+                                if (ImGui::Checkbox("Enable Blur", &blurEnabled))
+                                    ssao->setBlurEnabled(blurEnabled);
+
+                                bool halfRes = ssao->isHalfResolution();
+                                if (ImGui::Checkbox("Half Resolution", &halfRes))
+                                    ssao->setHalfResolution(halfRes);
+                                ImGui::SameLine();
+                                ImGui::TextDisabled("(?)");
+                                if (ImGui::IsItemHovered())
+                                    ImGui::SetTooltip("Render SSAO at half resolution");
+
+                                ImGui::Separator();
+                                ImGui::Text("Parameters");
+
+                                float radius = ssao->getRadius();
+                                if (ImGui::SliderFloat("Radius", &radius, 0.01f, 5.0f, "%.3f"))
+                                    ssao->setRadius(radius);
+
+                                float bias = ssao->getBias();
+                                if (ImGui::SliderFloat("Bias", &bias, 0.0f, 0.2f, "%.4f"))
+                                    ssao->setBias(bias);
+
+                                float power = ssao->getPower();
+                                if (ImGui::SliderFloat("Power", &power, 0.1f, 10.0f, "%.2f"))
+                                    ssao->setPower(power);
+
+                                int kernelSize = ssao->getKernelSize();
+                                if (ImGui::SliderInt("Kernel Size", &kernelSize, 4, 64))
+                                    ssao->setKernelSize(kernelSize);
+
+                                ImGui::EndTabItem();
+                            }
                             if (ImGui::BeginTabItem("Framebuffers"))
                             {
                                 ImGui::Separator();
-                                ImGui::Text("Framebuffer Debug Views");
+                                ImGui::Text("Water");
                                 ImGui::Checkbox("Show Reflection Texture", &showReflectionTexture);
                                 ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
                                 ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
                                 
                                 ImGui::Separator();
-                                ImGui::Text("Render Type Debug Views");
+                                ImGui::Text("Render Type");
                                 ImGui::Checkbox("Show Normals View", &showNormalsTexture);
                                 ImGui::Checkbox("Show Depth View", &showDepthTexture);
+
+                                ImGui::Separator();
+                                ImGui::Text("SSAO");
+                                ImGui::Checkbox("Preview SSAO Texture", &showSSAOTexture);
+                                ImGui::Checkbox("Preview Raw SSAO (No Blur)", &showSSAORawTexture);
+                                ImGui::Checkbox("Preview GBuffer Position", &showGBufferPositionTexture);
+                                ImGui::Checkbox("Preview GBuffer Normal", &showGBufferNormalTexture);
+
                                 ImGui::EndTabItem();
                             }
                         }
@@ -1207,7 +1333,7 @@ void App::debugWindow() {
                 showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
                 showTimingBar("Water Render",  measuredAverageMsRenderWater,         ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
                 showTimingBar("Entities",      measuredAverageMsDrawEntities,        ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
-
+                showTimingBar("SSAO",          measuredAverageMsSSAO,                ImVec4(0.6f, 0.2f, 0.8f, 1.0f));
                 ImGui::Separator();
                 ImGui::Text("Total GPU: %.3f ms (%.1f FPS budget)", totalGPU, totalGPU > 0.0f ? 1000.0f / totalGPU : 0.0f);
 
@@ -1238,6 +1364,7 @@ void App::debugWindow() {
                         measuredAverageMsRenderShader = 0.0;
                         measuredAverageMsRenderWater = 0.0;
                         measuredAverageMsDrawEntities = 0.0;
+                        measuredAverageMsSSAO = 0.0;
                     }
                 }
             }

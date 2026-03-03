@@ -90,7 +90,7 @@ public:
 
     void uploadLightingUniforms(const Shader& shader, const glm::vec3& cameraPos, glm::vec3 cameraFront) const;
 
-    void drawTexturePreviewQuad(unsigned int textureID);
+    void drawTexturePreviewQuad(unsigned int textureID, bool grayscale = false, glm::vec2 offset = glm::vec2(0.0f));
 
     void renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const;
 

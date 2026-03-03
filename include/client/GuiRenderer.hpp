@@ -16,7 +16,7 @@ class GuiRenderer {
 public:
     explicit GuiRenderer(Loader loader);
 
-    void render(const std::vector<GuiTexture> &guis);
+    void render(const std::vector<GuiTexture> &guis, float nearPlane, float farPlane);
 private:
     RawModel quad;
     std::shared_ptr<Shader> shader;
