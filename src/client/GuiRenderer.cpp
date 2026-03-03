@@ -11,10 +11,10 @@ GuiRenderer::GuiRenderer(Loader loader) {
     shader = std::make_unique<Shader>("shaders/gui.vert", "shaders/gui.frag");
 }
 
-void GuiRenderer::render(const std::vector<GuiTexture>& guis) {
+void GuiRenderer::render(const std::vector<GuiTexture>& guis, float nearPlane, float farPlane) {
     shader->use();
-    shader->setFloat("nearPlane", 0.1f);
-    shader->setFloat("farPlane", 1000.0f);
+    shader->setFloat("nearPlane", nearPlane);
+    shader->setFloat("farPlane", farPlane);
     glBindVertexArray(quad.getVaoID());
     glEnableVertexAttribArray(0);
     glEnable(GL_BLEND); // Enable transparency

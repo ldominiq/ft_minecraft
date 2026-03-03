@@ -554,7 +554,7 @@ void App::render() {
     			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.05f, 0.3f), glm::vec2(0.2f, 0.2f), true);
     		}
 
-    		guiRenderer->render(guis);
+    		guiRenderer->render(guis, 0.1f, renderDistance);
         }
 
         if (showDebugWindow) {
