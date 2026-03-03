@@ -11,8 +11,11 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
     glBindVertexArray(0);
 
     skyShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
+    skyLUTRenderShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/skyLUT_render.frag");
     lightCubeShader = std::make_unique<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
     cloudShader = std::make_shared<Shader>("shaders/clouds.vert", "shaders/clouds.frag");
+
+    skyLUT = std::make_unique<SkyLUT>(256, 128);
 
     cloudFBO = std::make_unique<CloudFramebuffer>(width , height, cloudDownscale);
 
@@ -139,29 +142,48 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     glViewport(0, 0, width, height);
 }
 
-void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos) const {
-    skyShader->use();
+void Lighting::updateSkyLUT() {
+    if (skyLUTEnabled && skyLUT) {
+        skyLUT->update(skyAtmDensity, skyAtmThickness, width, height);
+    }
+}
 
-    skyShader->setVec2("resolution", glm::vec2(width, height));
-    skyShader->setFloat("time", skyTimeOffset);
-    skyShader->setMat4("view", view);
-    skyShader->setMat4("projection", projection);
-    skyShader->setVec3("cameraPosWorld", cameraPos);
-    skyShader->setFloat("seaLevel", 64.0f);
-    skyShader->setFloat("exposure", skyExposure);
-    skyShader->setFloat("atmDensity", skyAtmDensity);
-    skyShader->setFloat("atmThickness", skyAtmThickness);
-    skyShader->setFloat("planetScale", planetScale);
-    skyShader->setVec3("sunDir", getDirectionalLightDirection());
+void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos) const {
+    // Choose shader: LUT-based (fast) or full ray-marching (reference)
+    const bool useLUT = skyLUTEnabled && skyLUT && skyLUT->getLUTTexture();
+    Shader* shader = useLUT ? skyLUTRenderShader.get() : skyShader.get();
+
+    shader->use();
+
+    shader->setVec2("resolution", glm::vec2(width, height));
+    shader->setMat4("view", view);
+    shader->setMat4("projection", projection);
+    shader->setVec3("cameraPosWorld", cameraPos);
+    shader->setFloat("exposure", skyExposure);
+    shader->setVec3("sunDir", getDirectionalLightDirection());
+
+    if (useLUT) {
+        // Bind the precomputed scattering LUT
+        glActiveTexture(GL_TEXTURE9);
+        glBindTexture(GL_TEXTURE_2D, skyLUT->getLUTTexture());
+        shader->setInt("skyLUT", 9);
+    } else {
+        // Full ray-marching path needs these extra uniforms
+        shader->setFloat("seaLevel", 64.0f);
+        shader->setFloat("planetScale", planetScale);
+        shader->setFloat("time", skyTimeOffset);
+        shader->setFloat("atmDensity", skyAtmDensity);
+        shader->setFloat("atmThickness", skyAtmThickness);
+    }
 
     // Cloud composite
     const bool composite = cloudsEnabled && (getCloudTexture() != 0);
-    skyShader->setInt("cloudsCompositeEnabled", composite ? 1 : 0);
+    shader->setInt("cloudsCompositeEnabled", composite ? 1 : 0);
 
     if (composite) {
         glActiveTexture(GL_TEXTURE8);
         glBindTexture(GL_TEXTURE_2D, getCloudTexture());
-        skyShader->setInt("cloudTex", 8);
+        shader->setInt("cloudTex", 8);
     }
 
     // Render sky with depth = far plane, terrain will render in front

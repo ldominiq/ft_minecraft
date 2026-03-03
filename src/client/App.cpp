@@ -427,6 +427,7 @@ void App::render() {
 
         lighting->setViewportSize(screenWidth, screenHeight);
         lighting->updateSunDirection(deltaTime);
+        lighting->updateSkyLUT();
 
 
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
@@ -1178,6 +1179,9 @@ void App::debugWindow() {
                         {
                             if (ImGui::BeginTabItem("Atmosphere controls"))
                             {
+                                bool skyLUTEnabled = lighting->isSkyLUTEnabled();
+                                if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
+                                    lighting->setSkyLUTEnabled(skyLUTEnabled);
                                 if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                                     lighting->setSkyTimePaused(skyTimePaused);
                                 if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))

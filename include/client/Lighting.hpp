@@ -14,6 +14,7 @@
 #include "Shader.hpp"
 #include "Renderer.hpp"
 #include "CloudFramebuffer.hpp"
+#include "SkyLUT.hpp"
 
 static constexpr float lightCubeVertices[] = {
     // positions only (36 vertices -> 12 triangles)
@@ -87,6 +88,9 @@ public:
     void drawLightCubes(const glm::mat4& view, const glm::mat4& projection) const;
 
     void updateSunDirection(float deltaTime);
+    /// Update the sky scattering LUT (call once per frame, before drawSky).
+    /// Only regenerates when atmosphere parameters actually change.
+    void updateSkyLUT();
 
     void uploadLightingUniforms(const Shader& shader, const glm::vec3& cameraPos, glm::vec3 cameraFront) const;
 
@@ -201,6 +205,8 @@ public:
     void setSkyTimePaused(const bool paused) { skyTimePaused = paused; };
     void setSunYawDeg(const float yawDeg) { sunYawDeg = yawDeg; };
     void setPlanetScale(const float scale) { planetScale = scale; };
+    void setSkyLUTEnabled(bool enabled) { skyLUTEnabled = enabled; if (skyLUT) skyLUT->invalidate(); }
+    bool isSkyLUTEnabled() const { return skyLUTEnabled; }
     void setCloudsEnabled(const bool enabled) { cloudsEnabled = enabled; };
     void setCloudDensity(const float density) { cloudDensity = density; };
     void setCloudSigmaT(const float sigmaT) { cloudSigmaT = sigmaT; };
@@ -235,9 +241,13 @@ private:
     std::unique_ptr<CloudFramebuffer> cloudFBO;
 
     std::unique_ptr<Shader> skyShader;
+    std::unique_ptr<Shader> skyLUTRenderShader;  // sky shader that samples precomputed LUT
     std::unique_ptr<Shader> lightCubeShader;
     std::shared_ptr<Shader> debugFBOShader;
     std::shared_ptr<Shader> cloudShader;
+
+    // Sky scattering LUT
+    std::unique_ptr<SkyLUT> skyLUT;
     
     // CSM
     std::shared_ptr<Shader> csmDepthShader;
@@ -270,6 +280,7 @@ private:
     float skyAtmDensity = 19.0f;
     float skyAtmThickness = 1.0f;
     float planetScale = 7900.0f;
+    bool skyLUTEnabled = true;  // Use precomputed scattering LUT (much faster)
 
     // Cloud controls
     bool cloudsEnabled = true;
