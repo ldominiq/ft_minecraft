@@ -36,11 +36,15 @@ void GBuffer::create() {
     unsigned int attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
     glDrawBuffers(2, attachments);
 
-    // Depth renderbuffer
-    glGenRenderbuffers(1, &depthRbo);
-    glBindRenderbuffer(GL_RENDERBUFFER, depthRbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRbo);
+    // Depth texture (sampleable — needed by SSAO to reconstruct view-space position)
+    glGenTextures(1, &depthTexture);
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, SCR_WIDTH, SCR_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cerr << "ERROR::GBUFFER::FRAMEBUFFER_NOT_COMPLETE" << std::endl;
@@ -53,8 +57,8 @@ void GBuffer::destroy() {
         glDeleteFramebuffers(1, &fbo);
         glDeleteTextures(1, &gPosition);
         glDeleteTextures(1, &gNormal);
-        glDeleteRenderbuffers(1, &depthRbo);
-        fbo = gPosition = gNormal = depthRbo = 0;
+        glDeleteTextures(1, &depthTexture);
+        fbo = gPosition = gNormal = depthTexture = 0;
     }
 }
 

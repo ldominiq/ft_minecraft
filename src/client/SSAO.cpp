@@ -140,6 +140,7 @@ void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
     // Only re-upload projection when it changes
     if (projection != cachedProjection) {
         ssaoShader->setMat4("projection", projection);
+        ssaoShader->setMat4("invProjection", glm::inverse(projection));
         cachedProjection = projection;
     }
 
@@ -153,8 +154,8 @@ void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
 
     // Bind G-Buffer textures
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.getPositionTexture());
-    ssaoShader->setInt("gPosition", 0);
+    glBindTexture(GL_TEXTURE_2D, gBuffer.getDepthTexture());
+    ssaoShader->setInt("gDepth", 0);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, gBuffer.getNormalTexture());
