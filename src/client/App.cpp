@@ -328,7 +328,7 @@ void App::loadResources() {
 
 	waterRenderer->setDependencies(lighting, renderer, camera);
 
-    gBufferShader = std::make_unique<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
+    gBufferShader = std::make_shared<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
     gBufferShader->use();
     gBufferShader->setInt("diffuseTexture", 0);
 }

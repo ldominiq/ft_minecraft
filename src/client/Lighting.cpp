@@ -678,7 +678,8 @@ void Lighting::drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cam
 }
 
 
-// Draws a small textured quad (preview of an FBO texture) in the top-right corner.
+// Draws a small textured quad (preview of an FBO texture)
+// defined near the bottom-left in NDC by default and can be repositioned via `offset`.
 void Lighting::drawTexturePreviewQuad(const unsigned int textureID, bool grayscale, glm::vec2 offset) {
     if (textureID == 0) return;
 

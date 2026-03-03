@@ -54,7 +54,7 @@ void SSAO::generateNoiseTexture() {
     ssaoNoise.reserve(16);
 
     for (unsigned int i = 0; i < 16; i++) {
-        glm::vec3 noise = normalize(glm::vec3(
+        glm::vec3 noise = glm::normalize(glm::vec3(
             randomFloats(generator) * 2.0 - 1.0, // x: random float in range [-1.0, 1.0]
             randomFloats(generator) * 2.0 - 1.0, // y: random float in range [-1.0, 1.0]
             // As the sample kernel is oriented along the positive z direction in tangent space, we leave the z component at 0.0 so we rotate around the z axis.
@@ -90,6 +90,9 @@ void SSAO::generateFramebuffers() {
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoBuffer, 0);
 
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "ERROR::SSAO::FRAMEBUFFER_NOT_COMPLETE" << std::endl;
+
     // Blur FBO — at full resolution for smooth upscaling
     glGenFramebuffers(1, &ssaoBlurFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
@@ -101,6 +104,9 @@ void SSAO::generateFramebuffers() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoBlurTexture, 0);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "ERROR::SSAO_BLUR::FRAMEBUFFER_NOT_COMPLETE" << std::endl;
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
