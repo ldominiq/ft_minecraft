@@ -88,6 +88,7 @@ uniform mat4 view;
 // SSAO
 uniform sampler2D ssaoTexture;
 uniform int ssaoEnabled;
+uniform vec2 screenSize; // Full viewport resolution for correct SSAO UV mapping
 
 float near = 0.1;
 float far  = 100.0;
@@ -99,9 +100,9 @@ float LinearizeDepth(float depth)
 }
 
 // function prototypes
-vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir);
-vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
-vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
+vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao);
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao);
+vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao);
 float CSMShadowCalculation(vec3 fragPosWorldSpace);
 
 void main()
@@ -114,8 +115,9 @@ void main()
     // SSAO
     float AmbientOcclusion = 1.0;
     if (ssaoEnabled == 1) {
-        // Screen-space UV from fragment position
-        vec2 ssaoUV = gl_FragCoord.xy / vec2(textureSize(ssaoTexture, 0));
+        // Use full viewport size, not texture size — the SSAO texture may
+        // be half-resolution (when blur is disabled + halfRes is on).
+        vec2 ssaoUV = gl_FragCoord.xy / screenSize;
         AmbientOcclusion = texture(ssaoTexture, ssaoUV).r;
     }
 
@@ -126,18 +128,12 @@ void main()
     // this fragment's final color.
     // == =====================================================
     // phase 1: directional lighting
-    vec3 result = CalcDirLight(dirLight, norm, viewDir);
+    vec3 result = CalcDirLight(dirLight, norm, viewDir, AmbientOcclusion);
     // phase 2: point lights
     for(int i = 0; i < NR_POINT_LIGHTS; i++)
-        result += CalcPointLight(pointLights[i], norm, fs_in.FragPos, viewDir);    
+        result += CalcPointLight(pointLights[i], norm, fs_in.FragPos, viewDir, AmbientOcclusion);    
     // phase 3: spot light
-    result += CalcSpotLight(spotLight, norm, fs_in.FragPos, viewDir);    
-
-    // Apply SSAO to ambient component
-    // Modulate the final result's ambient contribution
-    if (ssaoEnabled == 1) {
-        result *= AmbientOcclusion;
-    }
+    result += CalcSpotLight(spotLight, norm, fs_in.FragPos, viewDir, AmbientOcclusion);    
 
     if (renderType == 1) {
         FragColor = vec4(norm * 0.5 + 0.5, 1.0); // Visualize normals
@@ -275,7 +271,7 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
 }
 
 // calculates the color when using a directional light.
-vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
+vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao)
 {
     vec3 lightDir = normalize(-light.direction);
     // diffuse shading
@@ -296,13 +292,6 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     vec3 ambient = light.ambient * vec3(texture(atlas, fs_in.TexCoord));
     vec3 diffuse = light.diffuse * diff * vec3(texture(atlas, fs_in.TexCoord));
     vec3 specular = light.specular * spec * vec3(texture(atlas, fs_in.TexCoord));
-
-    // Apply SSAO to ambient only
-    //if (ssaoEnabled == 1) {
-    //    vec2 ssaoUV = gl_FragCoord.xy / vec2(textureSize(ssaoTexture, 0));
-    //    float ao = texture(ssaoTexture, ssaoUV).r;
-    //    ambient *= ao;
-    //}
 
     // calculate shadow
     float shadow = 0.0;
@@ -341,12 +330,15 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     float ambientShadowFactor = 1.0 - shadow * 0.7;
     ambient *= ambientShadowFactor;
 
+    // SSAO: darken ambient by screen-space occlusion
+    ambient *= ao;
+
     vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular));    
     return (lighting);
 }
 
 // calculates the color when using a point light.
-vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao)
 {
     vec3 lightDir = normalize(light.position - fragPos);
     // diffuse shading
@@ -373,11 +365,12 @@ vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
     ambient *= attenuation;
     diffuse *= attenuation;
     specular *= attenuation;
+    ambient *= ao;
     return (ambient + diffuse + specular);
 }
 
 // calculates the color when using a spot light.
-vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
+vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao)
 {
     vec3 lightDir = normalize(light.position - fragPos);
     // diffuse shading
@@ -408,5 +401,6 @@ vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
     ambient *= attenuation * intensity;
     diffuse *= attenuation * intensity;
     specular *= attenuation * intensity;
+    ambient *= ao;
     return (ambient + diffuse + specular);
 }

@@ -682,6 +682,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
         glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
         activeShader->setInt("ssaoTexture", 5);
         activeShader->setInt("ssaoEnabled", 1);
+        activeShader->setVec2("screenSize", glm::vec2(screenWidth, screenHeight));
     } else {
         activeShader->setInt("ssaoEnabled", 0);
     }
