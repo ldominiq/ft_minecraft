@@ -17,6 +17,8 @@ class ChunkGeneration : public Chunk {
 		ChunkGeneration(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
 
 		void generate(const TerrainGenerationParams& terrainParams);
+		void generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
+		void placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ, int surfaceY, int treeHeight);
 		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 
