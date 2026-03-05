@@ -323,14 +323,12 @@ void App::loadResources() {
 
     // shader configuration
     // --------------------
-    textureShader->use();
-    textureShader->setInt("diffuseTexture", 0);
 
 	waterRenderer->setDependencies(lighting, renderer, camera);
 
     gBufferShader = std::make_shared<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
     gBufferShader->use();
-    gBufferShader->setInt("diffuseTexture", 0);
+    gBufferShader->setInt("atlas", 0);
 }
 
 void App::gameTick() {

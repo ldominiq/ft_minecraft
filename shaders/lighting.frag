@@ -68,8 +68,6 @@ uniform PointLight pointLights[NR_POINT_LIGHTS];
 uniform SpotLight spotLight;
 uniform Material material;
 
-uniform sampler2D diffuseTexture;
-
 uniform vec3 lightPos;
 uniform vec3 viewPos;
 uniform int renderType;
@@ -107,8 +105,13 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace);
 
 void main()
 {    
+    // Discard fully transparent fragments
+    vec4 texColor = texture(atlas, fs_in.TexCoord);
+    if (texColor.a < 0.1)
+        discard;
+
     // properties
-    vec3 color = texture(diffuseTexture, fs_in.TexCoord).rgb;
+    vec3 color = texture(atlas, fs_in.TexCoord).rgb;
     vec3 norm = normalize(fs_in.Normal);
     vec3 viewDir = normalize(viewPos - fs_in.FragPos);
     
