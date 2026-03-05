@@ -54,6 +54,9 @@ void App::init() {
 	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
 	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
 
+	// ********************Chunk Boundary Renderer**************************
+	chunkBoundaryRenderer = std::make_unique<ChunkBoundaryRenderer>();
+
 	// ********************Render Type Debug Framebuffers********************
 	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
 
@@ -539,6 +542,9 @@ void App::render() {
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
+        // Draw chunk boundary overlay (if enabled)
+        chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), view, projection, *renderer);
+
         glBindVertexArray(0);
         {
     		// Dynamically build GUI textures based on debug flags
@@ -728,6 +734,10 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 	renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
 
     camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+
+    // Draw chunk boundary overlay (if enabled)
+    chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), view, projection, *renderer);
+
     glBindVertexArray(0);
 
 	//THIS CODE IS AWFULLY BAD
@@ -1004,6 +1014,14 @@ void App::debugWindow() {
                                 //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
                                 //     }
                                 // }
+
+                                // Chunk boundary viewer
+                                {
+                                    bool cb = chunkBoundaryRenderer->isEnabled();
+                                    if (ImGui::Checkbox("Show Chunk Boundary", &cb))
+                                        chunkBoundaryRenderer->setEnabled(cb);
+                                }
+
                                 ImGui::EndTabItem();
                             }
                             if (ImGui::BeginTabItem("SSAO"))
