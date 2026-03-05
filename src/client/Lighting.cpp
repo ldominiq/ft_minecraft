@@ -933,7 +933,7 @@ void Lighting::initCSMResources()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView)
+void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView, unsigned int atlasTexture)
 {
     // 1. Compute all light-space matrices for current camera position
     cachedShadowLightDir = -directionalLightDir;
@@ -942,6 +942,14 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
     const int numCascades = static_cast<int>(csmLightSpaceMatrices.size());
 
     csmDepthShader->use();
+
+    // Bind the atlas texture so the depth shader can alpha-test leaves
+    if (atlasTexture != 0) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, atlasTexture);
+        csmDepthShader->setInt("atlas", 0);
+    }
+
     glViewport(0, 0, depthMapResolution, depthMapResolution);
 
     // 2. Multi-pass: render each cascade into its own texture array layer.

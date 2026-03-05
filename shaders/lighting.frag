@@ -98,20 +98,22 @@ float LinearizeDepth(float depth)
 }
 
 // function prototypes
-vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao);
-vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao);
-vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao);
+vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao, vec3 texCol);
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao, vec3 texCol);
+vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao, vec3 texCol);
 float CSMShadowCalculation(vec3 fragPosWorldSpace);
 
 void main()
 {    
-    // Discard fully transparent fragments
+    // Sample the atlas ONCE per fragment
     vec4 texColor = texture(atlas, fs_in.TexCoord);
+
+    // Discard fully transparent fragments
     if (texColor.a < 0.1)
         discard;
 
     // properties
-    vec3 color = texture(atlas, fs_in.TexCoord).rgb;
+    vec3 color = texColor.rgb;
     vec3 norm = normalize(fs_in.Normal);
     vec3 viewDir = normalize(viewPos - fs_in.FragPos);
     
@@ -131,12 +133,12 @@ void main()
     // this fragment's final color.
     // == =====================================================
     // phase 1: directional lighting
-    vec3 result = CalcDirLight(dirLight, norm, viewDir, AmbientOcclusion);
+    vec3 result = CalcDirLight(dirLight, norm, viewDir, AmbientOcclusion, color);
     // phase 2: point lights
     for(int i = 0; i < NR_POINT_LIGHTS; i++)
-        result += CalcPointLight(pointLights[i], norm, fs_in.FragPos, viewDir, AmbientOcclusion);    
+        result += CalcPointLight(pointLights[i], norm, fs_in.FragPos, viewDir, AmbientOcclusion, color);    
     // phase 3: spot light
-    result += CalcSpotLight(spotLight, norm, fs_in.FragPos, viewDir, AmbientOcclusion);    
+    result += CalcSpotLight(spotLight, norm, fs_in.FragPos, viewDir, AmbientOcclusion, color);    
 
     if (renderType == 1) {
         FragColor = vec4(norm * 0.5 + 0.5, 1.0); // Visualize normals
@@ -239,27 +241,21 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
     float bias = baseBias * cascadeScale;
 
     // 6. PCF (Percentage Closer Filtering).
-    //    Sample neighboring texels for softer shadow edges.
+    //    3×3 kernel (9 samples) — hardcoded for GPU-friendly unrolling.
     float shadow = 0.0;
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMapArray, 0));
+    float biasedDepth = currentDepth - bias;
 
-    // Use a larger PCF kernel for far cascades where individual
-    // texels cover more world space (reduces blockiness).
-    int pcfRadius = 1 + layer;  // cascade 0→3×3, 1→5×5, 2→7×7
-    float sampleCount = 0.0;
-    for (int x = -pcfRadius; x <= pcfRadius; ++x)
-    {
-        for (int y = -pcfRadius; y <= pcfRadius; ++y)
-        {
-            float pcfDepth = texture(
-                shadowMapArray,
-                vec3(projCoords.xy + vec2(x, y) * texelSize, layer)
-            ).r;
-            shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
-            sampleCount += 1.0;
-        }
-    }
-    shadow /= sampleCount;
+    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2(-1, -1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
+    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 0, -1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
+    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 1, -1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
+    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2(-1,  0) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
+    shadow += texture(shadowMapArray, vec3(projCoords.xy                           , layer)).r < biasedDepth ? 1.0 : 0.0;
+    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 1,  0) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
+    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2(-1,  1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
+    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 0,  1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
+    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 1,  1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
+    shadow /= 9.0;
 
     // 7. Fade shadow at the edge of the last cascade to avoid hard cutoff.
     float maxDist = (layer == cascadeCount - 1) ? farPlane : cascadePlaneDistances[layer];
@@ -274,7 +270,7 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
 }
 
 // calculates the color when using a directional light.
-vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao)
+vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao, vec3 texCol)
 {
     vec3 lightDir = normalize(-light.direction);
     // diffuse shading
@@ -292,14 +288,14 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao)
         spec = pow(max(dot(viewDir, reflectDir), 0.0), 8.0);
     }
     // combine results
-    vec3 ambient = light.ambient * vec3(texture(atlas, fs_in.TexCoord));
-    vec3 diffuse = light.diffuse * diff * vec3(texture(atlas, fs_in.TexCoord));
-    vec3 specular = light.specular * spec * vec3(texture(atlas, fs_in.TexCoord));
+    vec3 ambient = light.ambient * texCol;
+    vec3 diffuse = light.diffuse * diff * texCol;
+    vec3 specular = light.specular * spec * texCol;
 
     // calculate shadow
     float shadow = 0.0;
     if (shadows.enabled)
-        if (light.direction.y < 0.0)
+        if (light.direction.y < 0.0 && fs_in.SkyLight > 0.01)
         {
             shadow = CSMShadowCalculation(fs_in.FragPos);
         }
@@ -341,7 +337,7 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao)
 }
 
 // calculates the color when using a point light.
-vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao)
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao, vec3 texCol)
 {
     vec3 lightDir = normalize(light.position - fragPos);
     // diffuse shading
@@ -362,9 +358,9 @@ vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, f
     float distance = length(light.position - fragPos);
     float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));    
     // combine results
-    vec3 ambient = light.ambient * vec3(texture(atlas, fs_in.TexCoord));
-    vec3 diffuse = light.diffuse * diff * vec3(texture(atlas, fs_in.TexCoord));
-    vec3 specular = light.specular * spec * vec3(texture(atlas, fs_in.TexCoord));
+    vec3 ambient = light.ambient * texCol;
+    vec3 diffuse = light.diffuse * diff * texCol;
+    vec3 specular = light.specular * spec * texCol;
     ambient *= attenuation;
     diffuse *= attenuation;
     specular *= attenuation;
@@ -373,7 +369,7 @@ vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, f
 }
 
 // calculates the color when using a spot light.
-vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao)
+vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao, vec3 texCol)
 {
     vec3 lightDir = normalize(light.position - fragPos);
     // diffuse shading
@@ -398,9 +394,9 @@ vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, flo
     float epsilon = light.cutOff - light.outerCutOff;
     float intensity = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
     // combine results
-    vec3 ambient = light.ambient * vec3(texture(atlas, fs_in.TexCoord));
-    vec3 diffuse = light.diffuse * diff * vec3(texture(atlas, fs_in.TexCoord));
-    vec3 specular = light.specular * spec * vec3(texture(atlas, fs_in.TexCoord));
+    vec3 ambient = light.ambient * texCol;
+    vec3 diffuse = light.diffuse * diff * texCol;
+    vec3 specular = light.specular * spec * texCol;
     ambient *= attenuation * intensity;
     diffuse *= attenuation * intensity;
     specular *= attenuation * intensity;
