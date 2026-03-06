@@ -230,7 +230,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 	{
 		if (pkt.eEntityType == EEntityTypes::ITEMS)
 		{
-			BlockType type = static_cast<BlockType>(pkt.type);
+			ItemType type = itemIDToItemType(pkt.type);
 			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
 			entityPtr->glfwTickTime = glfwTickTime;
 			itemEntities.push_back(entityPtr);

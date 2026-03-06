@@ -89,6 +89,10 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/fonts)
   file(COPY ${CMAKE_SOURCE_DIR}/fonts DESTINATION ${CMAKE_BINARY_DIR})
 endif()
 
+if(EXISTS ${CMAKE_SOURCE_DIR}/badApple)
+  file(COPY ${CMAKE_SOURCE_DIR}/badApple DESTINATION ${CMAKE_BINARY_DIR})
+endif()
+
 # ---------------------------------------------------------------------------
 # ImGui integration
 # ---------------------------------------------------------------------------
@@ -190,6 +194,7 @@ target_link_libraries(ft_minecraft PRIVATE
     glfw glad imgui OpenGL::GL
     dl pthread X11 Xi Xrandr Xxf86vm z
 	libzstd freetype
+    avformat avcodec avutil swscale
 )
 add_dependencies(ft_minecraft update_shaders copy_shaders)
 

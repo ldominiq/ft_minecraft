@@ -35,8 +35,14 @@ void App::init() {
     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
-        (void)w;
+		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
         glViewport(0, 0, width, height);
+		glfwGetFramebufferSize(w, &app->screenWidth, &app->screenHeight);
+		auto manager = app->menuManager.lock();
+		if (manager)
+			manager->resize(width, height);
+		if (manager != app->inventoryUI)
+			app->inventoryUI->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -88,6 +94,12 @@ void App::init() {
         // Honour ImGui’s mouse capture: if the UI is being interacted with
         // (e.g. hovering/clicking in a window), do not rotate the camera.
         ImGuiIO& io = ImGui::GetIO();
+
+		if (app->menuManager.lock())
+		{
+			app->menuManager.lock()->handleMouseMove(xpos, ypos);
+			return ;
+		}
 
         if (io.WantCaptureMouse || app->uiInteractive) {
             return;
@@ -169,6 +181,28 @@ void App::init() {
 	glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int button, int action, int mods) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		auto manager = app->menuManager.lock();
+		if (manager)
+		{
+			double mouseX, mouseY;
+    		glfwGetCursorPos(w, &mouseX, &mouseY);
+
+			if (manager == app->inventoryUI)
+			{
+				manager->handleMouseClick(mouseX, mouseY, button, action);
+				if (app->inventoryUI->lastAction.has_value())
+				{
+					auto [slot, type] = *app->inventoryUI->lastAction;
+					NetInventoryAction pkt;
+					pkt.actionType = type;
+					pkt.slot = slot;
+					app->udpClient->sendPacket(pkt);
+					app->inventoryUI->lastAction.reset();
+				}
+			}
+			return ;
+		}
 
 		//kinda weird way to do it.
 		uint8_t mouseButtons = 0;
@@ -272,10 +306,7 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::NET_INVENTORY: {
 				auto& p = static_cast<NetInventory&>(*pkt);
-				if (p.amount > 0)
-					inventoryUI->insertItemsToSlot(static_cast<BlockType>(p.type), p.slot, p.amount); // This cast is not really great. Won't work when/if there are other types of items that aren't blocks. TODO : check if it's still needed once inventoryUI gets more concrete.
-				else
-					inventoryUI->removeItemsFromSlot(p.slot, -p.amount);
+				inventoryUI->setSlot(p.slot, p.amount, p.type);
 				break;
 			}
 
@@ -412,7 +443,6 @@ void App::render() {
         	processInput();
 
         // window aspect / uniforms
-        glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
         const float aspect = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
         glm::mat4 view = camera->getViewMatrix();
@@ -581,7 +611,6 @@ void profilingCallbackApp(GLuint queryId, double &measuredAverageNs, double &mea
 }
 
 void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
-    glViewport(0, 0, screenWidth, screenHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Render sky/clouds first with proper depth
@@ -1353,6 +1382,14 @@ void App::processInputMenus(int key, int action) {
 	auto manager = menuManager.lock();
 
 	// HANDLE EVENTS WHEN CHAT OPEN
+
+	if (manager && key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+	{
+		menuManager.reset();
+		if (!uiInteractive)
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	}
+
 	if (manager == chat)
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
@@ -1366,8 +1403,6 @@ void App::processInputMenus(int key, int action) {
 		}
 		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			chat->removeCharFromCurrMsg();
-		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-			menuManager.reset();
 		if ((key == GLFW_KEY_UP || key == GLFW_KEY_DOWN) && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			chat->goThroughChatLog(key);
 	}
@@ -1377,6 +1412,11 @@ void App::processInputMenus(int key, int action) {
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 			menuManager = chat;
+		if (key == GLFW_KEY_E && action == GLFW_PRESS)
+		{
+			menuManager = inventoryUI;
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		}
 	}
 }
 

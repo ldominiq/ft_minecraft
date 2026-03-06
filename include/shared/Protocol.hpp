@@ -222,7 +222,7 @@ struct NetInventory final : public Packet {
 
 	uint16_t type = 0;
 	int16_t amount = 0;
-	uint8_t slot = 0;
+	uint8_t slot = 0;	// -1 for hand
 
 	NetInventory() : Packet(ID) {}
 
@@ -239,6 +239,26 @@ struct NetInventory final : public Packet {
     }
 };
 inline AutoRegister<NetInventory> _reg_NetInventory;
+
+struct NetInventoryAction final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_INVENTORY_ACTION;
+
+    uint8_t actionType = 0;
+    uint8_t slot = 0;
+
+    NetInventoryAction() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+        w.write_u8(actionType);
+        w.write_u8(slot);
+    }
+
+    void decode(BufferReader& r) override {
+        actionType = r.read_u8();
+        slot = r.read_u8();
+    }
+};
+inline AutoRegister<NetInventoryAction> _reg_NetInventoryAction;
 
 struct NetChunkHeader final : public Packet {
     static constexpr PacketType ID = PacketType::CHUNK_HEADER;

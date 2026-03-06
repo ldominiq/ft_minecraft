@@ -140,4 +140,19 @@ public:
 
 inline static bool isBlockSolid(const BlockType &b) { return b != BlockType::AIR && b != BlockType::WATER; }
 
+template<typename Enum>
+constexpr bool inRange(ItemID id)
+{
+    return id > (ItemID)Enum::BEGIN && id < (ItemID)Enum::END;
+}
+
+inline static ItemType itemIDToItemType(ItemID id)
+{
+    if (inRange<BlockType>(id))  return static_cast<BlockType>(id);
+    if (inRange<WeaponType>(id)) return static_cast<WeaponType>(id);
+    if (inRange<MiscType>(id))   return static_cast<MiscType>(id);
+
+    return BlockType::BEGIN;
+}
+
 #endif
