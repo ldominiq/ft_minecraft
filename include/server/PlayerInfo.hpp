@@ -25,8 +25,16 @@ class CPlayerInfo
 
 		int health; //unused
 
-		glm::vec3 startingPosition = glm::vec3(0,150,0);
+		glm::vec3 startingPosition = glm::vec3(0.5, 150, 0.5);
 		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>(startingPosition);
+
+		/// Set the starting position to the top of the terrain at the given spawn point.
+		void computeSpawnPosition(const TerrainGenerationParams& params) {
+			int surfaceY = ChunkGeneration::computeTerrainHeight(params, 0.0f, 0.0f);
+			startingPosition = glm::vec3(0.5, surfaceY + 3, 0.5);
+			movement->setPosition(startingPosition);
+			movement->setYawAndPitch(0.0f, 0.0f);
+		}
 
 		std::unordered_set<ChunkPos> loadedChunks;
 		std::vector<ChunkPos> rdyChunks;
