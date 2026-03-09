@@ -210,7 +210,10 @@ target_include_directories(ft_minecraft PRIVATE
 	${zstd_SOURCE_DIR}/lib
     ${imgui_SOURCE_DIR}
 	${freetype_SOURCE_DIR}/include
+	${FFMPEG_INCLUDE_DIRS}
 )
+
+target_compile_options(ft_minecraft PRIVATE ${FFMPEG_CFLAGS_OTHER})
 
 find_package(OpenGL REQUIRED)
 
@@ -221,9 +224,6 @@ target_link_libraries(ft_minecraft PRIVATE
     ${FFMPEG_LIBRARIES}
 )
 add_dependencies(ft_minecraft update_shaders copy_shaders)
-
-target_include_directories(ft_minecraft PRIVATE ${FFMPEG_INCLUDE_DIRS})
-target_link_libraries(ft_minecraft PRIVATE ${FFMPEG_LIBRARIES})
 
 # Server executable
 add_executable(ft_minecraft_server ${SERVER_SRC})
