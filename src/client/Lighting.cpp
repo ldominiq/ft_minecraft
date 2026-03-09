@@ -217,9 +217,51 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
 }
 
 void Lighting::updateSunDirection(const float deltaTime) {
-    // Time management for sky shader
-    if (skyTimePaused == false)
-        skyTimeOffset += deltaTime * 0.05f; // Speed of sun movement
+    // ── "Skyrim approach" ──────────────────────────────────────────────
+    // The sun holds perfectly still for sunPauseDuration seconds, then
+    // smoothly advances over sunStepDuration seconds.
+    constexpr float sunSpeed = 0.05f;
+
+    if (!skyTimePaused) {
+        if (!sunStepping) {
+            // ── HOLD phase ──
+            sunPauseTimer += deltaTime;
+            if (sunPauseTimer >= sunPauseDuration) {
+                // Switch to stepping
+                sunStepping  = true;
+                sunStepTimer = 0.0f;
+            }
+        } else {
+            // ── STEP phase: advance skyTimeOffset smoothly ──
+            sunStepTimer += deltaTime;
+            float t_step = glm::clamp(sunStepTimer / sunStepDuration, 0.0f, 1.0f);
+            // Use smoothstep to ease in/out so the jump isn't jarring
+            float smoothT = glm::smoothstep(0.0f, 1.0f, t_step);
+
+            // Total offset this step must cover = what would've accumulated
+            // during the whole pause+step cycle at the original speed.
+            float totalCycleDuration = sunPauseDuration + sunStepDuration;
+            float totalStepOffset    = totalCycleDuration * sunSpeed;
+
+            // Derivative of smoothstep gives the per-frame advance
+            // We compute the current position as base + smoothT * totalStepOffset
+            // and store the base at the start of the step.
+            // Simpler: just set skyTimeOffset = stepBase + smoothT * totalStepOffset
+            // We store the base in sunPauseTimer (repurposed during step).
+            if (sunStepTimer <= deltaTime) {
+                // First frame of the step: store the base offset
+                sunPauseTimer = skyTimeOffset; // repurpose as stepBase
+            }
+            skyTimeOffset = sunPauseTimer + smoothT * totalStepOffset;
+
+            if (t_step >= 1.0f) {
+                // Step complete — back to hold
+                sunStepping   = false;
+                sunPauseTimer = 0.0f;
+                sunStepTimer  = 0.0f;
+            }
+        }
+    }
 
     constexpr float timeScale = 0.1f;
     const float t = skyTimeOffset * timeScale;
@@ -332,12 +374,6 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
 
 void Lighting::drawCSMShadowMapPreview(int cascadeLayer)
 {
-    // Use the shadow debug shader but bind a specific layer
-    // For now, just show which layer is selected in ImGui
-    // A proper implementation needs a shader that samples
-    // texture(sampler2DArray, vec3(uv, layer))
-    
-    // Quick hack: use glTextureView to create a 2D view of one layer
     GLuint layerView;
     glGenTextures(1, &layerView);
     glTextureView(layerView, GL_TEXTURE_2D, csmDepthMaps,
@@ -345,8 +381,7 @@ void Lighting::drawCSMShadowMapPreview(int cascadeLayer)
                   0, 1,           // mip levels
                   cascadeLayer, 1); // one layer
 
-    // The parent texture has GL_COMPARE_REF_TO_TEXTURE for shadow sampling.
-    // Override to GL_NONE on this view so the preview quad reads raw depth.
+    // Override to GL_NONE so the preview quad reads raw depth.
     glBindTexture(GL_TEXTURE_2D, layerView);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
     
@@ -883,9 +918,6 @@ std::vector<glm::mat4> Lighting::getLightSpaceMatrices(const glm::mat4& cameraVi
 
 void Lighting::initCSMResources()
 {
-    // Depth shader — simple vertex + fragment, no geometry shader.
-    // Multi-pass rendering (one draw call per cascade) avoids the
-    // geometry shader overhead that was tripling per-triangle cost.
     csmDepthShader = std::make_shared<Shader>(
         "shaders/csmDepth.vert",
         "shaders/csmDepth.frag");
@@ -962,13 +994,10 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
     }
 
     glViewport(0, 0, depthMapResolution, depthMapResolution);
+    glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
 
-    // 2. Multi-pass: render each cascade into its own texture array layer.
-    //    Each pass frustum-culls chunks against the cascade's light-space volume,
-    //    skipping chunks that cannot contribute to this cascade's shadow map.
     for (int i = 0; i < numCascades; ++i)
     {
-        glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
         glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                                   csmDepthMaps, 0, i);
         glClear(GL_DEPTH_BUFFER_BIT);
@@ -1010,7 +1039,7 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
     shader.setInt("cascadeCount", static_cast<int>(shadowCascadeLevels.size()) + 1);
     shader.setFloat("farPlane", cameraFarPlane);
 
-    // Bind the shadow map array to a texture unit
+    // Bind the CSM depth texture array to texture unit 7.
     glActiveTexture(GL_TEXTURE7);
     glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
     shader.setInt("shadowMapArray", 7);
