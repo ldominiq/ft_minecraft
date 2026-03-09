@@ -123,6 +123,7 @@ target_link_libraries(imgui PUBLIC glfw ${CMAKE_DL_LIBS})
 # ---------------------------------------------------------------------------
 # Copy shaders so they also get added to build directory
 # ---------------------------------------------------------------------------
+
 file(GLOB_RECURSE SHADER_FILES
         "${CMAKE_SOURCE_DIR}/shaders/*.vert"
         "${CMAKE_SOURCE_DIR}/shaders/*.frag"
@@ -157,8 +158,31 @@ target_include_directories(glad PUBLIC
 set_target_properties(glad PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---------------------------------------------------------------------------
+# FFMPEG
+# ---------------------------------------------------------------------------
+
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(FFMPEG REQUIRED
+    libavformat
+    libavcodec
+    libavutil
+    libswscale
+)
+
+if(NOT FFMPEG_FOUND)
+    message(FATAL_ERROR
+        "FFmpeg not found. Please install:\n"
+        "Ubuntu: sudo apt install libavformat-dev libavcodec-dev libavutil-dev libswscale-dev\n"
+        "Arch: sudo pacman -S ffmpeg\n"
+        "MacOS: brew install ffmpeg"
+    )
+endif()
+
+# ---------------------------------------------------------------------------
 # Source & Include setup for Client and Server
 # ---------------------------------------------------------------------------
+
 file(GLOB_RECURSE CLIENT_SRC
     "${CMAKE_SOURCE_DIR}/src/client/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/shared/*.cpp"
@@ -194,9 +218,12 @@ target_link_libraries(ft_minecraft PRIVATE
     glfw glad imgui OpenGL::GL
     dl pthread X11 Xi Xrandr Xxf86vm z
 	libzstd freetype
-    avformat avcodec avutil swscale
+    ${FFMPEG_LIBRARIES}
 )
 add_dependencies(ft_minecraft update_shaders copy_shaders)
+
+target_include_directories(ft_minecraft PRIVATE ${FFMPEG_INCLUDE_DIRS})
+target_link_libraries(ft_minecraft PRIVATE ${FFMPEG_LIBRARIES})
 
 # Server executable
 add_executable(ft_minecraft_server ${SERVER_SRC})
