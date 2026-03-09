@@ -161,7 +161,9 @@ set_target_properties(glad PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # FFMPEG
 # ---------------------------------------------------------------------------
 
-pkg_check_modules(FFMPEG REQUIRED
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(FFMPEG
     libavformat
     libavcodec
     libavutil
