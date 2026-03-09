@@ -142,9 +142,9 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     glViewport(0, 0, width, height);
 }
 
-void Lighting::updateSkyLUT() {
+void Lighting::updateSkyLUT(float cameraPosY) {
     if (skyLUTEnabled && skyLUT) {
-        skyLUT->update(skyAtmDensity, skyAtmThickness, width, height);
+        skyLUT->update(skyAtmDensity, skyAtmThickness, cameraPosY, 64.0f, planetScale, width, height);
     }
 }
 

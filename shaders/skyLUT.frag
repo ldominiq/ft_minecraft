@@ -25,6 +25,9 @@ out vec4 FragColor;
 uniform vec2 lutSize;        // width, height of the LUT texture
 uniform float atmDensity;
 uniform float atmThickness;
+uniform float cameraPosY;    // camera world Y position
+uniform float seaLevel;      // world sea level
+uniform float planetScale;   // world-to-planet scale factor
 
 // --- Constants (must match sky.frag) ---
 const float innerRadius = 1.0;
@@ -68,8 +71,15 @@ void main() {
     float sunZenithCos = uv.y * 2.0 - 1.0;
 
     // Build the view ray and sun direction in a 2D vertical plane
-    // Eye is on the ground surface
-    vec3 eye = vec3(0.0, innerRadius + 0.001, 0.0);
+    // Eye position accounts for player height in planet space
+    float heightWorld = max(cameraPosY - seaLevel, 0.0);
+    float heightPlanet = heightWorld / planetScale;
+
+    // Clamp so the eye never exits the atmosphere shell
+    float maxAlt = (outerRadius - innerRadius) - 1e-4;
+    heightPlanet = min(heightPlanet, maxAlt);
+
+    vec3 eye = vec3(0.0, innerRadius + heightPlanet, 0.0);
 
     // View direction from zenith cosine
     float viewZenithSin = sqrt(max(1.0 - viewZenithCos * viewZenithCos, 0.0));

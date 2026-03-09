@@ -133,5 +133,7 @@ void main() {
 
     // Tone mapping
     vec3 mapped = vec3(1.0) - exp(-exposure * col);
-    FragColor = vec4(mapped, 1.0);
+    vec3 tone = Uncharted2ToneMapping(col);
+
+    FragColor = vec4(tone, 1.0);
 }

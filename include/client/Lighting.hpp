@@ -89,8 +89,8 @@ public:
 
     void updateSunDirection(float deltaTime);
     /// Update the sky scattering LUT (call once per frame, before drawSky).
-    /// Only regenerates when atmosphere parameters actually change.
-    void updateSkyLUT();
+    /// Only regenerates when atmosphere parameters or camera height change.
+    void updateSkyLUT(float cameraPosY);
 
     void uploadLightingUniforms(const Shader& shader, const glm::vec3& cameraPos, glm::vec3 cameraFront) const;
 
