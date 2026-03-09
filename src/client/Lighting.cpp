@@ -344,6 +344,11 @@ void Lighting::drawCSMShadowMapPreview(int cascadeLayer)
                   GL_DEPTH_COMPONENT32F,
                   0, 1,           // mip levels
                   cascadeLayer, 1); // one layer
+
+    // The parent texture has GL_COMPARE_REF_TO_TEXTURE for shadow sampling.
+    // Override to GL_NONE on this view so the preview quad reads raw depth.
+    glBindTexture(GL_TEXTURE_2D, layerView);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
     
     drawTexturePreviewQuad(layerView);
     
@@ -903,12 +908,18 @@ void Lighting::initCSMResources()
         nullptr                     // no data yet
     );
 
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    // Use LINEAR + COMPARE so that each texture() call performs a
+    // hardware 2×2 bilinear PCF tap, returning a smooth [0,1] value
+    // instead of a binary depth.  This dramatically reduces shadow
+    // flicker from leaf geometry on distant cascades.
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
     float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
     glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
     // FBO — layer attachment is done per-pass in updateCSMShadowMaps()
     glGenFramebuffers(1, &csmFBO);

@@ -76,7 +76,7 @@ uniform bool blinn;
 uniform Shadows shadows;
 
 // CSM uniforms
-uniform sampler2DArray shadowMapArray;
+uniform sampler2DArrayShadow shadowMapArray;
 uniform mat4 lightSpaceMatrices[MAX_CASCADES];
 uniform float cascadePlaneDistances[MAX_CASCADES - 1]; // N-1 split points for N cascades
 uniform int cascadeCount;
@@ -240,22 +240,63 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
     float cascadeScale = 1.0 + float(layer) * 0.5;
     float bias = baseBias * cascadeScale;
 
-    // 6. PCF (Percentage Closer Filtering).
-    //    3×3 kernel (9 samples) — hardcoded for GPU-friendly unrolling.
-    float shadow = 0.0;
+    // Normal-offset bias: push the sample point along the surface normal
+    // to avoid self-shadowing at grazing angles.  This is the main fix
+    // for angle-dependent flickering — depth bias alone can't handle
+    // surfaces nearly parallel to the light direction.
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMapArray, 0));
-    float biasedDepth = currentDepth - bias;
+    float normalOffsetScale = texelSize.x * cascadeScale * 3.0;
+    vec3 offsetPos = fragPosWorldSpace + normal * normalOffsetScale * (1.0 - ndotl);
 
-    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2(-1, -1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
-    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 0, -1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
-    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 1, -1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
-    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2(-1,  0) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
-    shadow += texture(shadowMapArray, vec3(projCoords.xy                           , layer)).r < biasedDepth ? 1.0 : 0.0;
-    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 1,  0) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
-    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2(-1,  1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
-    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 0,  1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
-    shadow += texture(shadowMapArray, vec3(projCoords.xy + vec2( 1,  1) * texelSize, layer)).r < biasedDepth ? 1.0 : 0.0;
-    shadow /= 9.0;
+    // Re-project with the normal-offset position
+    vec4 fragPosLightSpaceOffset = lightSpaceMatrices[layer] * vec4(offsetPos, 1.0);
+    vec3 offsetCoords = fragPosLightSpaceOffset.xyz / fragPosLightSpaceOffset.w;
+    offsetCoords = offsetCoords * 0.5 + 0.5;
+
+    float biasedDepth = offsetCoords.z - bias;
+
+    // 6. PCF (Percentage Closer Filtering).
+    //    Using sampler2DArrayShadow: each texture() call performs a
+    //    hardware 2×2 bilinear comparison, returning a smooth [0,1].
+    //    Cascade 0 uses a 3×3 kernel, cascades 1+ use a 5×5 kernel.
+    float shadow = 0.0;
+
+    if (layer == 0)
+    {
+        // ── 3×3 PCF for cascade 0 (sharp, close-up) ──
+        for (int x = -1; x <= 1; ++x)
+            for (int y = -1; y <= 1; ++y)
+            {
+                vec2 sampleUV = offsetCoords.xy + vec2(x, y) * texelSize;
+                shadow += texture(shadowMapArray, vec4(sampleUV, float(layer), biasedDepth));
+            }
+        shadow /= 9.0;
+    }
+    else
+    {
+        // ── 5×5 PCF for distant cascades (smoother, hides leaf flicker) ──
+        for (int x = -2; x <= 2; ++x)
+            for (int y = -2; y <= 2; ++y)
+            {
+                vec2 sampleUV = offsetCoords.xy + vec2(x, y) * texelSize;
+                shadow += texture(shadowMapArray, vec4(sampleUV, float(layer), biasedDepth));
+            }
+        shadow /= 25.0;
+    }
+
+    // Hardware comparison returns 1.0 for "lit" and 0.0 for "in shadow".
+    // Invert so shadow=1 means "in shadow" (matching the rest of the code).
+    shadow = 1.0 - shadow;
+
+    // Attenuate shadow strength on distant cascades (applied AFTER inversion).
+    // Leaf shadows at 100+ meters shouldn't be razor-sharp; they act
+    // more like diffuse ambient darkening.  This prevents binary
+    // on/off flicker as texels pop in and out of shadow.
+    if (layer >= 1)
+    {
+        float cascadeAttenuation = 1.0 - float(layer) * 0.2; // C1=0.8, C2=0.6
+        shadow *= clamp(cascadeAttenuation, 0.3, 1.0);
+    }
 
     // 7. Fade shadow at the edge of the last cascade to avoid hard cutoff.
     float maxDist = (layer == cascadeCount - 1) ? farPlane : cascadePlaneDistances[layer];
