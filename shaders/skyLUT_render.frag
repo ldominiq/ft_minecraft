@@ -98,8 +98,7 @@ void main() {
              + vec3(mieScatter) * miePhase(mu);
 
     // Sun disk + soft halo
-    float sunCos = clamp(dot(r, sunDir), -1.0, 1.0);
-    float sunAng = acos(sunCos);
+    float sunAng = acos(mu);
     float disk = smoothstep(0.010, 0.006, sunAng);
     float halo = exp(-sunAng * 40.0) * 0.4;
     vec3 sunCol = vec3(1.0, 0.98, 0.90) * 30.0;

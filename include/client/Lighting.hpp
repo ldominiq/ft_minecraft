@@ -349,6 +349,8 @@ private:
     float MIN_BIAS = 0.001;
     float MAX_BIAS = 0.005;
 
+    float seaLevel = 64.0f;
+
     // DEBUG
     bool showShadowMap = false;
 };
