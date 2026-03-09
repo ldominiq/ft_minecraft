@@ -178,19 +178,13 @@ void main()
 float CSMShadowCalculation(vec3 fragPosWorldSpace)
 {
     if (cascadeCount == 0)
-    {
         return 0.0;
-    }   
 
-    // 1. Find fragment depth in VIEW SPACE.
-    //    We need to know how far this fragment is from the camera
-    //    so we can pick the right cascade.
+    // 1. Fragment depth in view space
     vec4 fragPosViewSpace = view * vec4(fragPosWorldSpace, 1.0);
     float depthValue = abs(fragPosViewSpace.z);
 
-    // 2. Select the cascade layer.
-    //    Walk through the split distances until we find the first
-    //    cascade whose far plane is beyond our depth.
+    // 2. Select cascade layer
     int layer = cascadeCount - 1;
     for (int i = 0; i < cascadeCount - 1; ++i)
     {
@@ -201,69 +195,82 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
         }
     }
 
-    // Store for debug visualization
     debugCascadeLayer = layer;
 
-    // 3. Project fragment into the selected cascade's light space.
+    // 3. Out-of-bounds check on primary cascade
     vec4 fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
-
-    // Perspective divide (ortho makes w=1, but good practice)
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-
-    // Transform from [-1,1] NDC to [0,1] texture coordinates
     projCoords = projCoords * 0.5 + 0.5;
-
-    // 4. Out-of-bounds checks.
-    //    If the fragment projects outside the shadow map in XY or beyond
-    //    the far plane in Z, treat it as unshadowed (no data available).
     if (projCoords.z > 1.0 ||
         projCoords.x < 0.0 || projCoords.x > 1.0 ||
         projCoords.y < 0.0 || projCoords.y > 1.0)
-    {
         return 0.0;
-    }
 
-    float currentDepth = projCoords.z;
-
-    // 5. Bias — scale proportional to the texel size of this cascade.
-    //    Larger cascades cover more world space per texel, so they
-    //    need proportionally more bias.  We derive the scale from the
-    //    shadow map resolution vs the cascade's projected extent (which
-    //    is encoded implicitly in the texel size of the projCoords).
     vec3 normal = normalize(fs_in.Normal);
     vec3 lightDir = normalize(-dirLight.direction);
+
+    // 4. Sample primary cascade
+    float shadow = sampleCascadeShadow(layer, fragPosWorldSpace, normal, lightDir);
+
+    // 5. Blend between cascades near the boundary to hide the seam.
+    //    In the last 20% of each cascade's range we linearly blend
+    //    with the next cascade's shadow value.
+    if (layer < cascadeCount - 1)
+    {
+        float cascadeFar = cascadePlaneDistances[layer];
+        float blendStart = cascadeFar * 0.8;  // start blending at 80% of cascade range
+
+        if (depthValue > blendStart)
+        {
+            float blendFactor = clamp((depthValue - blendStart) / (cascadeFar - blendStart), 0.0, 1.0);
+            float nextShadow = sampleCascadeShadow(layer + 1, fragPosWorldSpace, normal, lightDir);
+            shadow = mix(shadow, nextShadow, blendFactor);
+        }
+    }
+
+    // 6. Fade shadow at the edge of the last cascade to avoid hard cutoff.
+    if (layer == cascadeCount - 1)
+    {
+        float fadeStart = farPlane * 0.9;
+        if (depthValue > fadeStart)
+        {
+            float t = (depthValue - fadeStart) / (farPlane - fadeStart);
+            shadow *= 1.0 - clamp(t, 0.0, 1.0);
+        }
+    }
+
+    return shadow;
+}
+
+// Helper: compute shadow for a single cascade layer.
+// Returns shadow in [0,1] where 1 = fully in shadow.
+float sampleCascadeShadow(int layer, vec3 fragPosWorldSpace, vec3 normal, vec3 lightDir)
+{
     float ndotl = max(dot(normal, lightDir), 0.0);
     float baseBias = max(shadows.MAX_BIAS * (1.0 - ndotl), shadows.MIN_BIAS);
-
-    // Each successive cascade covers roughly 4× the area of the previous,
-    // so texel size doubles.  Scale bias accordingly.
     float cascadeScale = 1.0 + float(layer) * 0.5;
     float bias = baseBias * cascadeScale;
 
-    // Normal-offset bias: push the sample point along the surface normal
-    // to avoid self-shadowing at grazing angles.  This is the main fix
-    // for angle-dependent flickering — depth bias alone can't handle
-    // surfaces nearly parallel to the light direction.
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMapArray, 0));
     float normalOffsetScale = texelSize.x * cascadeScale * 3.0;
     vec3 offsetPos = fragPosWorldSpace + normal * normalOffsetScale * (1.0 - ndotl);
 
-    // Re-project with the normal-offset position
     vec4 fragPosLightSpaceOffset = lightSpaceMatrices[layer] * vec4(offsetPos, 1.0);
     vec3 offsetCoords = fragPosLightSpaceOffset.xyz / fragPosLightSpaceOffset.w;
     offsetCoords = offsetCoords * 0.5 + 0.5;
 
+    // Out-of-bounds → no shadow
+    if (offsetCoords.z > 1.0 ||
+        offsetCoords.x < 0.0 || offsetCoords.x > 1.0 ||
+        offsetCoords.y < 0.0 || offsetCoords.y > 1.0)
+        return 0.0;
+
     float biasedDepth = offsetCoords.z - bias;
 
-    // 6. PCF (Percentage Closer Filtering).
-    //    Using sampler2DArrayShadow: each texture() call performs a
-    //    hardware 2×2 bilinear comparison, returning a smooth [0,1].
-    //    Cascade 0 uses a 3×3 kernel, cascades 1+ use a 5×5 kernel.
+    // PCF: 3×3 for cascade 0, 5×5 for farther cascades
     float shadow = 0.0;
-
     if (layer == 0)
     {
-        // ── 3×3 PCF for cascade 0 (sharp, close-up) ──
         for (int x = -1; x <= 1; ++x)
             for (int y = -1; y <= 1; ++y)
             {
@@ -274,7 +281,6 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
     }
     else
     {
-        // ── 5×5 PCF for distant cascades (smoother, hides leaf flicker) ──
         for (int x = -2; x <= 2; ++x)
             for (int y = -2; y <= 2; ++y)
             {
@@ -284,27 +290,14 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
         shadow /= 25.0;
     }
 
-    // Hardware comparison returns 1.0 for "lit" and 0.0 for "in shadow".
-    // Invert so shadow=1 means "in shadow" (matching the rest of the code).
+    // Invert: hardware returns 1=lit, we want 1=shadow
     shadow = 1.0 - shadow;
 
-    // Attenuate shadow strength on distant cascades (applied AFTER inversion).
-    // Leaf shadows at 100+ meters shouldn't be razor-sharp; they act
-    // more like diffuse ambient darkening.  This prevents binary
-    // on/off flicker as texels pop in and out of shadow.
+    // Attenuate distant cascades
     if (layer >= 1)
     {
-        float cascadeAttenuation = 1.0 - float(layer) * 0.2; // C1=0.8, C2=0.6
+        float cascadeAttenuation = 1.0 - float(layer) * 0.2;
         shadow *= clamp(cascadeAttenuation, 0.3, 1.0);
-    }
-
-    // 7. Fade shadow at the edge of the last cascade to avoid hard cutoff.
-    float maxDist = (layer == cascadeCount - 1) ? farPlane : cascadePlaneDistances[layer];
-    float fadeStart = maxDist * 0.9;
-    if (depthValue > fadeStart && layer == cascadeCount - 1)
-    {
-        float t = (depthValue - fadeStart) / (maxDist - fadeStart);
-        shadow *= 1.0 - clamp(t, 0.0, 1.0);
     }
 
     return shadow;
