@@ -45,7 +45,7 @@ void ChunkBoundaryRenderer::buildGrid(int chunkX, int chunkZ, Renderer& renderer
         4 * (Chunk::HEIGHT + 1) * 2         // horizontal lines
     );
 
-    // ── Vertical lines (Y=0 to Y=HEIGHT) ───────────────────────────
+    // ── Vertical lines  ───────────────────────────
 
     // North wall (z = oz)
     for (int i = 0; i <= Chunk::WIDTH; ++i) {
@@ -72,7 +72,7 @@ void ChunkBoundaryRenderer::buildGrid(int chunkX, int chunkZ, Renderer& renderer
         verts.push_back({ox + W, H,    z});
     }
 
-    // ── Horizontal lines (one per Y level) ──────────────────────────
+    // ── Horizontal lines
     for (int y = 0; y <= Chunk::HEIGHT; ++y) {
         float fy = static_cast<float>(y);
         // North
