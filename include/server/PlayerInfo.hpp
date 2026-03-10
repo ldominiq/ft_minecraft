@@ -21,12 +21,11 @@ class CPlayerInfo
 		sockaddr_in addr;
 
 		std::string name;
-		uint8_t loadRadius; // TODO : set setter on new packet
 
-		glm::vec3 spawnPosition = glm::vec3(0,150,0);
-		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>(spawnPosition);
+		glm::vec3 startingPosition = glm::vec3(0,150,0);
+		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>(startingPosition);
 
-		std::unordered_set<ChunkPos> loadedChunks;
+		// std::unordered_set<ChunkPos> loadedChunks;
 		std::vector<ChunkPos> rdyChunks;
 
 		bool connected; //unused
