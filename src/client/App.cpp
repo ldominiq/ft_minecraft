@@ -424,9 +424,13 @@ void App::render() {
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
 		glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
 
+        // Update camera frustum for chunk culling (once per frame, before any render call)
+        renderer->updateFrustum(projection * view);
+
 
         lighting->setViewportSize(screenWidth, screenHeight);
         lighting->updateSunDirection(deltaTime);
+        lighting->updateSkyLUT(camera->getPlayer()->getPosition().y);
 
 
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
@@ -579,11 +583,24 @@ void App::render() {
     	if (showGBufferNormalTexture && gBuffer)
     		lighting->drawTexturePreviewQuad(gBuffer->getNormalTexture(), false, glm::vec2(1.26f, 0.2f));
 
+    	if (!uiInteractive && (lighting->showCSMDebugView || showFrustumCullingDebug))
+    		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+
     	if (lighting->showCSMDebugView)
     		lighting->drawCSMDebugView(
     			camera->getPlayer()->getPosition(),
     			camera->getPlayer()->getCameraDir(),
     			view);
+
+        //TODO: pass FOV and near plane from actual camera settings instead of hardcoding
+    	if (showFrustumCullingDebug)
+    		renderer->drawFrustumCullingDebug(
+    			camera->getPlayer()->getPosition(),
+    			camera->getPlayer()->getCameraDir(),
+    			80.0f, aspect, 0.1f, renderDistance);
+
+    	if (!uiInteractive && (lighting->showCSMDebugView || showFrustumCullingDebug))
+    		ImGui::PopStyleVar();
 
         // Finalize ImGui rendering
         ImGui::Render();
@@ -821,6 +838,7 @@ void App::debugWindow() {
                 size_t totalTriangles = totalVertices / 3;
                 size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
                 
+                // TODO: fix real count based on frustum culling
                 ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
                 ImGui::Text("Triangles: %zu", totalTriangles);
                 ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
@@ -1069,6 +1087,12 @@ void App::debugWindow() {
                             	ImGui::Text("Shadow Controls");
                                 ImGui::Checkbox("Debug Cascades", &lighting->debugCascades);
                                 ImGui::Checkbox("CSM Debug View (All Cascades)", &lighting->showCSMDebugView);
+                                ImGui::Checkbox("Frustum Culling Radar", &showFrustumCullingDebug);
+                                {
+                                    bool fc = renderer->isFrustumCullingEnabled();
+                                    if (ImGui::Checkbox("Enable Frustum Culling", &fc))
+                                        renderer->setFrustumCullingEnabled(fc);
+                                }
 
                                 if (ImGui::SliderFloat("Shadow min Bias", &shadowMinBias, -0.005f, 0.001f, "%.5f"))
                                 	lighting->setShadowMapMinBias(shadowMinBias);
@@ -1178,6 +1202,9 @@ void App::debugWindow() {
                         {
                             if (ImGui::BeginTabItem("Atmosphere controls"))
                             {
+                                bool skyLUTEnabled = lighting->isSkyLUTEnabled();
+                                if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
+                                    lighting->setSkyLUTEnabled(skyLUTEnabled);
                                 if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                                     lighting->setSkyTimePaused(skyTimePaused);
                                 if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
@@ -1297,7 +1324,12 @@ void App::debugWindow() {
         if (showProfilerWindow) {
             ImGui::SetNextWindowSize(ImVec2(580, 400), ImGuiCond_FirstUseEver);
             ImGui::SetNextWindowPos(ImVec2(600, 10), ImGuiCond_FirstUseEver);
-            if (ImGui::Begin("GPU Profiler", &showProfilerWindow)) {
+            ImGuiWindowFlags profFlags = 0;
+            if (!uiInteractive) {
+                profFlags |= ImGuiWindowFlags_NoInputs;
+                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+            }
+            if (ImGui::Begin("GPU Profiler", &showProfilerWindow, profFlags)) {
                 ImGui::Text("FPS: %.1f (%.3f ms/frame)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
                 ImGui::Separator();
 
@@ -1369,6 +1401,9 @@ void App::debugWindow() {
                 }
             }
             ImGui::End();
+            if (!uiInteractive) {
+                ImGui::PopStyleVar();
+            }
 
             // Keep profiling active while window is open
             profilingEnabled = showProfilerWindow;
