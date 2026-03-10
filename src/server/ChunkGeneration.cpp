@@ -7,7 +7,6 @@ ChunkGeneration::ChunkGeneration(const int chunkX, const int chunkZ, const Terra
 {
 	if (doGenerate)
     	generate(params);
-	else preGenerated = true;
 }
 
 void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {

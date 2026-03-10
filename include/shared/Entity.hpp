@@ -8,6 +8,7 @@
 
 #include "Network.hpp" // For inputs. Maybe should do it in some other way
 #include "Item.hpp"
+#include "Chunk.hpp"
 // #include "CommonWorld.hpp"
 
 constexpr float EPS = 1e-5f;
@@ -112,6 +113,12 @@ class Entity {
 		inline void setPosition(glm::vec3 position) {
 			if (this->position != position) positionUpdated = true;
 			this->position = position;
+		}
+
+		inline ChunkPos getChunkPos() const {
+			int chunkX = static_cast<int>(std::floor(position.x / Chunk::WIDTH));
+			int chunkZ = static_cast<int>(std::floor(position.z / Chunk::DEPTH));
+			return ChunkPos(chunkX, chunkZ);
 		}
 
 		//ONLY USED IN CLIENT :

@@ -32,8 +32,6 @@ public:
 
     float MouseSensitivity;
 
-	uint8_t loadRadius = 12; // 4 - 32
-
     explicit Camera(glm::vec3 position);
 	~Camera();
 
@@ -45,7 +43,6 @@ public:
 	//maybe refactor some day and put somewhere else
 	glm::vec3 lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition);
 
-	inline const uint8_t getLoadRadius() const { return loadRadius; }
 	// inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
 
 	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}

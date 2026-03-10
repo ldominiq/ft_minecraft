@@ -492,7 +492,7 @@ void App::render() {
 		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
-		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
+		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius());
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         glBindVertexArray(0);
@@ -618,11 +618,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 	const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
 	const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
-	renderer->buildChunks();
-	renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
-
-    camera->drawWireframeSelectedBlockFace(renderer, view, projection);
-    glBindVertexArray(0);
+    // glBindVertexArray(0);
 
 	//THIS CODE IS AWFULLY BAD
 	//items
@@ -880,9 +876,9 @@ void App::debugWindow() {
                         // accidental type issues in the setter.  We clamp the range to a
                         // reasonable minimum and maximum.
                         if (renderer) {
-                            int radius = renderer->getLoadRadius();
+                            int radius = camera->getPlayer()->getLoadRadius();
                             if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-                                renderer->setLoadRadius(radius);
+                                camera->getPlayer()->setLoadRadius(radius);
                             }
                         }
 
@@ -1340,7 +1336,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	inputs.keys = keys;
 	inputs.pitch = camera->getPlayer()->getPitch();
 	inputs.yaw = camera->getPlayer()->getYaw();
-	inputs.loadRadius = camera->getLoadRadius();
+	inputs.loadRadius = camera->getPlayer()->getLoadRadius();
 	inputs.activeHotbarSlot = activeHotbarSlot;
 
 	camera->inputsList.push_back(inputs);

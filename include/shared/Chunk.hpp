@@ -92,6 +92,7 @@ class Chunk {
 		void loadFromStream(std::istream& in);
 
 		inline const std::weak_ptr<Chunk>(&getAdjacentChunks() const)[4] { return adjacentChunks;}
+		inline ChunkPos getPos() const { return ChunkPos{originX / WIDTH, originZ / DEPTH}; }
 
 		static inline ChunkPos toKey(int32_t chunkX, int32_t chunkZ) { //boff
 			return std::make_pair(chunkX, chunkZ);

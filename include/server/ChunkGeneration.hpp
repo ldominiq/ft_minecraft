@@ -20,8 +20,6 @@ class ChunkGeneration : public Chunk {
 		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 
-		bool preGenerated = false;
-
 		static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
 
 		static float getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz);
