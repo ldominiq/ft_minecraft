@@ -1,5 +1,6 @@
 #include "SkyLUT.hpp"
 #include <iostream>
+#include <cmath>
 
 SkyLUT::SkyLUT(int lutWidth, int lutHeight)
     : LUT_WIDTH(lutWidth), LUT_HEIGHT(lutHeight)
@@ -46,17 +47,24 @@ void SkyLUT::destroyResources() {
     }
 }
 
-bool SkyLUT::update(float atmDensity, float atmThickness, int viewportWidth, int viewportHeight) {
-    // Check if anything changed
+bool SkyLUT::update(float atmDensity, float atmThickness, float cameraPosY, float seaLevel, float planetScale, int viewportWidth, int viewportHeight) {
+    // Check if anything changed (use tolerance for camera height to avoid constant regeneration)
+    const float heightTolerance = 1.0f; // regenerate every ~1 world units of vertical movement
     if (!dirty &&
         atmDensity == cachedAtmDensity &&
-        atmThickness == cachedAtmThickness) {
+        atmThickness == cachedAtmThickness &&
+        std::abs(cameraPosY - cachedCameraPosY) < heightTolerance &&
+        seaLevel == cachedSeaLevel &&
+        planetScale == cachedPlanetScale) {
         return false;
     }
 
     // Cache current parameters
     cachedAtmDensity = atmDensity;
     cachedAtmThickness = atmThickness;
+    cachedCameraPosY = cameraPosY;
+    cachedSeaLevel = seaLevel;
+    cachedPlanetScale = planetScale;
     dirty = false;
 
     // Render the LUT
@@ -68,6 +76,9 @@ bool SkyLUT::update(float atmDensity, float atmThickness, int viewportWidth, int
     lutShader->setVec2("lutSize", glm::vec2(LUT_WIDTH, LUT_HEIGHT));
     lutShader->setFloat("atmDensity", atmDensity);
     lutShader->setFloat("atmThickness", atmThickness);
+    lutShader->setFloat("cameraPosY", cameraPosY);
+    lutShader->setFloat("seaLevel", seaLevel);
+    lutShader->setFloat("planetScale", planetScale);
 
     glBindVertexArray(quadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);

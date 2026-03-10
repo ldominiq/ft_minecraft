@@ -431,7 +431,7 @@ void App::render() {
 
         lighting->setViewportSize(screenWidth, screenHeight);
         lighting->updateSunDirection(deltaTime);
-        lighting->updateSkyLUT();
+        lighting->updateSkyLUT(camera->getPlayer()->getPosition().y);
 
 
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {

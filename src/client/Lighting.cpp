@@ -142,9 +142,9 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     glViewport(0, 0, width, height);
 }
 
-void Lighting::updateSkyLUT() {
+void Lighting::updateSkyLUT(float cameraPosY) {
     if (skyLUTEnabled && skyLUT) {
-        skyLUT->update(skyAtmDensity, skyAtmThickness, width, height);
+        skyLUT->update(skyAtmDensity, skyAtmThickness, cameraPosY, seaLevel, planetScale, width, height);
     }
 }
 
@@ -169,7 +169,7 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
         shader->setInt("skyLUT", 9);
     } else {
         // Full ray-marching path needs these extra uniforms
-        shader->setFloat("seaLevel", 64.0f);
+        shader->setFloat("seaLevel", seaLevel);
         shader->setFloat("planetScale", planetScale);
         shader->setFloat("time", skyTimeOffset);
         shader->setFloat("atmDensity", skyAtmDensity);

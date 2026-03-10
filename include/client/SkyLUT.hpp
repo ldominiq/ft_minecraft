@@ -25,7 +25,7 @@ public:
 
     /// Regenerate the LUT if parameters have changed. Call once per frame.
     /// Returns true if the LUT was actually regenerated.
-    bool update(float atmDensity, float atmThickness, int viewportWidth, int viewportHeight);
+    bool update(float atmDensity, float atmThickness, float cameraPosY, float seaLevel, float planetScale, int viewportWidth, int viewportHeight);
 
     /// Force a regeneration next frame (e.g. after parameter changes)
     void invalidate() { dirty = true; }
@@ -52,6 +52,9 @@ private:
     // Cached parameters to detect changes
     float cachedAtmDensity = -1.0f;
     float cachedAtmThickness = -1.0f;
+    float cachedCameraPosY = -99999.0f;
+    float cachedSeaLevel = -1.0f;
+    float cachedPlanetScale = -1.0f;
     bool dirty = true;
 };
 

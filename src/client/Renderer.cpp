@@ -238,6 +238,10 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 		if (!chunk)
 			continue;
 
+		// Update mesh before checking size (a chunk needing update may go from 0 to non-zero vertices)
+		if (chunk->needsUpdate)
+			chunk->updateMesh();
+
 		// Skip empty chunks (no geometry to cast shadows)
 		if (chunk->getMeshVerticesSize() == 0)
 			continue;
@@ -280,8 +284,6 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 			clipMaxZ < -1.0f || clipMinZ > 1.0f)
 			continue;
 
-		if (chunk->needsUpdate)
-			chunk->updateMesh();
 		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 	}
 }
