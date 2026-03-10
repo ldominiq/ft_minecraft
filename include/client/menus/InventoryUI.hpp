@@ -6,6 +6,7 @@
 #include "blockRenderingHelperFunctions.hpp"
 #include "Network.hpp"
 #include <optional>
+#include <filesystem>
 
 #include "VideoPlayer.hpp"
 
@@ -17,6 +18,8 @@ class InventoryUI : public Inventory, public Menu
 	int MAX_BUFFER_SIZE = sizeof(float) * rows * cols * (2 + 2) * 3 * 6; //2 coords, 2 uvs. 3 faces, 6 vertices
 	std::unique_ptr<Shader> shader;
 	uint texture;
+	uint badAppleTex;
+	// std::unique_ptr<VideoPlayer> videoPlayer;
 
 	// coords of every slot in hotbar
 	struct HotbarSlotCoords
@@ -121,7 +124,6 @@ class InventoryUI : public Inventory, public Menu
 	int mouseX = 0;
 	int mouseY = 0;
 
-	std::unique_ptr<VideoPlayer> videoPlayer;
 	public:
 
 		InventoryUI(float width, float height);

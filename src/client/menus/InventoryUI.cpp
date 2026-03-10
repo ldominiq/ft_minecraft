@@ -11,7 +11,9 @@ InventoryUI::InventoryUI(float width, float height): Inventory(), Menu(width, he
 
 	hotbarColor = glm::vec4(0.0f,0.0f,0.0f,0.5f);
 
-	videoPlayer = std::make_unique<VideoPlayer>("assets/videos/【東方】Bad Apple!! ＰＶ【影絵】 [FtutLA63Cp8].webm");
+	// videoPlayer = std::make_unique<VideoPlayer>("assets/videos/【東方】Bad Apple!! ＰＶ【影絵】 [FtutLA63Cp8].webm");
+
+	badAppleTex = shader->loadTexture("assets/videos/badApple/frame_000262.png");
 }
 
 void InventoryUI::build()
@@ -307,15 +309,23 @@ void InventoryUI::drawEveryInventoryQuad()
 		glm::vec4(0,0,0,1.0f)
 	);
 
-	if (videoPlayer->nextFrame()) {
-		drawTexturedQuad(
-			blackApple.x,
-			blackApple.y,
-			blackApple.width,
-			blackApple.height,
-			videoPlayer->getTexture()
-		);
-	}
+	// if (videoPlayer->nextFrame()) {
+	// 	drawTexturedQuad(
+	// 		blackApple.x,
+	// 		blackApple.y,
+	// 		blackApple.width,
+	// 		blackApple.height,
+	// 		videoPlayer->getTexture()
+	// 	);
+	// }
+
+	drawTexturedQuad(
+		blackApple.x,
+		blackApple.y,
+		blackApple.width,
+		blackApple.height,
+		badAppleTex
+	);
 
 	//crafting station UI, those 3 should be replaced when the crafting staion class gets created
 	for (int i = 0; i < MAX_CRAFTING_SLOTS * MAX_CRAFTING_SLOTS; i++)

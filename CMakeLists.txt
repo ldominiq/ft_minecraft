@@ -161,23 +161,23 @@ set_target_properties(glad PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # FFMPEG
 # ---------------------------------------------------------------------------
 
-find_package(PkgConfig REQUIRED)
+# find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(FFMPEG
-    libavformat
-    libavcodec
-    libavutil
-    libswscale
-)
+# pkg_check_modules(FFMPEG
+#     libavformat
+#     libavcodec
+#     libavutil
+#     libswscale
+# )
 
-if(NOT FFMPEG_FOUND)
-    message(FATAL_ERROR
-        "FFmpeg not found. Please install:\n"
-        "Ubuntu: sudo apt install libavformat-dev libavcodec-dev libavutil-dev libswscale-dev\n"
-        "Arch: sudo pacman -S ffmpeg\n"
-        "MacOS: brew install ffmpeg"
-    )
-endif()
+# if(NOT FFMPEG_FOUND)
+#     message(FATAL_ERROR
+#         "FFmpeg not found. Please install:\n"
+#         "Ubuntu: sudo apt install libavformat-dev libavcodec-dev libavutil-dev libswscale-dev\n"
+#         "Arch: sudo pacman -S ffmpeg\n"
+#         "MacOS: brew install ffmpeg"
+#     )
+# endif()
 
 # ---------------------------------------------------------------------------
 # Source & Include setup for Client and Server
@@ -210,10 +210,10 @@ target_include_directories(ft_minecraft PRIVATE
 	${zstd_SOURCE_DIR}/lib
     ${imgui_SOURCE_DIR}
 	${freetype_SOURCE_DIR}/include
-	${FFMPEG_INCLUDE_DIRS}
+	# ${FFMPEG_INCLUDE_DIRS}
 )
 
-target_compile_options(ft_minecraft PRIVATE ${FFMPEG_CFLAGS_OTHER})
+# target_compile_options(ft_minecraft PRIVATE ${FFMPEG_CFLAGS_OTHER})
 
 find_package(OpenGL REQUIRED)
 
@@ -221,7 +221,7 @@ target_link_libraries(ft_minecraft PRIVATE
     glfw glad imgui OpenGL::GL
     dl pthread X11 Xi Xrandr Xxf86vm z
 	libzstd freetype
-    ${FFMPEG_LIBRARIES}
+    # ${FFMPEG_LIBRARIES}
 )
 add_dependencies(ft_minecraft update_shaders copy_shaders)
 
