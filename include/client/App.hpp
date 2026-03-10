@@ -228,6 +228,7 @@ private:
 	bool showSSAORawTexture = false;
 	bool showGBufferPositionTexture = false;
 	bool showGBufferNormalTexture = false;
+	bool showFrustumCullingDebug = false;
 
     int selectedRenderType = 0; // 0 = none, 1 = normals, 2 = depth
 
