@@ -151,7 +151,7 @@ void Server::gameTick()
 		world->updateLiquids();
 	}
 
-	if (tick % (static_cast<int>(TPS) * 5) == 0)
+	if (tick % (static_cast<int>(TPS) * 3) == 0)
 		world->updateRegionStreaming(players);
 	sendAll();
 }
@@ -169,6 +169,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 
 	players.push_back(p);
 	world->livingEntities.push_back(p.movement);
+	world->updateRegionStreaming(players);
 	
 	sendAccept(cliaddr);
 }

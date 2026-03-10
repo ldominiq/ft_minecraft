@@ -348,13 +348,8 @@ void World::updatePlayerRdyChunks(CPlayerInfo &player)
 
 	for (const auto& chunkPos : rdyChunks)
 	{
-		int dx = chunkPos.first - playerChunkX;
-		int dz = chunkPos.second - playerChunkZ;
-
-		if (dx*dx + dz*dz > player.movement->loadRadius * player.movement->loadRadius)
-			continue;
-
-		player.rdyChunks.push_back(chunkPos);
+		if (PlayerKnownChunks[player.id].find(chunkPos) != PlayerKnownChunks[player.id].end())
+			player.rdyChunks.push_back(chunkPos);
 	}
 }
 
