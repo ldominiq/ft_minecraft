@@ -57,10 +57,10 @@ void Server::fillServerInfo() {
     servaddr.sin_addr.s_addr = INADDR_ANY;
     servaddr.sin_port = htons(PORT);
 
-    // if (inet_pton(AF_INET, "10...", &servaddr.sin_addr) <= 0) {
-    //     perror("Invalid address");
-    //     exit(EXIT_FAILURE);
-    // }
+    if (inet_pton(AF_INET, "10.11.1.8", &servaddr.sin_addr) <= 0) {
+        perror("Invalid address");
+        exit(EXIT_FAILURE);
+    }
 }
 
 void Server::bindSocket() {

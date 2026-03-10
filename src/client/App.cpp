@@ -44,7 +44,7 @@ void App::init() {
 
     glfwGetFramebufferSize(window, &windowedWidth, &windowedHeight);
 
-	udpClient = std::make_unique<UDPClient>("127.0.0.1");
+	udpClient = std::make_unique<UDPClient>("10.11.1.8");
 	setUdpClientPacketCallback();
 
 	renderer = std::make_unique<Renderer>();
