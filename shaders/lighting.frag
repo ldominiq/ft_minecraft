@@ -102,6 +102,7 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao, vec3 texC
 vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao, vec3 texCol);
 vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao, vec3 texCol);
 float CSMShadowCalculation(vec3 fragPosWorldSpace);
+float sampleCascadeShadow(int layer, vec3 fragPosWorldSpace, vec3 normal, vec3 lightDir);
 
 void main()
 {    
@@ -180,11 +181,15 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
     if (cascadeCount == 0)
         return 0.0;
 
-    // 1. Fragment depth in view space
+    // 1. Find fragment depth in VIEW SPACE.
+    //    We need to know how far this fragment is from the camera
+    //    so we can pick the right cascade.
     vec4 fragPosViewSpace = view * vec4(fragPosWorldSpace, 1.0);
     float depthValue = abs(fragPosViewSpace.z);
 
-    // 2. Select cascade layer
+    // 2. Select the cascade layer.
+    //    Walk through the split distances until we find the first
+    //    cascade whose far plane is beyond our depth.
     int layer = cascadeCount - 1;
     for (int i = 0; i < cascadeCount - 1; ++i)
     {
@@ -195,24 +200,38 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
         }
     }
 
+    // Store for debug visualization
     debugCascadeLayer = layer;
 
     // 3. Out-of-bounds check on primary cascade
     vec4 fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
+
+    // Perspective divide (ortho makes w=1, but good practice)
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+
+    // Transform from [-1,1] NDC to [0,1] texture coordinates
     projCoords = projCoords * 0.5 + 0.5;
+
+    // 4. Out-of-bounds checks.
+    //    If the fragment projects outside the shadow map in XY or beyond
+    //    the far plane in Z, treat it as unshadowed (no data available).
     if (projCoords.z > 1.0 ||
         projCoords.x < 0.0 || projCoords.x > 1.0 ||
         projCoords.y < 0.0 || projCoords.y > 1.0)
         return 0.0;
 
+    // 5. Bias — scale proportional to the texel size of this cascade.
+    //    Larger cascades cover more world space per texel, so they
+    //    need proportionally more bias.  We derive the scale from the
+    //    shadow map resolution vs the cascade's projected extent (which
+    //    is encoded implicitly in the texel size of the projCoords).
     vec3 normal = normalize(fs_in.Normal);
     vec3 lightDir = normalize(-dirLight.direction);
 
-    // 4. Sample primary cascade
+    // 6. Sample primary cascade
     float shadow = sampleCascadeShadow(layer, fragPosWorldSpace, normal, lightDir);
 
-    // 5. Blend between cascades near the boundary to hide the seam.
+    // 7. Blend between cascades near the boundary to hide the seam.
     //    In the last 20% of each cascade's range we linearly blend
     //    with the next cascade's shadow value.
     if (layer < cascadeCount - 1)
@@ -228,7 +247,7 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
         }
     }
 
-    // 6. Fade shadow at the edge of the last cascade to avoid hard cutoff.
+    // 8. Fade shadow at the edge of the last cascade to avoid hard cutoff.
     if (layer == cascadeCount - 1)
     {
         float fadeStart = farPlane * 0.9;
@@ -248,6 +267,9 @@ float sampleCascadeShadow(int layer, vec3 fragPosWorldSpace, vec3 normal, vec3 l
 {
     float ndotl = max(dot(normal, lightDir), 0.0);
     float baseBias = max(shadows.MAX_BIAS * (1.0 - ndotl), shadows.MIN_BIAS);
+
+    // Each successive cascade covers roughly 4× the area of the previous,
+    // so texel size doubles.  Scale bias accordingly.
     float cascadeScale = 1.0 + float(layer) * 0.5;
     float bias = baseBias * cascadeScale;
 
