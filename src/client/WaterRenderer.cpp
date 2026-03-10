@@ -84,6 +84,9 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     const glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
 
     lighting->uploadLightingUniforms(*sceneShader, reflectCamPos, reflectedDir);
+    lighting->uploadCSMUniforms(*sceneShader, reflectView);
+    // Disable SSAO for water reflection (SSAO is computed for main camera only)
+    sceneShader->setInt("ssaoEnabled", 0);
     // Render reflection scene
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -111,6 +114,9 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
 
     // Render refraction scene
     lighting->uploadLightingUniforms(*sceneShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+    lighting->uploadCSMUniforms(*sceneShader, view);
+    // Disable SSAO for water refraction (SSAO is computed for main camera only)
+    sceneShader->setInt("ssaoEnabled", 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
     renderer->render(sceneShader);

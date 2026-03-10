@@ -21,6 +21,8 @@
 #include "WaterRenderer.hpp"
 #include "GuiTexture.hpp"
 #include "InventoryUI.hpp"
+#include "GBuffer.hpp"
+#include "SSAO.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -77,7 +79,9 @@ enum controls {
     CONTROL_COUNT
 };
 
-void profilingCallbackApp(GLuint queryId, double &measuredAverageNs, double &measuredAverageMs);
+// Read a GPU timer query result and apply exponential moving average.
+// Returns true if a new sample was read, false if query wasn't ready.
+bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha);
 
 class App {
 public:
@@ -162,6 +166,11 @@ private:
 	// Render type debug framebuffers
 	std::unique_ptr<RenderTypeFramebuffer> renderTypeFramebuffer;
 
+    // SSAO
+    std::shared_ptr<GBuffer> gBuffer;
+    std::shared_ptr<SSAO> ssao;
+    std::shared_ptr<Shader> gBufferShader;
+
 	std::optional<int> seed;
 
     u_int8_t currentBiome;
@@ -213,9 +222,14 @@ private:
 	bool showReflectionTexture = false;
 	bool showRefractionTexture = false;
 	bool showRefractionDepthTexture = false;
-	bool showShadowMapTexture = false;
 	bool showNormalsTexture = false;
 	bool showDepthTexture = false;
+	bool showSSAOTexture = false;
+	bool showSSAORawTexture = false;
+	bool showGBufferPositionTexture = false;
+	bool showGBufferNormalTexture = false;
+
+    int selectedRenderType = 0; // 0 = none, 1 = normals, 2 = depth
 
 	//keeps track of control GLFW values
     int controlsArray[CONTROL_COUNT];
@@ -228,26 +242,34 @@ private:
 
     // PROFILING
     bool profilingEnabled = false;
-    static constexpr int QUERY_POOL_SIZE = 3;
-    GLuint queryDrawSkyPool[QUERY_POOL_SIZE];
-    GLuint queryDrawCloudsPool[QUERY_POOL_SIZE];
-    GLuint queryDrawWaterReflectionPool[QUERY_POOL_SIZE];
-    GLuint queryDrawShadowsPool[QUERY_POOL_SIZE];
-    GLuint queryRenderShaderPool[QUERY_POOL_SIZE];
-    GLuint queryRenderWaterPool[QUERY_POOL_SIZE];
+    bool showProfilerWindow = false;
+    static constexpr int QUERY_POOL_SIZE = 4; // 3+ frames of latency to avoid reading before GPU is done
+    GLuint queryDrawSkyPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawCloudsPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawWaterReflectionPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawShadowsPool[QUERY_POOL_SIZE]{};
+    GLuint queryRenderShaderPool[QUERY_POOL_SIZE]{};
+    GLuint queryRenderWaterPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawEntities[QUERY_POOL_SIZE]{};
+    GLuint querySSAOPool[QUERY_POOL_SIZE]{};
 
-    GLuint queryDrawEntities[QUERY_POOL_SIZE];
+    // Track which queries were actually issued this frame (conditional passes like shadows/SSAO)
+    bool shadowQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
+    bool ssaoQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
 
     int currentQueryIndex = 0;
 
-    double measuredAverageNsDrawSky = 0.0, measuredAverageMsDrawSky = 0.0;
-    double measuredAverageNsDrawClouds = 0.0, measuredAverageMsDrawClouds = 0.0;
-    double measuredAverageNsDrawWaterReflection = 0.0, measuredAverageMsDrawWaterReflection = 0.0;
-    double measuredAverageNsDrawShadows = 0.0, measuredAverageMsDrawShadows = 0.0;
-    double measuredAverageNsRenderShader = 0.0, measuredAverageMsRenderShader = 0.0;
-    double measuredAverageNsRenderWater = 0.0, measuredAverageMsRenderWater = 0.0;
+    // EMA smoothing factor: 0.05 = slow/smooth, 0.3 = fast/responsive
+    float profilingEMASmoothing = 0.1f;
 
-    double measuredAverageNsDrawEntities = 0.0, measuredAverageMsDrawEntities = 0.0;
+    double measuredAverageMsDrawSky = 0.0;
+    double measuredAverageMsDrawClouds = 0.0;
+    double measuredAverageMsDrawWaterReflection = 0.0;
+    double measuredAverageMsDrawShadows = 0.0;
+    double measuredAverageMsRenderShader = 0.0;
+    double measuredAverageMsRenderWater = 0.0;
+    double measuredAverageMsDrawEntities = 0.0;
+    double measuredAverageMsSSAO = 0.0;
 };
 
 #endif //APP_HPP

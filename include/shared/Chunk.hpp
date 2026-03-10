@@ -59,6 +59,11 @@ class Chunk {
 		
 		std::weak_ptr<Chunk> adjacentChunks[4] = {};
 
+		// Sky-light level per block (0 = full darkness, 15 = full sunlight).
+		// Indexed as: x + WIDTH * (y + HEIGHT * z)
+		// Computed client-side during mesh building via BFS flood-fill.
+		std::vector<uint8_t> skyLight;
+
 	public:
 
 		std::vector<s_liquid> liquids; //TODO put this in the bitpacker.
@@ -87,6 +92,17 @@ class Chunk {
 		void setBlock(int x, int y, int z, BlockType block);
 
 		bool isBlockVisible(glm::ivec3 blockPos);
+
+		// Compute sky-light for this chunk using BFS flood-fill from the top.
+		// Call this after block data is loaded and before mesh building.
+		void computeSkyLight();
+
+		// Get the sky-light level at a local block position (0-15).
+		// Returns 0 for out-of-bounds positions (fully dark).
+		uint8_t getSkyLight(int x, int y, int z) const;
+
+		// Returns true if sky-light has already been computed for this chunk.
+		bool hasSkyLight() const { return !skyLight.empty(); }
 
 		void saveToStream(std::ostream& out) const; // only server? Still great to have it here.
 		void loadFromStream(std::istream& in);
