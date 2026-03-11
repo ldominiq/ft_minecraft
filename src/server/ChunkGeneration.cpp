@@ -65,32 +65,6 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
                     case BiomeType::FOREST: {
                         top = BlockType::GRASS;
                         fill = BlockType::DIRT;
-                        // Add trees randomly
-                        std::seed_seq seedData{terrainParams.seed, x, y, z};
-                        std::mt19937 rng(seedData);
-                        if (rng() % 1000 < 10) { // 1% chance to add a tree
-                            int treeHeight = 4 + rng() % 7; // Random height between 4 and 10
-                            top = BlockType::DIRT;
-                            for (int treeY = surfaceY; treeY < surfaceY + treeHeight; treeY++) {
-                                if (treeY >= 0 && treeY < HEIGHT)
-                                    blocks.at(x, treeY, z) = BlockType::LOG;
-                            }
-                            for (int lx = -2; lx <= 2; lx++) {
-                                for (int lz = -2; lz <= 2; lz++) {
-                                    for (int ly = surfaceY + treeHeight - 1; ly <= surfaceY + treeHeight + 1; ly++) {
-                                        int leafX = x + lx;
-                                        int leafY = ly;
-                                        int leafZ = z + lz;
-                                        if (abs(lx) + abs(lz) <= 3 &&
-                                            leafX >= 0 && leafX < WIDTH &&
-                                            leafY >= 0 && leafY < HEIGHT &&
-                                            leafZ >= 0 && leafZ < DEPTH) {
-                                            blocks.at(leafX, leafY, leafZ) = BlockType::LEAVES;
-                                        }
-                                    }
-                                }
-                            }
-                        }
                         break;
                     }
                         
@@ -122,6 +96,8 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
     generateCaves(blocks, terrainParams);
 
+    generateTrees(blocks, terrainParams);
+
     generateOres(blocks, terrainParams);
 
     // DEBUG: strip everything except ores so they're visible in isolation
@@ -142,6 +118,120 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
     // encode palette and block data (same as before)
     blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
+}
+
+// Place a single tree's blocks into the local BlockStorage.
+// trunkWorldX/Z is the world-space column of the trunk.
+// Only blocks that fall within this chunk's bounds are written.
+void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ,
+                                int surfaceY, int treeHeight) {
+    // Convert trunk world coords to local coords
+    int trunkLocalX = trunkWorldX - originX;
+    int trunkLocalZ = trunkWorldZ - originZ;
+
+    // Place dirt under the tree (only if trunk is inside this chunk)
+    if (trunkLocalX >= 0 && trunkLocalX < WIDTH &&
+        trunkLocalZ >= 0 && trunkLocalZ < DEPTH) {
+        blocks.at(trunkLocalX, surfaceY, trunkLocalZ) = BlockType::DIRT;
+    }
+
+    // Trunk
+    if (trunkLocalX >= 0 && trunkLocalX < WIDTH &&
+        trunkLocalZ >= 0 && trunkLocalZ < DEPTH) {
+        for (int treeY = surfaceY + 1; treeY <= surfaceY + treeHeight && treeY < HEIGHT; ++treeY) {
+            blocks.at(trunkLocalX, treeY, trunkLocalZ) = BlockType::LOG;
+        }
+    }
+
+    // Leaves – 4 layers with widths 5-5-3-1 (bottom to top)
+    // Layer 0 (bottom): radius 2, Layer 1: radius 2, Layer 2: radius 1, Layer 3 (top): radius 0
+    constexpr int leafRadii[4] = {2, 2, 1, 0};
+
+    for (int layer = 0; layer < 4; ++layer) {
+        int ly = surfaceY + treeHeight - 2 + layer;
+        if (ly < 0 || ly >= HEIGHT)
+            continue;
+
+        int radius = leafRadii[layer];
+        for (int lx = -radius; lx <= radius; ++lx) {
+            for (int lz = -radius; lz <= radius; ++lz) {
+                // Diamond shape: skip corners for radius 2
+                if (radius == 2 && abs(lx) == 2 && abs(lz) == 2)
+                    continue;
+
+                int leafLocalX = trunkLocalX + lx;
+                int leafLocalZ = trunkLocalZ + lz;
+
+                if (leafLocalX < 0 || leafLocalX >= WIDTH ||
+                    leafLocalZ < 0 || leafLocalZ >= DEPTH)
+                    continue;
+
+                if (blocks.at(leafLocalX, ly, leafLocalZ) != BlockType::LOG)
+                    blocks.at(leafLocalX, ly, leafLocalZ) = BlockType::LEAVES;
+            }
+        }
+    }
+}
+
+void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
+    // Tree leaves extend up to 2 blocks horizontally. To handle trees from
+    // neighboring chunks whose canopy spills into this chunk, we iterate
+    // over the current chunk and all 8 neighbors' tree positions.
+
+    // The maximum horizontal reach of a tree canopy in blocks.
+    constexpr int TREE_REACH = 2;
+
+    // Iterate only over columns whose trees can reach into this chunk:
+    // expand the area by TREE_REACH in all directions around [originX, originZ].
+    const int minWorldX = originX - TREE_REACH;
+    const int maxWorldX = originX + WIDTH + TREE_REACH;
+    const int minWorldZ = originZ - TREE_REACH;
+    const int maxWorldZ = originZ + DEPTH + TREE_REACH;
+
+    for (int worldX = minWorldX; worldX <= maxWorldX; ++worldX) {
+        for (int worldZ = minWorldZ; worldZ <= maxWorldZ; ++worldZ) {
+
+            // Deterministic RNG seeded per world column
+            std::seed_seq seedData{
+                static_cast<uint32_t>(terrainParams.seed),
+                static_cast<uint32_t>(worldX),
+                static_cast<uint32_t>(worldZ)
+            };
+            std::mt19937 rng(seedData);
+
+            const int surfaceY = computeTerrainHeight(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ));
+
+            // Only place trees above sea level
+            if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 12) {
+                // Still advance the RNG to keep determinism
+                rng(); // for the tree chance roll
+                continue;
+            }
+
+            const BiomeType biome = computeBiome(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
+            if (biome != BiomeType::FOREST) {
+                rng();
+                continue;
+            }
+
+            // 1% chance per column to place a tree
+            if (rng() % 1000 >= 10)
+                continue;
+
+            int treeHeight = 4 + static_cast<int>(rng() % 7);
+
+            // Quick check: can any part of this tree reach into our chunk?
+            int localTrunkX = worldX - originX;
+            int localTrunkZ = worldZ - originZ;
+            if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
+                localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH)
+                continue;
+
+            placeTree(blocks, worldX, worldZ, surfaceY, treeHeight);
+        }
+    }
 }
 
 void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {

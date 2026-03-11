@@ -54,6 +54,9 @@ void App::init() {
 	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
 	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
 
+	// ********************Chunk Boundary Renderer**************************
+	chunkBoundaryRenderer = std::make_unique<ChunkBoundaryRenderer>();
+
 	// ********************Render Type Debug Framebuffers********************
 	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
 
@@ -323,14 +326,12 @@ void App::loadResources() {
 
     // shader configuration
     // --------------------
-    textureShader->use();
-    textureShader->setInt("diffuseTexture", 0);
 
 	waterRenderer->setDependencies(lighting, renderer, camera);
 
     gBufferShader = std::make_shared<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
     gBufferShader->use();
-    gBufferShader->setInt("diffuseTexture", 0);
+    gBufferShader->setInt("atlas", 0);
 }
 
 void App::gameTick() {
@@ -436,7 +437,7 @@ void App::render() {
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
-            lighting->updateCSMShadowMaps(*renderer, view);
+            lighting->updateCSMShadowMaps(*renderer, view, texture);
 
             glEndQuery(GL_TIME_ELAPSED);
             shadowQueryIssuedThisFrame[currentQueryIndex] = true;
@@ -540,6 +541,9 @@ void App::render() {
 		renderer->buildChunks();
 		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+
+        // Draw chunk boundary overlay (if enabled)
+        chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), view, projection, *renderer);
 
         glBindVertexArray(0);
         {
@@ -722,15 +726,6 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     glEndQuery(GL_TIME_ELAPSED);
 
     lighting->drawLightCubes(view, projection);
-
-	const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
-	const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
-
-	renderer->buildChunks();
-	renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
-
-    camera->drawWireframeSelectedBlockFace(renderer, view, projection);
-    glBindVertexArray(0);
 
 	//THIS CODE IS AWFULLY BAD
 	//items
@@ -1006,6 +1001,14 @@ void App::debugWindow() {
                                 //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
                                 //     }
                                 // }
+
+                                // Chunk boundary viewer
+                                {
+                                    bool cb = chunkBoundaryRenderer->isEnabled();
+                                    if (ImGui::Checkbox("Show Chunk Boundary", &cb))
+                                        chunkBoundaryRenderer->setEnabled(cb);
+                                }
+
                                 ImGui::EndTabItem();
                             }
                             if (ImGui::BeginTabItem("SSAO"))

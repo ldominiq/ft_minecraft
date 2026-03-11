@@ -164,6 +164,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.id = players.size();
 	p.addr = cliaddr;
 	p.connected = true;
+	p.computeSpawnPosition(world->getTerrainParams());
 
 	players.push_back(p);
 	world->livingEntities.push_back(p.movement);

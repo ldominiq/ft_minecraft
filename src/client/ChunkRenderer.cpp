@@ -341,7 +341,7 @@ void ChunkRenderer::buildMeshData() {
                     if (neighborBlock == BlockType::AIR) {
                         addWaterFace(x, y, z, 0, faceSkyLight);
                     }
-                } else if (!isBlockSolid(neighborBlock)) {
+                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
                     addFace(x, y, z, 0, faceSkyLight);
                 }
 
@@ -353,7 +353,7 @@ void ChunkRenderer::buildMeshData() {
                     if (neighborBlock == BlockType::AIR) {
                         addWaterFace(x, y, z, 1, faceSkyLight);
                     }
-                } else if (!isBlockSolid(neighborBlock)) {
+                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
                     addFace(x, y, z, 1, faceSkyLight);
                 }
 
@@ -365,7 +365,7 @@ void ChunkRenderer::buildMeshData() {
                     if (neighborBlock == BlockType::AIR) {
                         addWaterFace(x, y, z, 2, faceSkyLight);
                     }
-                } else if (!isBlockSolid(neighborBlock)) {
+                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
                     addFace(x, y, z, 2, faceSkyLight);
                 }
 
@@ -377,7 +377,7 @@ void ChunkRenderer::buildMeshData() {
                     if (neighborBlock == BlockType::AIR) {
                         addWaterFace(x, y, z, 3, faceSkyLight);
                     }
-                } else if (!isBlockSolid(neighborBlock)) {
+                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
                     addFace(x, y, z, 3, faceSkyLight);
                 }
 
@@ -389,7 +389,7 @@ void ChunkRenderer::buildMeshData() {
                     if (neighborBlock == BlockType::AIR) {
                         addWaterFace(x, y, z, 4, faceSkyLight);
                     }
-                } else if (!isBlockSolid(neighborBlock)) {
+                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
                     addFace(x, y, z, 4, faceSkyLight);
                 }
 
@@ -401,7 +401,7 @@ void ChunkRenderer::buildMeshData() {
                     if (neighborBlock == BlockType::AIR) {
                         addWaterFace(x, y, z, 5, faceSkyLight);
                     }
-                } else if (!isBlockSolid(neighborBlock)) {
+                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
                     addFace(x, y, z, 5, faceSkyLight);
                 }
             }

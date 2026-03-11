@@ -139,5 +139,6 @@ public:
 };
 
 inline static bool isBlockSolid(const BlockType &b) { return b != BlockType::AIR && b != BlockType::WATER; }
+inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES; }
 
 #endif
