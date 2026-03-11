@@ -896,7 +896,8 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					diff.y >= 0 && diff.y < 4 &&
 					abs(diff.z) < 2)
 				{
-					int slotUsed = player.movement->inventory.insertItems(entityIt->get()->getItemType(), 1);
+					int one = 1;
+					int slotUsed = player.movement->inventory.insertItems(entityIt->get()->getItemType(), one);
 					if (slotUsed == INVALID_SLOT) continue ;
 
 					NetEntityMove pkt;
@@ -913,7 +914,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 
 					NetInventory pickedUpItem;
 					pickedUpItem.type = entityIt->get()->getItemID();
-					pickedUpItem.amount = 1;
+					pickedUpItem.amount = player.movement->inventory.getSlot(slotUsed).second;
 					pickedUpItem.slot = slotUsed;
 					pickedUpItems.push_back({player.addr, pickedUpItem});
 

@@ -2,7 +2,6 @@
 #ifndef CHAT_HPP
 #define CHAT_HPP
 
-#include "Typer.hpp"
 #include "Menu.hpp"
 #include <chrono>
 
@@ -21,10 +20,10 @@ class Chat : public Menu {
 	float x, y, w, h;
 	std::vector<ChatLine> chatLog; //takes every message
 	std::vector<std::string> personalChatLog; //only takes messages sent by client
-	Typer textRenderer;
 	glm::vec4 chatColor;
 
 	void onRender() override;
+	void build() override;
 	
 	size_t currentChatLogIndex = 0;
 

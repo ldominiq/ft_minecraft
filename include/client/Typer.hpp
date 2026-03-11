@@ -23,17 +23,18 @@ struct TypingCharacter {
 
 class Typer {
 private:
-	float scale;
+	float scale = 0.3;
 	Shader shader;
 	std::map<GLchar, TypingCharacter> Characters;
 	unsigned int VAO, VBO;
 
 public:
-    Typer(const std::string& fontPath, float scale);
+    Typer(const std::string& fontPath);
     ~Typer();
 
 	uint getPixelSizeOfString(const std::string &str);
 	void setProjection(int width, int height);
+	void setScale (float scale) {this->scale = scale;}
 	void renderText(const std::string &text, float x, float y, const glm::vec3 &color, const float alpha = 1.0f);
 };
 
