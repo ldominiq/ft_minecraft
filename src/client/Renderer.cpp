@@ -115,10 +115,12 @@ void Renderer::buildChunks()
 }
 
 //sets rendered chunks and unloads far away chunks
-void Renderer::organizeChunks(const std::pair<int, int> pos)
+void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
 {
     // Clear renderedChunks first
     renderedChunks.clear();
+
+	int unloadRadius = loadRadius * 4;
 
     for (auto it = chunks.begin(); it != chunks.end(); )
     {

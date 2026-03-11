@@ -151,6 +151,8 @@ void Server::gameTick()
 		world->updateLiquids();
 	}
 
+	if (tick % (static_cast<int>(TPS) * 3) == 0)
+		world->updateRegionStreaming(players);
 	sendAll();
 }
 
@@ -168,6 +170,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 
 	players.push_back(p);
 	world->livingEntities.push_back(p.movement);
+	world->updateRegionStreaming(players);
 	
 	sendAccept(cliaddr);
 }
@@ -201,6 +204,7 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		sendPacketTo(pkt, p.addr);
 	}
 
+	world->PlayerKnownChunks[player->id].clear();
 	world->livingEntities.erase(ent);
 	players.erase(player);
 }
@@ -236,7 +240,12 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (pkt.yaw != player->movement->yaw) player->movement->positionUpdated = true;
 
 	player->movement->setLastInputPacketReceived(pkt);
-	player->loadRadius = pkt.loadRadius;
+	
+	if (pkt.loadRadius > 32)
+		pkt.loadRadius = 32;
+	else if (pkt.loadRadius < 4)
+		pkt.loadRadius = 4;
+	player->movement->loadRadius = pkt.loadRadius;
 	player->movement->setYawAndPitch(pkt.yaw, pkt.pitch);
 	player->movement->updateCameraVectors();	//order is vital. updateCameraVectors uses pkt.
 }
@@ -287,9 +296,11 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 void Server::sendAll()
 {
 	world->amountOfChunksSentThisTick = 0;
+	world->updateRdyChunks();
 	for (CPlayerInfo &p : players)
 	{
 		world->updateVisibleChunks(p);
+		world->updatePlayerRdyChunks(p);
 
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
@@ -302,6 +313,8 @@ void Server::sendAll()
 	world->updatedBlocks.clear();
 	if (!messages.empty())
 		messages.pop_front();
+	
+	world->rdyChunks.clear();
 }
 
 void Server::sendImGuiData(CPlayerInfo &player) {
@@ -313,13 +326,21 @@ void Server::sendImGuiData(CPlayerInfo &player) {
     sendPacketTo(pkt, player.addr);
 }
 
-void Server::sendChunk(CPlayerInfo &player) {
+void Server::sendChunk(CPlayerInfo &player)
+{
+	std::vector<ChunkPos> rdyChunk;
+	rdyChunk.swap(player.rdyChunks);
 
-	std::vector<ChunkPos> readyChunks;
-	readyChunks.swap(player.rdyChunks);
+    for (auto& chunkPos : rdyChunk) {
+        std::shared_ptr<ChunkGeneration> chunkG = world->getChunk(chunkPos.first, chunkPos.second);
 
-    for (auto& chunkPos : readyChunks) {
-        ChunkGeneration& chunk = *world->getChunk(chunkPos.first, chunkPos.second);
+		if (!chunkG)
+		{
+			std::cout << "ERROR: Chunk not found\n";
+			continue ;
+		}
+
+		ChunkGeneration& chunk = *chunkG;
 
         // 1. Serialize chunk into memory
         std::ostringstream oss(std::ios::binary);
