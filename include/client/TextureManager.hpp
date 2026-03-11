@@ -54,7 +54,7 @@ class TextureManager {
         TextureManager() = default;
         ~TextureManager();
 
-        // TODO: check texturesize from texture metadata
+        // TODO: check texturesize from texture metadata (width / height)
         bool loadRessourcePack(const std::string& path, int textureSize = 16);
 
         // Get the GL texture array handle
@@ -80,6 +80,7 @@ class TextureManager {
         // load a single image file and return raw RGBA pixels
         std::vector<unsigned char> loadImage(const std::string& path, int& width, int& height);
 
+        //TODO: Tint black and white pixels in the texture (e.g., for grass color)
         // Define which textures each block type uses
         void setupBlockTextureMapping();
 };
