@@ -126,9 +126,11 @@ InventoryUI::~InventoryUI()
 		glDeleteTextures(1, &texture);
 		glDeleteVertexArrays(1, &inventoryTextureVAO);
 		glDeleteBuffers(1, &inventoryTextureVBO);
+		glDeleteTextures(1, &badAppleTex);
 	} else {
 		inventoryTextureVAO = 0;
 		inventoryTextureVBO = 0;
+		badAppleTex = 0;
 	}
 }
 

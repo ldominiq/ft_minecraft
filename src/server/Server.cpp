@@ -233,7 +233,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 			dropItem.type = std::visit([](auto& value) -> ItemID {
 				return static_cast<ItemID>(value);
 			}, type);
-			dropItem.amount = player->movement->inventory.getSlot(slot).second;;
+			dropItem.amount = player->movement->inventory.getSlot(slot).second;
 			dropItem.slot = slot;
 			sendPacketTo(dropItem, cliaddr);
 		}
