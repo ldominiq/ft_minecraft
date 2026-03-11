@@ -7,11 +7,11 @@ in vec2 TexCoords;
 in vec3 FragPos;
 in vec3 Normal;
 
-uniform sampler2D diffuseTexture;
+uniform sampler2D atlas;
 
 void main() {
     // Discard fully transparent fragments
-    vec4 texColor = texture(diffuseTexture, TexCoords);
+    vec4 texColor = texture(atlas, TexCoords);
     if (texColor.a < 0.1)
         discard;
 

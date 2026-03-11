@@ -45,6 +45,7 @@
 #include <cstdlib>
 
 #include "GuiRenderer.hpp"
+#include "ChunkBoundaryRenderer.hpp"
 
 #define CONTROL_LIST 		\
     X(FORWARD)       		\
@@ -139,6 +140,7 @@ private:
 
 	std::shared_ptr<Renderer> renderer;
 	std::unique_ptr<WaterRenderer> waterRenderer;
+	std::unique_ptr<ChunkBoundaryRenderer> chunkBoundaryRenderer;
 	std::unique_ptr<UDPClient> udpClient;
 
     std::shared_ptr<Lighting> lighting;

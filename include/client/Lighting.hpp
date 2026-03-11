@@ -103,7 +103,7 @@ public:
     glm::mat4 getLightSpaceMatrix(const float nearPlane, const float farPlane, const glm::mat4& view) const;
     std::vector<glm::mat4> getLightSpaceMatrices(const glm::mat4& cameraView) const;
     void initCSMResources();
-    void updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView);
+    void updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView, unsigned int atlasTexture = 0);
     void uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraView) const;
     void drawCSMShadowMapPreview(int cascadeLayer);
     void drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cameraFront, const glm::mat4& cameraView);
@@ -272,8 +272,15 @@ private:
 
     // --- Sky controls ---
     // Control sun position over time
-    float skyTimeOffset = 0.0f;
+    float skyTimeOffset = 0.5f;
     bool skyTimePaused = false;
+
+    // "Skyrim approach": sun holds still, then jumps forward
+    float sunPauseTimer    = 0.0f;   // accumulator (seconds)
+    float sunPauseDuration = 20.0f;  // how long the sun stays still
+    float sunStepDuration  = 2.0f;   // how long the smooth advance takes
+    bool  sunStepping      = false;  // true while the sun is advancing
+    float sunStepTimer     = 0.0f;   // progress within the step
     // Simple tone-mapping exposure for sky shader
     float skyExposure = 1.2f;
     // Atmospheric density and thickness scalars (1.0 ~ Earth-like)

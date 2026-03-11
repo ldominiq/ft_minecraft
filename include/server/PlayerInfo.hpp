@@ -22,10 +22,18 @@ class CPlayerInfo
 
 		std::string name;
 
-		glm::vec3 startingPosition = glm::vec3(0,150,0);
+		glm::vec3 startingPosition = glm::vec3(0.5, 150, 0.5);
 		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>(startingPosition);
 
-		// std::unordered_set<ChunkPos> loadedChunks;
+		// TODO: check if surfaceY is below seaLevel and if so, set starting Y to seaLevel + 1 to avoid drowning spawn
+		// (when water physics is implemented) -> max(surfaceY, seaLevel) + offset)
+		/// Set the starting position to the top of the terrain at the given spawn point.
+		void computeSpawnPosition(const TerrainGenerationParams& params) {
+			int surfaceY = ChunkGeneration::computeTerrainHeight(params, 0.0f, 0.0f);
+			startingPosition = glm::vec3(0.5, surfaceY + 3, 0.5);
+			movement->setPosition(startingPosition);
+			movement->setYawAndPitch(0.0f, 0.0f);
+		}
 		std::vector<ChunkPos> rdyChunks;
 
 		bool connected; //unused
