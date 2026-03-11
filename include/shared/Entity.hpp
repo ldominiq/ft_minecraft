@@ -67,6 +67,8 @@ class ItemEntityIDManager {
 		}
 };
 
+class TextureManager;
+
 class Entity {
 
 	static ItemEntityIDManager idManager;
@@ -121,7 +123,7 @@ class Entity {
 		float glfwTickTime = 0;
 		
 		bool removed = false; //item entities only
-		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
+		virtual void createMesh(std::vector<float> &meshVertices, const TextureManager* texMgr = nullptr) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
 		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //living entities only
 };
 

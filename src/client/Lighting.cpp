@@ -1,4 +1,5 @@
 #include "Lighting.hpp"
+#include "TextureManager.hpp"
 
 Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screenWidth), height(screenHeight) {
     // VAO for fullscreen triangle (no attributes needed)
@@ -976,7 +977,7 @@ void Lighting::initCSMResources()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView, unsigned int atlasTexture)
+void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView, const TextureManager& texMgr)
 {
     // 1. Compute all light-space matrices for current camera position
     cachedShadowLightDir = -directionalLightDir;
@@ -986,12 +987,9 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
 
     csmDepthShader->use();
 
-    // Bind the atlas texture so the depth shader can alpha-test leaves
-    if (atlasTexture != 0) {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, atlasTexture);
-        csmDepthShader->setInt("atlas", 0);
-    }
+    // Bind the texture array so the depth shader can alpha-test leaves
+    texMgr.bind(GL_TEXTURE0);
+    csmDepthShader->setInt("blockTextures", 0);
 
     glViewport(0, 0, depthMapResolution, depthMapResolution);
     glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);

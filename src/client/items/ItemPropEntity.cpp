@@ -10,12 +10,12 @@ ItemPropEntity::~ItemPropEntity()
 {
 }
 
-void ItemPropEntity::createMesh(std::vector<float> &meshVertices)
+void ItemPropEntity::createMesh(std::vector<float> &meshVertices, const TextureManager* texMgr)
 {
 	std::visit([&](auto& value) {
 		using T = std::decay_t<decltype(value)>;
 		if constexpr (std::is_same_v<T, BlockType>) {
-			buildCube(meshVertices, position.x, position.y, position.z, 0, 0, value);
+			buildCube(meshVertices, position.x, position.y, position.z, 0, 0, value, texMgr);
 		} else if constexpr (std::is_same_v<T, WeaponType>) {
 			// handle WeaponType
 		} else {

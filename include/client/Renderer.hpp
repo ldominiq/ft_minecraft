@@ -22,6 +22,8 @@
 #include "ClientCreeper.hpp"
 #include "Frustum.hpp"
 
+class TextureManager;
+
 // previously half of World
 
 struct chunkData {
@@ -35,6 +37,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 	int loadRadius = 16;
 	int unloadRadius = loadRadius + 16;
+	const TextureManager* textureManager = nullptr;
 
 	std::unordered_map<ChunkPos, chunkData> chunksData; //building chunk
 	std::unordered_set<ChunkPos> chunksToBuild; // chunk to build and upload mesh
@@ -56,6 +59,8 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		bool isFrustumCullingEnabled() const { return frustumCullingEnabled; }
 		void setFrustumCullingEnabled(bool enabled) { frustumCullingEnabled = enabled; }
+
+		void setTextureManager(const TextureManager* tm) { textureManager = tm; }
 
 		/// Draw a top-down ImGui radar showing which chunks pass frustum culling.
 		void drawFrustumCullingDebug(const glm::vec3& cameraPos, const glm::vec3& cameraFront,

@@ -16,6 +16,7 @@
 class Camera;
 class Renderer;
 class Lighting;
+class TextureManager;
 
 class WaterRenderer {
 public:
@@ -26,8 +27,8 @@ public:
     void setDependencies(const std::shared_ptr<Lighting>& lightingRef, const std::shared_ptr<Renderer>& rendererRef, const std::shared_ptr<Camera>& cameraRef);
 
     // Water rendering helper methods
-    void renderWaterReflectionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& projection, unsigned int tex);
-    void renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, unsigned int tex);
+    void renderWaterReflectionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& projection, const TextureManager& texMgr);
+    void renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, const TextureManager& texMgr);
     void renderWaterSurface(const glm::mat4& projection);
 
     float getWaterMoveFactor() const { return waterMoveFactor; }

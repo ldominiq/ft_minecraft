@@ -8,6 +8,7 @@
 #include "Camera.hpp"
 #include "Renderer.hpp"
 #include "Lighting.hpp"
+#include "TextureManager.hpp"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -46,7 +47,7 @@ void WaterRenderer::prepareRender() {
 
 }
 
-void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sceneShader, const glm::mat4& projection, unsigned int tex) {
+void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sceneShader, const glm::mat4& projection, const TextureManager& texMgr) {
     fbos->bindReflectionFrameBuffer();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_CLIP_DISTANCE0);
@@ -88,8 +89,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     // Disable SSAO for water reflection (SSAO is computed for main camera only)
     sceneShader->setInt("ssaoEnabled", 0);
     // Render reflection scene
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex);
+    texMgr.bind(GL_TEXTURE0);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
     lighting->drawSky(skyView, projection, reflectCamPos);
     renderer->render(sceneShader);
@@ -98,7 +98,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     fbos->unbindCurrentFrameBuffer();
 }
 
-void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, unsigned int tex) {
+void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, const TextureManager& texMgr) {
     fbos->bindRefractionFrameBuffer();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_CLIP_DISTANCE0);
@@ -117,8 +117,7 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     lighting->uploadCSMUniforms(*sceneShader, view);
     // Disable SSAO for water refraction (SSAO is computed for main camera only)
     sceneShader->setInt("ssaoEnabled", 0);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex);
+    texMgr.bind(GL_TEXTURE0);
     renderer->render(sceneShader);
 
     glDisable(GL_CLIP_DISTANCE0);

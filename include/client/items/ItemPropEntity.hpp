@@ -5,12 +5,15 @@
 #include "blockRenderingHelperFunctions.hpp"
 #include "ItemEntity.hpp"
 
+class TextureManager; // Forward declaration
+
 class ItemPropEntity : public ItemEntity
 {
 	std::vector<float> meshVertices;
-	void createMesh(std::vector<float> &meshVertices);
 
 	public:
+		void createMesh(std::vector<float> &meshVertices, const TextureManager* texMgr = nullptr) override;
+
 		ItemPropEntity(const glm::vec3 &position, float yaw, ItemType type, entityID ID);
 		~ItemPropEntity();
 };

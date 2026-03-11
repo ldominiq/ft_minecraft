@@ -23,6 +23,7 @@
 #include "InventoryUI.hpp"
 #include "GBuffer.hpp"
 #include "SSAO.hpp"
+#include "TextureManager.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -124,7 +125,7 @@ private:
 	float lastMouseMoveTime = 0;
 	float glfwTickTime = 0;
 
-    unsigned int texture;
+    TextureManager textureManager;
 
     enum class DisplayMode {
         Windowed,

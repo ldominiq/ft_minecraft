@@ -7,6 +7,7 @@
 
 #include "GLFW/glfw3.h"
 #include "Chunk.hpp"
+#include "TextureManager.hpp"
 #include "blockRenderingHelperFunctions.hpp"
 
 class ChunkRenderer : public Chunk {
@@ -21,8 +22,9 @@ class ChunkRenderer : public Chunk {
 	uint waterMeshVerticesSize = 0;
 	std::vector<float> waterMeshVertices;
 
-	// glm::vec2 getTextureOffset(const BlockType type, const int face);
-    void addFace(int x, int y, int z, int face, float skyLightLevel); // Add a face to the mesh vertices (solid blocks)
+	const TextureManager* textureManager = nullptr;
+
+    void addFace(int x, int y, int z, BlockType type, int face, float skyLightLevel); // Add a face to the mesh vertices (solid blocks)
 	void addWaterFace(int x, int y, int z, int face, float skyLightLevel); // Add a face to water mesh
 
 	public:
@@ -32,6 +34,9 @@ class ChunkRenderer : public Chunk {
 
 		bool needsUpdate = false;
 		bool neighbourNeedUpdate[4] { false };
+
+		// Set the TextureManager (must be called before building meshes)
+		void setTextureManager(const TextureManager* tm) { textureManager = tm; }
 
 		// Release GL resources
 		void releaseGL();

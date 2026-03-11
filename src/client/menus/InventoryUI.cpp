@@ -2,10 +2,9 @@
 
 constexpr float textScale = 0.3f;
 
-InventoryUI::InventoryUI(float width, float height): Inventory(), Menu(width, height), textRenderer("fonts/Roboto-Regular.ttf", textScale)
+InventoryUI::InventoryUI(float width, float height, const TextureManager* texMgr): Inventory(), Menu(width, height), textRenderer("fonts/Roboto-Regular.ttf", textScale), textureManager(texMgr)
 {
 	shader = std::make_unique<Shader>("shaders/InventoryCube.vert", "shaders/InventoryCube.frag"); //should probably reuse cubePropShader.frag
-	texture = shader->loadTexture("assets/textures/textures.png");
 
 	initGL();
 
@@ -32,7 +31,6 @@ InventoryUI::InventoryUI(float width, float height): Inventory(), Menu(width, he
 InventoryUI::~InventoryUI()
 {
 	if (glfwGetCurrentContext()) {
-		glDeleteTextures(1, &texture);
 		glDeleteVertexArrays(1, &inventoryTextureVAO);
 		glDeleteBuffers(1, &inventoryTextureVBO);
 	} else {
@@ -59,7 +57,7 @@ void InventoryUI::initGL()
 	// position
 	glVertexAttribPointer(
 		0, 2, GL_FLOAT, GL_FALSE,
-		4 * sizeof(float),
+		5 * sizeof(float),
 		(void*)0
 	);
 	glEnableVertexAttribArray(0);
@@ -67,10 +65,18 @@ void InventoryUI::initGL()
 	// uv
 	glVertexAttribPointer(
 		1, 2, GL_FLOAT, GL_FALSE,
-		4 * sizeof(float),
+		5 * sizeof(float),
 		(void*)(2 * sizeof(float))
 	);
 	glEnableVertexAttribArray(1);
+
+	// texture layer
+	glVertexAttribPointer(
+		2, 1, GL_FLOAT, GL_FALSE,
+		5 * sizeof(float),
+		(void*)(4 * sizeof(float))
+	);
+	glEnableVertexAttribArray(2);
 
 	glBindVertexArray(0);
 }
@@ -81,12 +87,12 @@ void InventoryUI::setupCubes(const std::vector<float> &meshVertices)
 
 	glBindVertexArray(inventoryTextureVAO);
 
-	shader->setInt("atlas", 0);
+	shader->setInt("blockTextures", 0);
 	shader->setVec2("uScreenSize", glm::vec2(width, height));
 
-	// texture
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture);
+	// texture array
+	if (textureManager)
+		textureManager->bind(GL_TEXTURE0);
 
 	glBindBuffer(GL_ARRAY_BUFFER, inventoryTextureVBO);
 	glBufferSubData(
@@ -97,7 +103,7 @@ void InventoryUI::setupCubes(const std::vector<float> &meshVertices)
 	);
 
 	// draw
-	glDrawArrays(GL_TRIANGLES, 0, meshVertices.size() / 4);
+	glDrawArrays(GL_TRIANGLES, 0, meshVertices.size() / 5);
 }
 
 void InventoryUI::drawHotbar()
@@ -120,7 +126,7 @@ void InventoryUI::drawHotbar()
 			using T = std::decay_t<decltype(value)>;
 			if constexpr (std::is_same_v<T, BlockType>) {
 				if (value != BlockType::BEGIN)
-					build2DInventoryCube(meshVertices, glm::vec2(hotbarSlotCoord.x + 18, hotbarSlotCoord.y + 5), 40, value);
+					build2DInventoryCube(meshVertices, glm::vec2(hotbarSlotCoord.x + 18, hotbarSlotCoord.y + 5), 40, value, textureManager);
 			} else if constexpr (std::is_same_v<T, WeaponType>) {
 				// handle WeaponType
 			} else {
