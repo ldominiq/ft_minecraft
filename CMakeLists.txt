@@ -16,6 +16,10 @@ FetchContent_MakeAvailable(glad)
 
 
 # GLFW
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
   glfw
   GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -56,6 +60,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(imgui)
 
 # ZSTD
+set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1 CACHE INTERNAL "" FORCE)
 FetchContent_Declare(
   zstd
   GIT_REPOSITORY https://github.com/facebook/zstd.git
@@ -65,6 +70,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(zstd)
 
 # Freetype
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
   freetype
   GIT_REPOSITORY https://github.com/freetype/freetype.git
@@ -153,8 +162,22 @@ target_include_directories(glad PUBLIC
 set_target_properties(glad PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---------------------------------------------------------------------------
+# Project warning flags (ONLY for our code)
+# ---------------------------------------------------------------------------
+
+add_library(project_warnings INTERFACE)
+
+target_compile_options(project_warnings INTERFACE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+)
+
+# ---------------------------------------------------------------------------
 # Source & Include setup for Client and Server
 # ---------------------------------------------------------------------------
+
 file(GLOB_RECURSE CLIENT_SRC
     "${CMAKE_SOURCE_DIR}/src/client/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/shared/*.cpp"
@@ -168,6 +191,17 @@ file(GLOB_RECURSE SERVER_SRC
 
 # Client executable
 add_executable(ft_minecraft ${CLIENT_SRC})
+
+# Include directories for external libraries. SYSTEM makes it so warnings do not trigger
+target_include_directories(ft_minecraft SYSTEM PRIVATE
+    ${glm_SOURCE_DIR}
+    ${fastnoise_SOURCE_DIR}/Cpp
+    ${glad_SOURCE_DIR}/include
+    ${stb_SOURCE_DIR}
+    ${zstd_SOURCE_DIR}/lib
+    ${imgui_SOURCE_DIR}
+    ${freetype_SOURCE_DIR}/include
+)
 target_include_directories(ft_minecraft PRIVATE
     ${CMAKE_SOURCE_DIR}/include/client
 	${CMAKE_SOURCE_DIR}/include/client/characters
@@ -175,13 +209,6 @@ target_include_directories(ft_minecraft PRIVATE
 	${CMAKE_SOURCE_DIR}/include/client/menus
     ${CMAKE_SOURCE_DIR}/include/shared
 	${CMAKE_SOURCE_DIR}/include/shared/Mobs
-    ${glm_SOURCE_DIR}
-    ${fastnoise_SOURCE_DIR}/Cpp
-    ${glad_SOURCE_DIR}/include
-    ${stb_SOURCE_DIR}
-	${zstd_SOURCE_DIR}/lib
-    ${imgui_SOURCE_DIR}
-	${freetype_SOURCE_DIR}/include
 )
 
 find_package(OpenGL REQUIRED)
@@ -190,22 +217,27 @@ target_link_libraries(ft_minecraft PRIVATE
     glfw glad imgui OpenGL::GL
     dl pthread X11 Xi Xrandr Xxf86vm z
 	libzstd freetype
+	project_warnings
 )
 add_dependencies(ft_minecraft update_shaders copy_shaders)
 
 # Server executable
 add_executable(ft_minecraft_server ${SERVER_SRC})
-target_include_directories(ft_minecraft_server PRIVATE
-    ${CMAKE_SOURCE_DIR}/include/server
-    ${CMAKE_SOURCE_DIR}/include/shared
-	${CMAKE_SOURCE_DIR}/include/shared/Mobs
+target_include_directories(ft_minecraft_server SYSTEM PRIVATE
     ${glm_SOURCE_DIR}
     ${fastnoise_SOURCE_DIR}/Cpp
 	${zstd_SOURCE_DIR}/lib
 )
+target_include_directories(ft_minecraft_server PRIVATE
+    ${CMAKE_SOURCE_DIR}/include/server
+    ${CMAKE_SOURCE_DIR}/include/shared
+	${CMAKE_SOURCE_DIR}/include/shared/Mobs
+)
+
 # Should look into restructure stuff so we can remove glad from server
 target_link_libraries(ft_minecraft_server PRIVATE
 	libzstd
+	project_warnings
 )
 
-# TODO : LOOK INTO COMPILING WITH FLAGS. ONLY OUR CODE NO LIBS
+#TODO check repositories used and get specific versions instead of latest builds

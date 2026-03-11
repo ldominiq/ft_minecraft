@@ -41,11 +41,11 @@ class ChunkRenderer : public Chunk {
 		void buildMeshData();
 		void uploadMesh();
 
-		inline const GLuint getVao() const {return VAO;}
-		inline const uint getMeshVerticesSize() const {return meshVerticesSize;}
+		inline GLuint getVao() const {return VAO;}
+		inline uint getMeshVerticesSize() const {return meshVerticesSize;}
 		
-		inline const GLuint getWaterVao() const {return waterVAO;}
-		inline const uint getWaterMeshVerticesSize() const {return waterMeshVerticesSize;}
+		inline GLuint getWaterVao() const {return waterVAO;}
+		inline uint getWaterMeshVerticesSize() const {return waterMeshVerticesSize;}
 };
 
 #endif

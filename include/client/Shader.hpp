@@ -39,7 +39,7 @@ protected:
     void getAllUniformLocations(const glm::mat4& matrix);
 
 private:
-    int location_transformationMatrix = -1;;
+    int location_transformationMatrix = -1;
 };
 
 #endif

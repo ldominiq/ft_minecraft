@@ -1,7 +1,7 @@
 
 #include "ClientCreeper.hpp"
 
-ClientCreeper::ClientCreeper(const glm::vec3 &position, float yaw, entityID ID) : Creeper(position, yaw, ID), IClientEntity(position,yaw,ID), Character(position), LivingEntity(position, yaw, ID)
+ClientCreeper::ClientCreeper(const glm::vec3 &position, float yaw, entityID ID) : LivingEntity(position, yaw, ID), Character(position), Creeper(position, yaw, ID), IClientEntity(position,yaw,ID) 
 {
 	createCharacterAt(position, entityHeight);
 }

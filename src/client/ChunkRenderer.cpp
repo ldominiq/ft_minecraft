@@ -166,9 +166,6 @@ void ChunkRenderer::addWaterFace(int x, int y, int z, int face, float skyLightLe
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(originZ + z);
 
-    const float TILE_W = 1.0f / ATLAS_COLS;
-    const float TILE_H = 1.0f / ATLAS_ROWS;
-
     static const float faceData[6][18] = {
         // FRONT face (Z+)
         { 0,0,1,  1,0,1,  1,1,1,

@@ -105,9 +105,9 @@ class Entity {
 		inline virtual EEntityTypes getEntityType() const = 0;
 		virtual void calculateNewPosition(const ICommonWorld &world);
 		inline const glm::vec3 getPosition() const { return position; }
-		inline const float getEntityWidth() const { return entityWidth; }
-		inline const float getEntityHeight() const { return entityHeight; }
-		inline const entityID getID() const { return ID; }
+		inline float getEntityWidth() const { return entityWidth; }
+		inline float getEntityHeight() const { return entityHeight; }
+		inline entityID getID() const { return ID; }
 
 		inline void setPosition(glm::vec3 position) {
 			if (this->position != position) positionUpdated = true;
@@ -121,8 +121,8 @@ class Entity {
 		float glfwTickTime = 0;
 		
 		bool removed = false; //item entities only
-		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
-		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //living entities only
+		virtual void createMesh(std::vector<float> &meshVertices) {(void)meshVertices; std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
+		virtual void draw(std::vector<float> &meshVertices) {(void)meshVertices; std::cout << "Not Yet Implemented :D" << std::endl; }; //living entities only
 };
 
 #endif

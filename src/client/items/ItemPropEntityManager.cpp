@@ -26,7 +26,7 @@ ItemPropEntityManager::~ItemPropEntityManager()
 void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities)
 {
 	int i = -1;
-	bool itemsRemoved = false; //Needed because when 1 element is removed the order of the elements change. So when 1 element is removed we redo EVERY prop. Shitty solution but it is what is is.
+	// bool itemsRemoved = false; //Needed because when 1 element is removed the order of the elements change. So when 1 element is removed we redo EVERY prop. Shitty solution but it is what is is.
 
 	static std::vector<float> buffer(MAX_CAPACITY * ITEM_SIZE);
 	std::vector<float> vertices;
@@ -37,7 +37,7 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 		if (entity->get()->removed && !entity->get()->positionUpdated)
 		{
 			entity = entities.erase(entity);
-			itemsRemoved = true;
+			// itemsRemoved = true;
 			continue ;
 		}
 

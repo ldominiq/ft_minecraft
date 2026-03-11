@@ -3,6 +3,7 @@
 
 Character::Character(const glm::vec3 &position)
 {
+	(void)position;
 }
 
 void Character::createCharacterAt(const glm::vec3 &pos, float characterScale)

@@ -156,6 +156,7 @@ void Server::gameTick()
 
 void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 {
+	(void)pkt;
 	if (players.size() >= MAX_CLIENTS) return ;
 
 	std::cout << "New client connected!\n";
@@ -173,6 +174,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 
 void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 {
+	(void)pkt;
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 	if (player == players.end())
 		return ;

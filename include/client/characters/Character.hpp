@@ -63,8 +63,8 @@ class Character
 
 		glm::vec3 YPositionOffset = {};
 
-		const inline void setDoDraw(bool value) {doDraw = value;}
-		const inline bool DoDraw() const {return doDraw;}
+		inline void setDoDraw(bool value) {doDraw = value;}
+		inline bool DoDraw() const {return doDraw;}
 
 		Character(const glm::vec3 &position);
 		virtual ~Character() = default;

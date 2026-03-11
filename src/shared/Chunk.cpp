@@ -49,10 +49,11 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
 
 bool Chunk::isBlockVisible(glm::ivec3 pos) {
     int x = pos.x, y = pos.y, z = pos.z;
-    if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH)
-        return false;
+	if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH)
+		return false;
 
-	if (!hasAllAdjacentChunkLoaded()) return false;
+	if (!hasAllAdjacentChunkLoaded())
+		return false;
 
     if (!isBlockSolid(getBlock(x,y,z)))
         return false;

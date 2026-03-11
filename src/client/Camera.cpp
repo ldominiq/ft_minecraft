@@ -4,7 +4,7 @@ Camera::Camera(glm::vec3 position)
     : MouseSensitivity(0.1f) {
 
 	//TODO position & yaw should be given by server
-	glm::vec3 startingPos = glm::vec3(0,150,0);
+	glm::vec3 startingPos = position; // UNUSED
 	player = std::make_shared<ClientPlayer>(startingPos, 0, -1);
     player->updateCameraVectors();
 	initWireframeCube();
@@ -90,6 +90,8 @@ glm::vec3 Camera::lerpEntityToNextPosition(float deltaTime, const glm::vec3 &pre
 // Remove prediction for now. 
 void Camera::predictNTicks(const Renderer &world)
 {
+	(void)world;
+
 	// previousPosition = predictedPosition;
 	// static int diff;
 	// diff = serverCurrTick ? tickDiff(currTick, serverCurrTick) : diff; //assumes ping remains constant... this whole logic is... frail

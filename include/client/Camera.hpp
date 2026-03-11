@@ -45,15 +45,15 @@ public:
 	//maybe refactor some day and put somewhere else
 	glm::vec3 lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition);
 
-	inline const uint8_t getLoadRadius() const { return loadRadius; }
+	inline uint8_t getLoadRadius() const { return loadRadius; }
 	// inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
 
-	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
+	inline int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
 
 	void drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 
-	const inline bool isThirdPersonCameraActive() const {return thirdPersonCamera;}
-	const inline void toggleThirdPersonCamera() {thirdPersonCamera = !thirdPersonCamera; player->setDoDraw(thirdPersonCamera);}
+	inline bool isThirdPersonCameraActive() const {return thirdPersonCamera;}
+	inline void toggleThirdPersonCamera() {thirdPersonCamera = !thirdPersonCamera; player->setDoDraw(thirdPersonCamera);}
 	const inline std::shared_ptr<ClientPlayer> getPlayer() {return player;};
 };
 

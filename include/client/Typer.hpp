@@ -23,8 +23,8 @@ struct TypingCharacter {
 
 class Typer {
 private:
-	float scale;
 	Shader shader;
+	float scale;
 	std::map<GLchar, TypingCharacter> Characters;
 	unsigned int VAO, VBO;
 

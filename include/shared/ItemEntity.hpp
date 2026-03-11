@@ -23,7 +23,7 @@ class ItemEntity : public Entity
 			}, type);
 		}
 
-		inline const int getSpawnTick() const {return spawnTick;}
+		inline int getSpawnTick() const {return spawnTick;}
 
 		ItemEntity(const glm::vec3 &position, float yaw, ItemType type, int32_t spawnTick, bool isLaunched = false);
 		ItemEntity(const glm::vec3 &position, float yaw, ItemType type, entityID ID);

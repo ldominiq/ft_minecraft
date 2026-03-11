@@ -4,13 +4,13 @@
 
 ItemEntityIDManager Entity::idManager;
 
-Entity::Entity(const glm::vec3 &position): position(position), ID(idManager.acquire())
+Entity::Entity(const glm::vec3 &position): ID(idManager.acquire()), position(position)
 {
 	yaw = 0;
 	pitch = 0;
 }
 
-Entity::Entity(const glm::vec3 &position, float yaw, entityID ID): position(position), yaw(yaw), ID(ID) {}
+Entity::Entity(const glm::vec3 &position, float yaw, entityID ID): ID(ID), position(position), yaw(yaw) {}
 
 Entity::~Entity()
 {
@@ -35,13 +35,18 @@ bool Entity::aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world) {
     int maxZ = (int)std::floor(box.max.z - EPS);
 
     for (int x = minX; x <= maxX; ++x)
-	for (int y = minY; y <= maxY; ++y)
-	for (int z = minZ; z <= maxZ; ++z) {
-		BlockType b = world.getBlockWorld({x, y, z});
-		if (isBlockSolid(b)) {
-			// block occupies AABB {x..x+1, y..y+1, z..z+1} -> any overlap is collision
-			// we already limited the loop to candidate blocks, so we can early return
-			return true;
+	{
+		for (int y = minY; y <= maxY; ++y)
+		{
+			for (int z = minZ; z <= maxZ; ++z)
+			{
+				BlockType b = world.getBlockWorld({x, y, z});
+				if (isBlockSolid(b)) {
+					// block occupies AABB {x..x+1, y..y+1, z..z+1} -> any overlap is collision
+					// we already limited the loop to candidate blocks, so we can early return
+					return true;
+				}
+			}
 		}
 	}
 
@@ -61,10 +66,6 @@ bool Entity::entityCollidesWithBlock(const glm::vec3 blockPos) {
     int maxY = static_cast<int>(std::floor(box.max.y - EPS));
     int minZ = static_cast<int>(std::floor(box.min.z + EPS));
     int maxZ = static_cast<int>(std::floor(box.max.z - EPS));
-
-	int bx = static_cast<int>(std::floor(blockPos.x));
-	int by = static_cast<int>(std::floor(blockPos.y));
-	int bz = static_cast<int>(std::floor(blockPos.z));
 
 	for (int x = minX; x <= maxX; x++)
 	for (int y = minY; y <= maxY; y++)

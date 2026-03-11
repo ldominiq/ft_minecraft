@@ -120,6 +120,8 @@ void App::init() {
 	});
 
 	glfwSetKeyCallback(window, [](GLFWwindow* w, int key, int scancode, int action, int mods) {
+		(void)mods;
+		(void)scancode;
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
 
@@ -169,6 +171,8 @@ void App::init() {
 
 
 	glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int button, int action, int mods) {
+		(void)mods;
+
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
 
@@ -1128,7 +1132,7 @@ void App::debugWindow() {
                             if (ImGui::BeginTabItem("Point Lights"))
                             {
                                 ImGui::Text("Point Light Controls");
-                                for (int i = 0; i < lighting->getNumPointLights(); ++i)
+                                for (size_t i = 0; i < lighting->getNumPointLights(); ++i)
                                 {
                                     bool enabled = lighting->isPointLightOn(i);
                                 	glm::vec3 pointLightPosition = lighting->getPointLightPosition(i);
@@ -1660,7 +1664,7 @@ void App::processInput() {
     // suppress input.  When uiInteractive is true we honour ImGui’s capture
     // flags to decide whether to ignore keyboard or mouse events.
     const bool capturingKeyboard = uiInteractive && io.WantCaptureKeyboard;
-    const bool capturingMouse    = uiInteractive && io.WantCaptureMouse;
+    // const bool capturingMouse    = uiInteractive && io.WantCaptureMouse;
 
     // Handle keyboard-based game actions when input isn’t captured.
     if (!capturingKeyboard) {
@@ -1755,7 +1759,7 @@ size_t App::getCurrentRSS() {
         /* Each entry in statm is a number of pages.  The second entry is
            the resident set size. */
         unsigned long dummy;
-        if (fscanf(fp, "%lu %lu", &dummy, &rss) != 2) {
+        if (fscanf(fp, "%lu %li", &dummy, &rss) != 2) {
             rss = 0L;
         }
         fclose(fp);

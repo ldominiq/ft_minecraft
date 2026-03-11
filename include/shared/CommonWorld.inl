@@ -77,7 +77,6 @@ bool CommonWorld<ChunkT>::getTargetedBlock(const glm::vec3 &rayOrigin, const glm
     }
 
     float distanceTraveled = 0.0f;
-    glm::ivec3 prevBlock = blockPos;
 
     while (distanceTraveled < maxDistance) {
         int axis;
