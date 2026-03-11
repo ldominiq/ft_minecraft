@@ -44,6 +44,8 @@ void App::init() {
 			manager->resize(width, height);
 		if (manager != app->inventoryUI)
 			app->inventoryUI->resize(width, height);
+		if (manager != app->chat)
+			app->chat->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
