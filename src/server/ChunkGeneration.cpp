@@ -181,59 +181,55 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
     // The maximum horizontal reach of a tree canopy in blocks.
     constexpr int TREE_REACH = 2;
 
-    // Iterate over this chunk and the 8 surrounding chunks
-    for (int ncx = -1; ncx <= 1; ++ncx) {
-        for (int ncz = -1; ncz <= 1; ++ncz) {
-            // Compute the neighbor chunk's world-space origin
-            int neighborOriginX = originX + ncx * WIDTH;
-            int neighborOriginZ = originZ + ncz * DEPTH;
+    // Iterate only over columns whose trees can reach into this chunk:
+    // expand the area by TREE_REACH in all directions around [originX, originZ].
+    const int minWorldX = originX - TREE_REACH;
+    const int maxWorldX = originX + WIDTH + TREE_REACH;
+    const int minWorldZ = originZ - TREE_REACH;
+    const int maxWorldZ = originZ + DEPTH + TREE_REACH;
 
-            // Deterministic RNG seeded per neighbor chunk
+    for (int worldX = minWorldX; worldX <= maxWorldX; ++worldX) {
+        for (int worldZ = minWorldZ; worldZ <= maxWorldZ; ++worldZ) {
+
+            // Deterministic RNG seeded per world column
             std::seed_seq seedData{
                 static_cast<uint32_t>(terrainParams.seed),
-                static_cast<uint32_t>(neighborOriginX),
-                static_cast<uint32_t>(neighborOriginZ)
+                static_cast<uint32_t>(worldX),
+                static_cast<uint32_t>(worldZ)
             };
             std::mt19937 rng(seedData);
 
-            for (int x = 0; x < WIDTH; ++x) {
-                for (int z = 0; z < DEPTH; ++z) {
-                    int worldX = neighborOriginX + x;
-                    int worldZ = neighborOriginZ + z;
+            const int surfaceY = computeTerrainHeight(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ));
 
-                    const int surfaceY = computeTerrainHeight(terrainParams,
-                        static_cast<float>(worldX), static_cast<float>(worldZ));
-
-                    // Only place trees above sea level
-                    if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 12) {
-                        // Still advance the RNG to keep determinism
-                        rng(); // for the tree chance roll
-                        continue;
-                    }
-
-                    const BiomeType biome = computeBiome(terrainParams,
-                        static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
-                    if (biome != BiomeType::FOREST) {
-                        rng();
-                        continue;
-                    }
-
-                    // 1% chance per column to place a tree
-                    if (rng() % 1000 >= 10)
-                        continue;
-
-                    int treeHeight = 4 + static_cast<int>(rng() % 7);
-
-                    // Quick check: can any part of this tree reach into our chunk?
-                    int localTrunkX = worldX - originX;
-                    int localTrunkZ = worldZ - originZ;
-                    if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
-                        localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH)
-                        continue;
-
-                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight);
-                }
+            // Only place trees above sea level
+            if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 12) {
+                // Still advance the RNG to keep determinism
+                rng(); // for the tree chance roll
+                continue;
             }
+
+            const BiomeType biome = computeBiome(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
+            if (biome != BiomeType::FOREST) {
+                rng();
+                continue;
+            }
+
+            // 1% chance per column to place a tree
+            if (rng() % 1000 >= 10)
+                continue;
+
+            int treeHeight = 4 + static_cast<int>(rng() % 7);
+
+            // Quick check: can any part of this tree reach into our chunk?
+            int localTrunkX = worldX - originX;
+            int localTrunkZ = worldZ - originZ;
+            if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
+                localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH)
+                continue;
+
+            placeTree(blocks, worldX, worldZ, surfaceY, treeHeight);
         }
     }
 }
