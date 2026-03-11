@@ -1,4 +1,5 @@
 #include "TextureManager.hpp"
+#include "GLFW/glfw3.h"
 #include <filesystem>
 #include <iostream>
 #include <algorithm>
@@ -10,8 +11,10 @@
 namespace fs = std::filesystem;
 
 TextureManager::~TextureManager() {
-    if (textureArray) {
-        glDeleteTextures(1, &textureArray);
+    if (glfwGetCurrentContext()) {
+        if (textureArray) {
+            glDeleteTextures(1, &textureArray);
+        }
     }
 }
 
@@ -27,7 +30,7 @@ std::vector<unsigned char> TextureManager::loadImage(const std::string& path, in
     return pixels;
 }
 
-bool TextureManager::loadRessourcePack(const std::string& path, int textureSize) {
+bool TextureManager::loadResourcePack(const std::string& path, int textureSize) {
     this->textureSize = textureSize;
 
     std::string textureDir = path + "/textures/block/";
@@ -185,6 +188,7 @@ int TextureManager::getTextureLayer(const std::string& name) const {
     auto it = textureNameToLayer.find(name);
     if (it != textureNameToLayer.end())
         return it->second;
+    // TODO : add magenta checker and return its layer index instead of defaulting to 0
     return 0; // default to layer 0 if not found
 }
 
@@ -202,7 +206,7 @@ void TextureManager::bind(GLenum textureUnit) const {
 }
 
 void TextureManager::setupBlockTextureMapping() {
-    // Map each blocktype to it's texture names
+    // Map each blocktype to its texture names
 
     auto layer = [this](const std::string& name) -> int{
         return getTextureLayer(name);

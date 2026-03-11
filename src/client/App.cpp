@@ -317,7 +317,7 @@ void App::loadResources() {
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
 
     // Load individual block textures into a texture array
-    textureManager.loadRessourcePack("assets");
+    textureManager.loadResourcePack("assets");
 
     activeShader = textureShader;
 

@@ -55,7 +55,7 @@ class TextureManager {
         ~TextureManager();
 
         // TODO: check texturesize from texture metadata (width / height)
-        bool loadRessourcePack(const std::string& path, int textureSize = 16);
+        bool loadResourcePack(const std::string& path, int textureSize = 16);
 
         // Get the GL texture array handle
         GLuint getTextureArray() const { return textureArray; }
