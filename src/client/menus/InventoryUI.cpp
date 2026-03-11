@@ -1,6 +1,6 @@
 #include "InventoryUI.hpp"
 
-InventoryUI::InventoryUI(float width, float height): Inventory(), Menu(width, height)
+InventoryUI::InventoryUI(int width, int height): Inventory(), Menu(width, height)
 {
 	shader = std::make_unique<Shader>("shaders/InventoryCube.vert", "shaders/InventoryCube.frag"); //should probably reuse cubePropShader.frag
 	texture = shader->loadTexture("assets/textures/textures.png");

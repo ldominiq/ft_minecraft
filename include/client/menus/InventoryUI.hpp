@@ -15,7 +15,7 @@ int constexpr MAX_CRAFTING_SLOTS = 3; //3x3 but whatever
 
 class InventoryUI : public Inventory, public Menu
 {
-	int MAX_BUFFER_SIZE = sizeof(float) * rows * cols * (2 + 2) * 3 * 6; //2 coords, 2 uvs. 3 faces, 6 vertices
+	int MAX_BUFFER_SIZE = sizeof(float) * (rows * cols + 1) * (2 + 2) * 3 * 6; //2 coords, 2 uvs. 3 faces, 6 vertices
 	std::unique_ptr<Shader> shader;
 	uint texture;
 	uint badAppleTex;
@@ -126,7 +126,7 @@ class InventoryUI : public Inventory, public Menu
 
 	public:
 
-		InventoryUI(float width, float height);
+		InventoryUI(int width, int height);
 		~InventoryUI();
 
 		void drawHotbar();

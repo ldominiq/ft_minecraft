@@ -293,6 +293,9 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 void Server::sendInventorySlot(int slot, const sockaddr_in &cliaddr)
 {
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (player == players.end())
+		return;
+
 	Inventory inv = player->movement->inventory;
 	ItemID itemIDAtSlot = inv.getItemIDAtSlot(slot);
 	itemStackSize_t amountAtSlot = inv.getSlot(slot).second;
@@ -307,7 +310,10 @@ void Server::sendInventorySlot(int slot, const sockaddr_in &cliaddr)
 void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &cliaddr)
 {
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (player == players.end())
+		return;
 
+	if (pkt.slot > HAND_ID) return;
 	int slot = pkt.slot;
 
 	Inventory &inv = player->movement->inventory;

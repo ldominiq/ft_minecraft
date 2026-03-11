@@ -41,11 +41,43 @@ ItemID Inventory::getActiveItemID()
 void Inventory::setSlot(int slot, itemStackSize_t amount, ItemType type)
 {
 	if (slot >= grid.size() || slot < 0) return ;
-	if (slot == HAND_ID)
+
+	// If amount is zero we must clear the slot regardless of the new type.
+	if (amount == 0)
 	{
-		grid[HAND_ID] = {type, amount};
-		return ;
+		// remove old index if present
+		auto range = itemsIndexes.equal_range(grid[slot].first);
+		for (auto it = range.first; it != range.second; ++it)
+		{
+			if (it->second == slot)
+			{
+				itemsIndexes.erase(it);
+				break;
+			}
+		}
+		grid[slot] = {};
+		freeSlots.insert(slot);
+		return;
 	}
+
+	// If type changed, remove the old index and add the new one
+	if (type != grid[slot].first)
+	{
+		auto range = itemsIndexes.equal_range(grid[slot].first);
+		for (auto it = range.first; it != range.second; ++it)
+		{
+			if (it->second == slot)
+			{
+				itemsIndexes.erase(it);
+				break;
+			}
+		}
+		itemsIndexes.insert({ type, slot });
+	}
+
+	if (freeSlots.count(slot))
+		freeSlots.erase(slot);
+
 	grid[slot] = {type, amount};
 }
 
@@ -116,9 +148,11 @@ bool Inventory::removeItemsFromSlot(int slotNumber, itemStackSize_t amount)
 	return true;
 }
 
+//inserted items must have the same type as the item in the slot
 bool Inventory::insertItemsToSlot(ItemType item, int slotNumber, int &amount)
 {
 	if (slotNumber >= grid.size() || slotNumber < 0) return false;
+	if (grid[slotNumber].second > 0 && grid[slotNumber].first != item) return false; //not same type
 
 	//check if item - slotNumber is already registered.
 	auto range = itemsIndexes.equal_range(item);
@@ -132,6 +166,7 @@ bool Inventory::insertItemsToSlot(ItemType item, int slotNumber, int &amount)
 			break;
 		}
 	}
+
 	if (!exists)
 		itemsIndexes.insert({item, slotNumber});
 
@@ -182,14 +217,17 @@ void Inventory::takeOneItemFromSlot(int slotSrc, std::optional<int> slotDest)
 	if (amount == 0) return ;
 	if (slotDest.has_value() &&  getSlot(*slotDest).second != 0 && getSlot(*slotDest).first != type) return ;
 
+	bool inserted = false;
+	int one = 1;
+	if (slotDest.has_value())
+		inserted = insertItemsToSlot(type, slotDest.value(), one);
+
+	if (!inserted) return;
 	if (amount - 1 > 0)
 		setSlot(slotSrc, amount - 1, type);
 	else
 		setSlot(slotSrc, 0, 0);
 
-	int one = 1;
-	if (slotDest.has_value())
-		insertItemsToSlot(type, slotDest.value(), one);
 }
 
 
@@ -204,7 +242,7 @@ void Inventory::takeHalf(int slotSrc)
 	int amount = getSlot(slotSrc).second / 2;
 	int cpy = amount;
 
-	if (amount % 2 != 0)
+	if (getSlot(slotSrc).second % 2 != 0)
 		amount++;
 
 	insertItemsToSlot(type, HAND_ID, amount);

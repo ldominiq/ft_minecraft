@@ -222,7 +222,7 @@ struct NetInventory final : public Packet {
 
 	uint16_t type = 0;
 	int16_t amount = 0;
-	uint8_t slot = 0;	// -1 for hand
+	uint8_t slot = 0;	// HAND_ID for hand (37)
 
 	NetInventory() : Packet(ID) {}
 
