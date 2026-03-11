@@ -4,6 +4,7 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <memory>
+#include <limits>
 #include "Shader.hpp"
 #include "Chunk.hpp"
 
@@ -29,7 +30,6 @@ public:
 
 private:
     void initGL();
-    /// Scan the chunk's edge columns to find surface heights and build the grid.
     void buildGrid(int chunkX, int chunkZ, Renderer& renderer);
 
     GLuint VAO = 0;
