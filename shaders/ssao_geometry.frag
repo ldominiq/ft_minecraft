@@ -4,14 +4,15 @@ layout (location = 0) out vec4 gPosition;
 layout (location = 1) out vec4 gNormal;
 
 in vec2 TexCoords;
+flat in float TexLayer;
 in vec3 FragPos;
 in vec3 Normal;
 
-uniform sampler2D atlas;
+uniform sampler2DArray blockTextures;
 
 void main() {
     // Discard fully transparent fragments
-    vec4 texColor = texture(atlas, TexCoords);
+    vec4 texColor = texture(blockTextures, vec3(TexCoords, TexLayer));
     if (texColor.a < 0.1)
         discard;
 

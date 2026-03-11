@@ -2,8 +2,10 @@
 
 layout (location = 0) in vec2 aPos;
 layout (location = 1) in vec2 aUV;
+layout (location = 2) in float aTexLayer;
 
 out vec2 vUV;
+flat out float TexLayer;
 
 uniform vec2 uScreenSize; // window size in pixels
 
@@ -14,4 +16,5 @@ void main()
 
     gl_Position = vec4(ndc, 0.0, 1.0);
     vUV = aUV;
+    TexLayer = aTexLayer;
 }

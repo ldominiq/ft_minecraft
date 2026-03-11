@@ -4,6 +4,7 @@ in VS_OUT {
     vec3 FragPos;
     vec3 Normal;
     vec2 TexCoord;
+    float TexLayer;
     float SkyLight; // 0.0 = fully underground, 1.0 = open sky
 } fs_in;
 
@@ -62,7 +63,7 @@ struct Shadows {
 uniform bool debugCascades;   // toggle from ImGui
 int debugCascadeLayer = -1;   // set by CSMShadowCalculation
 
-uniform sampler2D atlas;
+uniform sampler2DArray blockTextures;
 uniform DirLight dirLight;
 uniform PointLight pointLights[NR_POINT_LIGHTS];
 uniform SpotLight spotLight;
@@ -106,8 +107,8 @@ float sampleCascadeShadow(int layer, vec3 fragPosWorldSpace, vec3 normal, vec3 l
 
 void main()
 {    
-    // Sample the atlas ONCE per fragment
-    vec4 texColor = texture(atlas, fs_in.TexCoord);
+    // Sample the texture array using (u, v, layer)
+    vec4 texColor = texture(blockTextures, vec3(fs_in.TexCoord, fs_in.TexLayer));
 
     // Discard fully transparent fragments
     if (texColor.a < 0.1)
