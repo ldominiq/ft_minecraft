@@ -47,9 +47,15 @@ Menu::~Menu()
 	if (glfwGetCurrentContext()) {
 		glDeleteVertexArrays(1, &VAO);
 		glDeleteBuffers(1, &VBO);
+	
+		glDeleteTextures(1, &textureVAO);
+		glDeleteTextures(1, &textureVBO);
 	} else {
 		VAO = 0;
 		VBO = 0;
+
+		textureVAO = 0;
+		textureVBO = 0;
 	}
 }
 

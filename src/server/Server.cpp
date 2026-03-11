@@ -321,9 +321,6 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 	ItemType typeAtSlot = inv.getItemAtSlot(slot);
 	ItemType typeAtHand = inv.getHand().first;
 
-	ItemID itemIDAtSlot = inv.getItemIDAtSlot(slot);
-	ItemID itemIDAtHand = inv.getItemIDAtSlot(HAND_ID);
-
 	int amountAtSlot = inv.getSlot(slot).second;
 	int amountAtHand = inv.getHand().second;
 

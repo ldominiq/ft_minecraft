@@ -121,8 +121,8 @@ class InventoryUI : public Inventory, public Menu
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
 	void handleMouseMove(double mouseX, double mouseY) override;
 
-	int mouseX = 0;
-	int mouseY = 0;
+	double mouseX = 0;
+	double mouseY = 0;
 
 	public:
 

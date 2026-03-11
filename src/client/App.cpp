@@ -97,9 +97,10 @@ void App::init() {
         // (e.g. hovering/clicking in a window), do not rotate the camera.
         ImGuiIO& io = ImGui::GetIO();
 
-		if (app->menuManager.lock())
+		auto menuManagerPtr = app->menuManager.lock();
+		if (menuManagerPtr)
 		{
-			app->menuManager.lock()->handleMouseMove(xpos, ypos);
+			menuManagerPtr->handleMouseMove(xpos, ypos);
 			return ;
 		}
 

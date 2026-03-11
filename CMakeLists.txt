@@ -89,10 +89,6 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/fonts)
   file(COPY ${CMAKE_SOURCE_DIR}/fonts DESTINATION ${CMAKE_BINARY_DIR})
 endif()
 
-if(EXISTS ${CMAKE_SOURCE_DIR}/badApple)
-  file(COPY ${CMAKE_SOURCE_DIR}/badApple DESTINATION ${CMAKE_BINARY_DIR})
-endif()
-
 # ---------------------------------------------------------------------------
 # ImGui integration
 # ---------------------------------------------------------------------------

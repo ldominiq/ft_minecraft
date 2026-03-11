@@ -56,7 +56,8 @@ void Inventory::setSlot(int slot, itemStackSize_t amount, ItemType type)
 			}
 		}
 		grid[slot] = {};
-		freeSlots.insert(slot);
+		if (slot != HAND_ID)
+			freeSlots.insert(slot);
 		return;
 	}
 
@@ -142,7 +143,8 @@ bool Inventory::removeItemsFromSlot(int slotNumber, itemStackSize_t amount)
 		}
 
 		grid[slotNumber] = {};
-		freeSlots.insert(slotNumber);
+		if (slotNumber != HAND_ID)
+			freeSlots.insert(slotNumber);
 	}
 
 	return true;
