@@ -186,6 +186,7 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
         std::istringstream iss(std::string(decompressed.begin(), decompressed.end()), std::ios::binary);
 
         std::shared_ptr<ChunkRenderer> newChunk = std::make_shared<ChunkRenderer>(iss);
+		newChunk->setTextureManager(textureManager);
 		// Compute sky-light immediately so that any neighbor chunk
 		// building its mesh later can read valid skyLight values
 		// from this chunk, even if this chunk isn't in chunksToBuild
@@ -205,7 +206,7 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
 void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, const uint &meshVerticesSize) const {
     shader->use();
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 10); // 10 floats per vertex
+    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 11); // 11 floats per vertex
 }
 
 void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
@@ -388,7 +389,7 @@ void Renderer::renderWater() const {
             }
 
             glBindVertexArray(chunk->getWaterVao());
-            glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 10);
+            glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);
         }
     }
 	glEnable(GL_CULL_FACE);

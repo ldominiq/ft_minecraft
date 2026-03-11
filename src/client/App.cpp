@@ -5,8 +5,6 @@
 #include "App.hpp"
 
 App::App():
-			texture(0),
-
 			camera(nullptr),
 			monitor(nullptr),
 			mode(nullptr),
@@ -76,9 +74,9 @@ void App::init() {
     lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
 
 	chat = std::make_shared<Chat>(windowedWidth, windowedHeight);
-	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight);
+	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight, &textureManager);
 
-	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>();
+	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
     gBuffer = std::make_shared<GBuffer>(windowedWidth, windowedHeight);
     ssao = std::make_shared<SSAO>(windowedWidth, windowedHeight);
@@ -351,12 +349,14 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
-    texture = activeShader->loadTexture("assets/textures/textures.png");
+
+    // Load individual block textures into a texture array
+    textureManager.loadResourcePack("assets");
 
     activeShader = textureShader;
 
     activeShader->use();
-    activeShader->setInt("atlas", 0);
+    activeShader->setInt("blockTextures", 0);
 
     // shader configuration
     // --------------------
@@ -365,7 +365,10 @@ void App::loadResources() {
 
     gBufferShader = std::make_shared<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
     gBufferShader->use();
-    gBufferShader->setInt("atlas", 0);
+    gBufferShader->setInt("blockTextures", 0);
+
+    // Wire the texture manager to subsystems that need it
+    renderer->setTextureManager(&textureManager);
 }
 
 void App::gameTick() {
@@ -470,7 +473,7 @@ void App::render() {
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
-            lighting->updateCSMShadowMaps(*renderer, view, texture);
+            lighting->updateCSMShadowMaps(*renderer, view, textureManager);
 
             glEndQuery(GL_TIME_ELAPSED);
             shadowQueryIssuedThisFrame[currentQueryIndex] = true;
@@ -489,7 +492,7 @@ void App::render() {
             textureShader->setMat4("projection", projection);
             lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texture);
+            textureManager.bind(GL_TEXTURE0);
             renderer->render(textureShader);
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
@@ -504,7 +507,7 @@ void App::render() {
             textureShader->setMat4("projection", projection);
             lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texture);
+            textureManager.bind(GL_TEXTURE0);
             renderer->render(textureShader);
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
@@ -526,8 +529,7 @@ void App::render() {
             gBufferShader->use();
             gBufferShader->setMat4("view", view);
             gBufferShader->setMat4("projection", projection);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texture);
+            textureManager.bind(GL_TEXTURE0);
             renderer->render(gBufferShader);
 
             gBuffer->unbind();
@@ -552,13 +554,13 @@ void App::render() {
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
         // Render reflection texture
-    	waterRenderer->renderWaterReflectionPass(activeShader, projection, texture);
+    	waterRenderer->renderWaterReflectionPass(activeShader, projection, textureManager);
 
         glEndQuery(GL_TIME_ELAPSED);
 
 
     	// render refraction texture
-    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, texture);
+    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
 
     	// render to screen
     	renderScene(view, projection, clipPlane);
@@ -751,7 +753,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     }
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    textureManager.bind(GL_TEXTURE0);
 
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
     renderer->render(activeShader);
@@ -1457,8 +1459,6 @@ void App::cleanup() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
-
-    glDeleteTextures(1, &texture);
 
     // Query objects (profiling)
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawEntities);

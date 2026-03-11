@@ -7,8 +7,7 @@
 
 #include "Item.hpp"
 
-inline constexpr int ATLAS_COLS = 10;
-inline constexpr int ATLAS_ROWS = 2;
+class TextureManager; // Forward declaration
 
 inline constexpr glm::vec3 unitFacePositions[6][6] = {
     // FRONT (+Z)
@@ -53,11 +52,9 @@ inline constexpr glm::vec2 unitFacePositionsInventory[3][4] =
 	{ {0.5,0.5}, {1, 0.75}, {0.5,1}, {0, 0.75} },		//TOP
 };
 
-glm::vec2 getTextureOffset(const BlockType type, const int face);
-
-void buildCube(std::vector<float>& meshVertices, float x, float y, float z, int originX, int originZ, BlockType type, bool isIlluminated = false);
-void build2DInventoryCube(std::vector<float>& meshVertices, glm::vec2 origin, float scale, BlockType type);
-void addFace(std::vector<float>& meshVertices, float x, float y, float z, int originX, int originZ, BlockType type, int face, bool isIlluminated = false); // Add a face to the mesh vertices
-void addInventoryFace(std::vector<float>& meshVertices, glm::vec2 origin, float scale, BlockType type, int face);
+void buildCube(std::vector<float>& meshVertices, float x, float y, float z, int originX, int originZ, BlockType type, const TextureManager* texMgr = nullptr, bool isIlluminated = false);
+void build2DInventoryCube(std::vector<float>& meshVertices, glm::vec2 origin, float scale, BlockType type, const TextureManager* texMgr = nullptr);
+void addFace(std::vector<float>& meshVertices, float x, float y, float z, int originX, int originZ, BlockType type, int face, const TextureManager* texMgr = nullptr, bool isIlluminated = false); // Add a face to the mesh vertices
+void addInventoryFace(std::vector<float>& meshVertices, glm::vec2 origin, float scale, BlockType type, int face, const TextureManager* texMgr = nullptr);
 
 #endif

@@ -1,10 +1,11 @@
 
 #include "ItemPropEntityManager.hpp"
+#include "ItemPropEntity.hpp"
 
-ItemPropEntityManager::ItemPropEntityManager()
+ItemPropEntityManager::ItemPropEntityManager(const TextureManager* texMgr)
+	: textureManager(texMgr)
 {
 	shader = std::make_unique<Shader>("shaders/cubePropShader.vert", "shaders/cubePropShader.frag");
-	texture = shader->loadTexture("assets/textures/textures.png");
 
 	initGL();
 }
@@ -12,7 +13,6 @@ ItemPropEntityManager::ItemPropEntityManager()
 ItemPropEntityManager::~ItemPropEntityManager()
 {
 	if (glfwGetCurrentContext()) {
-		glDeleteTextures(1, &texture);
 		glDeleteVertexArrays(1, &VAO);
 		glDeleteBuffers(1, &VBO);
 		glDeleteBuffers(1, &EBO);
@@ -50,7 +50,7 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 		// 	continue ;
 		// }
 
-		entity->get()->createMesh(vertices);
+		entity->get()->createMesh(vertices, textureManager);
 		memcpy(buffer.data() + i * ITEM_SIZE,
 			vertices.data(),
 			ITEM_SIZE * sizeof(float)
@@ -89,11 +89,14 @@ void ItemPropEntityManager::initGL()
     // Allocate a fixed-size buffer ONCE (say, for up to 1 million floats)
     glBufferData(GL_ARRAY_BUFFER, MAX_BUFFER_SIZE, nullptr, GL_DYNAMIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), nullptr);
     glEnableVertexAttribArray(0);
 
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(5 * sizeof(float)));
+    glEnableVertexAttribArray(2);
 
     glBindVertexArray(0);
 }
@@ -106,9 +109,11 @@ void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 
     glBindVertexArray(VAO);
 
-	// probably works without because the previous draw already uses the same texture
-	// glActiveTexture(GL_TEXTURE0);
-	// glBindTexture(GL_TEXTURE_2D, texture);
+	// Bind texture array
+	if (textureManager) {
+		textureManager->bind(GL_TEXTURE0);
+		shader->setInt("blockTextures", 0);
+	}
 
 	shader->setMat4("projection", projection);
 	shader->setMat4("view", view);

@@ -74,13 +74,10 @@ void ChunkRenderer::updateMesh()
 	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
 }
 
-void ChunkRenderer::addFace(int x, int y, int z, int face, float skyLightLevel) {
+void ChunkRenderer::addFace(int x, int y, int z, BlockType type, int face, float skyLightLevel) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(originZ + z);
-
-    const float TILE_W = 1.0f / ATLAS_COLS;
-    const float TILE_H = 1.0f / ATLAS_ROWS;
 
     static const float faceData[6][18] = {
         // FRONT face (Z+)
@@ -128,13 +125,12 @@ void ChunkRenderer::addFace(int x, int y, int z, int face, float skyLightLevel) 
 
     glm::vec3 normal = faceNormals[face];
 
-    // Get block type for this position
-    const BlockType type = getBlock(x, y, z);
-
-    // Determine UV offset in atlas based on block type and face
-    glm::vec2 tileCoord = getTextureOffset(type, face);
-    const float flippedRow = static_cast<float>(ATLAS_ROWS - 1) - tileCoord.y;
-    glm::vec2 offset = { tileCoord.x * TILE_W, flippedRow * TILE_H };
+    // Get texture layer for this block face from TextureManager
+    float texLayer = 0.0f;
+    if (textureManager) {
+        const BlockTextures& bt = textureManager->getBlockTextures(type);
+        texLayer = static_cast<float>(bt.getLayerForFace(face));
+    }
 
     // Build six vertices for this face using the computed light
     for (int i = 0; i < 6; ++i) {
@@ -145,15 +141,16 @@ void ChunkRenderer::addFace(int x, int y, int z, int face, float skyLightLevel) 
         float baseU = uvCoords[i * 2 + 0]; // 0 → 1
         float baseV = uvCoords[i * 2 + 1]; // 0 → 1
 
-        float u = baseU * TILE_W + offset.x;
-        float v = baseV * TILE_H + offset.y;
+        float u = baseU;
+        float v = baseV;
 
-        meshVertices.push_back(px);    // position.x
-        meshVertices.push_back(py);    // position.y
-        meshVertices.push_back(pz);    // position.z
-        meshVertices.push_back(u);     // texture u
-        meshVertices.push_back(v);     // texture v
-        meshVertices.push_back(py);    // send Y again for gradient
+        meshVertices.push_back(px);        // position.x
+        meshVertices.push_back(py);        // position.y
+        meshVertices.push_back(pz);        // position.z
+        meshVertices.push_back(u);         // texture u
+        meshVertices.push_back(v);         // texture v
+        meshVertices.push_back(texLayer);  // texture array layer
+        meshVertices.push_back(py);        // send Y again for gradient
         meshVertices.push_back(normal.x);
         meshVertices.push_back(normal.y);
         meshVertices.push_back(normal.z);
@@ -165,9 +162,6 @@ void ChunkRenderer::addWaterFace(int x, int y, int z, int face, float skyLightLe
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(originZ + z);
-
-    const float TILE_W = 1.0f / ATLAS_COLS;
-    const float TILE_H = 1.0f / ATLAS_ROWS;
 
     static const float faceData[6][18] = {
         // FRONT face (Z+)
@@ -229,6 +223,7 @@ void ChunkRenderer::addWaterFace(int x, int y, int z, int face, float skyLightLe
         waterMeshVertices.push_back(pz);    // position.z
         waterMeshVertices.push_back(u);     // texture u (unused by water shader)
         waterMeshVertices.push_back(v);     // texture v (unused by water shader)
+        waterMeshVertices.push_back(0.0f);  // texture layer (unused by water shader)
         waterMeshVertices.push_back(py);    // Y for gradient
         waterMeshVertices.push_back(normal.x);
         waterMeshVertices.push_back(normal.y);
@@ -342,7 +337,7 @@ void ChunkRenderer::buildMeshData() {
                         addWaterFace(x, y, z, 0, faceSkyLight);
                     }
                 } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, 0, faceSkyLight);
+                    addFace(x, y, z, currentBlock, 0, faceSkyLight);
                 }
 
                 // BACK (-Z)
@@ -354,7 +349,7 @@ void ChunkRenderer::buildMeshData() {
                         addWaterFace(x, y, z, 1, faceSkyLight);
                     }
                 } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, 1, faceSkyLight);
+                    addFace(x, y, z, currentBlock, 1, faceSkyLight);
                 }
 
                 // TOP (+Y)
@@ -366,7 +361,7 @@ void ChunkRenderer::buildMeshData() {
                         addWaterFace(x, y, z, 2, faceSkyLight);
                     }
                 } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, 2, faceSkyLight);
+                    addFace(x, y, z, currentBlock, 2, faceSkyLight);
                 }
 
                 // BOTTOM (-Y)
@@ -378,7 +373,7 @@ void ChunkRenderer::buildMeshData() {
                         addWaterFace(x, y, z, 3, faceSkyLight);
                     }
                 } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, 3, faceSkyLight);
+                    addFace(x, y, z, currentBlock, 3, faceSkyLight);
                 }
 
                 // RIGHT (+X)
@@ -390,7 +385,7 @@ void ChunkRenderer::buildMeshData() {
                         addWaterFace(x, y, z, 4, faceSkyLight);
                     }
                 } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, 4, faceSkyLight);
+                    addFace(x, y, z, currentBlock, 4, faceSkyLight);
                 }
 
                 // LEFT (-X)
@@ -402,7 +397,7 @@ void ChunkRenderer::buildMeshData() {
                         addWaterFace(x, y, z, 5, faceSkyLight);
                     }
                 } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, 5, faceSkyLight);
+                    addFace(x, y, z, currentBlock, 5, faceSkyLight);
                 }
             }
         }
@@ -420,23 +415,26 @@ void ChunkRenderer::uploadMesh() {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, meshVertices.size() * sizeof(float), meshVertices.data(), GL_STATIC_DRAW);
 
-    // Vertex layout (10 floats per vertex):
+    // Vertex layout (11 floats per vertex):
     //   location 0: position  (vec3)  — floats 0-2
     //   location 1: texCoord  (vec2)  — floats 3-4
-    //   location 2: gradientY (float) — float  5
-    //   location 3: normal    (vec3)  — floats 6-8
-    //   location 4: skyLight  (float) — float  9
-    GLsizei stride = 10 * sizeof(float);
+    //   location 2: texLayer  (float) — float  5
+    //   location 3: gradientY (float) — float  6
+    //   location 4: normal    (vec3)  — floats 7-9
+    //   location 5: skyLight  (float) — float  10
+    GLsizei stride = 11 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, static_cast<void *>(nullptr));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(5 * sizeof(float)));
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
+    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(9 * sizeof(float)));
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(7 * sizeof(float)));
     glEnableVertexAttribArray(4);
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(10 * sizeof(float)));
+    glEnableVertexAttribArray(5);
     
     meshVerticesSize = meshVertices.size();
     meshVertices.clear();
@@ -459,10 +457,12 @@ void ChunkRenderer::uploadMesh() {
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(5 * sizeof(float)));
         glEnableVertexAttribArray(2);
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
+        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
         glEnableVertexAttribArray(3);
-        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(9 * sizeof(float)));
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(7 * sizeof(float)));
         glEnableVertexAttribArray(4);
+        glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(10 * sizeof(float)));
+        glEnableVertexAttribArray(5);
         
         waterMeshVerticesSize = waterMeshVertices.size();
     } else {

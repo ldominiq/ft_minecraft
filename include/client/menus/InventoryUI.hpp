@@ -4,6 +4,7 @@
 #include "Inventory.hpp"
 #include "Menu.hpp"
 #include "blockRenderingHelperFunctions.hpp"
+#include "TextureManager.hpp"
 #include "Network.hpp"
 #include <optional>
 #include <filesystem>
@@ -15,8 +16,9 @@ int constexpr MAX_CRAFTING_SLOTS = 3; //3x3 but whatever
 
 class InventoryUI : public Inventory, public Menu
 {
-	int MAX_BUFFER_SIZE = sizeof(float) * (rows * cols + 1) * (2 + 2) * 3 * 6; //2 coords, 2 uvs. 3 faces, 6 vertices
+	int MAX_BUFFER_SIZE = sizeof(float) * (rows * cols + 1) * (2 + 2 + 1) * 3 * 6; //2 coords, 2 uvs, 1 texLayer. 3 faces, 6 vertices
 	std::unique_ptr<Shader> shader;
+	const TextureManager* textureManager = nullptr;
 	uint texture;
 	uint badAppleTex;
 	// std::unique_ptr<VideoPlayer> videoPlayer;
@@ -126,7 +128,7 @@ class InventoryUI : public Inventory, public Menu
 
 	public:
 
-		InventoryUI(int width, int height);
+		InventoryUI(int width, int height, const TextureManager* texMgr = nullptr);
 		~InventoryUI();
 
 		void drawHotbar();

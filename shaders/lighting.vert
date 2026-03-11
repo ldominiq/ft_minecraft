@@ -1,13 +1,15 @@
 #version 460 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aTexCoord;
-layout (location = 3) in vec3 aNormal;
-layout (location = 4) in float aSkyLight; // Sky-light level (0.0 = dark, 1.0 = full sun)
+layout (location = 2) in float aTexLayer;
+layout (location = 4) in vec3 aNormal;
+layout (location = 5) in float aSkyLight; // Sky-light level (0.0 = dark, 1.0 = full sun)
 
 out VS_OUT {
     vec3 FragPos;
     vec3 Normal;
     vec2 TexCoord;
+    float TexLayer;
     float SkyLight; // Passed to fragment shader for cave darkening
 } vs_out;
 
@@ -23,6 +25,7 @@ void main()  {
     vs_out.FragPos = aPos;
     vs_out.Normal = aNormal;
     vs_out.TexCoord = aTexCoord;
+    vs_out.TexLayer = aTexLayer;
     vs_out.SkyLight = aSkyLight;
     gl_Position = projection * view * worldPosition;
     
