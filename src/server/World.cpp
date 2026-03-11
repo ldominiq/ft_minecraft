@@ -296,8 +296,6 @@ void World::unloadPlayerKnownChunks(CPlayerInfo &player)
 
 void World::updateVisibleChunks(CPlayerInfo &player)
 {
-	int r2 = player.movement->loadRadius * player.movement->loadRadius;
-
 	// generate chunks in parallel
 	for(int i = 0; i < maxConcurrentGenerationPerPlayer && plannedChunks.size() < maxConcurrentGeneration; i++)
 	{
@@ -343,9 +341,6 @@ void World::updateRdyChunks()
 
 void World::updatePlayerRdyChunks(CPlayerInfo &player)
 {
-	int playerChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
-	int playerChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
-
 	for (const auto& chunkPos : rdyChunks)
 	{
 		if (PlayerKnownChunks[player.id].find(chunkPos) != PlayerKnownChunks[player.id].end())
@@ -599,8 +594,11 @@ void World::updateRegionStreaming(std::vector<CPlayerInfo> &players)
 					outOfMemory = true;
 				}
 			}
+			else
+			{
+				unloadChunksInRegion(it->first, it->second);
+			}
 
-			unloadChunksInRegion(it->first, it->second);
             it = loadedRegions.erase(it);
         } else {
             ++it;

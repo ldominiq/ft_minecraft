@@ -723,11 +723,6 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
     lighting->drawLightCubes(view, projection);
 
-	const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
-	const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
-
-    // glBindVertexArray(0);
-
 	//THIS CODE IS AWFULLY BAD
 	//items
 	for (auto &entity : renderer->itemEntities)

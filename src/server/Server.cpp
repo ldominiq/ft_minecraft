@@ -239,7 +239,11 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (pkt.yaw != player->movement->yaw) player->movement->positionUpdated = true;
 
 	player->movement->setLastInputPacketReceived(pkt);
-	if (pkt.loadRadius > 32) pkt.loadRadius = 32;
+	
+	if (pkt.loadRadius > 32)
+		pkt.loadRadius = 32;
+	else if (pkt.loadRadius < 4)
+		pkt.loadRadius = 4;
 	player->movement->loadRadius = pkt.loadRadius;
 	player->movement->setYawAndPitch(pkt.yaw, pkt.pitch);
 	player->movement->updateCameraVectors();	//order is vital. updateCameraVectors uses pkt.
