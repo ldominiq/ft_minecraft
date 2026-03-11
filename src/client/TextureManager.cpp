@@ -62,12 +62,17 @@ bool TextureManager::loadRessourcePack(const std::string& path, int textureSize)
 
     layerCount = static_cast<int>(entries.size());
 
+    // reserve extra layers for tinted variants
+    maxLayers = layerCount + 32;
+
     // Step2: create GL_TEXTURE_2D_ARRAY
     glGenTextures(1, &textureArray);
     glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray);
 
     // allocate storage for all layers
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0 , GL_RGBA8, textureSize, textureSize, layerCount, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0 , GL_RGBA8, textureSize, textureSize, maxLayers, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    layerPixels.resize(maxLayers); // prepare storage for pixel data of each layer
 
     // Step 3: load each texture into its layer
     for (int i = 0; i < layerCount; i++) {
@@ -100,6 +105,7 @@ bool TextureManager::loadRessourcePack(const std::string& path, int textureSize)
                          pixels.data());
 
         textureNameToLayer[entries[i].name] = i;
+        layerPixels[i] = std::move(pixels);
     }
 
     // Filtering
@@ -116,6 +122,63 @@ bool TextureManager::loadRessourcePack(const std::string& path, int textureSize)
 
     std::cout << "Loaded " << layerCount << " textures into array from: " << textureDir << std::endl;
     return true;
+}
+
+int TextureManager::addTintedLayer(const std::string& sourceTexture, unsigned char r, unsigned char g, unsigned char b) {
+    // build unique name for tinted variant
+    std::string tintedName = sourceTexture + "_tint_"
+        + std::to_string(r) + "_"
+        + std::to_string(g) + "_"
+        + std::to_string(b);
+
+    // if this tinted variant already exists, return its layer
+    auto existing = textureNameToLayer.find(tintedName);
+    if (existing != textureNameToLayer.end())
+        return existing->second;
+
+    // find source layer
+    auto srcIt = textureNameToLayer.find(sourceTexture);
+    if (srcIt == textureNameToLayer.end()) {
+        std::cerr << "Tint error: Source texture not found for tinting: " << sourceTexture << std::endl;
+        return 0;
+    }
+
+    int srcLayer = srcIt->second;
+    if (layerPixels[srcLayer].empty()) {
+        std::cerr << "Tint error: No pixel data for source texture layer: " << sourceTexture << std::endl;
+        return 0;
+    }
+
+    if (layerCount >= maxLayers) {
+        std::cerr << "Tint error: Maximum number of texture layers reached, cannot add tinted variant: " << maxLayers << " layers" << std::endl;
+        return 0;
+    }
+
+    // create tinted pixels
+    std::vector<unsigned char> tinted = layerPixels[srcLayer];
+    for (size_t i = 0; i < tinted.size(); i += 4) {
+        tinted[i + 0] = (tinted[i + 0] * r) / 255;
+        tinted[i + 1] = (tinted[i + 1] * g) / 255;
+        tinted[i + 2] = (tinted[i + 2] * b) / 255;
+        // alpha unchanged
+    }
+
+    // upload to next available layer
+    int newLayer = layerCount;
+    glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray);
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
+                     0, 0, newLayer,
+                     textureSize, textureSize, 1,
+                     GL_RGBA, GL_UNSIGNED_BYTE,
+                     tinted.data());
+    glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+    textureNameToLayer[tintedName] = newLayer;
+    layerPixels[newLayer] = std::move(tinted);
+    layerCount++;
+
+    return newLayer;
 }
 
 int TextureManager::getTextureLayer(const std::string& name) const {
@@ -145,20 +208,36 @@ void TextureManager::setupBlockTextureMapping() {
         return getTextureLayer(name);
     };
 
+    // ── Tinted variants ────────────────────────────────────────────
+    // Minecraft grass/leaves textures are grayscale — the game multiplies
+    // them by a biome color at runtime.  We do it once at load time.
+    //
+    // These RGB values come from Minecraft's plains biome foliage/grass colors.
+    // We can add more biomes later and pick the right layer in buildMeshData
+    // based on the chunk's biome.
+
+    // Plains grass tint (Minecraft: #91BD59)
+    int grassTopTinted  = addTintedLayer("grass_block_top", 0x91, 0xBD, 0x59);
+
+    // Plains leaves tint (Minecraft: #77AB2F)
+    int leavesTinted = addTintedLayer("spruce_leaves", 0x61, 0x99, 0x61);
+
+    int waterTinted = addTintedLayer("water_overlay", 0x64, 0x64, 0xFF);
+
     blockTextureMap[BlockType::DIRT]    = BlockTextures::uniform(layer("dirt"));
     blockTextureMap[BlockType::STONE]   = BlockTextures::uniform(layer("stone"));
     blockTextureMap[BlockType::SAND]    = BlockTextures::uniform(layer("sand"));
     blockTextureMap[BlockType::SNOW]    = BlockTextures::uniform(layer("snow"));
     blockTextureMap[BlockType::BEDROCK] = BlockTextures::uniform(layer("bedrock"));
-    blockTextureMap[BlockType::LEAVES]  = BlockTextures::uniform(layer("spruce_leaves"));
+    blockTextureMap[BlockType::LEAVES]  = BlockTextures::uniform(leavesTinted);
     blockTextureMap[BlockType::IRON]    = BlockTextures::uniform(layer("iron_ore"));
     blockTextureMap[BlockType::GOLD]    = BlockTextures::uniform(layer("gold_ore"));
     blockTextureMap[BlockType::DIAMOND] = BlockTextures::uniform(layer("diamond_ore"));
     blockTextureMap[BlockType::URANIUM] = BlockTextures::uniform(layer("emerald_ore"));
-    blockTextureMap[BlockType::WATER]   = BlockTextures::uniform(layer("water_overlay"));
+    blockTextureMap[BlockType::WATER]   = BlockTextures::uniform(waterTinted);
     
     blockTextureMap[BlockType::GRASS]   = BlockTextures::topBottomSides(
-                                            layer("grass_block_top"),
+                                            grassTopTinted,
                                             layer("dirt"),
                                             layer("grass_block_side"));
     blockTextureMap[BlockType::LOG]     = BlockTextures::topBottomSides(

@@ -72,6 +72,7 @@ class TextureManager {
         GLuint textureArray { 0 };
         int textureSize { 16 };
         int layerCount { 0 };
+        int maxLayers { 0 }; // total layers including tinted variants
 
         std::unordered_map<std::string, int> textureNameToLayer; // Map texture name to layer index
 
@@ -80,9 +81,14 @@ class TextureManager {
         // load a single image file and return raw RGBA pixels
         std::vector<unsigned char> loadImage(const std::string& path, int& width, int& height);
 
-        //TODO: Tint black and white pixels in the texture (e.g., for grass color)
         // Define which textures each block type uses
         void setupBlockTextureMapping();
+
+        // tint a texture and upload it as a new layer return the new layer index
+        int addTintedLayer(const std::string& sourceTexture, unsigned char r, unsigned char g, unsigned char b);
+
+        // store raw pixels per layer so we can tint them later
+        std::vector<std::vector<unsigned char>> layerPixels;
 };
 
 #endif // TEXTURE_MANAGER_HPP
