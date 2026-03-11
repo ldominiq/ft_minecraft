@@ -221,24 +221,44 @@ struct NetInventory final : public Packet {
 	static constexpr PacketType ID = PacketType::NET_INVENTORY;
 
 	uint16_t type = 0;
-	int16_t amount = 0;
-	uint8_t slot = 0;
+	uint8_t amount = 0;
+	uint8_t slot = 0;	// HAND_ID for hand (37)
 
 	NetInventory() : Packet(ID) {}
 
 	void encode(BufferWriter& w) const override {
 		w.write_u16(type);
-		w.write_i16(amount);
+		w.write_u8(amount);
 		w.write_u8(slot);
     }
 
 	void decode(BufferReader& r) override {
 		type = r.read_u16();
-		amount = r.read_i16();
+		amount = r.read_u8();
 		slot = r.read_u8();
     }
 };
 inline AutoRegister<NetInventory> _reg_NetInventory;
+
+struct NetInventoryAction final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_INVENTORY_ACTION;
+
+    uint8_t actionType = 0;
+    uint8_t slot = 0;
+
+    NetInventoryAction() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+        w.write_u8(actionType);
+        w.write_u8(slot);
+    }
+
+    void decode(BufferReader& r) override {
+        actionType = r.read_u8();
+        slot = r.read_u8();
+    }
+};
+inline AutoRegister<NetInventoryAction> _reg_NetInventoryAction;
 
 struct NetChunkHeader final : public Packet {
     static constexpr PacketType ID = PacketType::CHUNK_HEADER;

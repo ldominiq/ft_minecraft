@@ -1,6 +1,6 @@
 #include "Typer.hpp"
 
-Typer::Typer(const std::string& fontPath, float scale) : shader("shaders/freetype.vert", "shaders/freetype.frag"), scale(scale) {
+Typer::Typer(const std::string& fontPath) : shader("shaders/freetype.vert", "shaders/freetype.frag") {
     // Initialize FreeType
 	FT_Library ft;
 	if (FT_Init_FreeType(&ft))

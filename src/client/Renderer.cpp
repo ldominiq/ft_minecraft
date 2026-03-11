@@ -115,10 +115,12 @@ void Renderer::buildChunks()
 }
 
 //sets rendered chunks and unloads far away chunks
-void Renderer::organizeChunks(const std::pair<int, int> pos)
+void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
 {
     // Clear renderedChunks first
     renderedChunks.clear();
+
+	int unloadRadius = loadRadius * 4;
 
     for (auto it = chunks.begin(); it != chunks.end(); )
     {
@@ -326,7 +328,7 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 	{
 		if (pkt.eEntityType == EEntityTypes::ITEMS)
 		{
-			BlockType type = static_cast<BlockType>(pkt.type);
+			ItemType type = itemIDToItemType(pkt.type);
 			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
 			entityPtr->glfwTickTime = glfwTickTime;
 			itemEntities.push_back(entityPtr);

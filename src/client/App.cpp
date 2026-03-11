@@ -31,10 +31,19 @@ void App::init() {
 
     window = glfwCreateWindow(windowedWidth, windowedHeight, "ft_minecraft", nullptr, nullptr);
     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+	glfwSetWindowUserPointer(window, this);
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
-        (void)w;
+		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
         glViewport(0, 0, width, height);
+		glfwGetFramebufferSize(w, &app->screenWidth, &app->screenHeight);
+		auto manager = app->menuManager.lock();
+		if (manager)
+			manager->resize(width, height);
+		if (manager != app->inventoryUI)
+			app->inventoryUI->resize(width, height);
+		if (manager != app->chat)
+			app->chat->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -84,13 +93,19 @@ void App::init() {
 
     // Mouse movement event handling
     camera = std::make_unique<Camera>(glm::vec3(0.0f, 128.0f, 0.0f));
-    glfwSetWindowUserPointer(window, this);
     glfwSetCursorPosCallback(window, [](GLFWwindow* w, const double xpos, const double ypos) {
         static App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
         if (!app) return;
         // Honour ImGui’s mouse capture: if the UI is being interacted with
         // (e.g. hovering/clicking in a window), do not rotate the camera.
         ImGuiIO& io = ImGui::GetIO();
+
+		auto menuManagerPtr = app->menuManager.lock();
+		if (menuManagerPtr)
+		{
+			menuManagerPtr->handleMouseMove(xpos, ypos);
+			return ;
+		}
 
         if (io.WantCaptureMouse || app->uiInteractive) {
             return;
@@ -172,6 +187,28 @@ void App::init() {
 	glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int button, int action, int mods) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		auto manager = app->menuManager.lock();
+		if (manager)
+		{
+			double mouseX, mouseY;
+    		glfwGetCursorPos(w, &mouseX, &mouseY);
+
+			if (manager == app->inventoryUI)
+			{
+				manager->handleMouseClick(mouseX, mouseY, button, action);
+				if (app->inventoryUI->lastAction.has_value())
+				{
+					auto [slot, type] = *app->inventoryUI->lastAction;
+					NetInventoryAction pkt;
+					pkt.actionType = type;
+					pkt.slot = slot;
+					app->udpClient->sendPacket(pkt);
+					app->inventoryUI->lastAction.reset();
+				}
+			}
+			return ;
+		}
 
 		//kinda weird way to do it.
 		uint8_t mouseButtons = 0;
@@ -276,10 +313,7 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::NET_INVENTORY: {
 				auto& p = static_cast<NetInventory&>(*pkt);
-				if (p.amount > 0)
-					inventoryUI->insertItemsToSlot(static_cast<BlockType>(p.type), p.slot, p.amount); // This cast is not really great. Won't work when/if there are other types of items that aren't blocks. TODO : check if it's still needed once inventoryUI gets more concrete.
-				else
-					inventoryUI->removeItemsFromSlot(p.slot, -p.amount);
+				inventoryUI->setSlot(p.slot, p.amount, p.type);
 				break;
 			}
 
@@ -421,7 +455,6 @@ void App::render() {
         	processInput();
 
         // window aspect / uniforms
-        glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
         const float aspect = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
         glm::mat4 view = camera->getViewMatrix();
@@ -541,7 +574,7 @@ void App::render() {
 		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
-		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
+		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius());
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         // Draw chunk boundary overlay (if enabled)
@@ -682,7 +715,6 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
 }
 
 void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
-    glViewport(0, 0, screenWidth, screenHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Render sky/clouds first with proper depth
@@ -985,13 +1017,13 @@ void App::debugWindow() {
                                 // Changing this will update the far clipping plane.
                                 ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
 
-                                // Adjust the chunk loading radius.  Casting to int and back avoids
-                                // accidental type issues in the setter.  We clamp the range to a
-                                // reasonable minimum and maximum.
-                                if (renderer) {
-                                    int radius = renderer->getLoadRadius();
-                                    if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-                                        renderer->setLoadRadius(radius);
+								// Adjust the chunk loading radius.  Casting to int and back avoids
+								// accidental type issues in the setter.  We clamp the range to a
+								// reasonable minimum and maximum.
+								if (renderer) {
+									int radius = camera->getPlayer()->getLoadRadius();
+									if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
+										camera->getPlayer()->setLoadRadius(radius);
                                     }
                                 }
 
@@ -1551,7 +1583,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	inputs.keys = keys;
 	inputs.pitch = camera->getPlayer()->getPitch();
 	inputs.yaw = camera->getPlayer()->getYaw();
-	inputs.loadRadius = camera->getLoadRadius();
+	inputs.loadRadius = camera->getPlayer()->getLoadRadius();
 	inputs.activeHotbarSlot = activeHotbarSlot;
 
 	camera->inputsList.push_back(inputs);
@@ -1564,6 +1596,14 @@ void App::processInputMenus(int key, int action) {
 	auto manager = menuManager.lock();
 
 	// HANDLE EVENTS WHEN CHAT OPEN
+
+	if (manager && key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+	{
+		menuManager.reset();
+		if (!uiInteractive)
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	}
+
 	if (manager == chat)
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
@@ -1577,8 +1617,6 @@ void App::processInputMenus(int key, int action) {
 		}
 		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			chat->removeCharFromCurrMsg();
-		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-			menuManager.reset();
 		if ((key == GLFW_KEY_UP || key == GLFW_KEY_DOWN) && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			chat->goThroughChatLog(key);
 	}
@@ -1588,6 +1626,11 @@ void App::processInputMenus(int key, int action) {
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 			menuManager = chat;
+		if (key == GLFW_KEY_E && action == GLFW_PRESS)
+		{
+			menuManager = inventoryUI;
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		}
 	}
 }
 

@@ -34,16 +34,12 @@ struct chunkData {
 }; 
 
 class Renderer final : public CommonWorld<ChunkRenderer> {
-
-	int loadRadius = 16;
-	int unloadRadius = loadRadius + 16;
-	const TextureManager* textureManager = nullptr;
-
 	std::unordered_map<ChunkPos, chunkData> chunksData; //building chunk
 	std::unordered_set<ChunkPos> chunksToBuild; // chunk to build and upload mesh
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
 	Frustum cameraFrustum;
 	bool frustumCullingEnabled = true;
+	const TextureManager* textureManager = nullptr;
 
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
 	std::unordered_map<ItemID, std::weak_ptr<Entity>> entitiesMap; //fast lookup
@@ -71,14 +67,9 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const;
 		void renderWater() const;
 
-		// Get or set the current chunk load radius.  The radius determines how
-		// many chunks around the camera are loaded.  Values below 1 are clamped.
-		int getLoadRadius() const { return loadRadius; }
-		void setLoadRadius(int radius) { loadRadius = std::max(1, radius); }
-
 		void buildChunks();
 		void updateChunk(const NetModifiedBlockData &pkt);
-		void organizeChunks(const std::pair<int, int> pos);
+		void organizeChunks(const std::pair<int, int> pos, int loadRadius);
     	void draw(const std::shared_ptr<Shader> &shaderProgram, const GLuint &VAO, const uint &meshVerticesSize) const; // Draw the chunk using the given shader program
 
 		void prepareChunk(const NetChunkHeader& pkt);

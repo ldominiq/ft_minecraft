@@ -17,21 +17,22 @@
 
 //For no reason at all half the messages start with NET and the others do not
 enum class PacketType : uint8_t {
-	NET_CONNECT = 1,	// C2S
-	NET_ACCEPT,			// S2C
-	PLAYER_INPUT,		// C2S
-	PLAYER_MOUSE_INPUT,	// C2S
-	PLAYER_MOVE,		// S2C
-	NET_ENTITY_MOVE,	// S2C TODO : put it inside a group and send multiple at once.
-	NET_INVENTORY,		// S2C
-	CHUNK_HEADER,		// S2C
-	CHUNK_DATA,			// S2C
-	MODIFIED_BLOCK_DATA,// S2C
-	NET_DISCONNECT,		// C2S
-	NET_MESSAGE,		// S2C && C2S
-    NET_IMGUI,          // S2C
+	NET_CONNECT = 1,		// C2S
+	NET_ACCEPT,				// S2C
+	PLAYER_INPUT,			// C2S
+	PLAYER_MOUSE_INPUT,		// C2S
+	PLAYER_MOVE,			// S2C
+	NET_ENTITY_MOVE,		// S2C TODO : put it inside a group and send multiple at once.
+	NET_INVENTORY,			// S2C
+	NET_INVENTORY_ACTION,	// C2S
+	CHUNK_HEADER,			// S2C
+	CHUNK_DATA,				// S2C
+	MODIFIED_BLOCK_DATA,	// S2C
+	NET_DISCONNECT,			// C2S
+	NET_MESSAGE,			// S2C && C2S
+    NET_IMGUI,          	// S2C
 
-	GROUP,				// for grouped packets
+	GROUP,					// for grouped packets
 };
 
 enum class PacketFlags : uint8_t {
@@ -63,6 +64,18 @@ enum Inputs : uint16_t {
 enum MouseInputs : uint8_t {
 	IN_LEFT_CLICK	= 1 << 0,  // left click
 	IN_RIGHT_CLICK	= 1 << 1,  // right click
+};
+
+enum InventoryActionType : uint8_t {
+	INV_LEFT_CLICK,          // normal click
+	INV_RIGHT_CLICK,
+	INV_SHIFT_CLICK,
+	INV_DRAG_BEGIN,
+	INV_DRAG_ADD,       // add slot to drag selection
+	INV_DRAG_END,
+	INV_DROP_CURSOR,    // click outside inventory
+	//   OPEN_CONTAINER could be useful for other inventories like chests etc...
+	//   CLOSE_CONTAINER 
 };
 
 inline PacketFlags operator|(PacketFlags a, PacketFlags b){
