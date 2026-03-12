@@ -380,7 +380,7 @@ void InventoryUI::onRender()
 			using T = std::decay_t<decltype(value)>;
 				if constexpr (std::is_same_v<T, BlockType>) {
 					if (value != BlockType::BEGIN)
-						build2DInventoryCube(meshVertices, glm::vec2(inventorySlots[i].x + 18 * menuScale, inventorySlots[i].y + 5 * menuScale), 40 * menuScale, value);
+						build2DInventoryCube(meshVertices, glm::vec2(inventorySlots[i].x + 18 * menuScale, inventorySlots[i].y + 5 * menuScale), 40 * menuScale, value, textureManager);
 				} else if constexpr (std::is_same_v<T, WeaponType>) {
 					// handle WeaponType
 				} else {
@@ -397,7 +397,7 @@ void InventoryUI::onRender()
 			using T = std::decay_t<decltype(value)>;
 			if constexpr (std::is_same_v<T, BlockType>) {
 				if (value != BlockType::BEGIN)
-					build2DInventoryCube(meshVertices, glm::vec2(mouseX, fullscreenHeight - mouseY), 40 * menuScale, value);
+					build2DInventoryCube(meshVertices, glm::vec2(mouseX, fullscreenHeight - mouseY), 40 * menuScale, value, textureManager);
 			} else if constexpr (std::is_same_v<T, WeaponType>) {
 				// handle WeaponType
 			} else {
