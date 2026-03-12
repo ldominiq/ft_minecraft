@@ -781,6 +781,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
         vegetationShader->setVec3("lightDir", -sunDir);
         vegetationShader->setVec3("lightColor", diffuseColor);
         vegetationShader->setVec3("ambientColor", ambientColor);
+        vegetationShader->setFloat("time", static_cast<float>(glfwGetTime()));
 
         activeShader->use(); // Switch back to main shader
     }
