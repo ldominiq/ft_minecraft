@@ -68,6 +68,9 @@ void App::init() {
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>();
 
+    gBuffer = std::make_shared<GBuffer>(windowedWidth, windowedHeight);
+    ssao = std::make_shared<SSAO>(windowedWidth, windowedHeight);
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -75,8 +78,7 @@ void App::init() {
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
 
-    lighting->initShadowGroundPlane();
-	lighting->initShadowResources();
+    lighting->initCSMResources();
 
 
     // Mouse movement event handling
@@ -219,6 +221,7 @@ void App::init() {
     glGenQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawEntities);
+    glGenQueries(QUERY_POOL_SIZE, querySSAOPool);
 }
 
 void App::setUdpClientPacketCallback()
@@ -322,10 +325,12 @@ void App::loadResources() {
     // --------------------
     textureShader->use();
     textureShader->setInt("diffuseTexture", 0);
-    textureShader->setInt("shadowMap", 1);
-    lighting->initShadowDebugShader();
 
 	waterRenderer->setDependencies(lighting, renderer, camera);
+
+    gBufferShader = std::make_shared<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
+    gBufferShader->use();
+    gBufferShader->setInt("diffuseTexture", 0);
 }
 
 void App::gameTick() {
@@ -419,17 +424,24 @@ void App::render() {
         glm::mat4 projection = glm::perspective(glm::radians(80.0f), aspect, 0.1f, renderDistance);
 		glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
 
+        // Update camera frustum for chunk culling (once per frame, before any render call)
+        renderer->updateFrustum(projection * view);
+
 
         lighting->setViewportSize(screenWidth, screenHeight);
         lighting->updateSunDirection(deltaTime);
+        lighting->updateSkyLUT(camera->getPlayer()->getPosition().y);
 
 
-        if (lighting->isShadowsEnabled()) {
+        if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
-            lighting->updateShadowMap(*renderer, camera->getPlayer()->getPosition());
+            lighting->updateCSMShadowMaps(*renderer, view);
 
             glEndQuery(GL_TIME_ELAPSED);
+            shadowQueryIssuedThisFrame[currentQueryIndex] = true;
+        } else {
+            shadowQueryIssuedThisFrame[currentQueryIndex] = false;
         }
 
         // Render to debug framebuffers if enabled
@@ -466,7 +478,41 @@ void App::render() {
         // Restore main renderType for normal scene rendering
         if (textureShader) {
             textureShader->use();
-            textureShader->setInt("renderType", 0); // Normal lighting mode
+            textureShader->setInt("renderType", selectedRenderType); // Normal lighting mode
+        }
+
+        // GBuffer pass
+        if (ssao && ssao->isEnabled()) {
+            gBuffer->resize(screenWidth, screenHeight);
+            ssao->resize(screenWidth, screenHeight);
+
+            gBuffer->bind();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            gBufferShader->use();
+            gBufferShader->setMat4("view", view);
+            gBufferShader->setMat4("projection", projection);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            renderer->render(gBufferShader);
+
+            gBuffer->unbind();
+
+            // SSAO pass
+            glBeginQuery(GL_TIME_ELAPSED, querySSAOPool[currentQueryIndex]);
+
+            ssao->renderSSAO(*gBuffer, projection);
+            if (ssao->isBlurEnabled())
+                ssao->blurSSAO();
+
+            glEndQuery(GL_TIME_ELAPSED);
+            ssaoQueryIssuedThisFrame[currentQueryIndex] = true;
+
+            // Restore full-res viewport (SSAO may have rendered at half resolution)
+            glViewport(0, 0, screenWidth, screenHeight);
+
+        } else {
+            ssaoQueryIssuedThisFrame[currentQueryIndex] = false;
         }
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
@@ -500,25 +546,22 @@ void App::render() {
     		// Dynamically build GUI textures based on debug flags
     		guis.clear();
     		if (showReflectionTexture) {
-    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.48f, 0.75f), glm::vec2(0.2f, 0.2f));
     		}
     		if (showRefractionTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(-0.5f, 0.5f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(0.48f, 0.3f), glm::vec2(0.2f, 0.2f), true);
     		}
     		if (showRefractionDepthTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
-    		}
-    		if (showShadowMapTexture && lighting) {
-    			guis.emplace_back(lighting->getShadowMapTexture(), glm::vec2(-0.5f, -0.5f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.48f, -0.15f), glm::vec2(0.2f, 0.2f), true, true);
     		}
     		if (showNormalsTexture && renderTypeFramebuffer) {
-    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.0f, 0.75f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.05f, 0.75f), glm::vec2(0.2f, 0.2f), true);
     		}
     		if (showDepthTexture && renderTypeFramebuffer) {
-    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.0f, -0.75f), glm::vec2(0.25f, 0.25f));
+    			guis.emplace_back(renderTypeFramebuffer->getDepthTexture(), glm::vec2(0.05f, 0.3f), glm::vec2(0.2f, 0.2f), true);
     		}
 
-    		guiRenderer->render(guis);
+    		guiRenderer->render(guis, 0.1f, renderDistance);
         }
 
         if (showDebugWindow) {
@@ -526,8 +569,38 @@ void App::render() {
         }
 
     	if (lighting->isShadowMapEnabled())
-    		lighting->drawShadowMapPreview();
+    		lighting->drawCSMShadowMapPreview(lighting->debugPreviewLayer);
 
+    	if (showSSAOTexture && ssao && ssao->isEnabled())
+    		lighting->drawTexturePreviewQuad(ssao->getSSAOTexture(), true, glm::vec2(0.0f, 0.2f));
+
+    	if (showSSAORawTexture && ssao && ssao->isEnabled())
+    		lighting->drawTexturePreviewQuad(ssao->getRawSSAOTexture(), true, glm::vec2(0.42f, 0.2f));
+
+    	if (showGBufferPositionTexture && gBuffer)
+    		lighting->drawTexturePreviewQuad(gBuffer->getPositionTexture(), false, glm::vec2(0.84f, 0.2f));
+
+    	if (showGBufferNormalTexture && gBuffer)
+    		lighting->drawTexturePreviewQuad(gBuffer->getNormalTexture(), false, glm::vec2(1.26f, 0.2f));
+
+    	if (!uiInteractive && (lighting->showCSMDebugView || showFrustumCullingDebug))
+    		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+
+    	if (lighting->showCSMDebugView)
+    		lighting->drawCSMDebugView(
+    			camera->getPlayer()->getPosition(),
+    			camera->getPlayer()->getCameraDir(),
+    			view);
+
+        //TODO: pass FOV and near plane from actual camera settings instead of hardcoding
+    	if (showFrustumCullingDebug)
+    		renderer->drawFrustumCullingDebug(
+    			camera->getPlayer()->getPosition(),
+    			camera->getPlayer()->getCameraDir(),
+    			80.0f, aspect, 0.1f, renderDistance);
+
+    	if (!uiInteractive && (lighting->showCSMDebugView || showFrustumCullingDebug))
+    		ImGui::PopStyleVar();
 
         // Finalize ImGui rendering
         ImGui::Render();
@@ -549,36 +622,58 @@ void App::render() {
         glfwPollEvents();
 
         if (profilingEnabled) {
-            int readIndex = (currentQueryIndex + 2) % QUERY_POOL_SIZE;
-            profilingCallbackApp(queryDrawSkyPool[readIndex], measuredAverageNsDrawSky, measuredAverageMsDrawSky);
-            profilingCallbackApp(queryDrawCloudsPool[readIndex], measuredAverageNsDrawClouds, measuredAverageMsDrawClouds);
-            profilingCallbackApp(queryDrawWaterReflectionPool[readIndex], measuredAverageNsDrawWaterReflection, measuredAverageMsDrawWaterReflection);
-            profilingCallbackApp(queryRenderShaderPool[readIndex], measuredAverageNsRenderShader, measuredAverageMsRenderShader);
-            profilingCallbackApp(queryRenderWaterPool[readIndex], measuredAverageNsRenderWater, measuredAverageMsRenderWater);
-            profilingCallbackApp(queryDrawShadowsPool[readIndex], measuredAverageNsDrawShadows, measuredAverageMsDrawShadows);
-            profilingCallbackApp(queryDrawEntities[readIndex], measuredAverageNsDrawEntities, measuredAverageMsDrawEntities);
+            // Read results from 2 frames ago to give the GPU time to finish
+            int readIndex = (currentQueryIndex + QUERY_POOL_SIZE - 2) % QUERY_POOL_SIZE;
+            float a = profilingEMASmoothing;
+
+            readGPUQueryEMA(queryDrawSkyPool[readIndex], measuredAverageMsDrawSky, a);
+            readGPUQueryEMA(queryDrawCloudsPool[readIndex], measuredAverageMsDrawClouds, a);
+            readGPUQueryEMA(queryDrawWaterReflectionPool[readIndex], measuredAverageMsDrawWaterReflection, a);
+            readGPUQueryEMA(queryRenderShaderPool[readIndex], measuredAverageMsRenderShader, a);
+            readGPUQueryEMA(queryRenderWaterPool[readIndex], measuredAverageMsRenderWater, a);
+            readGPUQueryEMA(queryDrawEntities[readIndex], measuredAverageMsDrawEntities, a);
+
+            // SSAO: only read if the query was actually issued that frame.
+            // Otherwise smoothly decay toward 0 so the display reflects reality.
+            if (ssaoQueryIssuedThisFrame[readIndex]) {
+                readGPUQueryEMA(querySSAOPool[readIndex], measuredAverageMsSSAO, a);
+            } else {
+                measuredAverageMsSSAO *= (1.0 - a);
+            }
+
+
+            // Shadows: only read if the query was actually issued that frame.
+            // Otherwise smoothly decay toward 0 so the display reflects reality.
+            if (shadowQueryIssuedThisFrame[readIndex]) {
+                readGPUQueryEMA(queryDrawShadowsPool[readIndex], measuredAverageMsDrawShadows, a);
+            } else {
+                // Decay toward 0 when shadows are not being rendered
+                measuredAverageMsDrawShadows *= (1.0 - a);
+            }
         }
     }
 }
 
-void profilingCallbackApp(GLuint queryId, double &measuredAverageNs, double &measuredAverageMs)
+bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
 {
-    static std::unordered_map<GLuint, GLuint64> totalQueryTimeNs;
-    static std::unordered_map<GLuint, GLuint64> numQueries;
-    
     // Check if result is available (non-blocking)
     GLint available = 0;
     glGetQueryObjectiv(queryId, GL_QUERY_RESULT_AVAILABLE, &available);
-    if (!available) return; // Skip if GPU hasn't finished yet
-    
+    if (!available) return false;
+
     GLuint64 elapsed = 0;
     glGetQueryObjectui64v(queryId, GL_QUERY_RESULT, &elapsed);
-    
-    numQueries[queryId]++;
-    totalQueryTimeNs[queryId] += elapsed;
 
-    measuredAverageNs = (double)totalQueryTimeNs[queryId] / (double)numQueries[queryId];
-    measuredAverageMs = measuredAverageNs * 1.0e-6;
+    double sampleMs = static_cast<double>(elapsed) * 1.0e-6;
+
+    // Exponential moving average: smoothed = alpha * sample + (1 - alpha) * smoothed
+    // On first sample (smoothedMs == 0), just use the raw value
+    if (smoothedMs <= 0.0)
+        smoothedMs = sampleMs;
+    else
+        smoothedMs = alpha * sampleMs + (1.0 - alpha) * smoothedMs;
+
+    return true;
 }
 
 void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
@@ -607,6 +702,19 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
     lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+    lighting->uploadCSMUniforms(*activeShader, view);
+
+    // Bind SSAO texture for the lighting shader (must be after activeShader->use())
+    if (ssao && ssao->isEnabled()) {
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
+        activeShader->setInt("ssaoTexture", 5);
+        activeShader->setInt("ssaoEnabled", 1);
+        activeShader->setVec2("screenSize", glm::vec2(screenWidth, screenHeight));
+    } else {
+        activeShader->setInt("ssaoEnabled", 0);
+    }
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
 
@@ -724,8 +832,8 @@ void App::debugWindow() {
                 size_t waterVertices = 0;
                 for (auto& weakChunk : renderer->getRenderedChunks()) {
                     if (auto chunk = weakChunk.lock()) {
-                        solidVertices += chunk->getMeshVerticesSize() / 9;
-                        waterVertices += chunk->getWaterMeshVerticesSize() / 9;
+                        solidVertices += chunk->getMeshVerticesSize() / 10;
+                        waterVertices += chunk->getWaterMeshVerticesSize() / 10;
                     }
                 }
                 
@@ -733,6 +841,7 @@ void App::debugWindow() {
                 size_t totalTriangles = totalVertices / 3;
                 size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
                 
+                // TODO: fix real count based on frustum culling
                 ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
                 ImGui::Text("Triangles: %zu", totalTriangles);
                 ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
@@ -749,21 +858,21 @@ void App::debugWindow() {
 
                     ImGui::Separator();
 
-                    if (ImGui::CollapsingHeader("Teleportation")) {
-                        // Teleport player
-                        ImGui::Text("Teleport Player");
-                        static float tmpX = 0;
-                        static float tmpY = 100;
-                        static float tmpZ = 0;
-                        ImGui::InputFloat("X", &tmpX);
-                        ImGui::InputFloat("Y", &tmpY);
-                        ImGui::InputFloat("Z", &tmpZ);
-                        if (ImGui::Button("Teleport")) {
-                            camera->getPlayer()->setPosition(glm::vec3(tmpX, tmpY, tmpZ));
-                        }
-                    }
+                    // if (ImGui::CollapsingHeader("Teleportation")) {
+                    //     // Teleport player
+                    //     ImGui::Text("Teleport Player");
+                    //     static float tmpX = 0;
+                    //     static float tmpY = 100;
+                    //     static float tmpZ = 0;
+                    //     ImGui::InputFloat("X", &tmpX);
+                    //     ImGui::InputFloat("Y", &tmpY);
+                    //     ImGui::InputFloat("Z", &tmpZ);
+                    //     if (ImGui::Button("Teleport")) {
+                    //         camera->getPlayer()->setPosition(glm::vec3(tmpX, tmpY, tmpZ));
+                    //     }
+                    // }
 
-                    ImGui::Separator();
+                    // ImGui::Separator();
 
                     // Need to expose terrainParams from the server to the client..
                     // ImGui::Checkbox("Debug: Ores Only", &terrainParams.debugOresOnly);
@@ -811,7 +920,7 @@ void App::debugWindow() {
                     // }
 
 
-                    ImGui::Separator();
+                    // ImGui::Separator();
 
                     // if (ImGui::CollapsingHeader("Heightmap")) {
                     //     // Create heightmap image
@@ -835,80 +944,136 @@ void App::debugWindow() {
                     //     }
                     // }
 
-                    ImGui::Separator();
+                    // ImGui::Separator();
 
                     if (ImGui::CollapsingHeader("Rendering")) {
-                        ImGui::Text("Rendering Options");
-                        if (ImGui::Checkbox("V-Sync", &vsync)) {
-                            glfwSwapInterval(vsync ? 1 : 0);
-                        }
-                        // Wireframe toggle
-                        if (ImGui::Checkbox("Wireframe", &wireframe)) {
-                            glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-                        }
-                        // Shader toggle (texture vs gradient).  We update activeShader accordingly.
-                        if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
-                            activeShader = useGradientShader ? gradientShader : textureShader;
-                        }
-                        static int renderType = 0;
-                        ImGui::RadioButton("Lighting render", &renderType, 0); ImGui::SameLine();
-                        ImGui::RadioButton("Normals render",  &renderType, 1); ImGui::SameLine();
-                        ImGui::RadioButton("Depth render",    &renderType, 2);
+                        if (ImGui::BeginTabBar("Rendering", tab_bar_flags))
+                        {
+                            if (ImGui::BeginTabItem("Options"))
+                            {
+                                if (ImGui::Checkbox("V-Sync", &vsync)) {
+                                    glfwSwapInterval(vsync ? 1 : 0);
+                                }
+                                // Wireframe toggle
+                                if (ImGui::Checkbox("Wireframe", &wireframe)) {
+                                    glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
+                                }
+                                // Shader toggle (texture vs gradient).  We update activeShader accordingly.
+                                if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
+                                    activeShader = useGradientShader ? gradientShader : textureShader;
+                                }
+                                ImGui::RadioButton("Lighting render", &selectedRenderType, 0); ImGui::SameLine();
+                                ImGui::RadioButton("Normals render",  &selectedRenderType, 1); ImGui::SameLine();
+                                ImGui::RadioButton("Depth render",    &selectedRenderType, 2);
 
-                        // Ensure the uniform is applied to the intended program(s),
-                        // not whatever was last bound (e.g., selected-face wireframe).
-                        auto applyRenderType = [&](const std::shared_ptr<Shader>& s) {
-                            if (!s) return;
-                            s->use();
-                            s->setInt("renderType", renderType);
-                        };
-                        applyRenderType(textureShader);
+                                // Ensure the uniform is applied to the intended program(s),
+                                // not whatever was last bound (e.g., selected-face wireframe).
+                                auto applyRenderType = [&](const std::shared_ptr<Shader>& s) {
+                                    if (!s) return;
+                                    s->use();
+                                    s->setInt("renderType", selectedRenderType);
+                                };
+                                applyRenderType(textureShader);
 
-                        static bool useBlinnPhong = true;
-                        if (ImGui::Checkbox("Blinn-Phong", &useBlinnPhong)) {
-                            textureShader->use();
-                            textureShader->setInt("blinn", useBlinnPhong);
-                        }
-                    	bool shadowsEnabled = lighting->isShadowsEnabled();
-                        if (ImGui::Checkbox("Shadows", &shadowsEnabled))
-							lighting->setShadowsEnabled(shadowsEnabled);
-                    	bool shadowMapEnabled = lighting->isShadowMapEnabled();
-                    	if (ImGui::Checkbox("Shadow Map (DEBUG)", &shadowMapEnabled))
-                    		lighting->setShowShadowMapEnabled(shadowMapEnabled);
+                                static bool useBlinnPhong = true;
+                                if (ImGui::Checkbox("Blinn-Phong", &useBlinnPhong)) {
+                                    textureShader->use();
+                                    textureShader->setInt("blinn", useBlinnPhong);
+                                }
+                                bool shadowsEnabled = lighting->isShadowsEnabled();
+                                if (ImGui::Checkbox("Shadows", &shadowsEnabled))
+                                    lighting->setShadowsEnabled(shadowsEnabled);
 
-                        // Changing this will update the far clipping plane.
-                        ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
+                                bool ssaoEnabled = ssao->isEnabled();
+                                if (ImGui::Checkbox("SSAO", &ssaoEnabled))
+                                    ssao->setEnabled(ssaoEnabled);
 
-                        // Adjust the chunk loading radius.  Casting to int and back avoids
-                        // accidental type issues in the setter.  We clamp the range to a
-                        // reasonable minimum and maximum.
-                        if (renderer) {
-                            int radius = renderer->getLoadRadius();
-                            if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-                                renderer->setLoadRadius(radius);
+                                // Changing this will update the far clipping plane.
+                                ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
+
+                                // Adjust the chunk loading radius.  Casting to int and back avoids
+                                // accidental type issues in the setter.  We clamp the range to a
+                                // reasonable minimum and maximum.
+                                if (renderer) {
+                                    int radius = renderer->getLoadRadius();
+                                    if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
+                                        renderer->setLoadRadius(radius);
+                                    }
+                                }
+
+                                // Adjust the maximum number of chunks being generated at the same time.
+                                // Lower values produce smoother frame rates but slower world loading.
+                                // if (world) {
+                                //     int maxGen = static_cast<int>(world->getMaxConcurrentGeneration());
+                                //     if (ImGui::SliderInt("Generation Concurrency", &maxGen, 1, 8)) {
+                                //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
+                                //     }
+                                // }
+                                ImGui::EndTabItem();
+                            }
+                            if (ImGui::BeginTabItem("SSAO"))
+                            {
+                                bool ssaoEnabled = ssao->isEnabled();
+                                if (ImGui::Checkbox("Enable SSAO", &ssaoEnabled))
+                                    ssao->setEnabled(ssaoEnabled);
+
+                                bool blurEnabled = ssao->isBlurEnabled();
+                                if (ImGui::Checkbox("Enable Blur", &blurEnabled))
+                                    ssao->setBlurEnabled(blurEnabled);
+
+                                bool halfRes = ssao->isHalfResolution();
+                                if (ImGui::Checkbox("Half Resolution", &halfRes))
+                                    ssao->setHalfResolution(halfRes);
+                                ImGui::SameLine();
+                                ImGui::TextDisabled("(?)");
+                                if (ImGui::IsItemHovered())
+                                    ImGui::SetTooltip("Render SSAO at half resolution");
+
+                                ImGui::Separator();
+                                ImGui::Text("Parameters");
+
+                                float radius = ssao->getRadius();
+                                if (ImGui::SliderFloat("Radius", &radius, 0.01f, 5.0f, "%.3f"))
+                                    ssao->setRadius(radius);
+
+                                float bias = ssao->getBias();
+                                if (ImGui::SliderFloat("Bias", &bias, 0.0f, 0.2f, "%.4f"))
+                                    ssao->setBias(bias);
+
+                                float power = ssao->getPower();
+                                if (ImGui::SliderFloat("Power", &power, 0.1f, 10.0f, "%.2f"))
+                                    ssao->setPower(power);
+
+                                int kernelSize = ssao->getKernelSize();
+                                if (ImGui::SliderInt("Kernel Size", &kernelSize, 4, 64))
+                                    ssao->setKernelSize(kernelSize);
+
+                                ImGui::EndTabItem();
+                            }
+                            if (ImGui::BeginTabItem("Framebuffers"))
+                            {
+                                ImGui::Separator();
+                                ImGui::Text("Water");
+                                ImGui::Checkbox("Show Reflection Texture", &showReflectionTexture);
+                                ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
+                                ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
+                                
+                                ImGui::Separator();
+                                ImGui::Text("Render Type");
+                                ImGui::Checkbox("Show Normals View", &showNormalsTexture);
+                                ImGui::Checkbox("Show Depth View", &showDepthTexture);
+
+                                ImGui::Separator();
+                                ImGui::Text("SSAO");
+                                ImGui::Checkbox("Preview SSAO Texture", &showSSAOTexture);
+                                ImGui::Checkbox("Preview Raw SSAO (No Blur)", &showSSAORawTexture);
+                                ImGui::Checkbox("Preview GBuffer Position", &showGBufferPositionTexture);
+                                ImGui::Checkbox("Preview GBuffer Normal", &showGBufferNormalTexture);
+
+                                ImGui::EndTabItem();
                             }
                         }
-
-                        // Adjust the maximum number of chunks being generated at the same time.
-                        // Lower values produce smoother frame rates but slower world loading.
-                        // if (world) {
-                        //     int maxGen = static_cast<int>(world->getMaxConcurrentGeneration());
-                        //     if (ImGui::SliderInt("Generation Concurrency", &maxGen, 1, 8)) {
-                        //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
-                        //     }
-                        // }
-
-                        ImGui::Separator();
-                        ImGui::Text("Framebuffer Debug Views");
-                        ImGui::Checkbox("Show Reflection Texture", &showReflectionTexture);
-                        ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
-                        ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
-                        ImGui::Checkbox("Show Shadow Map", &showShadowMapTexture);
-                        
-                        ImGui::Separator();
-                        ImGui::Text("Render Type Debug Views");
-                        ImGui::Checkbox("Show Normals View", &showNormalsTexture);
-                        ImGui::Checkbox("Show Depth View", &showDepthTexture);
+                        ImGui::EndTabBar();
                     }
 
                     // Lighting controls: direction and colours.  The direction vector
@@ -919,39 +1084,24 @@ void App::debugWindow() {
                         {
                             if (ImGui::BeginTabItem("Shadows"))
                             {
-								int shadowUpdateInterval = lighting->getShadowUpdateInterval();
-                            	float shadowOrthoRange = lighting->getShadowOrthoRange();
-                            	float shadowNearPlane = lighting->getShadowNearPlane();
-                            	float shadowFarPlane = lighting->getShadowFarPlane();
+                                float shadowMinBias = lighting->getShadowMapMinBias();
+                                float shadowMaxBias = lighting->getShadowMapMaxBias();
+
                             	ImGui::Text("Shadow Controls");
-                                if (ImGui::SliderInt("Shadow Update Interval (frames)", &shadowUpdateInterval, 1, 60))
-                                	lighting->setShadowUpdateInterval(shadowUpdateInterval);
-                                if (ImGui::SliderFloat("Shadow Ortho Range", &shadowOrthoRange, 20.0f, 200.0f, "%.1f"))
-									lighting->setShadowOrthoRange(shadowOrthoRange);
-                                if (ImGui::SliderFloat("Shadow Near Plane", &shadowNearPlane, 0.001f, 1.0f, "%.2f"))
-                                	lighting->setShadowNearPlane(shadowNearPlane);
-                                if (ImGui::SliderFloat("Shadow Far Plane", &shadowFarPlane, 50.0f, 2000.0f, "%.1f"))
-                                	lighting->setShadowFarPlane(shadowFarPlane);
-                                // ImGui::SliderFloat("Shadow min Bias", &MIN_BIAS, 0.0f, 0.00035f, "%.5f");
-                                // ImGui::SliderFloat("Shadow max Bias", &MAX_BIAS, 0.0f, 0.0010f, "%.4f");
-                                // ImGui::SliderFloat("Shadow Contact Offset", &shadowContactOffset, 0.0f, 0.0015f, "%.5f");
-                                // ImGui::SliderInt("Shadow PCF Radius", &PCF_RADIUS, 1, 5);
-                                // ImGui::SliderInt("Shadow Poisson Samples", &POISSON_SAMPLES, 1, 64);
-                                // ImGui::SliderFloat("Shadow Poisson Radius Base", &POISSON_RADIUS_BASE, 0.1f, 5.0f, "%.2f");
-                                // ImGui::SliderFloat("Shadow Poisson Radius Scale", &POISSON_RADIUS_SCALE, 0.1f, 5.0f, "%.2f");
-                                ImGui::Text("Shadow Quality");
-
-                            	using SQ = Lighting::ShadowQuality;
-                            	const SQ currentQuality = lighting->getShadowQuality();
-								int qualitySelection = static_cast<int>(currentQuality);
-
-                                ImGui::RadioButton("Low (1024x1024)",    &qualitySelection, static_cast<int>(SQ::Low)); ImGui::SameLine();
-                                ImGui::RadioButton("Medium (2048x2048)", &qualitySelection, static_cast<int>(SQ::Medium)); ImGui::SameLine();
-                                ImGui::RadioButton("High (4096x4096)",   &qualitySelection, static_cast<int>(SQ::High)); ImGui::SameLine();
-                                ImGui::RadioButton("Ultra (8192x8192)",  &qualitySelection, static_cast<int>(SQ::Ultra));
-                                if (qualitySelection != static_cast<int>(currentQuality)) {
-                                    lighting->setShadowQuality(static_cast<SQ>(qualitySelection));
+                                ImGui::Checkbox("Debug Cascades", &lighting->debugCascades);
+                                ImGui::Checkbox("CSM Debug View (All Cascades)", &lighting->showCSMDebugView);
+                                ImGui::Checkbox("Frustum Culling Radar", &showFrustumCullingDebug);
+                                {
+                                    bool fc = renderer->isFrustumCullingEnabled();
+                                    if (ImGui::Checkbox("Enable Frustum Culling", &fc))
+                                        renderer->setFrustumCullingEnabled(fc);
                                 }
+
+                                if (ImGui::SliderFloat("Shadow min Bias", &shadowMinBias, -0.005f, 0.001f, "%.5f"))
+                                	lighting->setShadowMapMinBias(shadowMinBias);
+                                if (ImGui::SliderFloat("Shadow max Bias", &shadowMaxBias, -0.005f, 0.005f, "%.5f"))
+                                	lighting->setShadowMapMaxBias(shadowMaxBias);
+
                                 ImGui::EndTabItem();
                             }
                             if (ImGui::BeginTabItem("Directional Light"))
@@ -1034,7 +1184,7 @@ void App::debugWindow() {
 
                     ImGui::Separator();
                     if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
-                    	bool skyTimePaused = lighting->isSkyTimePaused();
+                        bool skyTimePaused = lighting->isSkyTimePaused();
                     	float skyTimeOffset = lighting->getSkyTimeOffset();
                     	float sunYawDeg = lighting->getSunYawDeg();
                     	float skyExposure = lighting->getSkyExposure();
@@ -1050,63 +1200,77 @@ void App::debugWindow() {
                         float cloudSigmaS = lighting->getCloudSigmaS();
                         float cloudPhaseG = lighting->getCloudPhaseG();
 
-                        ImGui::Text("Sky Controls");
+                        
+                        if (ImGui::BeginTabBar("Sky / Atmosphere", tab_bar_flags))
+                        {
+                            if (ImGui::BeginTabItem("Atmosphere controls"))
+                            {
+                                bool skyLUTEnabled = lighting->isSkyLUTEnabled();
+                                if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
+                                    lighting->setSkyLUTEnabled(skyLUTEnabled);
+                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
+                                    lighting->setSkyTimePaused(skyTimePaused);
+                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
+                                    lighting->setSkyTimeOffset(skyTimeOffset);
+                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
+                                    lighting->setSunYawDeg(sunYawDeg);
+                                if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
+                                    lighting->setSkyExposure(skyExposure);
+                                if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))
+                                    lighting->setSkyAtmDensity(skyAtmDensity);
+                                if (ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f"))
+                                    lighting->setSkyAtmThickness(skyAtmThickness);
+                                if (ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f"))
+                                    lighting->setPlanetScale(planetScale);
+                                ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
+                                ImGui::EndTabItem();
+                            }
 
-                        if (ImGui::Checkbox("Clouds Enabled", &cloudsEnabled))
-                        	lighting->setCloudsEnabled(cloudsEnabled);
-                        if (ImGui::SliderFloat("Cloud Density", &cloudDensity, 0.02f, 0.2f, "%.3f"))
-                        	lighting->setCloudDensity(cloudDensity);
-                        if (ImGui::SliderFloat("Cloud Sigma T", &cloudSigmaT, 1.0f, 10.0f, "%.1f"))
-                        	lighting->setCloudSigmaT(cloudSigmaT);
-                        if (ImGui::ColorEdit3("Cloud Albedo", &cloudAlbedo.x))
-                        	lighting->setCloudAlbedo(cloudAlbedo);
-                        if (ImGui::SliderFloat("Cloud Step Count", &cloudStepCount, 32.0f, 96.0f, "%.1f"))
-                        	lighting->setCloudStepCount(cloudStepCount);
-                            
-                        if (ImGui::SliderFloat("Cloud Sigma S", &cloudSigmaS, 1.0f, 10.0f, "%.1f"))
-                        	lighting->setCloudSigmaS(cloudSigmaS);
-                        if (ImGui::SliderFloat("Cloud Phase G", &cloudPhaseG, 0.0f, 1.0f, "%.1f"))
-                        	lighting->setCloudPhaseG(cloudPhaseG);
+                            if (ImGui::BeginTabItem("Clouds"))
+                            {
+                                if (ImGui::Checkbox("Clouds Enabled", &cloudsEnabled))
+                                lighting->setCloudsEnabled(cloudsEnabled);
+                                if (ImGui::SliderFloat("Cloud Density", &cloudDensity, 0.02f, 0.2f, "%.3f"))
+                                    lighting->setCloudDensity(cloudDensity);
+                                if (ImGui::SliderFloat("Cloud Sigma T", &cloudSigmaT, 1.0f, 10.0f, "%.1f"))
+                                    lighting->setCloudSigmaT(cloudSigmaT);
+                                if (ImGui::ColorEdit3("Cloud Albedo", &cloudAlbedo.x))
+                                    lighting->setCloudAlbedo(cloudAlbedo);
+                                if (ImGui::SliderFloat("Cloud Step Count", &cloudStepCount, 32.0f, 96.0f, "%.1f"))
+                                    lighting->setCloudStepCount(cloudStepCount);
+                                    
+                                if (ImGui::SliderFloat("Cloud Sigma S", &cloudSigmaS, 1.0f, 10.0f, "%.1f"))
+                                    lighting->setCloudSigmaS(cloudSigmaS);
+                                if (ImGui::SliderFloat("Cloud Phase G", &cloudPhaseG, 0.0f, 1.0f, "%.1f"))
+                                    lighting->setCloudPhaseG(cloudPhaseG);
 
-                        ImGui::Separator();
-                        ImGui::Text("Cloud Shape & Movement");
-                        float cloudEdgeFeather = lighting->getCloudEdgeFeather();
-                        float cloudNoiseScale = lighting->getCloudNoiseScale();
-                        float cloudNoiseContrastLo = lighting->getCloudNoiseContrastLo();
-                        float cloudNoiseContrastHi = lighting->getCloudNoiseContrastHi();
-                        float cloudWindSpeed = lighting->getCloudWindSpeed();
-                        glm::vec2 cloudWindDir = lighting->getCloudWindDir();
+                                ImGui::Separator();
 
-                        if (ImGui::SliderFloat("Cloud Edge Feather", &cloudEdgeFeather, 1.0f, 30.0f, "%.1f"))
-                        	lighting->setCloudEdgeFeather(cloudEdgeFeather);
-                        if (ImGui::SliderFloat("Cloud Noise Scale", &cloudNoiseScale, 0.005f, 0.05f, "%.3f"))
-                        	lighting->setCloudNoiseScale(cloudNoiseScale);
-                        if (ImGui::SliderFloat("Cloud Contrast Lo", &cloudNoiseContrastLo, 0.0f, 1.0f, "%.2f"))
-                        	lighting->setCloudNoiseContrastLo(cloudNoiseContrastLo);
-                        if (ImGui::SliderFloat("Cloud Contrast Hi", &cloudNoiseContrastHi, 0.0f, 1.0f, "%.2f"))
-                        	lighting->setCloudNoiseContrastHi(cloudNoiseContrastHi);
-                        if (ImGui::SliderFloat("Cloud Wind Speed", &cloudWindSpeed, 0.0f, 100.0f, "%.1f"))
-                        	lighting->setCloudWindSpeed(cloudWindSpeed);
-                        if (ImGui::SliderFloat2("Cloud Wind Direction", &cloudWindDir.x, -1.0f, 1.0f, "%.2f"))
-                        	lighting->setCloudWindDir(cloudWindDir);
+                                ImGui::Text("Cloud Shape & Movement");
+                                float cloudEdgeFeather = lighting->getCloudEdgeFeather();
+                                float cloudNoiseScale = lighting->getCloudNoiseScale();
+                                float cloudNoiseContrastLo = lighting->getCloudNoiseContrastLo();
+                                float cloudNoiseContrastHi = lighting->getCloudNoiseContrastHi();
+                                float cloudWindSpeed = lighting->getCloudWindSpeed();
+                                glm::vec2 cloudWindDir = lighting->getCloudWindDir();
 
-                        ImGui::Separator();
-                    	ImGui::Text("Atmosphere controls");
-                        if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
-                        	lighting->setSkyTimePaused(skyTimePaused);
-                        if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
-                        	lighting->setSkyTimeOffset(skyTimeOffset);
-                        if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
-                        	lighting->setSunYawDeg(sunYawDeg);
-                        if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
-                        	lighting->setSkyExposure(skyExposure);
-                        if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))
-                        	lighting->setSkyAtmDensity(skyAtmDensity);
-                        if (ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f"))
-                        	lighting->setSkyAtmThickness(skyAtmThickness);
-                        if (ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f"))
-                        	lighting->setPlanetScale(planetScale);
-                        ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
+                                if (ImGui::SliderFloat("Cloud Edge Feather", &cloudEdgeFeather, 1.0f, 30.0f, "%.1f"))
+                                    lighting->setCloudEdgeFeather(cloudEdgeFeather);
+                                if (ImGui::SliderFloat("Cloud Noise Scale", &cloudNoiseScale, 0.005f, 0.05f, "%.3f"))
+                                    lighting->setCloudNoiseScale(cloudNoiseScale);
+                                if (ImGui::SliderFloat("Cloud Contrast Lo", &cloudNoiseContrastLo, 0.0f, 1.0f, "%.2f"))
+                                    lighting->setCloudNoiseContrastLo(cloudNoiseContrastLo);
+                                if (ImGui::SliderFloat("Cloud Contrast Hi", &cloudNoiseContrastHi, 0.0f, 1.0f, "%.2f"))
+                                    lighting->setCloudNoiseContrastHi(cloudNoiseContrastHi);
+                                if (ImGui::SliderFloat("Cloud Wind Speed", &cloudWindSpeed, 0.0f, 100.0f, "%.1f"))
+                                    lighting->setCloudWindSpeed(cloudWindSpeed);
+                                if (ImGui::SliderFloat2("Cloud Wind Direction", &cloudWindDir.x, -1.0f, 1.0f, "%.2f"))
+                                    lighting->setCloudWindDir(cloudWindDir);
+                                ImGui::EndTabItem();
+                            }
+                        }
+                        ImGui::EndTabBar();
+                    	
                     }
 
                 	ImGui::Separator();
@@ -1125,55 +1289,10 @@ void App::debugWindow() {
                 	ImGui::EndTabItem();
                 }
                 if (ImGui::BeginTabItem("Profiler")) {
-                    ImGui::Text("GPU Timings");
-                    ImGui::Separator();
-
-                    profilingEnabled = true;
-                    
-                    // Calculate totals
-                    float totalGPU = measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
-                                    measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
-                                    measuredAverageMsRenderWater + measuredAverageMsDrawEntities;
-                    
-                    auto showTimingBar = [&](const char* label, float ms, ImVec4 color) {
-                        float percent = totalGPU > 0.0f ? (ms / totalGPU) * 100.0f : 0.0f;
-                        
-                        // Show label first
-                        ImGui::Text("%-20s", label);
-                        ImGui::SameLine();
-                        
-                        // Progress bar (smaller width)
-                        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color);
-                        ImGui::ProgressBar(ms / 16.67f, ImVec2(200, 0), ""); // Fixed 200px width
-                        ImGui::PopStyleColor();
-                        
-                        ImGui::SameLine();
-                        ImGui::Text("%.3f ms (%.1f%%)", ms, percent);
-                    };
-                    
-                    showTimingBar("Sky", measuredAverageMsDrawSky, ImVec4(0.2f, 0.6f, 1.0f, 1.0f));
-                    showTimingBar("Clouds", measuredAverageMsDrawClouds, ImVec4(0.8f, 0.8f, 0.9f, 1.0f));
-                    showTimingBar("Terrain", measuredAverageMsRenderShader, ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
-                    showTimingBar("Shadows", measuredAverageMsDrawShadows, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-                    showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
-                    showTimingBar("Water Render", measuredAverageMsRenderWater, ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
-                    showTimingBar("Entities", measuredAverageMsDrawEntities, ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
-                    
-                    ImGui::Separator();
-                    ImGui::Text("Total GPU: %.3f ms (%.1f FPS budget)", totalGPU, totalGPU > 0.0f ? 1000.0f / totalGPU : 0.0f);
-                    
-                    // Color-coded frame budget indicator
-                    float targetFrameTime = 16.67f; // 60 FPS
-                    if (totalGPU > targetFrameTime) {
-                        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "WARNING: Over frame budget!");
-                    } else if (totalGPU > targetFrameTime * 0.8f) {
-                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "CAUTION: Near frame budget");
-                    } else {
-                        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Performance OK");
-                    }
-                    
+                    ImGui::Checkbox("Open Profiler Window", &showProfilerWindow);
+                    profilingEnabled = showProfilerWindow;
                     ImGui::EndTabItem();
-                } else {
+                } else if (!showProfilerWindow) {
                     profilingEnabled = false;
                 }
                 ImGui::EndTabBar();
@@ -1202,6 +1321,95 @@ void App::debugWindow() {
             if (!uiInteractive) {
                 ImGui::PopStyleVar();
             }
+        }
+
+        // ── Detachable Profiler Window ──
+        if (showProfilerWindow) {
+            ImGui::SetNextWindowSize(ImVec2(580, 400), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowPos(ImVec2(600, 10), ImGuiCond_FirstUseEver);
+            ImGuiWindowFlags profFlags = 0;
+            if (!uiInteractive) {
+                profFlags |= ImGuiWindowFlags_NoInputs;
+                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+            }
+            if (ImGui::Begin("GPU Profiler", &showProfilerWindow, profFlags)) {
+                ImGui::Text("FPS: %.1f (%.3f ms/frame)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
+                ImGui::Separator();
+
+                // Calculate totals
+                float totalGPU = static_cast<float>(
+                    measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
+                    measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
+                    measuredAverageMsRenderWater + measuredAverageMsDrawEntities);
+
+                // Frame budget target
+                static float targetFPS = 60.0f;
+                float targetFrameTime = 1000.0f / targetFPS;
+
+                auto showTimingBar = [&](const char* label, double ms, ImVec4 color) {
+                    float msf = static_cast<float>(ms);
+                    float percent = totalGPU > 0.0f ? (msf / totalGPU) * 100.0f : 0.0f;
+
+                    ImGui::Text("%-20s", label);
+                    ImGui::SameLine();
+
+                    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color);
+                    ImGui::ProgressBar(msf / targetFrameTime, ImVec2(200, 0), "");
+                    ImGui::PopStyleColor();
+
+                    ImGui::SameLine();
+                    ImGui::Text("%.3f ms (%.1f%%)", msf, percent);
+                };
+
+                showTimingBar("Sky",           measuredAverageMsDrawSky,             ImVec4(0.2f, 0.6f, 1.0f, 1.0f));
+                showTimingBar("Clouds",        measuredAverageMsDrawClouds,          ImVec4(0.8f, 0.8f, 0.9f, 1.0f));
+                showTimingBar("Terrain",       measuredAverageMsRenderShader,        ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
+                showTimingBar("Shadows",       measuredAverageMsDrawShadows,         ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+                showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
+                showTimingBar("Water Render",  measuredAverageMsRenderWater,         ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
+                showTimingBar("Entities",      measuredAverageMsDrawEntities,        ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
+                showTimingBar("SSAO",          measuredAverageMsSSAO,                ImVec4(0.6f, 0.2f, 0.8f, 1.0f));
+                ImGui::Separator();
+                ImGui::Text("Total GPU: %.3f ms (%.1f FPS budget)", totalGPU, totalGPU > 0.0f ? 1000.0f / totalGPU : 0.0f);
+
+                // Color-coded frame budget indicator
+                if (totalGPU > targetFrameTime) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "WARNING: Over frame budget!");
+                } else if (totalGPU > targetFrameTime * 0.8f) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "CAUTION: Near frame budget (>80%%)");
+                } else {
+                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Performance OK");
+                }
+
+                // ── Settings ──
+                ImGui::Separator();
+                if (ImGui::CollapsingHeader("Profiler Settings")) {
+                    ImGui::SliderFloat("Smoothing (EMA alpha)", &profilingEMASmoothing, 0.01f, 0.5f, "%.2f");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("?")) {
+                        ImGui::SetTooltip("Lower = smoother/slower, Higher = noisier/faster response");
+                    }
+                    ImGui::SliderFloat("Target FPS", &targetFPS, 30.0f, 240.0f, "%.0f");
+
+                    if (ImGui::Button("Reset Averages")) {
+                        measuredAverageMsDrawSky = 0.0;
+                        measuredAverageMsDrawClouds = 0.0;
+                        measuredAverageMsDrawWaterReflection = 0.0;
+                        measuredAverageMsDrawShadows = 0.0;
+                        measuredAverageMsRenderShader = 0.0;
+                        measuredAverageMsRenderWater = 0.0;
+                        measuredAverageMsDrawEntities = 0.0;
+                        measuredAverageMsSSAO = 0.0;
+                    }
+                }
+            }
+            ImGui::End();
+            if (!uiInteractive) {
+                ImGui::PopStyleVar();
+            }
+
+            // Keep profiling active while window is open
+            profilingEnabled = showProfilerWindow;
         }
 }
 
