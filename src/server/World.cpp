@@ -750,6 +750,39 @@ bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
     std::shared_ptr<Chunk> currChunk = it->second;
 
 	updatedBlocks.push_back({targetCoords, type});
+
+    // Handle vegetation: if breaking a block that has vegetation above, remove the vegetation
+    if (type == BlockType::AIR && y + 1 < Chunk::HEIGHT) {
+        BlockType blockAbove = currChunk->getBlock(x, y + 1, z);
+        if (isBlockVegetation(blockAbove)) {
+            // Remove vegetation from the chunk's vegetation list
+            auto& vegList = currChunk->vegetation;
+            vegList.erase(
+                std::remove_if(vegList.begin(), vegList.end(),
+                    [x, yAbove = y + 1, z](const Chunk::VegetationInstance& v) {
+                        return v.x == x && v.y == yAbove && v.z == z;
+                    }),
+                vegList.end()
+            );
+            // Also set the block above to AIR
+            currChunk->setBlock(x, y + 1, z, BlockType::AIR);
+            updatedBlocks.push_back({targetCoords + glm::ivec3(0, 1, 0), BlockType::AIR});
+        }
+    }
+
+    // If breaking vegetation directly, remove it from the vegetation list
+    BlockType oldBlock = currChunk->getBlock(x, y, z);
+    if (isBlockVegetation(oldBlock) && type == BlockType::AIR) {
+        auto& vegList = currChunk->vegetation;
+        vegList.erase(
+            std::remove_if(vegList.begin(), vegList.end(),
+                [x, y, z](const Chunk::VegetationInstance& v) {
+                    return v.x == x && v.y == y && v.z == z;
+                }),
+            vegList.end()
+        );
+    }
+
     currChunk->setBlock(x, y, z, type);
 
 	// update neat water blocks

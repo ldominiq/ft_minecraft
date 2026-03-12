@@ -40,6 +40,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	Frustum cameraFrustum;
 	bool frustumCullingEnabled = true;
 	const TextureManager* textureManager = nullptr;
+	std::shared_ptr<Shader> vegetationShader = nullptr;
 
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
 	std::unordered_map<ItemID, std::weak_ptr<Entity>> entitiesMap; //fast lookup
@@ -57,6 +58,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void setFrustumCullingEnabled(bool enabled) { frustumCullingEnabled = enabled; }
 
 		void setTextureManager(const TextureManager* tm) { textureManager = tm; }
+		void setVegetationShader(const std::shared_ptr<Shader>& shader) { vegetationShader = shader; }
 
 		/// Draw a top-down ImGui radar showing which chunks pass frustum culling.
 		void drawFrustumCullingDebug(const glm::vec3& cameraPos, const glm::vec3& cameraFront,

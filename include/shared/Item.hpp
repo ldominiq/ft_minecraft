@@ -38,6 +38,9 @@ enum class BlockType : ItemID {
 	DIAMOND,
 	URANIUM,
 	LAVA,
+	SHORT_GRASS,
+	// TALL_GRASS,
+	CORNFLOWER,
 	END
 };
 
@@ -88,7 +91,7 @@ public:
 		ItemDef{ makeBlock(BlockType::GRASS, "Grass", 10) },
 		ItemDef{ makeBlock(BlockType::DIRT, "Dirt", 10) },
 		ItemDef{ makeBlock(BlockType::STONE, "Stone", 10) },
-		ItemDef{ makeBlock(BlockType::SAND, "Sand", 10) }, 
+		ItemDef{ makeBlock(BlockType::SAND, "Sand", 10) },
 		ItemDef{ makeBlock(BlockType::SNOW, "Snow", 10) },
 		ItemDef{ makeLiquid(BlockType::WATER, "Water", 7) },
 		ItemDef{ makeBlock(BlockType::BEDROCK, "Bedrock", 10) },
@@ -99,6 +102,9 @@ public:
 		ItemDef{ makeBlock(BlockType::DIAMOND, "Diamond", 10) },
 		ItemDef{ makeBlock(BlockType::URANIUM, "Uranium", 10) },
 		ItemDef{ makeLiquid(BlockType::LAVA, "Lava", 4) },
+		ItemDef{ makeBlock(BlockType::SHORT_GRASS, "Short Grass", 1) },
+		// ItemDef{ makeBlock(BlockType::TALL_GRASS, "Tall Grass", 1) },
+		ItemDef{ makeBlock(BlockType::CORNFLOWER, "Cornflower", 1) },
 	};
 
 	// static inline std::vector<ItemDef> liquids = {
@@ -138,7 +144,13 @@ public:
 	}
 };
 
-inline static bool isBlockSolid(const BlockType &b) { return b != BlockType::AIR && b != BlockType::WATER; }
+inline static bool isBlockSolid(const BlockType &b) {
+	return b != BlockType::AIR && b != BlockType::WATER &&
+	       b != BlockType::SHORT_GRASS && b != BlockType::CORNFLOWER;
+}
+inline static bool isBlockVegetation(const BlockType &b) {
+	return b == BlockType::SHORT_GRASS || b == BlockType::CORNFLOWER;
+}
 inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES; }
 
 template<typename Enum>

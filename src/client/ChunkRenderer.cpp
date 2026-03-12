@@ -1,7 +1,9 @@
 
 #include "ChunkRenderer.hpp"
 
-ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVerticesSize(0), waterMeshVerticesSize(0) {}
+ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVerticesSize(0), waterMeshVerticesSize(0) {
+    vegetationRenderer = std::make_unique<VegetationRenderer>();
+}
 
 ChunkRenderer::~ChunkRenderer() {
     if (glfwGetCurrentContext()) {
@@ -239,6 +241,7 @@ void ChunkRenderer::buildMesh() {
 	computeSkyLight();
 	buildMeshData();
 	uploadMesh();
+	buildVegetationMesh();
 }
 
 void ChunkRenderer::buildMeshData() {
@@ -471,4 +474,18 @@ void ChunkRenderer::uploadMesh() {
     
     waterMeshVertices.clear();
     waterMeshVertices.shrink_to_fit();
+}
+
+void ChunkRenderer::buildVegetationMesh() {
+    if (!vegetationRenderer || !textureManager)
+        return;
+
+    vegetationRenderer->setTextureManager(textureManager);
+
+    if (!vegetation.empty()) {
+        std::cout << "Building vegetation mesh: " << vegetation.size() << " instances in chunk ("
+                  << originX / WIDTH << ", " << originZ / DEPTH << ")" << std::endl;
+        vegetationRenderer->buildInstances(vegetation.data(), vegetation.size(), originX, originZ);
+        vegetationRenderer->uploadMesh();
+    }
 }

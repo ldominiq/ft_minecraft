@@ -244,9 +244,13 @@ void TextureManager::setupBlockTextureMapping() {
                                             grassTopTinted,
                                             layer("dirt"),
                                             layer("grass_block_side"));
+
     blockTextureMap[BlockType::LOG]     = BlockTextures::topBottomSides(
                                             layer("spruce_log_top"),
                                             layer("spruce_log_top"),
                                             layer("spruce_log"));
-    
+    blockTextureMap[BlockType::SHORT_GRASS] = BlockTextures::uniform(layer("grass"));
+    // blockTextureMap[BlockType::TALL_GRASS]  = BlockTextures::uniform(layer("tall_grass_top"));
+    blockTextureMap[BlockType::CORNFLOWER]  = BlockTextures::uniform(layer("cornflower"));
+
 }

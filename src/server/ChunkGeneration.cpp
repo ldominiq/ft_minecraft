@@ -99,6 +99,11 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
     generateOres(blocks, terrainParams);
 
+    // encode palette and block data (must be done before vegetation generation)
+    blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
+
+    generateVegetation(blocks, terrainParams);
+
     // DEBUG: strip everything except ores so they're visible in isolation
     if (terrainParams.debugOresOnly) {
         // Build a set of ore block types for fast lookup
@@ -115,8 +120,6 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
                 }
     }
 
-    // encode palette and block data (same as before)
-    blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
 }
 
 // Place a single tree's blocks into the local BlockStorage.
@@ -542,4 +545,96 @@ int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrain
     surfaceY = glm::clamp(surfaceY, 0, HEIGHT - 1);
 
     return surfaceY;
+}
+
+void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
+    // Generate grass and flowers on suitable surface blocks
+    // Only place vegetation on solid blocks that are not water/sand/snow
+    // Vegetation should be above sea level
+
+    vegetation.clear();
+
+    for (int x = 0; x < WIDTH; ++x) {
+        for (int z = 0; z < DEPTH; ++z) {
+            const auto worldX = static_cast<float>(originX + x);
+            const auto worldZ = static_cast<float>(originZ + z);
+
+            const int surfaceY = computeTerrainHeight(terrainParams, worldX, worldZ);
+
+            // Only place vegetation above sea level
+            if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 1)
+                continue;
+
+            // Check the block at surface level
+            const BlockType surfaceBlock = blocks.at(x, surfaceY, z);
+            const BlockType aboveBlock = blocks.at(x, surfaceY + 1, z);
+
+            // Don't place vegetation on water, sand, or snow
+            if (surfaceBlock == BlockType::WATER || surfaceBlock == BlockType::SAND ||
+                surfaceBlock == BlockType::SNOW)
+                continue;
+
+            // Only place vegetation on grass or dirt blocks
+            if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT)
+                continue;
+
+            // Don't place if there's already something above (like a tree)
+            if (aboveBlock != BlockType::AIR)
+                continue;
+
+            const BiomeType biome = computeBiome(terrainParams, worldX, worldZ, surfaceY);
+
+            // Deterministic RNG seeded per world column
+            std::seed_seq seedData{
+                static_cast<uint32_t>(terrainParams.seed),
+                static_cast<uint32_t>(static_cast<int>(worldX)),
+                static_cast<uint32_t>(static_cast<int>(worldZ))
+            };
+            std::mt19937 rng(seedData);
+
+            // Skip some columns for variety (40% chance to place vegetation)
+            if (rng() % 100 >= 40)
+                continue;
+
+            // Choose vegetation type based on biome
+            BlockType vegType = BlockType::SHORT_GRASS;
+
+            switch (biome) {
+                case BiomeType::PLAINS:
+                case BiomeType::FOREST: {
+                    // 70% short grass, 20% tall grass, 10% flowers
+                    int roll = rng() % 100;
+                    if (roll < 70)
+                        vegType = BlockType::SHORT_GRASS;
+                    // else if (roll < 90)
+                    //     vegType = BlockType::TALL_GRASS;
+                    else
+                        vegType = BlockType::CORNFLOWER;
+                    break;
+                }
+                case BiomeType::SWAMP: {
+                    // More tall grass in swamps
+                    // vegType = (rng() % 100 < 80) ? BlockType::TALL_GRASS : BlockType::SHORT_GRASS;
+                    break;
+                }
+                default:
+                    // No vegetation in other biomes (desert, tundra, mountain, ocean)
+                    continue;
+            }
+
+            // Add vegetation instance
+            VegetationInstance veg;
+            veg.x = static_cast<uint8_t>(x);
+            veg.y = static_cast<uint8_t>(surfaceY + 1); // Place above surface
+            veg.z = static_cast<uint8_t>(z);
+            veg.type = vegType;
+            vegetation.push_back(veg);
+        }
+    }
+
+    // Debug: Print how many vegetation instances were generated
+    if (!vegetation.empty()) {
+        std::cout << "Generated " << vegetation.size() << " vegetation instances in chunk ("
+                  << originX / WIDTH << ", " << originZ / DEPTH << ")" << std::endl;
+    }
 }

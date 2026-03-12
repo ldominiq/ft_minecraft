@@ -107,6 +107,7 @@ void Renderer::buildChunks()
 		auto chunk = getChunk(pos.first, pos.second);
 		if (chunk) {
 			chunk->uploadMesh();
+			chunk->buildVegetationMesh(); // Build vegetation after mesh is uploaded
 			chunks[{pos.first, pos.second}] = chunk;
 		}
 		it = meshFutures.erase(it);
@@ -231,6 +232,18 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 			}
 
 			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+
+			// Render vegetation for this chunk if it exists
+			if (vegetationShader && chunk->getVegetationRenderer()) {
+				auto vegRenderer = chunk->getVegetationRenderer();
+				if (vegRenderer->getInstanceCount() > 0) {
+					// Switch to vegetation shader (uniforms already set in renderScene)
+					vegetationShader->use();
+					vegRenderer->render();
+					// Switch back to main shader
+					shaderProgram->use();
+				}
+			}
 		}
 	}
 }

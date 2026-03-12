@@ -237,6 +237,17 @@ void Chunk::saveToStream(std::ostream& out) const {
 
 	// Save block data
     blockIndices.saveToStream(out);
+
+	// --- Save vegetation ---
+	uint32_t vegetationCount = static_cast<uint32_t>(vegetation.size());
+	out.write(reinterpret_cast<const char*>(&vegetationCount), sizeof(vegetationCount));
+
+	for (const auto& veg : vegetation) {
+		out.write(reinterpret_cast<const char*>(&veg.x), sizeof(veg.x));
+		out.write(reinterpret_cast<const char*>(&veg.y), sizeof(veg.y));
+		out.write(reinterpret_cast<const char*>(&veg.z), sizeof(veg.z));
+		out.write(reinterpret_cast<const char*>(&veg.type), sizeof(veg.type));
+	}
 }
 
 void Chunk::loadFromStream(std::istream& in) {
@@ -258,4 +269,20 @@ void Chunk::loadFromStream(std::istream& in) {
 
 	// Load block data
     blockIndices.loadFromStream(in);
+
+	// --- Load vegetation ---
+	uint32_t vegetationCount;
+	in.read(reinterpret_cast<char*>(&vegetationCount), sizeof(vegetationCount));
+
+	vegetation.clear();
+	vegetation.reserve(vegetationCount);
+
+	for (uint32_t i = 0; i < vegetationCount; ++i) {
+		VegetationInstance veg;
+		in.read(reinterpret_cast<char*>(&veg.x), sizeof(veg.x));
+		in.read(reinterpret_cast<char*>(&veg.y), sizeof(veg.y));
+		in.read(reinterpret_cast<char*>(&veg.z), sizeof(veg.z));
+		in.read(reinterpret_cast<char*>(&veg.type), sizeof(veg.type));
+		vegetation.push_back(veg);
+	}
 }

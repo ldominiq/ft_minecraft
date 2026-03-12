@@ -349,6 +349,7 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
+    vegetationShader = std::make_shared<Shader>("shaders/vegetation.vert", "shaders/vegetation.frag");
 
     // Load individual block textures into a texture array
     textureManager.loadResourcePack("assets");
@@ -357,6 +358,9 @@ void App::loadResources() {
 
     activeShader->use();
     activeShader->setInt("blockTextures", 0);
+
+    vegetationShader->use();
+    vegetationShader->setInt("blockTextures", 0);
 
     // shader configuration
     // --------------------
@@ -367,8 +371,9 @@ void App::loadResources() {
     gBufferShader->use();
     gBufferShader->setInt("blockTextures", 0);
 
-    // Wire the texture manager to subsystems that need it
+    // Wire the texture manager and shaders to subsystems that need them
     renderer->setTextureManager(&textureManager);
+    renderer->setVegetationShader(vegetationShader);
 }
 
 void App::gameTick() {
@@ -754,6 +759,22 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
+
+    // Setup vegetation shader with same uniforms
+    if (vegetationShader) {
+        vegetationShader->use();
+        vegetationShader->setVec4("clipPlane", clipPlane);
+        vegetationShader->setMat4("view", view);
+        vegetationShader->setMat4("projection", projection);
+        vegetationShader->setVec3("viewPos", camera->getPlayer()->getPosition());
+
+        // Use simplified lighting for vegetation
+        vegetationShader->setVec3("lightDir", glm::vec3(0.5f, -1.0f, 0.3f)); // Sun direction
+        vegetationShader->setVec3("lightColor", glm::vec3(1.0f, 0.95f, 0.8f)); // Warm sunlight
+        vegetationShader->setVec3("ambientColor", glm::vec3(0.4f, 0.4f, 0.5f)); // Ambient light
+
+        activeShader->use(); // Switch back to main shader
+    }
 
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
     renderer->render(activeShader);
