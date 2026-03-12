@@ -40,6 +40,11 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
         paletteIndex = static_cast<uint32_t>(palette.size());
         palette.push_back(type);
         paletteMap[type] = paletteIndex;
+        if (paletteIndex >= (1u << blockIndices.bitsPerEntry())) {
+            uint8_t needed = 1;
+            while ((1u << needed) <= paletteIndex) ++needed;
+            blockIndices.grow(needed);
+        }
     } else {
     	paletteIndex = it->second;
     }

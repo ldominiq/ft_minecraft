@@ -53,6 +53,33 @@ uint32_t BitPackedArray::get(size_t index) const {
     return value;
 }
 
+void BitPackedArray::grow(uint8_t newBitsPerEntry) {
+    if (newBitsPerEntry <= m_bitsPerEntry)
+        return;
+    if (newBitsPerEntry > 31)
+        throw std::invalid_argument("bitsPerEntry must be between 1 and 31");
+
+    std::vector<uint32_t> values;
+    decodeAll(values);
+
+    m_bitsPerEntry = newBitsPerEntry;
+    size_t totalBits = m_size * m_bitsPerEntry;
+    size_t numWords = (totalBits + 31) / 32;
+    m_data.assign(numWords, 0);
+
+    size_t bitPos = 0;
+    uint32_t mask = (1u << m_bitsPerEntry) - 1;
+    for (size_t i = 0; i < m_size; ++i) {
+        uint32_t value = values[i] & mask;
+        size_t wordIndex = bitPos >> 5;
+        size_t bitOffset = bitPos & 31;
+        m_data[wordIndex] |= value << bitOffset;
+        if (bitOffset + m_bitsPerEntry > 32)
+            m_data[wordIndex + 1] |= value >> (32 - bitOffset);
+        bitPos += m_bitsPerEntry;
+    }
+}
+
 void BitPackedArray::decodeAll(std::vector<uint32_t>& out) const {
     out.resize(m_size);
 

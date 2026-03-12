@@ -187,12 +187,12 @@ void VegetationRenderer::render() const {
     if (VAO == 0 || instanceCount == 0)
         return;
 
-    // Enable alpha blending for transparent vegetation textures
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
     // Disable face culling so both sides of quads are visible
     glDisable(GL_CULL_FACE);
+
+    // No blending — rely on discard in fragment shader for transparent pixels.
+    // Blending + depth writes causes transparent parts of the quad to occlude
+    // terrain behind (see-through holes depending on draw order / angle).
 
     glBindVertexArray(VAO);
     glDrawArraysInstanced(GL_TRIANGLES, 0, 12, instanceCount); // 12 vertices (2 quads * 6 vertices)
@@ -200,7 +200,6 @@ void VegetationRenderer::render() const {
 
     // Restore default state
     glEnable(GL_CULL_FACE);
-    glDisable(GL_BLEND);
 }
 
 void VegetationRenderer::clearInstances() {

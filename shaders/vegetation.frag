@@ -20,20 +20,22 @@ void main() {
     // Sample texture from array
     vec4 texColor = texture(blockTextures, vec3(fs_in.TexCoord, fs_in.TexLayer));
 
-    // Discard fully transparent pixels (for cross-pattern vegetation)
-    if (texColor.a < 0.1)
+    // Discard transparent pixels — threshold raised to catch semi-transparent
+    // mipmap edge pixels that would otherwise occlude terrain behind
+    if (texColor.a < 0.5)
         discard;
 
-    // Simple diffuse lighting
-    vec3 normal = normalize(fs_in.Normal);
+    // Use a fixed upward normal for vegetation to avoid angle-dependent
+    // brightness from cross-pattern quad normals
+    vec3 normal = vec3(0.0, 1.0, 0.0);
     vec3 lightDirNorm = normalize(-lightDir);
     float diff = max(dot(normal, lightDirNorm), 0.0);
 
-    // Ambient + diffuse
+    // Ambient + diffuse, clamped to avoid overbright whites
     vec3 ambient = ambientColor * fs_in.SkyLight;
     vec3 diffuse = lightColor * diff * fs_in.SkyLight;
 
-    vec3 result = (ambient + diffuse) * texColor.rgb;
+    vec3 result = min(ambient + diffuse, vec3(1.0)) * texColor.rgb;
 
     FragColor = vec4(result, texColor.a);
 }
