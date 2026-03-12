@@ -592,8 +592,8 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             };
             std::mt19937 rng(seedData);
 
-            // Skip some columns for variety (40% chance to place vegetation)
-            if (rng() % 100 >= 40)
+            // Skip some columns for variety (10% chance to place vegetation)
+            if (rng() % 100 >= 10)
                 continue;
 
             // Choose vegetation type based on biome
@@ -602,14 +602,16 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             switch (biome) {
                 case BiomeType::PLAINS:
                 case BiomeType::FOREST: {
-                    // 70% short grass, 20% tall grass, 10% flowers
+                    // 70% short grass, 10% poppy, 10% cornflower, 10% pink tulip
                     int roll = rng() % 100;
                     if (roll < 70)
                         vegType = BlockType::SHORT_GRASS;
-                    // else if (roll < 90)
-                    //     vegType = BlockType::TALL_GRASS;
-                    else
+                    else if (roll < 80)
+                        vegType = BlockType::POPPY;
+                    else if (roll < 90)
                         vegType = BlockType::CORNFLOWER;
+                    else if (roll < 100)
+                        vegType = BlockType::PINK_TULIP;
                     break;
                 }
                 case BiomeType::SWAMP: {
@@ -629,12 +631,9 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             veg.z = static_cast<uint8_t>(z);
             veg.type = vegType;
             vegetation.push_back(veg);
-        }
-    }
 
-    // Debug: Print how many vegetation instances were generated
-    if (!vegetation.empty()) {
-        std::cout << "Generated " << vegetation.size() << " vegetation instances in chunk ("
-                  << originX / WIDTH << ", " << originZ / DEPTH << ")" << std::endl;
+            // Also store in block grid so raycasting can target it
+            setBlock(x, surfaceY + 1, z, vegType);
+        }
     }
 }

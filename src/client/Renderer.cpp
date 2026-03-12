@@ -48,6 +48,14 @@ bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 
     std::shared_ptr<ChunkRenderer> currChunk = it->second;
 
+    // If breaking a block, also clear vegetation above it
+    if (type == BlockType::AIR && y + 1 < Chunk::HEIGHT) {
+        BlockType blockAbove = currChunk->getBlock(x, y + 1, z);
+        if (isBlockVegetation(blockAbove)) {
+            currChunk->setBlock(x, y + 1, z, BlockType::AIR);
+        }
+    }
+
     currChunk->setBlock(x, y, z, type);
 	currChunk->needsUpdate = true;
 

@@ -749,6 +749,21 @@ bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 
     std::shared_ptr<Chunk> currChunk = it->second;
 
+    // When placing a block, if the target position contains vegetation, replace it
+    if (type != BlockType::AIR) {
+        BlockType targetBlock = currChunk->getBlock(x, y, z);
+        if (isBlockVegetation(targetBlock)) {
+            auto& vegList = currChunk->vegetation;
+            vegList.erase(
+                std::remove_if(vegList.begin(), vegList.end(),
+                    [x, y, z](const Chunk::VegetationInstance& v) {
+                        return v.x == x && v.y == y && v.z == z;
+                    }),
+                vegList.end()
+            );
+        }
+    }
+
 	updatedBlocks.push_back({targetCoords, type});
 
     // Handle vegetation: if breaking a block that has vegetation above, remove the vegetation

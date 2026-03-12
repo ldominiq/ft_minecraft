@@ -7,6 +7,7 @@ layout (location = 2) in vec3 aNormal;    // Normal vector
 layout (location = 3) in vec3 aInstancePos;    // World position of vegetation instance
 layout (location = 4) in float aTexLayer;      // Texture layer index for this instance
 layout (location = 5) in float aRotation;      // Random rotation around Y-axis
+layout (location = 6) in float aSkyLight;      // Sky-light level (0.0 = dark, 1.0 = full sun)
 
 out VS_OUT {
     vec3 FragPos;
@@ -37,7 +38,7 @@ void main() {
     vs_out.Normal = rotationMatrix * aNormal;
     vs_out.TexCoord = aTexCoord;
     vs_out.TexLayer = aTexLayer;
-    vs_out.SkyLight = 1.0; // Vegetation is always at surface, fully lit
+    vs_out.SkyLight = aSkyLight;
 
     gl_Position = projection * view * worldPosition;
     gl_ClipDistance[0] = dot(worldPosition, clipPlane);

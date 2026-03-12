@@ -54,7 +54,10 @@ bool Chunk::isBlockVisible(glm::ivec3 pos) {
 
 	if (!hasAllAdjacentChunkLoaded()) return false;
 
-    if (!isBlockSolid(getBlock(x,y,z)))
+    BlockType block = getBlock(x, y, z);
+    if (isBlockVegetation(block))
+        return true;
+    if (!isBlockSolid(block))
         return false;
 
     auto getBlockOrNeighbor = [&](int dx, int dy, int dz, Direction dir) -> BlockType {
@@ -284,5 +287,6 @@ void Chunk::loadFromStream(std::istream& in) {
 		in.read(reinterpret_cast<char*>(&veg.z), sizeof(veg.z));
 		in.read(reinterpret_cast<char*>(&veg.type), sizeof(veg.type));
 		vegetation.push_back(veg);
+		setBlock(veg.x, veg.y, veg.z, veg.type);
 	}
 }

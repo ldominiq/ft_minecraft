@@ -322,6 +322,7 @@ void ChunkRenderer::buildMeshData() {
                 BlockType currentBlock = blockTypeVector[idx];
                 
                 if (currentBlock == BlockType::AIR) continue;
+                if (isBlockVegetation(currentBlock)) continue;
 
                 bool isWater = (currentBlock == BlockType::WATER);
 
@@ -482,10 +483,28 @@ void ChunkRenderer::buildVegetationMesh() {
 
     vegetationRenderer->setTextureManager(textureManager);
 
-    if (!vegetation.empty()) {
-        std::cout << "Building vegetation mesh: " << vegetation.size() << " instances in chunk ("
-                  << originX / WIDTH << ", " << originZ / DEPTH << ")" << std::endl;
-        vegetationRenderer->buildInstances(vegetation.data(), vegetation.size(), originX, originZ);
+    // Derive vegetation instances from the block grid instead of maintaining a separate list
+    std::vector<Chunk::VegetationInstance> vegInstances;
+    for (int x = 0; x < WIDTH; ++x) {
+        for (int z = 0; z < DEPTH; ++z) {
+            for (int y = 0; y < HEIGHT; ++y) {
+                BlockType block = getBlock(x, y, z);
+                if (isBlockVegetation(block)) {
+                    Chunk::VegetationInstance veg;
+                    veg.x = static_cast<uint8_t>(x);
+                    veg.y = static_cast<uint8_t>(y);
+                    veg.z = static_cast<uint8_t>(z);
+                    veg.type = block;
+                    vegInstances.push_back(veg);
+                }
+            }
+        }
+    }
+
+    if (!vegInstances.empty()) {
+        vegetationRenderer->buildInstances(vegInstances.data(), vegInstances.size(), originX, originZ, this);
         vegetationRenderer->uploadMesh();
+    } else {
+        vegetationRenderer->clearInstances();
     }
 }

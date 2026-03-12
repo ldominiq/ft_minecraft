@@ -39,8 +39,9 @@ enum class BlockType : ItemID {
 	URANIUM,
 	LAVA,
 	SHORT_GRASS,
-	// TALL_GRASS,
 	CORNFLOWER,
+	POPPY,
+	PINK_TULIP,
 	END
 };
 
@@ -103,8 +104,10 @@ public:
 		ItemDef{ makeBlock(BlockType::URANIUM, "Uranium", 10) },
 		ItemDef{ makeLiquid(BlockType::LAVA, "Lava", 4) },
 		ItemDef{ makeBlock(BlockType::SHORT_GRASS, "Short Grass", 1) },
-		// ItemDef{ makeBlock(BlockType::TALL_GRASS, "Tall Grass", 1) },
 		ItemDef{ makeBlock(BlockType::CORNFLOWER, "Cornflower", 1) },
+		ItemDef{ makeBlock(BlockType::POPPY, "Poppy", 1) },
+		ItemDef{ makeBlock(BlockType::PINK_TULIP, "Pink Tulip", 1) },
+
 	};
 
 	// static inline std::vector<ItemDef> liquids = {
@@ -144,12 +147,13 @@ public:
 	}
 };
 
+// TODO: find easier way to check
 inline static bool isBlockSolid(const BlockType &b) {
 	return b != BlockType::AIR && b != BlockType::WATER &&
-	       b != BlockType::SHORT_GRASS && b != BlockType::CORNFLOWER;
+	       b != BlockType::SHORT_GRASS && b != BlockType::CORNFLOWER && b != BlockType::POPPY && b != BlockType::PINK_TULIP;
 }
 inline static bool isBlockVegetation(const BlockType &b) {
-	return b == BlockType::SHORT_GRASS || b == BlockType::CORNFLOWER;
+	return b == BlockType::SHORT_GRASS || b == BlockType::CORNFLOWER || b == BlockType::POPPY || b == BlockType::PINK_TULIP;
 }
 inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES; }
 

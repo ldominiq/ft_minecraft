@@ -43,50 +43,42 @@ std::vector<float> VegetationRenderer::generateCrossPatternMesh() {
 
     // Quad 1: Diagonal from (-width/2, 0, -width/2) to (width/2, 0, width/2)
     // Bottom-left
-    vertices.insert(vertices.end(), {-width/2, 0.0f, -width/2,   0.0f, 1.0f,   0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), {-width/2, 0.0f, -width/2,   0.0f, 0.0f,   0.707f, 0.0f, 0.707f});
     // Bottom-right
-    vertices.insert(vertices.end(), { width/2, 0.0f,  width/2,   1.0f, 1.0f,   0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), { width/2, 0.0f,  width/2,   1.0f, 0.0f,   0.707f, 0.0f, 0.707f});
     // Top-right
-    vertices.insert(vertices.end(), { width/2, height, width/2,  1.0f, 0.0f,   0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), { width/2, height, width/2,  1.0f, 1.0f,   0.707f, 0.0f, 0.707f});
 
     // Second triangle of quad 1
-    vertices.insert(vertices.end(), { width/2, height, width/2,  1.0f, 0.0f,   0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), { width/2, height, width/2,  1.0f, 1.0f,   0.707f, 0.0f, 0.707f});
     // Top-left
-    vertices.insert(vertices.end(), {-width/2, height,-width/2,  0.0f, 0.0f,   0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), {-width/2, height,-width/2,  0.0f, 1.0f,   0.707f, 0.0f, 0.707f});
     // Bottom-left
-    vertices.insert(vertices.end(), {-width/2, 0.0f, -width/2,   0.0f, 1.0f,   0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), {-width/2, 0.0f, -width/2,   0.0f, 0.0f,   0.707f, 0.0f, 0.707f});
 
     // Quad 2: Diagonal from (width/2, 0, -width/2) to (-width/2, 0, width/2)
     // Bottom-left
-    vertices.insert(vertices.end(), { width/2, 0.0f, -width/2,   0.0f, 1.0f,  -0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), { width/2, 0.0f, -width/2,   0.0f, 0.0f,  -0.707f, 0.0f, 0.707f});
     // Bottom-right
-    vertices.insert(vertices.end(), {-width/2, 0.0f,  width/2,   1.0f, 1.0f,  -0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), {-width/2, 0.0f,  width/2,   1.0f, 0.0f,  -0.707f, 0.0f, 0.707f});
     // Top-right
-    vertices.insert(vertices.end(), {-width/2, height, width/2,  1.0f, 0.0f,  -0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), {-width/2, height, width/2,  1.0f, 1.0f,  -0.707f, 0.0f, 0.707f});
 
     // Second triangle of quad 2
-    vertices.insert(vertices.end(), {-width/2, height, width/2,  1.0f, 0.0f,  -0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), {-width/2, height, width/2,  1.0f, 1.0f,  -0.707f, 0.0f, 0.707f});
     // Top-left
-    vertices.insert(vertices.end(), { width/2, height,-width/2,  0.0f, 0.0f,  -0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), { width/2, height,-width/2,  0.0f, 1.0f,  -0.707f, 0.0f, 0.707f});
     // Bottom-left
-    vertices.insert(vertices.end(), { width/2, 0.0f, -width/2,   0.0f, 1.0f,  -0.707f, 0.0f, 0.707f});
+    vertices.insert(vertices.end(), { width/2, 0.0f, -width/2,   0.0f, 0.0f,  -0.707f, 0.0f, 0.707f});
 
     return vertices;
 }
 
 void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instances, size_t count,
-                                        int chunkOriginX, int chunkOriginZ) {
-    // if (!textureManager || count == 0) {
-    //     instanceCount = 0;
-    //     return;
-    // }
-
-    // Build instance data: world position (3), texture layer (1), rotation (1) = 5 floats per instance
+                                        int chunkOriginX, int chunkOriginZ, const Chunk* chunk) {
+    // Build instance data: world position (3), texture layer (1), rotation (1), skylight (1) = 6 floats per instance
     std::vector<float> instanceData;
-    instanceData.reserve(count * 5);
-
-    std::mt19937 rng(chunkOriginX * 374761393 + chunkOriginZ * 668265263); // Deterministic per chunk
-    std::uniform_real_distribution<float> rotDist(0.0f, 2.0f * 3.14159265f);
+    instanceData.reserve(count * 6);
 
     for (size_t i = 0; i < count; ++i) {
         const auto& veg = instances[i];
@@ -106,11 +98,18 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
         std::mt19937 posRng(seed);
         float rotation = std::uniform_real_distribution<float>(0.0f, 2.0f * 3.14159265f)(posRng);
 
+        // Get sky-light from chunk data
+        float skyLightVal = 1.0f;
+        if (chunk) {
+            skyLightVal = static_cast<float>(chunk->getSkyLight(veg.x, veg.y, veg.z)) / 15.0f;
+        }
+
         instanceData.push_back(worldX);
         instanceData.push_back(worldY);
         instanceData.push_back(worldZ);
         instanceData.push_back(texLayer);
         instanceData.push_back(rotation);
+        instanceData.push_back(skyLightVal);
     }
 
     instanceCount = static_cast<uint32_t>(count);
@@ -159,7 +158,7 @@ void VegetationRenderer::uploadMesh() {
     // Instance attributes (per-instance data)
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
 
-    GLsizei instanceStride = 5 * sizeof(float); // worldPos(3) + texLayer(1) + rotation(1)
+    GLsizei instanceStride = 6 * sizeof(float); // worldPos(3) + texLayer(1) + rotation(1) + skylight(1)
 
     // Location 3: instance position (vec3)
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, instanceStride, (void*)0);
@@ -175,6 +174,11 @@ void VegetationRenderer::uploadMesh() {
     glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, instanceStride, (void*)(4 * sizeof(float)));
     glEnableVertexAttribArray(5);
     glVertexAttribDivisor(5, 1);
+
+    // Location 6: skylight (float)
+    glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, instanceStride, (void*)(5 * sizeof(float)));
+    glEnableVertexAttribArray(6);
+    glVertexAttribDivisor(6, 1);
 
     glBindVertexArray(0);
 }
@@ -197,4 +201,8 @@ void VegetationRenderer::render() const {
     // Restore default state
     glEnable(GL_CULL_FACE);
     glDisable(GL_BLEND);
+}
+
+void VegetationRenderer::clearInstances() {
+    instanceCount = 0;
 }

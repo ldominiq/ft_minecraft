@@ -29,14 +29,18 @@ public:
     // Set the TextureManager (must be called before building)
     void setTextureManager(const TextureManager* tm) { textureManager = tm; }
 
-    // Build instance buffer from chunk vegetation data
-    void buildInstances(const Chunk::VegetationInstance* instances, size_t count, int chunkOriginX, int chunkOriginZ);
+    // Build instance buffer from chunk vegetation data (reads skylight from chunk)
+    void buildInstances(const Chunk::VegetationInstance* instances, size_t count,
+                        int chunkOriginX, int chunkOriginZ, const Chunk* chunk = nullptr);
 
     // Upload mesh and instance data to GPU
     void uploadMesh();
 
     // Render all vegetation instances
     void render() const;
+
+    // Clear instance data (when no vegetation exists)
+    void clearInstances();
 
     // Release GL resources
     void releaseGL();

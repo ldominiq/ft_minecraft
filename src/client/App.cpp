@@ -760,7 +760,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
 
-    // Setup vegetation shader with same uniforms
+    // Setup vegetation shader with same lighting as terrain
     if (vegetationShader) {
         vegetationShader->use();
         vegetationShader->setVec4("clipPlane", clipPlane);
@@ -768,10 +768,19 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
         vegetationShader->setMat4("projection", projection);
         vegetationShader->setVec3("viewPos", camera->getPlayer()->getPosition());
 
-        // Use simplified lighting for vegetation
-        vegetationShader->setVec3("lightDir", glm::vec3(0.5f, -1.0f, 0.3f)); // Sun direction
-        vegetationShader->setVec3("lightColor", glm::vec3(1.0f, 0.95f, 0.8f)); // Warm sunlight
-        vegetationShader->setVec3("ambientColor", glm::vec3(0.4f, 0.4f, 0.5f)); // Ambient light
+        // Use the same day/night cycle as the main lighting system
+        glm::vec3 sunDir = lighting->getDirectionalLightDirection();
+        float sunElevation = sunDir.y;
+        float day = glm::clamp(sunElevation * 2.0f, 0.0f, 1.0f);
+        day = glm::smoothstep(0.0f, 1.0f, day);
+
+        constexpr float nightAmbientMin = 0.3f;
+        glm::vec3 ambientColor = lighting->getDirectionalAmbientColor() * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
+        glm::vec3 diffuseColor = lighting->getDirectionalDiffuseColor() * day;
+
+        vegetationShader->setVec3("lightDir", -sunDir);
+        vegetationShader->setVec3("lightColor", diffuseColor);
+        vegetationShader->setVec3("ambientColor", ambientColor);
 
         activeShader->use(); // Switch back to main shader
     }
