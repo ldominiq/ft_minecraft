@@ -6,6 +6,7 @@ in VS_OUT {
     vec2 TexCoord;
     float TexLayer;
     float SkyLight;
+    float IsUnderwater;
 } fs_in;
 
 out vec4 FragColor;
@@ -36,6 +37,12 @@ void main() {
     vec3 diffuse = lightColor * diff * fs_in.SkyLight;
 
     vec3 result = min(ambient + diffuse, vec3(1.0)) * texColor.rgb;
+
+    // Apply underwater tint — blue-green color absorption
+    if (fs_in.IsUnderwater > 0.5) {
+        vec3 waterTint = vec3(0.4, 0.7, 0.6);
+        result *= waterTint;
+    }
 
     FragColor = vec4(result, texColor.a);
 }
