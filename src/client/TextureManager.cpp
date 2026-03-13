@@ -257,7 +257,14 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::BROWN_MUSHROOM,        layer("brown_mushroom") },
         { BlockType::WITHER_ROSE,           layer("wither_rose") },
         { BlockType::SEAGRASS,              layer("seagrass") },
+        { BlockType::TALL_SEAGRASS_BOTTOM,  layer("tall_seagrass_bottom") },
+        { BlockType::TALL_SEAGRASS_TOP,     layer("tall_seagrass_top") },
         { BlockType::KELP,                  layer("kelp") },
+        { BlockType::KELP_PLANT,            layer("kelp_plant") },
+        { BlockType::BRAIN_CORAL,           layer("brain_coral") },
+        { BlockType::BRAIN_CORAL_FAN,       layer("brain_coral_fan") },
+        { BlockType::BUBBLE_CORAL,          layer("bubble_coral") },
+        { BlockType::BUBBLE_CORAL_FAN,      layer("bubble_coral_fan") },
     };
     for (const auto& [type, l] : uniformBlocks) {
         blockTextureMap[type] = BlockTextures::uniform(l);

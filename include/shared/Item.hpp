@@ -55,7 +55,14 @@ enum class BlockType : ItemID {
 	RED_MUSHROOM,
 	BROWN_MUSHROOM,
 	SEAGRASS,
+	TALL_SEAGRASS_BOTTOM,
+	TALL_SEAGRASS_TOP,
 	KELP,
+	KELP_PLANT,
+	BRAIN_CORAL,
+	BRAIN_CORAL_FAN,
+	BUBBLE_CORAL,
+	BUBBLE_CORAL_FAN,
 	END
 };
 
@@ -133,8 +140,6 @@ public:
 		ItemDef{ makeBlock(BlockType::DANDELION, 			"Dandelion", 1) },
 		ItemDef{ makeBlock(BlockType::RED_MUSHROOM, 		"Red Mushroom", 1) },
 		ItemDef{ makeBlock(BlockType::BROWN_MUSHROOM, 		"Brown Mushroom", 1) },
-		ItemDef{ makeBlock(BlockType::SEAGRASS, 			"Seagrass", 1) },
-		ItemDef{ makeBlock(BlockType::KELP, 				"Kelp", 1) },
 	};
 
 	// static inline std::vector<ItemDef> liquids = {
@@ -192,8 +197,33 @@ inline static constexpr BlockType VEGETATION_BLOCKS[] = {
 	BlockType::RED_MUSHROOM,
 	BlockType::BROWN_MUSHROOM,
 	BlockType::SEAGRASS,
+	BlockType::TALL_SEAGRASS_BOTTOM,
+	BlockType::TALL_SEAGRASS_TOP,
 	BlockType::KELP,
+	BlockType::KELP_PLANT,
+	BlockType::BRAIN_CORAL,
+	BlockType::BRAIN_CORAL_FAN,
+	BlockType::BUBBLE_CORAL,
+	BlockType::BUBBLE_CORAL_FAN,
 };
+
+inline static constexpr BlockType SEA_VEGETATION_BLOCKS[] = {
+	BlockType::SEAGRASS,
+	BlockType::TALL_SEAGRASS_BOTTOM,
+	BlockType::TALL_SEAGRASS_TOP,
+	BlockType::KELP,
+	BlockType::KELP_PLANT,
+	BlockType::BRAIN_CORAL,
+	BlockType::BRAIN_CORAL_FAN,
+	BlockType::BUBBLE_CORAL,
+	BlockType::BUBBLE_CORAL_FAN,
+};
+
+inline static bool isSeaVegetation(const BlockType &b) {
+	for (auto s : SEA_VEGETATION_BLOCKS)
+		if (b == s) return true;
+	return false;
+}
 
 inline static bool isBlockVegetation(const BlockType &b) {
 	for (auto v : VEGETATION_BLOCKS)
