@@ -147,15 +147,25 @@ public:
 	}
 };
 
-// TODO: find easier way to check
-inline static bool isBlockSolid(const BlockType &b) {
-	return b != BlockType::AIR && b != BlockType::WATER &&
-	       b != BlockType::SHORT_GRASS && b != BlockType::CORNFLOWER && b != BlockType::POPPY && b != BlockType::PINK_TULIP;
-}
+inline static constexpr BlockType VEGETATION_BLOCKS[] = {
+	BlockType::SHORT_GRASS,
+	BlockType::CORNFLOWER,
+	BlockType::POPPY,
+	BlockType::PINK_TULIP,
+	// BlockType::SEAWEED,
+	// BlockType::KELP,
+};
+
 inline static bool isBlockVegetation(const BlockType &b) {
-	return b == BlockType::SHORT_GRASS || b == BlockType::CORNFLOWER || b == BlockType::POPPY || b == BlockType::PINK_TULIP;
+	for (auto v : VEGETATION_BLOCKS)
+		if (b == v) return true;
+	return false;
 }
 inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES; }
+
+inline static bool isBlockSolid(const BlockType &b) {
+	return b != BlockType::AIR && b != BlockType::WATER && !isBlockVegetation(b);
+}
 
 template<typename Enum>
 constexpr bool inRange(ItemID id)

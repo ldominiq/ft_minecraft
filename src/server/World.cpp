@@ -389,7 +389,7 @@ std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialB
 
 				BlockType type = getBlockWorld(newPosition);
 
-				if (type == BlockType::AIR)
+				if (type == BlockType::AIR || isBlockVegetation(type))
 				{
 					if (dir == down)
 					{
@@ -421,7 +421,8 @@ std::vector<std::shared_ptr<s_liquid>> World::waterFlowTowardsShortestPath(const
 		glm::ivec3 pos = path.currPath.front();
 		glm::ivec3 position = pos + initialBlockPos;
 
-		if (getBlockWorld(position) != BlockType::AIR) continue ;
+		BlockType block = getBlockWorld(position);
+		if (block != BlockType::AIR && !isBlockVegetation(block)) continue ;
 
 		int newLiquidPropagationValue = liquid->currPropagation - 1;
 		if (path.currPath.size() == 2 && path.currPath.back() == down) // if propagation goes to 0 but last is down. make sure it goes down and doesn't keep floating
@@ -506,7 +507,7 @@ void World::updateLiquids()
 			visitedPositions.insert(newPosition);
 
 			BlockType neighbor = getBlockWorld(newPosition);
-			if (neighbor == BlockType::AIR)
+			if (neighbor == BlockType::AIR || isBlockVegetation(neighbor))
 			{
 				std::shared_ptr<s_liquid> newLiquidPtr = std::make_shared<s_liquid>();
 				newLiquidPtr->currPropagation = liquid->currPropagation - 1;

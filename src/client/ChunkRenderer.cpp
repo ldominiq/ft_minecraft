@@ -315,6 +315,27 @@ void ChunkRenderer::buildMeshData() {
         return adjacentChunk->getSkyLight(remappedX, neighborY, remappedZ);
     };
 
+    struct FaceDir {
+        int dx, dy, dz;
+        Direction neighborDir;
+        int faceIndex;
+    };
+
+    static constexpr FaceDir faces[6] = {
+        {  0,  0, +1, NORTH, 0 }, // front
+        {  0,  0, -1, SOUTH, 1 }, // back
+        {  0, +1,  0, NONE,  2 }, // top
+        {  0, -1,  0, NONE,  3 }, // bottom
+        { +1,  0,  0, EAST,  4 }, // right
+        { -1,  0,  0, WEST,  5 }  // left
+    };
+
+    // Helper: convert a sky-light value (0–15) to a 0.0–1.0 float
+    // for the vertex data.  We do this once per face.
+    auto lightToFloat = [](uint8_t lightVal) -> float {
+        return static_cast<float>(lightVal) / 15.0f;
+    };
+
     for (int x = 0; x < WIDTH; ++x) {
         for (int y = 0; y < HEIGHT; ++y) {
             for (int z = 0; z < DEPTH; ++z) {
@@ -326,82 +347,23 @@ void ChunkRenderer::buildMeshData() {
 
                 bool isWater = (currentBlock == BlockType::WATER);
 
-                // Helper: convert a sky-light value (0–15) to a 0.0–1.0 float
-                // for the vertex data.  We do this once per face.
-                auto lightToFloat = [](uint8_t lightVal) -> float {
-                    return static_cast<float>(lightVal) / 15.0f;
-                };
-
-                // FRONT (+Z)
-                BlockType neighborBlock = getBlockOrNeighbor(x, y, z, 0, 0, +1, NORTH);
-                float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, 0, +1, NORTH));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 0, faceSkyLight);
+                for (const FaceDir& face : faces) {
+                    BlockType neighborBlock;
+                    if ((face.dy == +1 && y == HEIGHT - 1) || (face.dy == -1 && y == 0)) {
+                        neighborBlock = BlockType::AIR; // world edge
+                    } else {
+                        neighborBlock = getBlockOrNeighbor(x, y, z, face.dx, face.dy, face.dz, face.neighborDir);
                     }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 0, faceSkyLight);
-                }
 
-                // BACK (-Z)
-                neighborBlock = getBlockOrNeighbor(x, y, z, 0, 0, -1, SOUTH);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, 0, -1, SOUTH));
+                    float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, face.dx, face.dy, face.dz, face.neighborDir));
 
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 1, faceSkyLight);
+                    if (isWater) {
+                        if (neighborBlock == BlockType::AIR || isBlockTransparent(neighborBlock) || isBlockVegetation(neighborBlock)) {
+                            addWaterFace(x, y, z, face.faceIndex, faceSkyLight);
+                        }
+                    } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
+                        addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
                     }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 1, faceSkyLight);
-                }
-
-                // TOP (+Y)
-                neighborBlock = (y == HEIGHT - 1) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, +1, 0, NONE);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, +1, 0, NONE));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 2, faceSkyLight);
-                    }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 2, faceSkyLight);
-                }
-
-                // BOTTOM (-Y)
-                neighborBlock = (y == 0) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, -1, 0, NONE);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, -1, 0, NONE));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 3, faceSkyLight);
-                    }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 3, faceSkyLight);
-                }
-
-                // RIGHT (+X)
-                neighborBlock = getBlockOrNeighbor(x, y, z, +1, 0, 0, EAST);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, +1, 0, 0, EAST));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 4, faceSkyLight);
-                    }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 4, faceSkyLight);
-                }
-
-                // LEFT (-X)
-                neighborBlock = getBlockOrNeighbor(x, y, z, -1, 0, 0, WEST);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, -1, 0, 0, WEST));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 5, faceSkyLight);
-                    }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 5, faceSkyLight);
                 }
             }
         }
