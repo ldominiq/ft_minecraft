@@ -788,6 +788,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
         vegetationShader->setVec3("lightColor", diffuseColor);
         vegetationShader->setVec3("ambientColor", ambientColor);
         vegetationShader->setFloat("time", static_cast<float>(glfwGetTime()));
+        vegetationShader->setFloat("seaLevel", 64.0f);
 
         activeShader->use(); // Switch back to main shader
     }
@@ -1281,7 +1282,7 @@ void App::debugWindow() {
                                     lighting->setSkyLUTEnabled(skyLUTEnabled);
                                 if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                                     lighting->setSkyTimePaused(skyTimePaused);
-                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
+                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f"))
                                     lighting->setSkyTimeOffset(skyTimeOffset);
                                 if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
                                     lighting->setSunYawDeg(sunYawDeg);

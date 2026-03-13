@@ -292,6 +292,10 @@ void Chunk::loadFromStream(std::istream& in) {
 		in.read(reinterpret_cast<char*>(&veg.z), sizeof(veg.z));
 		in.read(reinterpret_cast<char*>(&veg.type), sizeof(veg.type));
 		vegetation.push_back(veg);
-		setBlock(veg.x, veg.y, veg.z, veg.type);
+		// Don't overwrite water blocks with sea vegetation —
+		// sea vegetation is rendered purely via the vegetation renderer
+		if (!isSeaVegetation(veg.type)) {
+			setBlock(veg.x, veg.y, veg.z, veg.type);
+		}
 	}
 }

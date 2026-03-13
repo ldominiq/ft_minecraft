@@ -445,7 +445,8 @@ void ChunkRenderer::buildVegetationMesh() {
 
     vegetationRenderer->setTextureManager(textureManager);
 
-    // Derive vegetation instances from the block grid instead of maintaining a separate list
+    // Derive vegetation instances from the block grid (land vegetation)
+    // and from the vegetation list (sea vegetation, which isn't in the block grid)
     std::vector<Chunk::VegetationInstance> vegInstances;
     for (int x = 0; x < WIDTH; ++x) {
         for (int z = 0; z < DEPTH; ++z) {
@@ -460,6 +461,13 @@ void ChunkRenderer::buildVegetationMesh() {
                     vegInstances.push_back(veg);
                 }
             }
+        }
+    }
+
+    // Add sea vegetation from the vegetation list (not stored in the block grid)
+    for (const auto& v : vegetation) {
+        if (isSeaVegetation(v.type)) {
+            vegInstances.push_back(v);
         }
     }
 

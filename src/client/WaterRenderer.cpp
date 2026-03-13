@@ -120,7 +120,9 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     // Disable SSAO for water refraction (SSAO is computed for main camera only)
     sceneShader->setInt("ssaoEnabled", 0);
     texMgr.bind(GL_TEXTURE0);
-    renderer->render(sceneShader, false); // No vegetation in refraction (flowers are above water)
+    // Render with vegetation so sea vegetation is visible in the refraction texture
+    renderer->updateVegetationUniforms(view, projection, clipPlane, camera->getPlayer()->getPosition());
+    renderer->render(sceneShader, true);
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();

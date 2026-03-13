@@ -1,6 +1,8 @@
 #include "VegetationRenderer.hpp"
+#include "Item.hpp"
 #include <cmath>
 #include <random>
+#include <unordered_map>
 
 VegetationRenderer::VegetationRenderer() {}
 
@@ -76,9 +78,24 @@ std::vector<float> VegetationRenderer::generateCrossPatternMesh() {
 
 void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instances, size_t count,
                                         int chunkOriginX, int chunkOriginZ, const Chunk* chunk) {
-    // Build instance data: world position (3), texture layer (1), rotation (1), skylight (1) = 6 floats per instance
+    // Build instance data: world position (3), texture layer (1), rotation (1), skylight (1), columnBaseY (1) = 7 floats per instance
+
+    // First pass: for sea vegetation, find the lowest Y per column (x,z) to use as column base
+    // so the shader can compute coherent sway for stacked blocks.
+    std::unordered_map<uint32_t, uint8_t> columnBaseMap; // key = (x << 16 | z), value = min Y
+    for (size_t i = 0; i < count; ++i) {
+        const auto& veg = instances[i];
+        if (isSeaVegetation(veg.type)) {
+            uint32_t key = (static_cast<uint32_t>(veg.x) << 16) | static_cast<uint32_t>(veg.z);
+            auto it = columnBaseMap.find(key);
+            if (it == columnBaseMap.end() || veg.y < it->second) {
+                columnBaseMap[key] = veg.y;
+            }
+        }
+    }
+
     std::vector<float> instanceData;
-    instanceData.reserve(count * 6);
+    instanceData.reserve(count * 7);
 
     for (size_t i = 0; i < count; ++i) {
         const auto& veg = instances[i];
@@ -104,12 +121,21 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
             skyLightVal = static_cast<float>(chunk->getSkyLight(veg.x, veg.y, veg.z)) / 15.0f;
         }
 
+        // Column base Y: for sea vegetation, use the lowest block in the column;
+        // for land vegetation, use the instance's own Y (single block, irrelevant)
+        float columnBaseY = worldY;
+        if (isSeaVegetation(veg.type)) {
+            uint32_t key = (static_cast<uint32_t>(veg.x) << 16) | static_cast<uint32_t>(veg.z);
+            columnBaseY = static_cast<float>(columnBaseMap[key]);
+        }
+
         instanceData.push_back(worldX);
         instanceData.push_back(worldY);
         instanceData.push_back(worldZ);
         instanceData.push_back(texLayer);
         instanceData.push_back(rotation);
         instanceData.push_back(skyLightVal);
+        instanceData.push_back(columnBaseY);
     }
 
     instanceCount = static_cast<uint32_t>(count);
@@ -158,7 +184,7 @@ void VegetationRenderer::uploadMesh() {
     // Instance attributes (per-instance data)
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
 
-    GLsizei instanceStride = 6 * sizeof(float); // worldPos(3) + texLayer(1) + rotation(1) + skylight(1)
+    GLsizei instanceStride = 7 * sizeof(float); // worldPos(3) + texLayer(1) + rotation(1) + skylight(1) + columnBaseY(1)
 
     // Location 3: instance position (vec3)
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, instanceStride, (void*)0);
@@ -179,6 +205,11 @@ void VegetationRenderer::uploadMesh() {
     glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, instanceStride, (void*)(5 * sizeof(float)));
     glEnableVertexAttribArray(6);
     glVertexAttribDivisor(6, 1);
+
+    // Location 7: column base Y (float)
+    glVertexAttribPointer(7, 1, GL_FLOAT, GL_FALSE, instanceStride, (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(7);
+    glVertexAttribDivisor(7, 1);
 
     glBindVertexArray(0);
 }

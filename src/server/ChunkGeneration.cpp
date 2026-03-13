@@ -561,28 +561,41 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
 
             const int surfaceY = computeTerrainHeight(terrainParams, worldX, worldZ);
 
-            // Only place vegetation above sea level
-            if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 1)
+            if (surfaceY >= HEIGHT - 1)
                 continue;
 
             // Check the block at surface level
             const BlockType surfaceBlock = blocks.at(x, surfaceY, z);
             const BlockType aboveBlock = blocks.at(x, surfaceY + 1, z);
 
-            // Don't place vegetation on water, sand, or snow
-            if (surfaceBlock == BlockType::WATER || surfaceBlock == BlockType::SAND ||
-                surfaceBlock == BlockType::SNOW)
-                continue;
-
-            // Only place vegetation on grass or dirt blocks
-            if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT)
-                continue;
-
-            // Don't place if there's already something above (like a tree)
-            if (aboveBlock != BlockType::AIR)
-                continue;
-
             const BiomeType biome = computeBiome(terrainParams, worldX, worldZ, surfaceY);
+
+            const bool isOcean = (biome == BiomeType::OCEAN);
+
+            if (isOcean) {
+                // Ocean vegetation: surface must be sand and above must be water
+                if (surfaceBlock != BlockType::SAND)
+                    continue;
+                if (aboveBlock != BlockType::WATER)
+                    continue;
+            } else {
+                // Land vegetation: must be above sea level
+                if (surfaceY <= terrainParams.seaLevel)
+                    continue;
+
+                // Don't place vegetation on water, sand, or snow
+                if (surfaceBlock == BlockType::WATER || surfaceBlock == BlockType::SAND ||
+                    surfaceBlock == BlockType::SNOW)
+                    continue;
+
+                // Only place vegetation on grass or dirt blocks
+                if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT)
+                    continue;
+
+                // Don't place if there's already something above (like a tree)
+                if (aboveBlock != BlockType::AIR)
+                    continue;
+            }
 
             // Deterministic RNG seeded per world column
             std::seed_seq seedData{
@@ -627,6 +640,16 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 // { BlockType::TALL_GRASS, 80 },
             };
 
+            static const VegEntry oceanVeg[] = {
+                { BlockType::KELP, 100 },
+                { BlockType::SEAGRASS, 80 },
+                { BlockType::TALL_SEAGRASS_BOTTOM, 60 },
+                { BlockType::BRAIN_CORAL, 80 },
+                { BlockType::BRAIN_CORAL_FAN, 80 },
+                { BlockType::BUBBLE_CORAL, 80 },
+                { BlockType::BUBBLE_CORAL_FAN, 80 },
+            };
+
             // Pick the table for this biome
             const VegEntry* vegTable = nullptr;
             int vegTableSize = 0;
@@ -644,8 +667,12 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     vegTable = swampVeg;
                     vegTableSize = sizeof(swampVeg) / sizeof(swampVeg[0]);
                     break;
+                case BiomeType::OCEAN:
+                    vegTable = oceanVeg;
+                    vegTableSize = sizeof(oceanVeg) / sizeof(oceanVeg[0]);
+                    break;
                 default:
-                    continue; // No vegetation in desert, tundra, mountain, ocean
+                    continue; // No vegetation in desert, tundra, mountain
             }
 
             // Weighted random pick from the table
@@ -664,15 +691,57 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             }
 
             // Add vegetation instance
-            VegetationInstance veg;
-            veg.x = static_cast<uint8_t>(x);
-            veg.y = static_cast<uint8_t>(surfaceY + 1); // Place above surface
-            veg.z = static_cast<uint8_t>(z);
-            veg.type = vegType;
-            vegetation.push_back(veg);
+            if (biome == BiomeType::OCEAN && surfaceY >= terrainParams.seaLevel - 2)
+                continue;
 
-            // Also store in block grid so raycasting can target it
-            setBlock(x, surfaceY + 1, z, vegType);
+            if (isSeaVegetation(vegType)) {
+                if (vegType == BlockType::SEAGRASS || 
+                    vegType == BlockType::BRAIN_CORAL || vegType == BlockType::BUBBLE_CORAL || 
+                    vegType == BlockType::BRAIN_CORAL_FAN || vegType == BlockType::BUBBLE_CORAL_FAN) {
+                    // Simple seagrass/coral: place a single instance
+                    VegetationInstance veg;
+                    veg.x = static_cast<uint8_t>(x);
+                    veg.y = static_cast<uint8_t>(surfaceY + 1);
+                    veg.z = static_cast<uint8_t>(z);
+                    veg.type = vegType;
+                    vegetation.push_back(veg);
+                } else {
+                    // Kelp or tall seagrass: stack multiple instances
+                    int waterDepth = terrainParams.seaLevel - surfaceY;
+                    int maxHeight = std::max(2, waterDepth - 1);
+                    int height = 2 + static_cast<int>(rng() % std::max(1, maxHeight - 1));
+                    height = std::min(height, waterDepth - 1); // don't poke above water
+
+                    bool isKelp = (vegType == BlockType::KELP);
+
+                    for (int dy = 1; dy <= height; ++dy) {
+                        VegetationInstance veg;
+                        veg.x = static_cast<uint8_t>(x);
+                        veg.y = static_cast<uint8_t>(surfaceY + dy);
+                        veg.z = static_cast<uint8_t>(z);
+
+                        bool isTop = (dy == height);
+                        if (isKelp) {
+                            veg.type = isTop ? BlockType::KELP : BlockType::KELP_PLANT;
+                        } else {
+                            // Tall seagrass
+                            veg.type = isTop ? BlockType::TALL_SEAGRASS_TOP : BlockType::TALL_SEAGRASS_BOTTOM;
+                        }
+                        vegetation.push_back(veg);
+                    }
+                }
+                // Don't store in block grid — keep water blocks intact
+            } else {
+                VegetationInstance veg;
+                veg.x = static_cast<uint8_t>(x);
+                veg.y = static_cast<uint8_t>(surfaceY + 1); // Place above surface
+                veg.z = static_cast<uint8_t>(z);
+                veg.type = vegType;
+                vegetation.push_back(veg);
+
+                // Also store in block grid so raycasting can target it
+                setBlock(x, surfaceY + 1, z, vegType);
+            }
         }
     }
 }
