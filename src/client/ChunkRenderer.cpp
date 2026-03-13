@@ -135,10 +135,21 @@ void ChunkRenderer::addFace(int x, int y, int z, BlockType type, int face, float
     }
 
     // Build six vertices for this face using the computed light
+    bool isCactusSide = (type == BlockType::CACTUS && face != 2 && face != 3);
+    const float cactusInset = 1.0f / 16.0f;
+
     for (int i = 0; i < 6; ++i) {
         float px = faceX + faceData[face][i * 3 + 0];
         float py = faceY + faceData[face][i * 3 + 1];
         float pz = faceZ + faceData[face][i * 3 + 2];
+
+        // Cactus: inset side faces by 1/16 of a block
+        if (isCactusSide) {
+            if (face == 0) pz = faceZ + 1.0f - cactusInset;   // front (Z+): pull inward
+            if (face == 1) pz = faceZ + cactusInset;           // back  (Z-): push inward
+            if (face == 4) px = faceX + 1.0f - cactusInset;   // right (X+): pull inward
+            if (face == 5) px = faceX + cactusInset;           // left  (X-): push inward
+        }
 
         float baseU = uvCoords[i * 2 + 0]; // 0 → 1
         float baseV = uvCoords[i * 2 + 1]; // 0 → 1
@@ -361,7 +372,12 @@ void ChunkRenderer::buildMeshData() {
                         if (neighborBlock == BlockType::AIR || isBlockTransparent(neighborBlock) || isBlockVegetation(neighborBlock)) {
                             addWaterFace(x, y, z, face.faceIndex, faceSkyLight);
                         }
-                    } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
+                    } else if (currentBlock == BlockType::CACTUS) {
+                        bool isSide = (face.faceIndex != 2 && face.faceIndex != 3);
+                        if (isSide || !isBlockSolid(neighborBlock) || neighborBlock != BlockType::CACTUS) {
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                        }
+                    } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock) || neighborBlock == BlockType::CACTUS) {
                         addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
                     }
                 }

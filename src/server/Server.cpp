@@ -646,9 +646,11 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		int twohundred0 = 200;
 		int twohundred1 = 200;
 		int twohundred2 = 200;
+		int twohundred3 = 200;
 		player->movement->inventory.insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
 		player->movement->inventory.insertItemsToSlot(BlockType::WATER, 8, twohundred1);
 		player->movement->inventory.insertItemsToSlot(BlockType::STONE, 1, twohundred2);
+		player->movement->inventory.insertItemsToSlot(BlockType::CACTUS, 2, twohundred3);
 
 		auto pkt1 = std::make_unique<NetInventory>();
 		pkt1->amount = 200;
@@ -665,9 +667,15 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		pkt3->slot = 1;
 		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);
 
+		auto pkt4 = std::make_unique<NetInventory>();
+		pkt4->amount = 200;
+		pkt4->slot = 2;
+		pkt4->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::CACTUS);
+
 		groupPkt.push_back(std::move(pkt1));
 		groupPkt.push_back(std::move(pkt2));
 		groupPkt.push_back(std::move(pkt3));
+		groupPkt.push_back(std::move(pkt4));
 	}
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);

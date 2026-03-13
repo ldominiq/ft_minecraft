@@ -160,7 +160,7 @@ void Chunk::computeSkyLight() {
         for (int z = 0; z < DEPTH; ++z) {
             for (int y = HEIGHT - 1; y >= 0; --y) {
                 BlockType block = getBlock(x, y, z);
-                if (isBlockSolid(block))
+                if (isBlockSolid(block) && block != BlockType::CACTUS)
                     break; // Sunlight can't pass through solid blocks
 
                 int index = x + WIDTH * (y + HEIGHT * z);
@@ -208,7 +208,7 @@ void Chunk::computeSkyLight() {
                 continue;
 
             BlockType neighborBlock = getBlock(neighborX, neighborY, neighborZ);
-            if (isBlockSolid(neighborBlock) && !isBlockTransparent(neighborBlock))
+            if (isBlockSolid(neighborBlock) && !isBlockTransparent(neighborBlock) && neighborBlock != BlockType::CACTUS)
                 continue; // Light doesn't pass through solid blocks
 
             int neighborIndex = neighborX + WIDTH * (neighborY + HEIGHT * neighborZ);
