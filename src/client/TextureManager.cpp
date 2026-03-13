@@ -215,30 +215,53 @@ void TextureManager::setupBlockTextureMapping() {
     // ── Tinted variants ────────────────────────────────────────────
     // Minecraft grass/leaves textures are grayscale — the game multiplies
     // them by a biome color at runtime.  We do it once at load time.
-    //
-    // These RGB values come from Minecraft's plains biome foliage/grass colors.
-    // We can add more biomes later and pick the right layer in buildMeshData
-    // based on the chunk's biome.
 
     // Plains grass tint (Minecraft: #91BD59)
     int grassTopTinted  = addTintedLayer("grass_block_top", 0x91, 0xBD, 0x59);
-
     // Plains leaves tint (Minecraft: #77AB2F)
     int leavesTinted = addTintedLayer("spruce_leaves", 0x61, 0x99, 0x61);
-
     int waterTinted = addTintedLayer("water_overlay", 0x64, 0x64, 0xFF);
+    int grassTinted = addTintedLayer("grass", 0x91, 0xBD, 0x59);
 
-    blockTextureMap[BlockType::DIRT]    = BlockTextures::uniform(layer("dirt"));
-    blockTextureMap[BlockType::STONE]   = BlockTextures::uniform(layer("stone"));
-    blockTextureMap[BlockType::SAND]    = BlockTextures::uniform(layer("sand"));
-    blockTextureMap[BlockType::SNOW]    = BlockTextures::uniform(layer("snow"));
-    blockTextureMap[BlockType::BEDROCK] = BlockTextures::uniform(layer("bedrock"));
-    blockTextureMap[BlockType::LEAVES]  = BlockTextures::uniform(leavesTinted);
-    blockTextureMap[BlockType::IRON]    = BlockTextures::uniform(layer("iron_ore"));
-    blockTextureMap[BlockType::GOLD]    = BlockTextures::uniform(layer("gold_ore"));
-    blockTextureMap[BlockType::DIAMOND] = BlockTextures::uniform(layer("diamond_ore"));
-    blockTextureMap[BlockType::URANIUM] = BlockTextures::uniform(layer("emerald_ore"));
-    blockTextureMap[BlockType::WATER]   = BlockTextures::uniform(waterTinted);
+    struct UniformEntry {
+        BlockType type;
+        int layer;
+    };
+
+    UniformEntry uniformBlocks[] = {
+        { BlockType::DIRT,                  layer("dirt") },
+        { BlockType::STONE,                 layer("stone") },
+        { BlockType::SAND,                  layer("sand") },
+        { BlockType::SNOW,                  layer("snow") },
+        { BlockType::BEDROCK,               layer("bedrock") },
+        { BlockType::LEAVES,                leavesTinted },
+        { BlockType::IRON,                  layer("iron_ore") },
+        { BlockType::GOLD,                  layer("gold_ore") },
+        { BlockType::DIAMOND,               layer("diamond_ore") },
+        { BlockType::URANIUM,               layer("emerald_ore") },
+        { BlockType::WATER,                 waterTinted },
+        { BlockType::SHORT_GRASS,           grassTinted },
+        { BlockType::CORNFLOWER,            layer("cornflower") },
+        { BlockType::POPPY,                 layer("poppy") },
+        { BlockType::PINK_TULIP,            layer("pink_tulip") },
+        { BlockType::WHITE_TULIP,           layer("white_tulip") },
+        { BlockType::ORANGE_TULIP,          layer("orange_tulip") },
+        { BlockType::RED_TULIP,             layer("red_tulip") },
+        { BlockType::ALLIUM,                layer("allium") },
+        { BlockType::AZURE_BLUET,           layer("azure_bluet") },
+        { BlockType::BLUE_ORCHID,           layer("blue_orchid") },
+        { BlockType::DANDELION,             layer("dandelion") },
+        { BlockType::LILY_OF_THE_VALLEY,    layer("lily_of_the_valley") },
+        { BlockType::OXEYE_DAISY,           layer("oxeye_daisy") },
+        { BlockType::RED_MUSHROOM,          layer("red_mushroom") },
+        { BlockType::BROWN_MUSHROOM,        layer("brown_mushroom") },
+        { BlockType::WITHER_ROSE,           layer("wither_rose") },
+        { BlockType::SEAGRASS,              layer("seagrass") },
+        { BlockType::KELP,                  layer("kelp") },
+    };
+    for (const auto& [type, l] : uniformBlocks) {
+        blockTextureMap[type] = BlockTextures::uniform(l);
+    }
     
     blockTextureMap[BlockType::GRASS]   = BlockTextures::topBottomSides(
                                             grassTopTinted,
@@ -249,11 +272,5 @@ void TextureManager::setupBlockTextureMapping() {
                                             layer("spruce_log_top"),
                                             layer("spruce_log_top"),
                                             layer("spruce_log"));
-
-    int grassTinted = addTintedLayer("grass", 0x91, 0xBD, 0x59);
-    blockTextureMap[BlockType::SHORT_GRASS] = BlockTextures::uniform(grassTinted);
-    blockTextureMap[BlockType::CORNFLOWER]  = BlockTextures::uniform(layer("cornflower"));
-    blockTextureMap[BlockType::PINK_TULIP]  = BlockTextures::uniform(layer("pink_tulip"));
-    blockTextureMap[BlockType::POPPY]  = BlockTextures::uniform(layer("poppy"));
 
 }

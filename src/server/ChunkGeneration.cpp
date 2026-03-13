@@ -596,32 +596,71 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             if (rng() % 100 >= 10)
                 continue;
 
-            // Choose vegetation type based on biome
-            BlockType vegType = BlockType::SHORT_GRASS;
+            // Weighted vegetation tables per biome
+            struct VegEntry { BlockType type; int weight; };
+
+            static const VegEntry plainsVeg[] = {
+                { BlockType::SHORT_GRASS,           70 },
+                { BlockType::POPPY,                 10 },
+                { BlockType::CORNFLOWER,            10 },
+                { BlockType::PINK_TULIP,            10 },
+                { BlockType::ORANGE_TULIP,          10 },
+                { BlockType::RED_TULIP,             10 },
+                { BlockType::WHITE_TULIP,           10 },
+                { BlockType::BLUE_ORCHID,           10 },
+                { BlockType::LILY_OF_THE_VALLEY,    10 },
+                { BlockType::WITHER_ROSE,           10 },
+                { BlockType::DANDELION,             10 },
+                { BlockType::ALLIUM,                10 },
+                { BlockType::AZURE_BLUET,           10 },
+                { BlockType::OXEYE_DAISY,           10 }
+            };
+
+            static const VegEntry forestVeg[] = {
+                { BlockType::SHORT_GRASS,           60 },
+                { BlockType::BROWN_MUSHROOM,        40 },
+                { BlockType::RED_MUSHROOM,          40 },
+            };
+
+            static const VegEntry swampVeg[] = {
+                // { BlockType::SHORT_GRASS, 100 },
+                // { BlockType::TALL_GRASS, 80 },
+            };
+
+            // Pick the table for this biome
+            const VegEntry* vegTable = nullptr;
+            int vegTableSize = 0;
 
             switch (biome) {
                 case BiomeType::PLAINS:
-                case BiomeType::FOREST: {
-                    // 70% short grass, 10% poppy, 10% cornflower, 10% pink tulip
-                    int roll = rng() % 100;
-                    if (roll < 70)
-                        vegType = BlockType::SHORT_GRASS;
-                    else if (roll < 80)
-                        vegType = BlockType::POPPY;
-                    else if (roll < 90)
-                        vegType = BlockType::CORNFLOWER;
-                    else if (roll < 100)
-                        vegType = BlockType::PINK_TULIP;
+                    vegTable = plainsVeg;
+                    vegTableSize = sizeof(plainsVeg) / sizeof(plainsVeg[0]);
                     break;
-                }
-                case BiomeType::SWAMP: {
-                    // More tall grass in swamps
-                    // vegType = (rng() % 100 < 80) ? BlockType::TALL_GRASS : BlockType::SHORT_GRASS;
+                case BiomeType::FOREST:
+                    vegTable = forestVeg;
+                    vegTableSize = sizeof(forestVeg) / sizeof(forestVeg[0]);
                     break;
-                }
+                case BiomeType::SWAMP:
+                    vegTable = swampVeg;
+                    vegTableSize = sizeof(swampVeg) / sizeof(swampVeg[0]);
+                    break;
                 default:
-                    // No vegetation in other biomes (desert, tundra, mountain, ocean)
-                    continue;
+                    continue; // No vegetation in desert, tundra, mountain, ocean
+            }
+
+            // Weighted random pick from the table
+            int totalWeight = 0;
+            for (int i = 0; i < vegTableSize; ++i)
+                totalWeight += vegTable[i].weight;
+
+            int roll = rng() % totalWeight;
+            BlockType vegType = vegTable[0].type;
+            for (int i = 0; i < vegTableSize; ++i) {
+                roll -= vegTable[i].weight;
+                if (roll < 0) {
+                    vegType = vegTable[i].type;
+                    break;
+                }
             }
 
             // Add vegetation instance
