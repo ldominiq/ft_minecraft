@@ -96,6 +96,7 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
     generateCaves(blocks, terrainParams);
 
     generateTrees(blocks, terrainParams);
+    generateCacti(blocks, terrainParams);
 
     generateOres(blocks, terrainParams);
 
@@ -232,6 +233,56 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
                 continue;
 
             placeTree(blocks, worldX, worldZ, surfaceY, treeHeight);
+        }
+    }
+}
+
+void ChunkGeneration::generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
+    const int minWorldX = originX - 1;
+    const int maxWorldX = originX + WIDTH + 1;
+    const int minWorldZ = originZ - 1;
+    const int maxWorldZ = originZ + DEPTH + 1;
+
+    for (int worldX = minWorldX; worldX <= maxWorldX; ++worldX) {
+        for (int worldZ = minWorldZ; worldZ <= maxWorldZ; ++worldZ) {
+
+            std::seed_seq seedData{
+                static_cast<uint32_t>(terrainParams.seed),
+                static_cast<uint32_t>(worldX),
+                static_cast<uint32_t>(worldZ),
+            };
+            std::mt19937 rng(seedData);
+
+            const int surfaceY = computeTerrainHeight(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ));
+
+            if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 5) {
+                rng();
+                continue;
+            }
+
+            const BiomeType biome = computeBiome(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
+            if (biome != BiomeType::DESERT) {
+                rng();
+                continue;
+            }
+
+            // 0.1% chance per column to place a cactus
+            if (rng() % 1000 >= 1)
+                continue;
+
+            // Place a 3-block tall cactus column if it can fit in this chunk
+            int localX = worldX - originX;
+            int localZ = worldZ - originZ;
+            if (localX < -1 || localX > WIDTH || localZ < -1 || localZ > DEPTH)
+                continue;
+
+            for (int y = surfaceY + 1; y <= surfaceY + 3 && y < HEIGHT; ++y) {
+                if (localX >= 0 && localX < WIDTH && localZ >= 0 && localZ < DEPTH) {
+                    blocks.at(localX, y, localZ) = BlockType::CACTUS;
+                }
+            }
         }
     }
 }

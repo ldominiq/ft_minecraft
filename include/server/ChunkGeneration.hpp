@@ -22,6 +22,7 @@ class ChunkGeneration : public Chunk {
 		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
+		void generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 
 		static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
 
