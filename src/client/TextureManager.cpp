@@ -271,6 +271,7 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::HORN_CORAL_FAN,        layer("horn_coral_fan") },
         { BlockType::TUBE_CORAL,            layer("tube_coral") },
         { BlockType::TUBE_CORAL_FAN,        layer("tube_coral_fan") },
+        { BlockType::DEAD_BUSH,             layer("dead_bush") },
     };
     for (const auto& [type, l] : uniformBlocks) {
         blockTextureMap[type] = BlockTextures::uniform(l);
@@ -286,4 +287,8 @@ void TextureManager::setupBlockTextureMapping() {
                                             layer("spruce_log_top"),
                                             layer("spruce_log"));
 
+    blockTextureMap[BlockType::CACTUS]     = BlockTextures::topBottomSides(
+                                            layer("cactus_top"),
+                                            layer("cactus_bottom"),
+                                            layer("cactus_side"));
 }

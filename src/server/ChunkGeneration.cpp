@@ -584,12 +584,12 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     continue;
 
                 // Don't place vegetation on water, sand, or snow
-                if (surfaceBlock == BlockType::WATER || surfaceBlock == BlockType::SAND ||
+                if (surfaceBlock == BlockType::WATER ||
                     surfaceBlock == BlockType::SNOW)
                     continue;
 
                 // Only place vegetation on grass or dirt blocks
-                if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT)
+                if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT && surfaceBlock != BlockType::SAND)
                     continue;
 
                 // Don't place if there's already something above (like a tree)
@@ -605,34 +605,48 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             };
             std::mt19937 rng(seedData);
 
-            // Skip some columns for variety (10% chance to place vegetation)
-            if (rng() % 100 >= 10)
+            // Skip some columns for variety — spawn chance is per-biome
+            int spawnChance; // out of 100
+            switch (biome) {
+                case BiomeType::PLAINS:  spawnChance = 10; break;
+                case BiomeType::FOREST:  spawnChance = 5; break;
+                case BiomeType::SWAMP:   spawnChance = 0; break;
+                case BiomeType::OCEAN:   spawnChance = 20; break;
+                case BiomeType::DESERT:  spawnChance = 1;  break;
+                default:                 spawnChance = 10; break;
+            }
+            if (static_cast<int>(rng() % 100) >= spawnChance)
                 continue;
 
             // Weighted vegetation tables per biome
+            // For example, weight 1 among a total of ~200 gives a ~0.5% chance per spawn
             struct VegEntry { BlockType type; int weight; };
 
             static const VegEntry plainsVeg[] = {
-                { BlockType::SHORT_GRASS,           70 },
-                { BlockType::POPPY,                 10 },
-                { BlockType::CORNFLOWER,            10 },
-                { BlockType::PINK_TULIP,            10 },
-                { BlockType::ORANGE_TULIP,          10 },
-                { BlockType::RED_TULIP,             10 },
-                { BlockType::WHITE_TULIP,           10 },
-                { BlockType::BLUE_ORCHID,           10 },
-                { BlockType::LILY_OF_THE_VALLEY,    10 },
-                { BlockType::WITHER_ROSE,           10 },
-                { BlockType::DANDELION,             10 },
-                { BlockType::ALLIUM,                10 },
-                { BlockType::AZURE_BLUET,           10 },
-                { BlockType::OXEYE_DAISY,           10 }
+                { BlockType::SHORT_GRASS,           100 },
+                { BlockType::POPPY,                 1 },
+                { BlockType::CORNFLOWER,            1 },
+                { BlockType::PINK_TULIP,            1 },
+                { BlockType::ORANGE_TULIP,          1 },
+                { BlockType::RED_TULIP,             1 },
+                { BlockType::WHITE_TULIP,           1 },
+                { BlockType::BLUE_ORCHID,           1 },
+                { BlockType::LILY_OF_THE_VALLEY,    1 },
+                { BlockType::WITHER_ROSE,           1 },
+                { BlockType::DANDELION,             1 },
+                { BlockType::ALLIUM,                1 },
+                { BlockType::AZURE_BLUET,           1 },
+                { BlockType::OXEYE_DAISY,           1 }
             };
 
             static const VegEntry forestVeg[] = {
-                { BlockType::SHORT_GRASS,           60 },
-                { BlockType::BROWN_MUSHROOM,        40 },
-                { BlockType::RED_MUSHROOM,          40 },
+                { BlockType::SHORT_GRASS,           50 },
+                { BlockType::BROWN_MUSHROOM,        50 },
+                { BlockType::RED_MUSHROOM,          50 },
+            };
+
+            static const VegEntry desertVeg[] = {
+                { BlockType::DEAD_BUSH,             100 },
             };
 
             static const VegEntry swampVeg[] = {
@@ -677,8 +691,12 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     vegTable = oceanVeg;
                     vegTableSize = sizeof(oceanVeg) / sizeof(oceanVeg[0]);
                     break;
+                case BiomeType::DESERT:
+                    vegTable = desertVeg;
+                    vegTableSize = sizeof(desertVeg) / sizeof(desertVeg[0]);
+                    break;
                 default:
-                    continue; // No vegetation in desert, tundra, mountain
+                    continue; // No vegetation in, tundra, mountain
             }
 
             // Weighted random pick from the table

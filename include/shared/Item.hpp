@@ -69,6 +69,8 @@ enum class BlockType : ItemID {
 	HORN_CORAL_FAN,
 	TUBE_CORAL,
 	TUBE_CORAL_FAN,
+	DEAD_BUSH,
+	CACTUS,
 	END
 };
 
@@ -146,6 +148,8 @@ public:
 		ItemDef{ makeBlock(BlockType::DANDELION, 			"Dandelion", 1) },
 		ItemDef{ makeBlock(BlockType::RED_MUSHROOM, 		"Red Mushroom", 1) },
 		ItemDef{ makeBlock(BlockType::BROWN_MUSHROOM, 		"Brown Mushroom", 1) },
+		ItemDef{ makeBlock(BlockType::DEAD_BUSH, 			"Dead Bush", 1) },
+		ItemDef{ makeBlock(BlockType::CACTUS, 				"Cactus", 1) },
 	};
 
 	// static inline std::vector<ItemDef> liquids = {
@@ -217,6 +221,7 @@ inline static constexpr BlockType VEGETATION_BLOCKS[] = {
 	BlockType::HORN_CORAL_FAN,
 	BlockType::TUBE_CORAL,
 	BlockType::TUBE_CORAL_FAN,
+	BlockType::DEAD_BUSH,
 
 };
 
