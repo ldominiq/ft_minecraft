@@ -218,7 +218,17 @@ void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, co
     glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 11); // 11 floats per vertex
 }
 
-void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
+void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
+                                        const glm::vec4& clipPlane, const glm::vec3& viewPos) {
+	if (!vegetationShader) return;
+	vegetationShader->use();
+	vegetationShader->setMat4("view", view);
+	vegetationShader->setMat4("projection", projection);
+	vegetationShader->setVec4("clipPlane", clipPlane);
+	vegetationShader->setVec3("viewPos", viewPos);
+}
+
+void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation) const {
 	for (auto& weakChunk : renderedChunks) {
 		if (auto chunk = weakChunk.lock())
 		{
@@ -242,7 +252,7 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 
 			// Render vegetation for this chunk if it exists
-			if (vegetationShader && chunk->getVegetationRenderer()) {
+			if (renderVegetation && vegetationShader && chunk->getVegetationRenderer()) {
 				auto vegRenderer = chunk->getVegetationRenderer();
 				if (vegRenderer->getInstanceCount() > 0) {
 					// Switch to vegetation shader (uniforms already set in renderScene)
@@ -414,6 +424,28 @@ void Renderer::renderWater() const {
         }
     }
 	glEnable(GL_CULL_FACE);
+}
+
+bool Renderer::hasVisibleWater() const {
+	for (const auto& weakChunk : renderedChunks) {
+		if (auto chunk = weakChunk.lock()) {
+			if (chunk->getWaterMeshVerticesSize() == 0)
+				continue;
+
+			if (frustumCullingEnabled) {
+				const float x0 = static_cast<float>(chunk->getOriginX());
+				const float z0 = static_cast<float>(chunk->getOriginZ());
+				const glm::vec3 minP(x0, 0.0f, z0);
+				const glm::vec3 maxP(x0 + Chunk::WIDTH, Chunk::HEIGHT, z0 + Chunk::DEPTH);
+
+				if (!cameraFrustum.isBoxVisible(minP, maxP))
+					continue;
+			}
+
+			return true; // Found at least one visible water chunk
+		}
+	}
+	return false;
 }
 
 // ---------------------------------------------------------------------------

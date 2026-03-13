@@ -558,21 +558,27 @@ void App::render() {
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
-        // Render reflection texture
-    	waterRenderer->renderWaterReflectionPass(activeShader, projection, textureManager);
+        bool waterVisible = renderer->hasVisibleWater();
+        if (waterVisible) {
+            // Render reflection texture
+            waterRenderer->renderWaterReflectionPass(activeShader, projection, textureManager);
+        }
 
         glEndQuery(GL_TIME_ELAPSED);
 
 
-    	// render refraction texture
-    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
+    	if (waterVisible) {
+            // render refraction texture
+            waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
+        }
 
     	// render to screen
     	renderScene(view, projection, clipPlane);
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
-    	waterRenderer->renderWaterSurface(projection);
+        if (waterVisible)
+    	    waterRenderer->renderWaterSurface(projection);
         glEndQuery(GL_TIME_ELAPSED);
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));

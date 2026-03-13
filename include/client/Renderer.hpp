@@ -64,10 +64,18 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void drawFrustumCullingDebug(const glm::vec3& cameraPos, const glm::vec3& cameraFront,
 		                             float fovDeg, float aspectRatio, float nearP, float farP);
 
-		void render(const std::shared_ptr<Shader> &shaderProgram) const ;
+		void render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation = true) const ;
+
+		/// Update vegetation shader uniforms (for reflection pass where view/clip differ from main camera)
+		void updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
+		                              const glm::vec4& clipPlane, const glm::vec3& viewPos);
+
 		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
 		void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const;
 		void renderWater() const;
+
+		/// Returns true if any water chunk is visible in the current frustum.
+		bool hasVisibleWater() const;
 
 		void buildChunks();
 		void updateChunk(const NetModifiedBlockData &pkt);
