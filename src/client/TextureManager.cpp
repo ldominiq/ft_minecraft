@@ -265,6 +265,12 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::BRAIN_CORAL_FAN,       layer("brain_coral_fan") },
         { BlockType::BUBBLE_CORAL,          layer("bubble_coral") },
         { BlockType::BUBBLE_CORAL_FAN,      layer("bubble_coral_fan") },
+        { BlockType::FIRE_CORAL,            layer("fire_coral") },
+        { BlockType::FIRE_CORAL_FAN,        layer("fire_coral_fan") },
+        { BlockType::HORN_CORAL,            layer("horn_coral") },
+        { BlockType::HORN_CORAL_FAN,        layer("horn_coral_fan") },
+        { BlockType::TUBE_CORAL,            layer("tube_coral") },
+        { BlockType::TUBE_CORAL_FAN,        layer("tube_coral_fan") },
     };
     for (const auto& [type, l] : uniformBlocks) {
         blockTextureMap[type] = BlockTextures::uniform(l);

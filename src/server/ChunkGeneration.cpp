@@ -641,13 +641,19 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             };
 
             static const VegEntry oceanVeg[] = {
-                { BlockType::KELP, 100 },
-                { BlockType::SEAGRASS, 80 },
-                { BlockType::TALL_SEAGRASS_BOTTOM, 60 },
-                { BlockType::BRAIN_CORAL, 80 },
-                { BlockType::BRAIN_CORAL_FAN, 80 },
-                { BlockType::BUBBLE_CORAL, 80 },
-                { BlockType::BUBBLE_CORAL_FAN, 80 },
+                { BlockType::KELP,                  100 },
+                { BlockType::SEAGRASS,              10 },
+                { BlockType::TALL_SEAGRASS_BOTTOM,  60 },
+                { BlockType::BRAIN_CORAL,           10 },
+                { BlockType::BRAIN_CORAL_FAN,       10 },
+                { BlockType::BUBBLE_CORAL,          10 },
+                { BlockType::BUBBLE_CORAL_FAN,      10 },
+                { BlockType::FIRE_CORAL,            10 },
+                { BlockType::FIRE_CORAL_FAN,        10 },
+                { BlockType::HORN_CORAL,            10 },
+                { BlockType::HORN_CORAL_FAN,        10 },
+                { BlockType::TUBE_CORAL,            10 },
+                { BlockType::TUBE_CORAL_FAN,        10 },
             };
 
             // Pick the table for this biome
@@ -697,7 +703,11 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             if (isSeaVegetation(vegType)) {
                 if (vegType == BlockType::SEAGRASS || 
                     vegType == BlockType::BRAIN_CORAL || vegType == BlockType::BUBBLE_CORAL || 
-                    vegType == BlockType::BRAIN_CORAL_FAN || vegType == BlockType::BUBBLE_CORAL_FAN) {
+                    vegType == BlockType::BRAIN_CORAL_FAN || vegType == BlockType::BUBBLE_CORAL_FAN ||
+                    vegType == BlockType::FIRE_CORAL || vegType == BlockType::FIRE_CORAL_FAN ||
+                    vegType == BlockType::HORN_CORAL || vegType == BlockType::HORN_CORAL_FAN ||
+                    vegType == BlockType::TUBE_CORAL || vegType == BlockType::TUBE_CORAL_FAN
+                    ) {
                     // Simple seagrass/coral: place a single instance
                     VegetationInstance veg;
                     veg.x = static_cast<uint8_t>(x);

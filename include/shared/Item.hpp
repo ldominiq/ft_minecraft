@@ -63,6 +63,12 @@ enum class BlockType : ItemID {
 	BRAIN_CORAL_FAN,
 	BUBBLE_CORAL,
 	BUBBLE_CORAL_FAN,
+	FIRE_CORAL,
+	FIRE_CORAL_FAN,
+	HORN_CORAL,
+	HORN_CORAL_FAN,
+	TUBE_CORAL,
+	TUBE_CORAL_FAN,
 	END
 };
 
@@ -205,6 +211,13 @@ inline static constexpr BlockType VEGETATION_BLOCKS[] = {
 	BlockType::BRAIN_CORAL_FAN,
 	BlockType::BUBBLE_CORAL,
 	BlockType::BUBBLE_CORAL_FAN,
+	BlockType::FIRE_CORAL,
+	BlockType::FIRE_CORAL_FAN,
+	BlockType::HORN_CORAL,
+	BlockType::HORN_CORAL_FAN,
+	BlockType::TUBE_CORAL,
+	BlockType::TUBE_CORAL_FAN,
+
 };
 
 inline static constexpr BlockType SEA_VEGETATION_BLOCKS[] = {
@@ -217,6 +230,12 @@ inline static constexpr BlockType SEA_VEGETATION_BLOCKS[] = {
 	BlockType::BRAIN_CORAL_FAN,
 	BlockType::BUBBLE_CORAL,
 	BlockType::BUBBLE_CORAL_FAN,
+	BlockType::FIRE_CORAL,
+	BlockType::FIRE_CORAL_FAN,
+	BlockType::HORN_CORAL,
+	BlockType::HORN_CORAL_FAN,
+	BlockType::TUBE_CORAL,
+	BlockType::TUBE_CORAL_FAN,
 };
 
 inline static bool isSeaVegetation(const BlockType &b) {
