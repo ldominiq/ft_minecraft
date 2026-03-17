@@ -52,6 +52,9 @@ void App::init(const std::string& serverIp) {
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
+		// Skip resize if window is minimized (0x0)
+		if (width == 0 || height == 0)
+			return;
         glViewport(0, 0, width, height);
 		glfwGetFramebufferSize(w, &app->screenWidth, &app->screenHeight);
 		auto manager = app->menuManager.lock();
@@ -415,6 +418,12 @@ void App::gameTick() {
 void App::render() {
 
     while (!glfwWindowShouldClose(window)) {
+
+        // Skip rendering if window is minimized
+        if (screenWidth == 0 || screenHeight == 0) {
+            glfwPollEvents();
+            continue;
+        }
 
         // Rotate query index each frame
         currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
