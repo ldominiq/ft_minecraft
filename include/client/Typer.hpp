@@ -13,6 +13,9 @@
 #include "Shader.hpp"
 #include "GLFW/glfw3.h"
 
+#ifdef _WIN32
+typedef unsigned int uint;
+#endif
 
 struct TypingCharacter {
     unsigned int TextureID;  // ID handle of the glyph texture

@@ -22,6 +22,10 @@
 #include "ClientCreeper.hpp"
 #include "Frustum.hpp"
 
+#ifdef _WIN32
+typedef unsigned int uint;
+#endif
+
 class TextureManager;
 
 // previously half of World

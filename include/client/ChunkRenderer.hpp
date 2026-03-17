@@ -4,11 +4,16 @@
 
 #include <glad/glad.h>
 #include <cstring>
+#include <vector>
 
 #include "GLFW/glfw3.h"
 #include "Chunk.hpp"
 #include "TextureManager.hpp"
 #include "blockRenderingHelperFunctions.hpp"
+
+#ifdef _WIN32
+typedef unsigned int uint;
+#endif
 
 class ChunkRenderer : public Chunk {
 

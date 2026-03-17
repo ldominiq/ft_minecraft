@@ -2,13 +2,20 @@
 #ifndef SERVER_HPP
 #define SERVER_HPP
 
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#define close closesocket
+#else
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#endif
 #include <cstring>
 #include <iostream>
 #include <fcntl.h>
 #include <thread>
+#include <chrono>
 #include <zstd.h>
 
 #include "Protocol.hpp"
@@ -22,7 +29,7 @@ private:
     int sockfd;
     uint8_t buffer[MAXLINE];
     struct sockaddr_in servaddr;
-	std::chrono::_V2::steady_clock::time_point currTick;
+	std::chrono::steady_clock::time_point currTick;
 
 	std::vector<CPlayerInfo> players;
 	std::deque<std::string> messages;

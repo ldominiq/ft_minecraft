@@ -195,7 +195,8 @@ vector3 Noise::randomGradient(int ix, int iy, int iz) {
     float rnd2 = (b & 0xFFFFFF) / float(0xFFFFFF);
 
     // Spherical coordinates
-    float theta = rnd1 * 2.0f * M_PI; // azimuth
+    // Use a literal PI constant to be portable across platforms (MSVC may not define M_PI)
+    float theta = rnd1 * 2.0f * 3.14159265358979323846f; // azimuth
     float phi   = acos(2.0f * rnd2 - 1.0f); // inclination
 
     // Create the vector from the angle
