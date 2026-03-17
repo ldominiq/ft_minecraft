@@ -1,12 +1,22 @@
 #ifndef UDPCLIENT_HPP
 #define UDPCLIENT_HPP
 
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#define poll WSAPoll
+#define close closesocket
+typedef int ssize_t;
+typedef int socklen_t;
+#else
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#endif
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include <functional>
 
 #include <fcntl.h>
 #include <zstd.h>

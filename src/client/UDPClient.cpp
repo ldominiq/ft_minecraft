@@ -1,12 +1,26 @@
 #include "UDPClient.hpp"
 
 UDPClient::UDPClient(const char* server_ip) {
+#ifdef _WIN32
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed\n";
+        exit(EXIT_FAILURE);
+    }
+#endif
     // Create socket
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
 
+#ifdef _WIN32
+    u_long mode = 1;
+    if (ioctlsocket(sockfd, FIONBIO, &mode) != 0) {
+        perror("ioctlsocket failed");
+        exit(EXIT_FAILURE);
+    }
+#else
     // Get current flags
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1) {
@@ -19,6 +33,7 @@ UDPClient::UDPClient(const char* server_ip) {
         perror("fcntl F_SETFL failed");
         exit(EXIT_FAILURE);
     }
+#endif
 
     // Clear and set server info
     memset(&servaddr, 0, sizeof(servaddr));
@@ -35,11 +50,14 @@ UDPClient::UDPClient(const char* server_ip) {
 
 UDPClient::~UDPClient() {
     close(sockfd);
+#ifdef _WIN32
+    WSACleanup();
+#endif
 }
 
 void UDPClient::sendPacket(const Packet &pkt) {
 	auto bytes = encodePacket(pkt);
-	sendto(sockfd, bytes.data(), bytes.size(), 0, (sockaddr*)&servaddr, sizeof(servaddr));
+	sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&servaddr, sizeof(servaddr));
 }
 
 void UDPClient::sendConnect() {
@@ -56,11 +74,26 @@ void UDPClient::receivePacket() {
     socklen_t addrlen = sizeof(servaddr);
 
     while (true) {
-        ssize_t n = recvfrom(sockfd, buffer.data(), buffer.size(), 0,
+        ssize_t n = recvfrom(sockfd, reinterpret_cast<char*>(buffer.data()), static_cast<int>(buffer.size()), 0,
                              reinterpret_cast<struct sockaddr*>(&servaddr), &addrlen);
         if (n < 0) {
+#ifdef _WIN32
+            int err = WSAGetLastError();
+            if (err == WSAEWOULDBLOCK) break;
+            if (err == WSAECONNRESET) {
+                // Connection reset by peer, prevent server crash
+                // TODO: handle correctly
+                continue;
+            }
+            std::cerr << "recvfrom error: " << err << "\n";
+#else
             if (errno == EWOULDBLOCK || errno == EAGAIN) break; // no more packets
+            if (errno == ECONNREFUSED) {
+                // ICMP Port Unreachable received, ignore it for UDP
+                continue;
+            }
             perror("recvfrom error");
+#endif
             break;
         }
         // pass the actual number of bytes received
