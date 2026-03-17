@@ -44,6 +44,8 @@ void App::init(const std::string& serverIp) {
     monitor = glfwGetPrimaryMonitor();
     mode = glfwGetVideoMode(monitor);
 
+	std::cout << "[Config] Using monitor resolution: " << mode->width << "x" << mode->height << std::endl;
+
     window = glfwCreateWindow(windowedWidth, windowedHeight, "ft_minecraft", nullptr, nullptr);
     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
 	glfwSetWindowUserPointer(window, this);
@@ -64,7 +66,8 @@ void App::init(const std::string& serverIp) {
     glfwMakeContextCurrent(window);
     gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
 
-    glfwGetFramebufferSize(window, &windowedWidth, &windowedHeight);
+    glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
+    glViewport(0, 0, screenWidth, screenHeight);
 
 	udpClient = std::make_unique<UDPClient>(targetIp.c_str());
 	setUdpClientPacketCallback();
@@ -72,7 +75,7 @@ void App::init(const std::string& serverIp) {
 	renderer = std::make_unique<Renderer>();
 
 	// ********************Water Renderer setup******************************
-	waterFramebuffer = std::make_shared<WaterFramebuffer>(windowedWidth, windowedHeight);
+	waterFramebuffer = std::make_shared<WaterFramebuffer>(screenWidth, screenHeight);
 	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
 	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
 
@@ -80,21 +83,21 @@ void App::init(const std::string& serverIp) {
 	chunkBoundaryRenderer = std::make_unique<ChunkBoundaryRenderer>();
 
 	// ********************Render Type Debug Framebuffers********************
-	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
+	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(screenWidth, screenHeight);
 
 	loader = std::make_unique<Loader>();
 	// GUI textures are now dynamically managed based on debug flags
     guiRenderer = std::make_unique<GuiRenderer>(*loader);
 
-    lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
+    lighting = std::make_unique<Lighting>(screenWidth, screenHeight);
 
-	chat = std::make_shared<Chat>(windowedWidth, windowedHeight);
-	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight, &textureManager);
+	chat = std::make_shared<Chat>(screenWidth, screenHeight);
+	inventoryUI = std::make_shared<InventoryUI>(screenWidth, screenHeight, &textureManager);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
-    gBuffer = std::make_shared<GBuffer>(windowedWidth, windowedHeight);
-    ssao = std::make_shared<SSAO>(windowedWidth, windowedHeight);
+    gBuffer = std::make_shared<GBuffer>(screenWidth, screenHeight);
+    ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
     glEnable(GL_DEPTH_TEST);
     
