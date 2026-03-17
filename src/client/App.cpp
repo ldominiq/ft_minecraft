@@ -4,10 +4,11 @@
 
 #include "App.hpp"
 
-App::App():
+App::App(const std::string& serverIp):
 			camera(nullptr),
 			monitor(nullptr),
 			mode(nullptr),
+			serverIp(serverIp),
 
             lighting(nullptr),
             textureShader(nullptr),
@@ -20,7 +21,21 @@ App::App():
 
 App::~App() { cleanup(); }
 
-void App::init() {
+void App::init(const std::string& serverIp) {
+    std::string targetIp = serverIp;
+
+    {
+        // Check for a server.txt file in the current directory
+        std::ifstream serverFile("server.txt");
+        if (serverFile.is_open()) {
+            std::string line;
+            if (std::getline(serverFile, line) && !line.empty()) {
+                targetIp = line;
+                std::cout << "[Config] Found server.txt, overriding IP with: " << targetIp << std::endl;
+            }
+        }
+    }
+
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -51,7 +66,7 @@ void App::init() {
 
     glfwGetFramebufferSize(window, &windowedWidth, &windowedHeight);
 
-	udpClient = std::make_unique<UDPClient>("127.0.0.1");
+	udpClient = std::make_unique<UDPClient>(targetIp.c_str());
 	setUdpClientPacketCallback();
 
 	renderer = std::make_unique<Renderer>();
@@ -1486,7 +1501,7 @@ void App::debugWindow() {
 }
 
 void App::run() {
-    init();
+    init(serverIp);
     loadResources();
     render();
 }

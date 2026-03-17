@@ -76,7 +76,11 @@ void Server::fillServerInfo() {
 
 void Server::bindSocket() {
     if (bind(sockfd, (const struct sockaddr*)&servaddr, sizeof(servaddr)) < 0) {
+#ifdef _WIN32
+        std::cerr << "bind failed: " << WSAGetLastError() << "\n";
+#else
         perror("bind failed");
+#endif
         exit(EXIT_FAILURE);
     }
 }
@@ -199,7 +203,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 {
 	if (players.size() >= MAX_CLIENTS) return ;
 
-	std::cout << "New client connected!\n";
+	std::cout << "New client connecting from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << "...\n";
 
     CPlayerInfo p; //deserializePlayerInfo(pkt.payload);
 	p.id = players.size();
@@ -629,7 +633,20 @@ void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_i
 
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
 	auto bytes = encodePacket(pkt);
-	sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
+	int n = sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
+    if (n < 0) {
+#ifdef _WIN32
+        std::cerr << "[Network] Failed to send packet type " << static_cast<int>(pkt.type) << " to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << ". Error: " << WSAGetLastError() << std::endl;
+#else
+        perror("sendto failed");
+#endif
+    } else {
+        if (pkt.type == PacketType::CHUNK_HEADER) {
+            // std::cout << "[Network] Sent CHUNK_HEADER to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << " (" << n << " bytes)\n";
+        } else if (pkt.type == PacketType::NET_ACCEPT) {
+            std::cout << "[Network] Sent NET_ACCEPT to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << " (" << n << " bytes)\n";
+        }
+    }
 }
 
 void Server::sendAccept(const sockaddr_in &cliaddr)
