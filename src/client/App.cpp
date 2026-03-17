@@ -725,7 +725,7 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
     return true;
 }
 
-void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
+void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4 clipPlane) const {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Render sky/clouds first with proper depth

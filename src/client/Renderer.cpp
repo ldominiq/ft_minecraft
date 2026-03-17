@@ -219,7 +219,7 @@ void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, co
 }
 
 void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
-                                        const glm::vec4& clipPlane, const glm::vec3& viewPos) {
+                                        const glm::vec4& clipPlane, const glm::vec3& viewPos) const {
 	if (!vegetationShader) return;
 	vegetationShader->use();
 	vegetationShader->setMat4("view", view);
@@ -343,11 +343,8 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 				ent->removed = true;
 				if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
 				{
-					livingEntities.erase(
-						std::remove_if(livingEntities.begin(), livingEntities.end(),
-							[ID](const std::shared_ptr<Entity>& e){ return e->getID() == ID; }),
-						livingEntities.end()
-					);
+					std::erase_if(livingEntities,
+					              [ID](const std::shared_ptr<Entity>& e){ return e->getID() == ID; });
 				}
 			}
 		}

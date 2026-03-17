@@ -40,8 +40,8 @@ std::vector<float> VegetationRenderer::generateCrossPatternMesh() {
     std::vector<float> vertices;
     vertices.reserve(96);
 
-    const float width = 0.8f;   // Width of each quad
-    const float height = 1.0f;  // Height of vegetation
+    constexpr float width = 0.8f;   // Width of each quad
+    constexpr float height = 1.0f;  // Height of vegetation
 
     // Quad 1: Diagonal from (-width/2, 0, -width/2) to (width/2, 0, width/2)
     // Bottom-left
@@ -170,44 +170,44 @@ void VegetationRenderer::uploadMesh() {
     GLsizei stride = 8 * sizeof(float); // pos(3) + texCoord(2) + normal(3)
 
     // Location 0: position
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, static_cast<void *>(nullptr));
     glEnableVertexAttribArray(0);
 
     // Location 1: texCoord
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     // Location 2: normal
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride, (void*)(5 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(5 * sizeof(float)));
     glEnableVertexAttribArray(2);
 
     // Instance attributes (per-instance data)
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
 
-    GLsizei instanceStride = 7 * sizeof(float); // worldPos(3) + texLayer(1) + rotation(1) + skylight(1) + columnBaseY(1)
+    constexpr GLsizei instanceStride = 7 * sizeof(float); // worldPos(3) + texLayer(1) + rotation(1) + skylight(1) + columnBaseY(1)
 
     // Location 3: instance position (vec3)
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, instanceStride, (void*)0);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, instanceStride, static_cast<void *>(nullptr));
     glEnableVertexAttribArray(3);
     glVertexAttribDivisor(3, 1); // Advance once per instance
 
     // Location 4: texture layer (float)
-    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, instanceStride, (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, instanceStride, reinterpret_cast<void *>(3 * sizeof(float)));
     glEnableVertexAttribArray(4);
     glVertexAttribDivisor(4, 1);
 
     // Location 5: rotation (float)
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, instanceStride, (void*)(4 * sizeof(float)));
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, instanceStride, reinterpret_cast<void *>(4 * sizeof(float)));
     glEnableVertexAttribArray(5);
     glVertexAttribDivisor(5, 1);
 
     // Location 6: skylight (float)
-    glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, instanceStride, (void*)(5 * sizeof(float)));
+    glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, instanceStride, reinterpret_cast<void *>(5 * sizeof(float)));
     glEnableVertexAttribArray(6);
     glVertexAttribDivisor(6, 1);
 
     // Location 7: column base Y (float)
-    glVertexAttribPointer(7, 1, GL_FLOAT, GL_FALSE, instanceStride, (void*)(6 * sizeof(float)));
+    glVertexAttribPointer(7, 1, GL_FLOAT, GL_FALSE, instanceStride, reinterpret_cast<void *>(6 * sizeof(float)));
     glEnableVertexAttribArray(7);
     glVertexAttribDivisor(7, 1);
 

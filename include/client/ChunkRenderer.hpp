@@ -54,7 +54,7 @@ class ChunkRenderer : public Chunk {
 		void buildMesh(); // Build both solid and water meshes
 		void buildMeshData();
 		void uploadMesh();
-		void buildVegetationMesh(); // Build vegetation instanced mesh
+		void buildVegetationMesh() const; // Build vegetation instanced mesh
 
 		inline const GLuint getVao() const {return VAO;}
 		inline const uint getMeshVerticesSize() const {return meshVerticesSize;}

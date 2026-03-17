@@ -72,7 +72,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		/// Update vegetation shader uniforms (for reflection pass where view/clip differ from main camera)
 		void updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
-		                              const glm::vec4& clipPlane, const glm::vec3& viewPos);
+		                              const glm::vec4& clipPlane, const glm::vec3& viewPos) const;
 
 		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
 		void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const;

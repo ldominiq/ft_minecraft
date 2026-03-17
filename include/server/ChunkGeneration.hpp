@@ -6,6 +6,7 @@
 #include "Noise.hpp"
 #include "Chunk.hpp"
 
+#include <ranges>
 #include <algorithm>
 
 class ChunkGeneration : public Chunk {
@@ -17,12 +18,12 @@ class ChunkGeneration : public Chunk {
 		ChunkGeneration(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
 
 		void generate(const TerrainGenerationParams& terrainParams);
-		void generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
-		void placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ, int surfaceY, int treeHeight);
-		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
-		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
+		void generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+		void placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ, int surfaceY, int treeHeight) const;
+		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 		void generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
-		void generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
+		void generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 
 		static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
 

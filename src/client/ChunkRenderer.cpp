@@ -38,8 +38,8 @@ void ChunkRenderer::updateMesh()
 
 	// //update possible neighbour
 	if (neighbourNeedUpdate[WEST]) {
-		if (auto westChunkBase = getAdjacentChunks()[WEST].lock()) {
-			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
+		if (const auto westChunkBase = getAdjacentChunks()[WEST].lock()) {
+			if (const auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
 				if (westChunk->hasAllAdjacentChunkLoaded())
 					westChunk->buildMesh();
 			}
@@ -47,8 +47,8 @@ void ChunkRenderer::updateMesh()
 	}
 
 	if (neighbourNeedUpdate[EAST]) {
-		if (auto eastChunkBase = getAdjacentChunks()[EAST].lock()) {
-			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
+		if (const auto eastChunkBase = getAdjacentChunks()[EAST].lock()) {
+			if (const auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
 				if (eastChunk->hasAllAdjacentChunkLoaded())
 					eastChunk->buildMesh();
 			}
@@ -56,8 +56,8 @@ void ChunkRenderer::updateMesh()
 	}
 
 	if (neighbourNeedUpdate[SOUTH]) {
-		if (auto southChunkBase = getAdjacentChunks()[SOUTH].lock()) {
-			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
+		if (const auto southChunkBase = getAdjacentChunks()[SOUTH].lock()) {
+			if (const auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
 				if (southChunk->hasAllAdjacentChunkLoaded())
 					southChunk->buildMesh();
 			}
@@ -65,8 +65,8 @@ void ChunkRenderer::updateMesh()
 	}
 
 	if (neighbourNeedUpdate[NORTH]) {
-		if (auto northChunkBase = getAdjacentChunks()[NORTH].lock()) {
-			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
+		if (const auto northChunkBase = getAdjacentChunks()[NORTH].lock()) {
+			if (const auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
 				if (northChunk->hasAllAdjacentChunkLoaded())
 					northChunk->buildMesh();
 			}
@@ -76,7 +76,7 @@ void ChunkRenderer::updateMesh()
 	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
 }
 
-void ChunkRenderer::addFace(int x, int y, int z, BlockType type, int face, float skyLightLevel) {
+void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockType type, const int face, const float skyLightLevel) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(originZ + z);
@@ -136,7 +136,7 @@ void ChunkRenderer::addFace(int x, int y, int z, BlockType type, int face, float
 
     // Build six vertices for this face using the computed light
     bool isCactusSide = (type == BlockType::CACTUS && face != 2 && face != 3);
-    const float cactusInset = 1.0f / 16.0f;
+    constexpr float cactusInset = 1.0f / 16.0f;
 
     for (int i = 0; i < 6; ++i) {
         float px = faceX + faceData[face][i * 3 + 0];
@@ -171,7 +171,7 @@ void ChunkRenderer::addFace(int x, int y, int z, BlockType type, int face, float
     }
 }
 
-void ChunkRenderer::addWaterFace(int x, int y, int z, int face, float skyLightLevel) {
+void ChunkRenderer::addWaterFace(const int x, const int y, const int z, const int face, const float skyLightLevel) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(originZ + z);
@@ -318,11 +318,11 @@ void ChunkRenderer::buildMeshData() {
         }
 
         // Neighbor is in an adjacent chunk → read its skyLight
-        auto adjacentChunk = adjacentChunks[dir].lock();
+        const auto adjacentChunk = adjacentChunks[dir].lock();
         if (!adjacentChunk) return 15; // Not loaded yet, assume sunlit
 
-        int remappedX = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : blockX));
-        int remappedZ = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : blockZ));
+        const int remappedX = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : blockX));
+        const int remappedZ = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : blockZ));
         return adjacentChunk->getSkyLight(remappedX, neighborY, remappedZ);
     };
 
@@ -343,20 +343,20 @@ void ChunkRenderer::buildMeshData() {
 
     // Helper: convert a sky-light value (0–15) to a 0.0–1.0 float
     // for the vertex data.  We do this once per face.
-    auto lightToFloat = [](uint8_t lightVal) -> float {
+    auto lightToFloat = [](const uint8_t lightVal) -> float {
         return static_cast<float>(lightVal) / 15.0f;
     };
 
     for (int x = 0; x < WIDTH; ++x) {
         for (int y = 0; y < HEIGHT; ++y) {
             for (int z = 0; z < DEPTH; ++z) {
-                int idx = x + WIDTH * (y + HEIGHT * z);
+                const int idx = x + WIDTH * (y + HEIGHT * z);
                 BlockType currentBlock = blockTypeVector[idx];
                 
                 if (currentBlock == BlockType::AIR) continue;
                 if (isBlockVegetation(currentBlock)) continue;
 
-                bool isWater = (currentBlock == BlockType::WATER);
+                const bool isWater = (currentBlock == BlockType::WATER);
 
                 for (const FaceDir& face : faces) {
                     BlockType neighborBlock;
@@ -366,7 +366,7 @@ void ChunkRenderer::buildMeshData() {
                         neighborBlock = getBlockOrNeighbor(x, y, z, face.dx, face.dy, face.dz, face.neighborDir);
                     }
 
-                    float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, face.dx, face.dy, face.dz, face.neighborDir));
+                    const float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, face.dx, face.dy, face.dz, face.neighborDir));
 
                     if (isWater) {
                         if (neighborBlock == BlockType::AIR || isBlockTransparent(neighborBlock) || isBlockVegetation(neighborBlock)) {
@@ -455,7 +455,7 @@ void ChunkRenderer::uploadMesh() {
     waterMeshVertices.shrink_to_fit();
 }
 
-void ChunkRenderer::buildVegetationMesh() {
+void ChunkRenderer::buildVegetationMesh() const {
     if (!vegetationRenderer || !textureManager)
         return;
 
@@ -469,7 +469,7 @@ void ChunkRenderer::buildVegetationMesh() {
             for (int y = 0; y < HEIGHT; ++y) {
                 BlockType block = getBlock(x, y, z);
                 if (isBlockVegetation(block)) {
-                    Chunk::VegetationInstance veg;
+                    Chunk::VegetationInstance veg{};
                     veg.x = static_cast<uint8_t>(x);
                     veg.y = static_cast<uint8_t>(y);
                     veg.z = static_cast<uint8_t>(z);

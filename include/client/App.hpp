@@ -108,7 +108,7 @@ private:
     void init();
     void loadResources();
     void render();
-	void renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane);
+	void renderScene(const glm::mat4 &view, const glm::mat4 &projection, glm::vec4 clipPlane) const;
 	void gameTick();
 
     void cleanup();

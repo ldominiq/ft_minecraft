@@ -27,8 +27,8 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
             }
             #endif
 
-            BlockType top = BlockType::GRASS;
-            BlockType fill = BlockType::DIRT;
+            auto top = BlockType::GRASS;
+            auto fill = BlockType::DIRT;
 
             // SAND at sea levels
             if (surfaceY < terrainParams.seaLevel) {
@@ -99,12 +99,7 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
     generateCacti(blocks, terrainParams);
 
     generateOres(blocks, terrainParams);
-
-    // encode palette and block data (must be done before vegetation generation)
-    blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
-
-    generateVegetation(blocks, terrainParams);
-
+    
     // DEBUG: strip everything except ores so they're visible in isolation
     if (terrainParams.debugOresOnly) {
         // Build a set of ore block types for fast lookup
@@ -116,21 +111,25 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
             for (int y = 0; y < HEIGHT; ++y)
                 for (int z = 0; z < DEPTH; ++z) {
                     BlockType b = blocks.at(x, y, z);
-                    if (b != BlockType::AIR && oreTypes.find(b) == oreTypes.end())
+                    if (b != BlockType::AIR && !oreTypes.contains(b))
                         blocks.at(x, y, z) = BlockType::AIR;
                 }
     }
 
+    // encode palette and block data (must be done before vegetation generation)
+    blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
+
+    generateVegetation(blocks, terrainParams);
 }
 
 // Place a single tree's blocks into the local BlockStorage.
 // trunkWorldX/Z is the world-space column of the trunk.
 // Only blocks that fall within this chunk's bounds are written.
 void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ,
-                                int surfaceY, int treeHeight) {
+                                int surfaceY, int treeHeight) const {
     // Convert trunk world coords to local coords
-    int trunkLocalX = trunkWorldX - originX;
-    int trunkLocalZ = trunkWorldZ - originZ;
+    const int trunkLocalX = trunkWorldX - originX;
+    const int trunkLocalZ = trunkWorldZ - originZ;
 
     // Place dirt under the tree (only if trunk is inside this chunk)
     if (trunkLocalX >= 0 && trunkLocalX < WIDTH &&
@@ -151,19 +150,19 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
     constexpr int leafRadii[4] = {2, 2, 1, 0};
 
     for (int layer = 0; layer < 4; ++layer) {
-        int ly = surfaceY + treeHeight - 2 + layer;
+        const int ly = surfaceY + treeHeight - 2 + layer;
         if (ly < 0 || ly >= HEIGHT)
             continue;
 
-        int radius = leafRadii[layer];
+        const int radius = leafRadii[layer];
         for (int lx = -radius; lx <= radius; ++lx) {
             for (int lz = -radius; lz <= radius; ++lz) {
                 // Diamond shape: skip corners for radius 2
                 if (radius == 2 && abs(lx) == 2 && abs(lz) == 2)
                     continue;
 
-                int leafLocalX = trunkLocalX + lx;
-                int leafLocalZ = trunkLocalZ + lz;
+                const int leafLocalX = trunkLocalX + lx;
+                const int leafLocalZ = trunkLocalZ + lz;
 
                 if (leafLocalX < 0 || leafLocalX >= WIDTH ||
                     leafLocalZ < 0 || leafLocalZ >= DEPTH)
@@ -176,7 +175,7 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
     }
 }
 
-void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
+void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     // Tree leaves extend up to 2 blocks horizontally. To handle trees from
     // neighboring chunks whose canopy spills into this chunk, we iterate
     // over the current chunk and all 8 neighbors' tree positions.
@@ -237,7 +236,7 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
     }
 }
 
-void ChunkGeneration::generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
+void ChunkGeneration::generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     const int minWorldX = originX - 1;
     const int maxWorldX = originX + WIDTH + 1;
     const int minWorldZ = originZ - 1;
@@ -287,7 +286,7 @@ void ChunkGeneration::generateCacti(BlockStorage &blocks, const TerrainGeneratio
     }
 }
 
-void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
+void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     // Maybe check based on biome or something to skip cave generation for some biomes (e.g. ocean)
     const int yStart = terrainParams.bedrockLevel + 3;
 
@@ -315,9 +314,9 @@ void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGeneratio
     constexpr float bScaleVMul    = 2.2f;
 
     for (int x = 0; x < Chunk::WIDTH; ++x) {
-        const float wx = static_cast<float>(originX + x);
+        const auto wx = static_cast<float>(originX + x);
         for (int z = 0; z < Chunk::DEPTH; ++z) {
-            const float wz = static_cast<float>(originZ + z);
+            const auto wz = static_cast<float>(originZ + z);
             const int surfaceY = surfaceCache[x][z];
             const int caveTopY = std::min(surfaceY, Chunk::HEIGHT - 1);
 
@@ -327,8 +326,8 @@ void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGeneratio
                     cur == BlockType::BEDROCK)
                     continue;
 
-                const float fy = static_cast<float>(y);
-                const float depth = static_cast<float>(surfaceY - y);
+                const auto fy = static_cast<float>(y);
+                const auto depth = static_cast<float>(surfaceY - y);
                 const float depthFade = glm::smoothstep(0.0f, fadeBlocks, depth);
                 const float thresh = threshSurface + depthFade * (threshDeep - threshSurface);
 
@@ -350,7 +349,7 @@ void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGeneratio
     }
 }
 
-void ChunkGeneration::generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
+void ChunkGeneration::generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     for (const auto &ore : oreTable) {
         // Deterministic RNG per ore type per chunk
         std::seed_seq seedData{
@@ -558,11 +557,11 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
 
 }
 
-int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrainParams, float worldX, float worldZ) {
+int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrainParams, const float worldX, const float worldZ) {
     // find min/max of the erosion spline
     float eroMin = std::numeric_limits<float>::infinity();
     float eroMax = -std::numeric_limits<float>::infinity();
-    for (const auto &p : erosionSpline) { eroMin = glm::min(eroMin, p.second); eroMax = glm::max(eroMax, p.second); }
+    for (const auto &val: erosionSpline | std::views::values) { eroMin = glm::min(eroMin, val); eroMax = glm::max(eroMax, val); }
 
     const float continentalness = getContinentalness(terrainParams, worldX, worldZ);
     const float erosion = getErosion(terrainParams, worldX, worldZ);
@@ -621,9 +620,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
 
             const BiomeType biome = computeBiome(terrainParams, worldX, worldZ, surfaceY);
 
-            const bool isOcean = (biome == BiomeType::OCEAN);
-
-            if (isOcean) {
+            if (biome == BiomeType::OCEAN) {
                 // Ocean vegetation: surface must be sand and above must be water
                 if (surfaceBlock != BlockType::SAND)
                     continue;
@@ -673,7 +670,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             // For example, weight 1 among a total of ~200 gives a ~0.5% chance per spawn
             struct VegEntry { BlockType type; int weight; };
 
-            static const VegEntry plainsVeg[] = {
+            static constexpr VegEntry plainsVeg[] = {
                 { BlockType::SHORT_GRASS,           100 },
                 { BlockType::POPPY,                 1 },
                 { BlockType::CORNFLOWER,            1 },
@@ -690,20 +687,20 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 { BlockType::OXEYE_DAISY,           1 }
             };
 
-            static const VegEntry forestVeg[] = {
+            static constexpr VegEntry forestVeg[] = {
                 { BlockType::SHORT_GRASS,           50 },
                 { BlockType::BROWN_MUSHROOM,        50 },
                 { BlockType::RED_MUSHROOM,          50 },
             };
 
-            static const VegEntry desertVeg[] = {
+            static constexpr VegEntry desertVeg[] = {
                 { BlockType::DEAD_BUSH,             100 },
             };
 
-            static const VegEntry swampVeg[] = {
-                // { BlockType::SHORT_GRASS, 100 },
-                // { BlockType::TALL_GRASS, 80 },
-            };
+            // static const VegEntry swampVeg[] = {
+            //     // { BlockType::SHORT_GRASS, 100 },
+            //     // { BlockType::TALL_GRASS, 80 },
+            // };
 
             static const VegEntry oceanVeg[] = {
                 { BlockType::KELP,                  100 },
@@ -728,23 +725,23 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             switch (biome) {
                 case BiomeType::PLAINS:
                     vegTable = plainsVeg;
-                    vegTableSize = sizeof(plainsVeg) / sizeof(plainsVeg[0]);
+                    vegTableSize = std::size(plainsVeg);
                     break;
                 case BiomeType::FOREST:
                     vegTable = forestVeg;
-                    vegTableSize = sizeof(forestVeg) / sizeof(forestVeg[0]);
+                    vegTableSize = std::size(forestVeg);
                     break;
-                case BiomeType::SWAMP:
-                    vegTable = swampVeg;
-                    vegTableSize = sizeof(swampVeg) / sizeof(swampVeg[0]);
-                    break;
+                // case BiomeType::SWAMP:
+                //     vegTable = swampVeg;
+                //     vegTableSize = sizeof(swampVeg) / sizeof(swampVeg[0]);
+                //     break;
                 case BiomeType::OCEAN:
                     vegTable = oceanVeg;
-                    vegTableSize = sizeof(oceanVeg) / sizeof(oceanVeg[0]);
+                    vegTableSize = std::size(oceanVeg);
                     break;
                 case BiomeType::DESERT:
                     vegTable = desertVeg;
-                    vegTableSize = sizeof(desertVeg) / sizeof(desertVeg[0]);
+                    vegTableSize = std::size(desertVeg);
                     break;
                 default:
                     continue; // No vegetation in, tundra, mountain
@@ -778,7 +775,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     vegType == BlockType::TUBE_CORAL || vegType == BlockType::TUBE_CORAL_FAN
                     ) {
                     // Simple seagrass/coral: place a single instance
-                    VegetationInstance veg;
+                    VegetationInstance veg{};
                     veg.x = static_cast<uint8_t>(x);
                     veg.y = static_cast<uint8_t>(surfaceY + 1);
                     veg.z = static_cast<uint8_t>(z);
@@ -786,20 +783,20 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     vegetation.push_back(veg);
                 } else {
                     // Kelp or tall seagrass: stack multiple instances
-                    int waterDepth = terrainParams.seaLevel - surfaceY;
-                    int maxHeight = std::max(2, waterDepth - 1);
+                    const int waterDepth = terrainParams.seaLevel - surfaceY;
+                    const int maxHeight = std::max(2, waterDepth - 1);
                     int height = 2 + static_cast<int>(rng() % std::max(1, maxHeight - 1));
                     height = std::min(height, waterDepth - 1); // don't poke above water
 
-                    bool isKelp = (vegType == BlockType::KELP);
+                    const bool isKelp = (vegType == BlockType::KELP);
 
                     for (int dy = 1; dy <= height; ++dy) {
-                        VegetationInstance veg;
+                        VegetationInstance veg{};
                         veg.x = static_cast<uint8_t>(x);
                         veg.y = static_cast<uint8_t>(surfaceY + dy);
                         veg.z = static_cast<uint8_t>(z);
 
-                        bool isTop = (dy == height);
+                        const bool isTop = (dy == height);
                         if (isKelp) {
                             veg.type = isTop ? BlockType::KELP : BlockType::KELP_PLANT;
                         } else {
@@ -811,7 +808,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 }
                 // Don't store in block grid — keep water blocks intact
             } else {
-                VegetationInstance veg;
+                VegetationInstance veg{};
                 veg.x = static_cast<uint8_t>(x);
                 veg.y = static_cast<uint8_t>(surfaceY + 1); // Place above surface
                 veg.z = static_cast<uint8_t>(z);
