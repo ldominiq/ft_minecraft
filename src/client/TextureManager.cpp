@@ -101,6 +101,26 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
             pixels = std::move(resized);
         }
 
+        // Check if texture has any transparency
+        bool hasTransparency = false;
+        for (size_t t = 3; t < pixels.size(); t += 4) {
+            if (pixels[t] < 255) {
+                hasTransparency = true;
+                break;
+            }
+        }
+
+        // Only premultiply alpha for textures with transparency to prevent mipmap edge artifacts
+        // For opaque textures, leave them unchanged to avoid precision issues
+        if (hasTransparency) {
+            for (size_t p = 0; p < pixels.size(); p += 4) {
+                const float alpha = pixels[p + 3] / 255.0f;
+                pixels[p + 0] = static_cast<unsigned char>(pixels[p + 0] * alpha);
+                pixels[p + 1] = static_cast<unsigned char>(pixels[p + 1] * alpha);
+                pixels[p + 2] = static_cast<unsigned char>(pixels[p + 2] * alpha);
+            }
+        }
+
         glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
                          0, 0, i,                       // x, y, layer
                          textureSize, textureSize, 1,   // width, height, depth
@@ -160,6 +180,7 @@ int TextureManager::addTintedLayer(const std::string& sourceTexture, unsigned ch
     // create tinted pixels
     std::vector<unsigned char> tinted = layerPixels[srcLayer];
     for (size_t i = 0; i < tinted.size(); i += 4) {
+        // Note: source already has premultiplied alpha, so we just tint the RGB
         tinted[i + 0] = (tinted[i + 0] * r) / 255;
         tinted[i + 1] = (tinted[i + 1] * g) / 255;
         tinted[i + 2] = (tinted[i + 2] * b) / 255;

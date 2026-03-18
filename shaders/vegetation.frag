@@ -18,13 +18,19 @@ uniform vec3 lightColor;
 uniform vec3 ambientColor;
 
 void main() {
-    // Sample texture from array
+    // Sample texture from array (premultiplied alpha)
     vec4 texColor = texture(blockTextures, vec3(fs_in.TexCoord, fs_in.TexLayer));
 
     // Discard transparent pixels — threshold raised to catch semi-transparent
     // mipmap edge pixels that would otherwise occlude terrain behind
     if (texColor.a < 0.5)
         discard;
+
+    // Unpremultiply alpha to get original colors (only for semi-transparent pixels)
+    // For opaque or nearly-opaque pixels (alpha > 0.95), skip to avoid precision issues
+    if (texColor.a > 0.01 && texColor.a < 0.95) {
+        texColor.rgb /= texColor.a;
+    }
 
     // Use a fixed upward normal for vegetation to avoid angle-dependent
     // brightness from cross-pattern quad normals

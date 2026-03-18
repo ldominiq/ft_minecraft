@@ -14,5 +14,11 @@ void main()
     if (tex.a < 0.1)
         discard;
 
+    // Unpremultiply alpha to get original colors (only for semi-transparent pixels)
+    // For opaque or nearly-opaque pixels (alpha > 0.95), skip to avoid precision issues
+    if (tex.a > 0.01 && tex.a < 0.95) {
+        tex.rgb /= tex.a;
+    }
+
     FragColor = tex;
 }
