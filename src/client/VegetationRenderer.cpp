@@ -63,7 +63,7 @@ std::vector<float> VegetationRenderer::generateCrossPatternMesh() {
 
 void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instances, size_t count,
                                         int chunkOriginX, int chunkOriginZ, const Chunk* chunk) {
-    // Build instance data: world position (3), texture layer (1), rotation (1), skylight (1), columnBaseY (1) = 7 floats per instance
+    // Build instance data: world position (3), texture layer (1), rotation (1), skylight (1), columnBaseY (1), aoFactor (1), blockLight (1) = 9 floats per instance
 
     // First pass: for sea vegetation, find the lowest Y per column (x,z) to use as column base
     // so the shader can compute coherent sway for stacked blocks.
@@ -80,7 +80,7 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
     }
 
     std::vector<float> instanceData;
-    instanceData.reserve(count * 7);
+    instanceData.reserve(count * 9);
 
     for (size_t i = 0; i < count; ++i) {
         const auto& veg = instances[i];
@@ -115,6 +115,47 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
             columnBaseY = static_cast<float>(columnBaseMap[key]);
         }
 
+        // Compute ambient occlusion factor with vertical sky visibility check
+        float aoFactor = 1.0f;
+        if (chunk) {
+            // 1. Check immediate neighbors (6 directions) for enclosed spaces
+            int solidCount = 0;
+            const int offsets[6][3] = {{1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1}};
+            for (int d = 0; d < 6; ++d) {
+                int nx = veg.x + offsets[d][0];
+                int ny = veg.y + offsets[d][1];
+                int nz = veg.z + offsets[d][2];
+                BlockType neighbor = chunk->getBlock(nx, ny, nz);
+                if (isBlockSolid(neighbor)) {
+                    solidCount++;
+                }
+            }
+            float enclosureAO = 1.0f - (static_cast<float>(solidCount) / 6.0f) * 0.5f;
+
+            // 2. Check vertical sky visibility (crucial for shadows under trees/overhangs)
+            // Look upward in steps, counting opaque/semi-opaque blocks
+            int blockedCount = 0;
+            constexpr int checkHeight = 8; // Check 8 blocks up (performance vs accuracy)
+            for (int dy = 1; dy <= checkHeight; ++dy) {
+                BlockType above = chunk->getBlock(veg.x, veg.y + dy, veg.z);
+                // Count solid blocks and leaves (leaves partially block light)
+                if (isBlockSolid(above)) {
+                    blockedCount += 2; // Solid blocks block more
+                } else if (above == BlockType::LEAVES) {
+                    blockedCount += 1; // Leaves partially block
+                }
+            }
+            // Map 0-16 blocked to shadow factor: 0 = 1.0 (bright), 16 = 0.2 (deep shadow)
+            float skyVisibility = 1.0f - std::min(static_cast<float>(blockedCount) / 16.0f, 0.8f);
+
+            // Combine both factors: enclosure darkening + overhead shadowing
+            aoFactor = enclosureAO * skyVisibility;
+        }
+
+        // Note: Block light is not implemented in the current chunk system
+        // For now, default to 0 (no block light) - can be extended when torches are added
+        float blockLightVal = 0.0f;
+
         instanceData.push_back(worldX);
         instanceData.push_back(worldY);
         instanceData.push_back(worldZ);
@@ -122,6 +163,8 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
         instanceData.push_back(rotation);
         instanceData.push_back(skyLightVal);
         instanceData.push_back(columnBaseY);
+        instanceData.push_back(aoFactor);
+        instanceData.push_back(blockLightVal);
     }
 
     instanceCount = static_cast<uint32_t>(count);
@@ -170,7 +213,7 @@ void VegetationRenderer::uploadMesh() {
     // Instance attributes (per-instance data)
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
 
-    constexpr GLsizei instanceStride = 7 * sizeof(float); // worldPos(3) + texLayer(1) + rotation(1) + skylight(1) + columnBaseY(1)
+    constexpr GLsizei instanceStride = 9 * sizeof(float); // worldPos(3) + texLayer(1) + rotation(1) + skylight(1) + columnBaseY(1) + aoFactor(1) + blockLight(1)
 
     // Location 3: instance position (vec3)
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, instanceStride, static_cast<void *>(nullptr));
@@ -196,6 +239,16 @@ void VegetationRenderer::uploadMesh() {
     glVertexAttribPointer(7, 1, GL_FLOAT, GL_FALSE, instanceStride, reinterpret_cast<void *>(6 * sizeof(float)));
     glEnableVertexAttribArray(7);
     glVertexAttribDivisor(7, 1);
+
+    // Location 8: AO factor (float)
+    glVertexAttribPointer(8, 1, GL_FLOAT, GL_FALSE, instanceStride, reinterpret_cast<void *>(7 * sizeof(float)));
+    glEnableVertexAttribArray(8);
+    glVertexAttribDivisor(8, 1);
+
+    // Location 9: block light (float)
+    glVertexAttribPointer(9, 1, GL_FLOAT, GL_FALSE, instanceStride, reinterpret_cast<void *>(8 * sizeof(float)));
+    glEnableVertexAttribArray(9);
+    glVertexAttribDivisor(9, 1);
 
     glBindVertexArray(0);
 }

@@ -9,6 +9,8 @@ layout (location = 4) in float aTexLayer;      // Texture layer index for this i
 layout (location = 5) in float aRotation;      // Random rotation around Y-axis
 layout (location = 6) in float aSkyLight;      // Sky-light level (0.0 = dark, 1.0 = full sun)
 layout (location = 7) in float aColumnBaseY;   // Y of the bottom block in this column (for coherent sway)
+layout (location = 8) in float aAOFactor;      // Ambient occlusion factor (1.0 = bright, 0.3 = dark)
+layout (location = 9) in float aBlockLight;    // Block light level (0.0 = no light, 1.0 = full torch light)
 
 out VS_OUT {
     vec3 FragPos;
@@ -17,6 +19,8 @@ out VS_OUT {
     float TexLayer;
     float SkyLight;
     float IsUnderwater;
+    float AOFactor;
+    float BlockLight;
 } vs_out;
 
 uniform mat4 projection;
@@ -87,6 +91,8 @@ void main() {
     vs_out.TexLayer = aTexLayer;
     vs_out.SkyLight = aSkyLight;
     vs_out.IsUnderwater = isUnderwater ? 1.0 : 0.0;
+    vs_out.AOFactor = aAOFactor;
+    vs_out.BlockLight = aBlockLight;
 
     gl_Position = projection * view * worldPosition;
     gl_ClipDistance[0] = dot(worldPosition, clipPlane);

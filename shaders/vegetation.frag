@@ -7,6 +7,8 @@ in VS_OUT {
     float TexLayer;
     float SkyLight;
     float IsUnderwater;
+    float AOFactor;
+    float BlockLight;
 } fs_in;
 
 out vec4 FragColor;
@@ -38,10 +40,16 @@ void main() {
     vec3 lightDirNorm = normalize(-lightDir);
     float diff = max(dot(normal, lightDirNorm), 0.0);
 
-    // Ambient + diffuse, clamped to avoid overbright whites
-    vec3 ambient = ambientColor * fs_in.SkyLight;
-    vec3 diffuse = lightColor * diff * fs_in.SkyLight;
+    // Combine skylight and block light: use the maximum of the two
+    // Block light is attenuated (0.6x) to avoid overpowering natural light
+    float effectiveLight = max(fs_in.SkyLight, fs_in.BlockLight * 0.6);
 
+    // Ambient + diffuse, modulated by AO factor for enclosed space darkening
+    // AO affects both ambient and diffuse to create natural shadowing
+    vec3 ambient = ambientColor * effectiveLight * fs_in.AOFactor;
+    vec3 diffuse = lightColor * diff * effectiveLight * fs_in.AOFactor;
+
+    // Clamp to avoid overbright whites
     vec3 result = min(ambient + diffuse, vec3(1.0)) * texColor.rgb;
 
     // Apply underwater tint — blue-green color absorption
