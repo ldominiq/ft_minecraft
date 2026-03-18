@@ -784,7 +784,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 } else {
                     // Kelp or tall seagrass: stack multiple instances
                     const int waterDepth = terrainParams.seaLevel - surfaceY;
-                    const int maxHeight = std::max(2, waterDepth - 1);
+                    constexpr int maxHeight = std::max(2, 10);
                     int height = 2 + static_cast<int>(rng() % std::max(1, maxHeight - 1));
                     height = std::min(height, waterDepth - 1); // don't poke above water
 
