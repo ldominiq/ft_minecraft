@@ -748,20 +748,17 @@ bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
     if (it == chunks.end())
         return false;
 
-    std::shared_ptr<Chunk> currChunk = it->second;
+    const std::shared_ptr<Chunk> currChunk = it->second;
 
     // When placing a block, if the target position contains vegetation, replace it
     if (type != BlockType::AIR) {
         BlockType targetBlock = currChunk->getBlock(x, y, z);
         if (isBlockVegetation(targetBlock)) {
             auto& vegList = currChunk->vegetation;
-            vegList.erase(
-                std::remove_if(vegList.begin(), vegList.end(),
-                    [x, y, z](const Chunk::VegetationInstance& v) {
-                        return v.x == x && v.y == y && v.z == z;
-                    }),
-                vegList.end()
-            );
+            std::erase_if(vegList,
+                          [x, y, z](const Chunk::VegetationInstance& v) {
+	                          return v.x == x && v.y == y && v.z == z;
+                          });
         }
     }
 
@@ -773,13 +770,10 @@ bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
         if (isBlockVegetation(blockAbove)) {
             // Remove vegetation from the chunk's vegetation list
             auto& vegList = currChunk->vegetation;
-            vegList.erase(
-                std::remove_if(vegList.begin(), vegList.end(),
-                    [x, yAbove = y + 1, z](const Chunk::VegetationInstance& v) {
-                        return v.x == x && v.y == yAbove && v.z == z;
-                    }),
-                vegList.end()
-            );
+            std::erase_if(vegList,
+                          [x, yAbove = y + 1, z](const Chunk::VegetationInstance& v) {
+	                          return v.x == x && v.y == yAbove && v.z == z;
+                          });
             // Also set the block above to AIR
             currChunk->setBlock(x, y + 1, z, BlockType::AIR);
             updatedBlocks.push_back({targetCoords + glm::ivec3(0, 1, 0), BlockType::AIR});
@@ -790,13 +784,10 @@ bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
     BlockType oldBlock = currChunk->getBlock(x, y, z);
     if (isBlockVegetation(oldBlock) && type == BlockType::AIR) {
         auto& vegList = currChunk->vegetation;
-        vegList.erase(
-            std::remove_if(vegList.begin(), vegList.end(),
+        std::erase_if(vegList,
                 [x, y, z](const Chunk::VegetationInstance& v) {
                     return v.x == x && v.y == y && v.z == z;
-                }),
-            vegList.end()
-        );
+                });
     }
 
     currChunk->setBlock(x, y, z, type);

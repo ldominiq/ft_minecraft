@@ -37,43 +37,28 @@ std::vector<float> VegetationRenderer::generateCrossPatternMesh() {
     // Each quad: 6 vertices (2 triangles)
     // Total: 2 quads * 6 vertices * 8 floats = 96 floats
 
-    std::vector<float> vertices;
-    vertices.reserve(96);
+    constexpr float w = 0.4f;       // Half-width (0.8/2)
+    constexpr float h = 1.0f;       // Height of vegetation
+    constexpr float n1 = 0.707f;    // Normal component (1/sqrt(2))
 
-    constexpr float width = 0.8f;   // Width of each quad
-    constexpr float height = 1.0f;  // Height of vegetation
+    // pos(3), tex(2), normal(3) × 12 vertices
+    return {
+        // Quad 1: diagonal NW-SE
+        -w, 0.0f, -w,  0.0f, 0.0f,   n1, 0.0f,  n1,  // v0
+         w, 0.0f,  w,  1.0f, 0.0f,   n1, 0.0f,  n1,  // v1
+         w, h,     w,  1.0f, 1.0f,   n1, 0.0f,  n1,  // v2
+         w, h,     w,  1.0f, 1.0f,   n1, 0.0f,  n1,  // v2
+        -w, h,    -w,  0.0f, 1.0f,   n1, 0.0f,  n1,  // v3
+        -w, 0.0f, -w,  0.0f, 0.0f,   n1, 0.0f,  n1,  // v0
 
-    // Quad 1: Diagonal from (-width/2, 0, -width/2) to (width/2, 0, width/2)
-    // Bottom-left
-    vertices.insert(vertices.end(), {-width/2, 0.0f, -width/2,   0.0f, 0.0f,   0.707f, 0.0f, 0.707f});
-    // Bottom-right
-    vertices.insert(vertices.end(), { width/2, 0.0f,  width/2,   1.0f, 0.0f,   0.707f, 0.0f, 0.707f});
-    // Top-right
-    vertices.insert(vertices.end(), { width/2, height, width/2,  1.0f, 1.0f,   0.707f, 0.0f, 0.707f});
-
-    // Second triangle of quad 1
-    vertices.insert(vertices.end(), { width/2, height, width/2,  1.0f, 1.0f,   0.707f, 0.0f, 0.707f});
-    // Top-left
-    vertices.insert(vertices.end(), {-width/2, height,-width/2,  0.0f, 1.0f,   0.707f, 0.0f, 0.707f});
-    // Bottom-left
-    vertices.insert(vertices.end(), {-width/2, 0.0f, -width/2,   0.0f, 0.0f,   0.707f, 0.0f, 0.707f});
-
-    // Quad 2: Diagonal from (width/2, 0, -width/2) to (-width/2, 0, width/2)
-    // Bottom-left
-    vertices.insert(vertices.end(), { width/2, 0.0f, -width/2,   0.0f, 0.0f,  -0.707f, 0.0f, 0.707f});
-    // Bottom-right
-    vertices.insert(vertices.end(), {-width/2, 0.0f,  width/2,   1.0f, 0.0f,  -0.707f, 0.0f, 0.707f});
-    // Top-right
-    vertices.insert(vertices.end(), {-width/2, height, width/2,  1.0f, 1.0f,  -0.707f, 0.0f, 0.707f});
-
-    // Second triangle of quad 2
-    vertices.insert(vertices.end(), {-width/2, height, width/2,  1.0f, 1.0f,  -0.707f, 0.0f, 0.707f});
-    // Top-left
-    vertices.insert(vertices.end(), { width/2, height,-width/2,  0.0f, 1.0f,  -0.707f, 0.0f, 0.707f});
-    // Bottom-left
-    vertices.insert(vertices.end(), { width/2, 0.0f, -width/2,   0.0f, 0.0f,  -0.707f, 0.0f, 0.707f});
-
-    return vertices;
+        // Quad 2: diagonal NE-SW
+         w, 0.0f, -w,  0.0f, 0.0f,  -n1, 0.0f,  n1,  // v4
+        -w, 0.0f,  w,  1.0f, 0.0f,  -n1, 0.0f,  n1,  // v5
+        -w, h,     w,  1.0f, 1.0f,  -n1, 0.0f,  n1,  // v6
+        -w, h,     w,  1.0f, 1.0f,  -n1, 0.0f,  n1,  // v6
+         w, h,    -w,  0.0f, 1.0f,  -n1, 0.0f,  n1,  // v7
+         w, 0.0f, -w,  0.0f, 0.0f,  -n1, 0.0f,  n1,  // v4
+    };
 }
 
 void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instances, size_t count,
@@ -100,10 +85,11 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
     for (size_t i = 0; i < count; ++i) {
         const auto& veg = instances[i];
 
+        constexpr float offset = 0.5f;
         // Convert local chunk coords to world coords
-        float worldX = static_cast<float>(chunkOriginX + veg.x);
-        float worldY = static_cast<float>(veg.y);
-        float worldZ = static_cast<float>(chunkOriginZ + veg.z);
+        float worldX = static_cast<float>(chunkOriginX + veg.x) + offset ;
+        float worldY = veg.y;
+        float worldZ = static_cast<float>(chunkOriginZ + veg.z) + offset;
 
         // Get texture layer for this vegetation type
         const auto& textures = textureManager->getBlockTextures(veg.type);
