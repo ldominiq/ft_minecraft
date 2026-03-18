@@ -130,12 +130,12 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
                     solidCount++;
                 }
             }
-            float enclosureAO = 1.0f - (static_cast<float>(solidCount) / 6.0f) * 0.5f;
+            float enclosureAO = 1.0f - (static_cast<float>(solidCount) / 6.0f) * 0.4f;
 
-            // 2. Check vertical sky visibility (crucial for shadows under trees/overhangs)
+            // 2. Check vertical sky visibility (reduced impact since CSM handles shadows)
             // Look upward in steps, counting opaque/semi-opaque blocks
             int blockedCount = 0;
-            constexpr int checkHeight = 8; // Check 8 blocks up (performance vs accuracy)
+            constexpr int checkHeight = 6; // Reduced from 8 (CSM is more accurate)
             for (int dy = 1; dy <= checkHeight; ++dy) {
                 BlockType above = chunk->getBlock(veg.x, veg.y + dy, veg.z);
                 // Count solid blocks and leaves (leaves partially block light)
@@ -145,10 +145,11 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
                     blockedCount += 1; // Leaves partially block
                 }
             }
-            // Map 0-16 blocked to shadow factor: 0 = 1.0 (bright), 16 = 0.2 (deep shadow)
-            float skyVisibility = 1.0f - std::min(static_cast<float>(blockedCount) / 16.0f, 0.8f);
+            // Reduced impact: 0 = 1.0 (bright), 12 = 0.7 (light shadow, CSM does the rest)
+            float skyVisibility = 1.0f - std::min(static_cast<float>(blockedCount) / 12.0f, 0.3f);
 
-            // Combine both factors: enclosure darkening + overhead shadowing
+            // Combine both factors: enclosure darkening + light overhead shadowing
+            // CSM will handle accurate sun-based shadows, AO just prevents vegetation being too bright
             aoFactor = enclosureAO * skyVisibility;
         }
 

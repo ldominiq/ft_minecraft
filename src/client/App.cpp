@@ -817,6 +817,10 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegetationShader->setFloat("time", static_cast<float>(glfwGetTime()));
         vegetationShader->setFloat("seaLevel", 64.0f);
 
+        // Upload CSM shadow uniforms to vegetation shader
+        lighting->uploadCSMUniforms(*vegetationShader, view);
+        vegetationShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
+
         activeShader->use(); // Switch back to main shader
     }
 
