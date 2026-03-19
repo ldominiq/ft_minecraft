@@ -213,9 +213,14 @@ target_include_directories(ft_minecraft PRIVATE
 
 find_package(OpenGL REQUIRED)
 
+if(NOT WIN32)
+    target_link_libraries(ft_minecraft PRIVATE
+        dl pthread X11 Xi Xrandr Xxf86vm z
+    )
+endif()
+
 target_link_libraries(ft_minecraft PRIVATE
     glfw glad imgui OpenGL::GL
-    dl pthread X11 Xi Xrandr Xxf86vm z
 	libzstd freetype
     # ${FFMPEG_LIBRARIES}
 )
@@ -235,5 +240,11 @@ target_include_directories(ft_minecraft_server PRIVATE
 target_link_libraries(ft_minecraft_server PRIVATE
 	libzstd
 )
+
+if(WIN32)
+    # Link Winsock library for networking on Windows
+    target_link_libraries(ft_minecraft PRIVATE Ws2_32)
+    target_link_libraries(ft_minecraft_server PRIVATE Ws2_32)
+endif()
 
 # TODO : LOOK INTO COMPILING WITH FLAGS. ONLY OUR CODE NO LIBS
