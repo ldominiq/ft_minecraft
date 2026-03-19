@@ -91,7 +91,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     // Render reflection scene
     texMgr.bind(GL_TEXTURE0);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
-    lighting->drawSky(skyView, projection, reflectCamPos);
+    lighting->drawSky(skyView, projection, reflectCamPos, false);
     // Update vegetation shader with reflected view/clip before rendering
     renderer->updateVegetationUniforms(reflectView, projection, clipPlane, reflectCamPos);
     renderer->render(sceneShader);

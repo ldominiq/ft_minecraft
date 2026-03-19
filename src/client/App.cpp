@@ -763,7 +763,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     glEndQuery(GL_TIME_ELAPSED);
 
     glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);
-    lighting->drawSky(view, projection, camera->getPlayer()->getPosition());
+    lighting->drawSky(view, projection, camera->getPlayer()->getPosition(), camera->getPlayer()->isUnderwater(*renderer));
     glEndQuery(GL_TIME_ELAPSED);
 
     // Now render terrain with depth testing enabled
@@ -777,6 +777,9 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
     lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+	lighting->uploadUnderwaterUniforms(*activeShader);
+	activeShader->setBool("cameraUnderwater", camera->getPlayer()->isUnderwater(*renderer));
+	activeShader->setFloat("underwaterDepth", camera->getPlayer()->getDepthUnderwater());
     lighting->uploadCSMUniforms(*activeShader, view);
 
     // Bind SSAO texture for the lighting shader (must be after activeShader->use())
@@ -816,6 +819,12 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegetationShader->setVec3("ambientColor", ambientColor);
         vegetationShader->setFloat("time", static_cast<float>(glfwGetTime()));
         vegetationShader->setFloat("seaLevel", 64.0f);
+
+        // Underwater fog for vegetation
+        vegetationShader->setBool("cameraUnderwater", camera->getPlayer()->isUnderwater(*renderer));
+    	vegetationShader->setVec3("underwaterTintColor", lighting->getUnderwaterTintColor());
+    	vegetationShader->setVec3("underwaterFogColor", lighting->getUnderwaterFogColor());
+    	vegetationShader->setFloat("underwaterFogDensity", lighting->getUnderwaterFogDensity());
 
         // Upload CSM shadow uniforms to vegetation shader
         lighting->uploadCSMUniforms(*vegetationShader, view);
@@ -1381,6 +1390,18 @@ void App::debugWindow() {
                 		ImGui::SliderFloat("Water wave strength", &waterRenderer->waveStrength, 0.000f, 0.09f, "%.3f");
                 		ImGui::SliderFloat("Water dudv tiling", &waterRenderer->dudvTiling, 0.000f, 0.09f, "%.2f");
 
+                		glm::vec3 underwaterTint = lighting->getUnderwaterTintColor();
+                		if (ImGui::ColorEdit3("Underwater Tint", &underwaterTint.x))
+                			lighting->setUnderwaterTintColor(underwaterTint);
+
+                		glm::vec3 underwaterFogColor = lighting->getUnderwaterFogColor();
+                		if (ImGui::ColorEdit3("Underwater Fog Color", &underwaterFogColor.x))
+                			lighting->setUnderwaterFogColor(underwaterFogColor);
+
+                		float underwaterFogDensity = lighting->getUnderwaterFogDensity();
+
+                		if (ImGui::SliderFloat("Underwater Fog Density", &underwaterFogDensity, 0.00f, 0.5f, "%.2f"))
+                			lighting->setUnderwaterFogDensity(underwaterFogDensity);
                 	}
 
                     ImGui::EndTabItem();

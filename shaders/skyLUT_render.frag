@@ -26,6 +26,10 @@ uniform vec3 cameraPosWorld;
 uniform float exposure;
 uniform vec3 sunDir;
 
+// Underwater rendering
+uniform bool cameraUnderwater;
+uniform vec3 underwaterFogColor;
+
 // LUT
 uniform sampler2D skyLUT;
 
@@ -133,6 +137,12 @@ void main() {
     // Tone mapping
     vec3 mapped = vec3(1.0) - exp(-exposure * col);
     vec3 tone = Uncharted2ToneMapping(col);
+
+    // Apply underwater fog to sky
+    if (cameraUnderwater) {
+        // Replace sky with murky water fog color
+        tone = underwaterFogColor;
+    }
 
     FragColor = vec4(tone, 1.0);
 }

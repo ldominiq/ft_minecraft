@@ -112,6 +112,9 @@ class Entity {
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const entityID getID() const { return ID; }
 
+		bool isUnderwater(const ICommonWorld &world) const;
+		float getDepthUnderwater() const;
+
 		inline void setPosition(glm::vec3 position) {
 			if (this->position != position) positionUpdated = true;
 			this->position = position;

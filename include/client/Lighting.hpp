@@ -86,7 +86,7 @@ public:
     explicit Lighting(int screenWidth, int screenHeight);
     ~Lighting();
 
-    void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos) const;
+    void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater = false) const;
     void drawLightCubes(const glm::mat4& view, const glm::mat4& projection) const;
 
     void updateSunDirection(float deltaTime);
@@ -95,7 +95,7 @@ public:
     void updateSkyLUT(float cameraPosY);
 
     void uploadLightingUniforms(const Shader& shader, const glm::vec3& cameraPos, glm::vec3 cameraFront) const;
-
+    void uploadUnderwaterUniforms(const Shader& shader) const;
     void drawTexturePreviewQuad(unsigned int textureID, bool grayscale = false, glm::vec2 offset = glm::vec2(0.0f));
 
     void renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const;
@@ -156,6 +156,10 @@ public:
     float getCloudNoiseContrastHi() const { return cloudNoiseContrastHi; };
     float getCloudWindSpeed() const { return cloudWindSpeed; };
     glm::vec2 getCloudWindDir() const { return cloudWindDir; };
+
+    glm::vec3 getUnderwaterTintColor() const { return underwaterTintColor; };
+    glm::vec3 getUnderwaterFogColor() const { return underwaterFogColor; };
+    float getUnderwaterFogDensity() const { return underwaterFogDensity; };
 
 
     float getSpotLightConstant() const { return spotLightConstant; };
@@ -222,6 +226,10 @@ public:
     void setCloudNoiseContrastHi(const float hi) { cloudNoiseContrastHi = hi; };
     void setCloudWindSpeed(const float speed) { cloudWindSpeed = speed; };
     void setCloudWindDir(const glm::vec2& dir) { cloudWindDir = dir; };
+
+    void setUnderwaterTintColor(const glm::vec3 &tint) { underwaterTintColor = tint; };
+    void setUnderwaterFogColor(const glm::vec3 &color) { underwaterFogColor = color; };
+    void setUnderwaterFogDensity(const float density) { underwaterFogDensity = density; };
 
     void setPointLightEnabled(int index, bool enabled);
     void setPointLightPosition(int index, const glm::vec3& pos);
@@ -309,6 +317,11 @@ private:
     float cloudNoiseContrastHi = 1.0f;
     float cloudWindSpeed = 100.0f;
     glm::vec2 cloudWindDir = glm::vec2(1.0f, 0.2f); // mostly horizontal drift
+
+    // Underwater params
+    glm::vec3 underwaterTintColor = glm::vec3(0.4, 0.85, 0.542);
+    glm::vec3 underwaterFogColor = glm::vec3(0.0, 0.091, 0.181);;
+    float underwaterFogDensity = 0.1f;
     
 
     // Point light (lamp)

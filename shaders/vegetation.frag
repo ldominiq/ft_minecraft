@@ -19,6 +19,12 @@ uniform vec3 lightDir;
 uniform vec3 lightColor;
 uniform vec3 ambientColor;
 
+// Underwater fog (camera-level, not per-vegetation instance)
+uniform bool cameraUnderwater;
+uniform vec3 underwaterFogColor;
+uniform float underwaterFogDensity;
+uniform vec3 underwaterTintColor;
+
 // CSM shadow uniforms
 #define MAX_CASCADES 5
 uniform sampler2DArrayShadow shadowMapArray;
@@ -76,6 +82,18 @@ void main() {
     if (fs_in.IsUnderwater > 0.5) {
         vec3 waterTint = vec3(0.4, 0.7, 0.6);
         result *= waterTint;
+    }
+
+    // Apply camera underwater fog (when viewing from underwater)
+    if (cameraUnderwater) {
+        // Distance-based fog for vegetation
+        float distance = length(viewPos - fs_in.FragPos);
+        float fogFactor = exp(-distance * underwaterFogDensity);
+        fogFactor = clamp(fogFactor, 0.0, 1.0);
+
+        vec3 tintedColor = result * underwaterTintColor;
+
+        result = mix(underwaterFogColor, tintedColor, fogFactor);
     }
 
     FragColor = vec4(result, texColor.a);
