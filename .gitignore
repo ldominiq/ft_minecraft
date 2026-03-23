@@ -60,3 +60,5 @@ bld/
 [Ll]ogs/
 
 build/
+/.idea
+/CMakeSettings.json

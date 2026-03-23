@@ -1,4 +1,3 @@
-
 #ifndef PROTOCOL_HPP
 #define PROTOCOL_HPP
 
@@ -352,16 +351,40 @@ inline AutoRegister<NetMessage> _reg_NetServerMessage;
 struct NetImGui final : public Packet {
     static constexpr PacketType ID = PacketType::NET_IMGUI;
 
-	uint8_t currentBiome;
+	uint8_t currentBiome = 0;
+	int32_t terrainHeight = 0;
+	int32_t seaLevel = 64;
+	int32_t worldSeed = 0;
+	float continentalness = 0.0f;
+	float erosion = 0.0f;
+	float peakValley = 0.0f;
+	float temperature = 0.0f;
+	float humidity = 0.0f;
 
     NetImGui() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
         w.write_u8(currentBiome);
+        w.write_i32(terrainHeight);
+        w.write_i32(seaLevel);
+        w.write_i32(worldSeed);
+        w.write_f32(continentalness);
+        w.write_f32(erosion);
+        w.write_f32(peakValley);
+        w.write_f32(temperature);
+        w.write_f32(humidity);
     }
 
     void decode(BufferReader& r) override {
         currentBiome = r.read_u8();
+        terrainHeight = r.read_i32();
+        seaLevel = r.read_i32();
+        worldSeed = r.read_i32();
+        continentalness = r.read_f32();
+        erosion = r.read_f32();
+        peakValley = r.read_f32();
+        temperature = r.read_f32();
+        humidity = r.read_f32();
     }
 };
 inline AutoRegister<NetImGui> _reg_NetImGui;

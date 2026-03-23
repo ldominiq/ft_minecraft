@@ -1,6 +1,9 @@
 #include "Server.hpp"
 
 #include "Creeper.hpp"
+#include <algorithm>
+#include <cmath>
+#include <sstream>
 Server::Server() {
 #ifdef _WIN32
     WSADATA wsaData;
@@ -332,6 +335,40 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 				player->movement->setGamemode(itMode->second);
 			}
 		}
+        else if (pkt.message.starts_with("dump "))
+        {
+            auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+            if (player == players.end())
+                return;
+
+            std::istringstream iss(pkt.message.substr(strlen("dump ")));
+            std::string mode;
+            int size = 1000;
+            int downsample = 16;
+            iss >> mode;
+            if (!(iss >> size)) size = 1000;
+            if (!(iss >> downsample)) downsample = 16;
+
+            size = std::clamp(size, 1, 4096);
+            downsample = std::clamp(downsample, 1, 256);
+
+            const glm::vec3 pos = player->movement->getPosition();
+            const int centerChunkX = static_cast<int>(std::floor(pos.x / Chunk::WIDTH));
+            const int centerChunkZ = static_cast<int>(std::floor(pos.z / Chunk::DEPTH));
+
+            if (mode == "noises") {
+                world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 1);
+                messages.push_back("[server] Generated noise maps (continentalness/erosion/pv/humidity/temperature)");
+            } else if (mode == "heightmap") {
+                world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 0);
+                messages.push_back("[server] Generated terrain heightmap");
+            } else if (mode == "biome") {
+                world->dumpBiomeMap(centerChunkX, centerChunkZ, size, size, downsample);
+                messages.push_back("[server] Generated biome map");
+            } else {
+                messages.push_back("[server] Unknown dump mode. Use: noises | heightmap | biome");
+            }
+        }
 	}
 	else
 		messages.push_back(pkt.message);
@@ -423,10 +460,21 @@ void Server::sendAll()
 
 void Server::sendImGuiData(CPlayerInfo &player) {
     NetImGui pkt;
-	float wx = player.movement->getPosition().x;
-	float wz = player.movement->getPosition().z;
-	TerrainGenerationParams params = world->getTerrainParams();
-    pkt.currentBiome = static_cast<uint8_t>(ChunkGeneration::computeBiome(params, wx, wz, ChunkGeneration::computeTerrainHeight(params, wx, wz)));
+	const float wx = player.movement->getPosition().x;
+	const float wz = player.movement->getPosition().z;
+	const TerrainGenerationParams params = world->getTerrainParams();
+    const int terrainHeight = ChunkGeneration::computeTerrainHeight(params, wx, wz);
+
+    pkt.currentBiome = static_cast<uint8_t>(ChunkGeneration::computeBiome(params, wx, wz, terrainHeight));
+    pkt.terrainHeight = terrainHeight;
+    pkt.seaLevel = params.seaLevel;
+    pkt.worldSeed = params.seed;
+    pkt.continentalness = ChunkGeneration::getContinentalness(params, wx, wz);
+    pkt.erosion = ChunkGeneration::getErosion(params, wx, wz);
+    pkt.peakValley = ChunkGeneration::getPV(params, wx, wz);
+    pkt.temperature = ChunkGeneration::getTemperature(params, wx, wz);
+    pkt.humidity = ChunkGeneration::getHumidity(params, wx, wz);
+
     sendPacketTo(pkt, player.addr);
 }
 
