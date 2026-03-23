@@ -97,18 +97,17 @@ float ChunkGeneration::getLakeMask(const TerrainGenerationParams& terrainParams,
         terrainParams.lakeThreshold + terrainParams.lakeFeather,
         lake01
     );
-    lakeCore = std::pow(glm::clamp(lakeCore, 0.0f, 1.0f), 1.6f);
 
     const float inlandMask = glm::smoothstep(
         terrainParams.lakeMinContinentalness,
-        terrainParams.lakeMinContinentalness + 0.25f,
+        terrainParams.lakeMinContinentalness + 0.22f,
         continentalness
     );
 
-    const float flatMask = 1.0f - glm::smoothstep(0.14f, 0.46f, std::abs(pv));
+    const float flatMask = 1.0f - glm::smoothstep(0.28f, 0.90f, std::abs(pv));
     const float altitudeMask = glm::smoothstep(
-        static_cast<float>(terrainParams.seaLevel) + 8.0f,
-        static_cast<float>(terrainParams.seaLevel) + 56.0f,
+        static_cast<float>(terrainParams.seaLevel) + 2.0f,
+        static_cast<float>(terrainParams.seaLevel) + 52.0f,
         baseHeight
     );
 

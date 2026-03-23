@@ -73,10 +73,10 @@ struct TerrainGenerationParams {
     int lakeOctaves = 3;
     float lakePersistence = 0.5f;
     float lakeLacunarity = 2.0f;
-    float lakeThreshold = 0.86f;
-    float lakeFeather = 0.06f;
+    float lakeThreshold = 0.62f;
+    float lakeFeather = 0.14f;
     float lakeDepth = 10.0f;
-    float lakeMinContinentalness = 0.06f;
+    float lakeMinContinentalness = -0.02f;
 
 
     // heightmap dump settings / helpers (used by World::dumpHeightmap)

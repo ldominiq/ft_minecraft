@@ -100,38 +100,8 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha);
 class App {
 public:
     struct TerrainDebugUIParams {
-        int genSize = 1000;
-        int downsample = 16;
-
-        float continentalnessFrequency = 0.001f;
-        int continentalnessOctaves = 5;
-        float continentalnessPersistence = 0.245f;
-        float continentalnessLacunarity = 3.250f;
-        float continentalnessScalingFactor = 4.5f;
-
-        float erosionFrequency = 0.009f;
-        int erosionOctaves = 5;
-        float erosionPersistence = 0.35f;
-        float erosionLacunarity = 2.37f;
-        float erosionScalingFactor = 2.0f;
-
-        float peakValleyFrequency = 0.001f;
-        int peakValleyOctaves = 5;
-        float peakValleyPersistence = 0.271f;
-        float peakValleyLacunarity = 1.438f;
-        float peakValleyScalingFactor = 2.5f;
-
-        float temperatureFrequency = 0.0012f;
-        int temperatureOctaves = 4;
-        float temperaturePersistence = 0.50f;
-        float temperatureLacunarity = 2.0f;
-        float temperatureScalingFactor = 0.5f;
-
-        float humidityFrequency = 0.0015f;
-        int humidityOctaves = 4;
-        float humidityPersistence = 0.50f;
-        float humidityLacunarity = 2.0f;
-        float humidityScalingFactor = 0.5f;
+        int genSize = 500;
+        int downsample = 8;
     };
 
     App(const std::string& serverIp = "127.0.0.1");

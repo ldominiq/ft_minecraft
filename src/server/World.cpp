@@ -99,6 +99,27 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
         	const float erosion = ChunkGeneration::getErosion(terrainParams, worldX, worldZ);
         	const float pv = ChunkGeneration::getPV(terrainParams, worldX, worldZ);
             const float baseHeight = ChunkGeneration::surfaceNoiseTransformation(continentalness, 1);
+            const float erosionSplineValue = ChunkGeneration::surfaceNoiseTransformation(erosion, 2);
+            const float pvSplineValue = ChunkGeneration::surfaceNoiseTransformation(pv, 3);
+
+            float eroMin = std::numeric_limits<float>::infinity();
+            float eroMax = -std::numeric_limits<float>::infinity();
+            for (const auto &val : erosionSpline | std::views::values) {
+                eroMin = glm::min(eroMin, val);
+                eroMax = glm::max(eroMax, val);
+            }
+            float erosionNorm = 0.0f;
+            if (eroMax > eroMin)
+                erosionNorm = glm::clamp((erosionSplineValue - eroMin) / (eroMax - eroMin), 0.0f, 1.0f);
+            erosionNorm = 1.0f - erosionNorm;
+
+            const float inlandMask = glm::smoothstep(-0.19f, 3.8f, continentalness);
+            constexpr float minErosionStrength = 2.0f;
+            constexpr float maxErosionStrength = 140.0f;
+            const float erosionStrength = glm::mix(minErosionStrength, maxErosionStrength, inlandMask);
+            const float erosionDelta = erosionNorm * erosionStrength;
+            const float pvFactor = pvSplineValue * (1.0f - erosionNorm);
+            const float preHydroHeight = baseHeight - erosionDelta + pvFactor;
 
             if (image == 0) {
 
@@ -115,16 +136,19 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
             	imgHumidity[wx + wz * outW] = ChunkGeneration::getHumidity(terrainParams, worldX, worldZ);
             	imgTemperature[wx + wz * outW] = ChunkGeneration::getTemperature(terrainParams, worldX, worldZ);
                 imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(terrainParams, worldX, worldZ);
-                imgRiverMask[wx + wz * outW] = ChunkGeneration::getRiverMask(terrainParams, worldX, worldZ, continentalness, baseHeight, pv);
+                const float riverMask = ChunkGeneration::getRiverMask(terrainParams, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgRiverMask[wx + wz * outW] = std::pow(glm::clamp(riverMask, 0.0f, 1.0f), 0.45f);
                 imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(terrainParams, worldX, worldZ);
-                imgLakeMask[wx + wz * outW] = ChunkGeneration::getLakeMask(terrainParams, worldX, worldZ, continentalness, baseHeight, pv);
+                const float lakeMask = ChunkGeneration::getLakeMask(terrainParams, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgLakeMask[wx + wz * outW] = std::pow(glm::clamp(lakeMask, 0.0f, 1.0f), 0.35f);
             } else if (image == 2) {
                 imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(terrainParams, worldX, worldZ);
-                imgRiverMask[wx + wz * outW] = ChunkGeneration::getRiverMask(terrainParams, worldX, worldZ, continentalness, baseHeight, pv);
+                const float riverMask = ChunkGeneration::getRiverMask(terrainParams, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgRiverMask[wx + wz * outW] = std::pow(glm::clamp(riverMask, 0.0f, 1.0f), 0.45f);
                 imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(terrainParams, worldX, worldZ);
-                imgLakeMask[wx + wz * outW] = ChunkGeneration::getLakeMask(terrainParams, worldX, worldZ, continentalness, baseHeight, pv);
+                const float lakeMask = ChunkGeneration::getLakeMask(terrainParams, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgLakeMask[wx + wz * outW] = std::pow(glm::clamp(lakeMask, 0.0f, 1.0f), 0.35f);
             }
-            
         }
     }
     if (image == 0) {
@@ -910,7 +934,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 
 			// small position offset from the block center
 			glm::vec3 positionOffset = glm::normalize(glm::vec3(std::cos(yawRad), 0.0f, std::sin(yawRad)))
-									* 0.15f; // radius offset
+				* 0.15f; // radius offset
 
 			// optional: add some slight random variation so they don’t stack perfectly
 			positionOffset.x += offsetDist(rng);
