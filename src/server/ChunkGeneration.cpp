@@ -1,4 +1,3 @@
-
 #include "ChunkGeneration.hpp"
 
 ChunkGeneration::ChunkGeneration(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate) :
@@ -9,8 +8,114 @@ ChunkGeneration::ChunkGeneration(const int chunkX, const int chunkZ, const Terra
     	generate(params);
 }
 
-void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
+// Returns the warped river noise field in [-1, 1].
+float ChunkGeneration::getRiverNoise(const TerrainGenerationParams& terrainParams, float worldX, float worldZ) {
+    static Noise riverNoise(terrainParams.seed + 7717);
+    static Noise riverWarpX(terrainParams.seed + 7718);
+    static Noise riverWarpZ(terrainParams.seed + 7719);
 
+    const float warpX = riverWarpX.fractalBrownianMotion2D(
+        worldX * terrainParams.riverWarpFrequency,
+        worldZ * terrainParams.riverWarpFrequency,
+        3, 2.0f, 0.5f
+    ) * terrainParams.riverWarpStrength;
+
+    const float warpZ = riverWarpZ.fractalBrownianMotion2D(
+        worldX * terrainParams.riverWarpFrequency,
+        worldZ * terrainParams.riverWarpFrequency,
+        3, 2.0f, 0.5f
+    ) * terrainParams.riverWarpStrength;
+
+    const float wx = worldX + warpX;
+    const float wz = worldZ + warpZ;
+
+    return riverNoise.fractalBrownianMotion2D(
+        wx * terrainParams.riverFrequency,
+        wz * terrainParams.riverFrequency,
+        terrainParams.riverOctaves,
+        terrainParams.riverLacunarity,
+        terrainParams.riverPersistence
+    );
+}
+
+// Converts river noise into a carving mask [0,1], then filters by
+// inlandness, altitude and steepness so rivers prefer low/medium valleys.
+float ChunkGeneration::getRiverMask(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, float continentalness, float baseHeight, float pv) {
+    const float river = getRiverNoise(terrainParams, worldX, worldZ);
+
+    float riverCenter = 1.0f - glm::smoothstep(
+        terrainParams.riverWidth,
+        terrainParams.riverWidth + terrainParams.riverBankFeather,
+        std::abs(river)
+    );
+    riverCenter = std::pow(glm::clamp(riverCenter, 0.0f, 1.0f), 1.5f);
+
+    const float inlandMask = glm::smoothstep(
+        terrainParams.riverMinContinentalness,
+        terrainParams.riverMinContinentalness + 0.24f,
+        continentalness
+    );
+
+    const float lowlandMask = glm::smoothstep(
+        static_cast<float>(terrainParams.seaLevel) + 2.0f,
+        static_cast<float>(terrainParams.seaLevel) + 30.0f,
+        baseHeight
+    );
+
+    const float mountainBlock = 1.0f - glm::smoothstep(
+        static_cast<float>(terrainParams.seaLevel) + 45.0f,
+        static_cast<float>(terrainParams.seaLevel) + 95.0f,
+        baseHeight
+    );
+
+    const float steepnessMask = 1.0f - glm::smoothstep(0.35f, 0.85f, std::abs(pv));
+
+    return riverCenter * inlandMask * lowlandMask * mountainBlock * steepnessMask;
+}
+
+// Returns lake base noise mapped to [0,1] for debugging and thresholding.
+float ChunkGeneration::getLakeNoise(const TerrainGenerationParams& terrainParams, float worldX, float worldZ) {
+    static Noise lakeNoise(terrainParams.seed + 9901);
+    const float raw = lakeNoise.fractalBrownianMotion2D(
+        worldX * terrainParams.lakeFrequency,
+        worldZ * terrainParams.lakeFrequency,
+        terrainParams.lakeOctaves,
+        terrainParams.lakeLacunarity,
+        terrainParams.lakePersistence
+    );
+
+    return (raw + 1.0f) * 0.5f;
+}
+
+// Converts lake noise into a carving mask [0,1], favoring inland,
+// flatter and mid-altitude zones to avoid mountain-top basins.
+float ChunkGeneration::getLakeMask(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, float continentalness, float baseHeight, float pv) {
+    const float lake01 = getLakeNoise(terrainParams, worldX, worldZ);
+
+    float lakeCore = glm::smoothstep(
+        terrainParams.lakeThreshold,
+        terrainParams.lakeThreshold + terrainParams.lakeFeather,
+        lake01
+    );
+    lakeCore = std::pow(glm::clamp(lakeCore, 0.0f, 1.0f), 1.6f);
+
+    const float inlandMask = glm::smoothstep(
+        terrainParams.lakeMinContinentalness,
+        terrainParams.lakeMinContinentalness + 0.25f,
+        continentalness
+    );
+
+    const float flatMask = 1.0f - glm::smoothstep(0.14f, 0.46f, std::abs(pv));
+    const float altitudeMask = glm::smoothstep(
+        static_cast<float>(terrainParams.seaLevel) + 8.0f,
+        static_cast<float>(terrainParams.seaLevel) + 56.0f,
+        baseHeight
+    );
+
+    return lakeCore * inlandMask * flatMask * altitudeMask;
+}
+
+void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
     // local storage
     BlockStorage blocks;
 
@@ -588,8 +693,35 @@ int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrain
 
     const float pvFactor = pvSplineValue * (1.0f - erosionNorm);
 
-    const float finalHeight = baseHeight - erosionDelta + pvFactor;
+    float finalHeight = baseHeight - erosionDelta + pvFactor;
 
+    // Carve a smooth two-part river profile: deep core + softer banks.
+    const float riverMask = getRiverMask(terrainParams, worldX, worldZ, continentalness, finalHeight, pv);
+    if (riverMask > 0.0f) {
+        const float bankMask = std::pow(riverMask, 0.45f);
+        finalHeight -= terrainParams.riverDepth * 0.85f * riverMask;
+        finalHeight -= terrainParams.riverDepth * 0.60f * bankMask;
+
+        if (riverMask > 0.72f) {
+            const float t = glm::clamp((riverMask - 0.72f) / 0.28f, 0.0f, 1.0f);
+            const float targetBed = static_cast<float>(terrainParams.seaLevel) - 1.5f;
+            finalHeight = glm::mix(finalHeight, targetBed, t);
+        }
+    }
+
+    // Lakes use the same sea level, but with broader/softer basin shaping.
+    const float lakeMask = getLakeMask(terrainParams, worldX, worldZ, continentalness, finalHeight, pv);
+    if (lakeMask > 0.0f) {
+        const float basinMask = std::pow(lakeMask, 0.65f);
+        finalHeight -= terrainParams.lakeDepth * 0.90f * lakeMask;
+        finalHeight -= terrainParams.lakeDepth * 0.55f * basinMask;
+
+        if (lakeMask > 0.70f) {
+            const float t = glm::clamp((lakeMask - 0.70f) / 0.30f, 0.0f, 1.0f);
+            const float targetBed = static_cast<float>(terrainParams.seaLevel) - 1.5f;
+            finalHeight = glm::mix(finalHeight, targetBed, t);
+        }
+    }
 
     int surfaceY = static_cast<int>(std::floor(finalHeight)); // round
     surfaceY = glm::clamp(surfaceY, 0, HEIGHT - 1);

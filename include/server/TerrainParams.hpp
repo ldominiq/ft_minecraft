@@ -56,10 +56,32 @@ struct TerrainGenerationParams {
     int seaLevel = 64;
     int bedrockLevel = 0;
 
+    // River carving params (server-side, no ImGui required)
+    float riverFrequency = 0.0048f;
+    int riverOctaves = 4;
+    float riverPersistence = 0.5f;
+    float riverLacunarity = 2.0f;
+    float riverWidth = 0.030f;
+    float riverBankFeather = 0.060f;
+    float riverDepth = 18.0f;
+    float riverWarpFrequency = 0.0012f;
+    float riverWarpStrength = 180.0f;
+    float riverMinContinentalness = -0.04f;
+
+    // Lake carving params (same water level as ocean/sea)
+    float lakeFrequency = 0.0010f;
+    int lakeOctaves = 3;
+    float lakePersistence = 0.5f;
+    float lakeLacunarity = 2.0f;
+    float lakeThreshold = 0.86f;
+    float lakeFeather = 0.06f;
+    float lakeDepth = 10.0f;
+    float lakeMinContinentalness = 0.06f;
+
 
     // heightmap dump settings / helpers (used by World::dumpHeightmap)
-    int genSize = 1000;     // default size for quick dumps
-    int downsample = 16;    // output downsample factor for dumps
+    int genSize = 500;     // default size for quick dumps
+    int downsample = 8;    // output downsample factor for dumps
 
     // Continentalness noise params
     float continentalnessFrequency = 0.001f;

@@ -987,49 +987,6 @@ void App::debugWindow() {
                     // Need to expose terrainParams from the server to the client..
                     // ImGui::Checkbox("Debug: Ores Only", &terrainParams.debugOresOnly);
 
-                    if (ImGui::CollapsingHeader("Noise Generation")) {
-                        if (ImGui::CollapsingHeader("Continentalness Parameters")) {
-                            ImGui::SliderFloat("frequency", &debugTerrainParams.continentalnessFrequency, 0.001f, 0.01f);
-                            ImGui::SliderInt("octaves", &debugTerrainParams.continentalnessOctaves, 1, 10);
-                            ImGui::SliderFloat("persistence", &debugTerrainParams.continentalnessPersistence, 0.0f, 1.0f);
-                            ImGui::SliderFloat("lacunarity", &debugTerrainParams.continentalnessLacunarity, 1.0f, 4.0f);
-                            ImGui::SliderFloat("scaling factor", &debugTerrainParams.continentalnessScalingFactor, 1.0f, 5.0f);
-                        }
-
-                        if (ImGui::CollapsingHeader("Erosion Parameters")) {
-                            ImGui::SliderFloat("#frequency", &debugTerrainParams.erosionFrequency, 0.001f, 0.02f);
-                            ImGui::SliderInt("#octaves", &debugTerrainParams.erosionOctaves, 1, 10);
-                            ImGui::SliderFloat("#persistence", &debugTerrainParams.erosionPersistence, 0.0f, 1.0f);
-                            ImGui::SliderFloat("#lacunarity", &debugTerrainParams.erosionLacunarity, 1.0f, 4.0f);
-                            ImGui::SliderFloat("#scaling factor", &debugTerrainParams.erosionScalingFactor, 1.0f, 5.0f);
-                        }
-
-                        if (ImGui::CollapsingHeader("Peak/Valley Parameters")) {
-                            ImGui::SliderFloat("-frequency", &debugTerrainParams.peakValleyFrequency, 0.001f, 0.09f);
-                            ImGui::SliderInt("-octaves", &debugTerrainParams.peakValleyOctaves, 1, 10);
-                            ImGui::SliderFloat("-persistence", &debugTerrainParams.peakValleyPersistence, 0.0f, 1.0f);
-                            ImGui::SliderFloat("-lacunarity", &debugTerrainParams.peakValleyLacunarity, 1.0f, 4.0f);
-                            ImGui::SliderFloat("-scaling factor", &debugTerrainParams.peakValleyScalingFactor, 1.0f, 5.0f);
-                        }
-
-                        if (ImGui::CollapsingHeader("Temperature Parameters")) {
-                            ImGui::SliderFloat("--frequency", &debugTerrainParams.temperatureFrequency, 0.0001f, 0.0012f);
-                            ImGui::SliderInt("--octaves", &debugTerrainParams.temperatureOctaves, 1, 10);
-                            ImGui::SliderFloat("--persistence", &debugTerrainParams.temperaturePersistence, 0.0f, 1.0f);
-                            ImGui::SliderFloat("--lacunarity", &debugTerrainParams.temperatureLacunarity, 1.0f, 4.0f);
-                            ImGui::SliderFloat("--scaling factor", &debugTerrainParams.temperatureScalingFactor, 1.0f, 5.0f);
-                        }
-
-                        if (ImGui::CollapsingHeader("Humidity Parameters")) {
-                            ImGui::SliderFloat("---frequency", &debugTerrainParams.humidityFrequency, 0.0005f, 0.0015f);
-                            ImGui::SliderInt("---octaves", &debugTerrainParams.humidityOctaves, 1, 10);
-                            ImGui::SliderFloat("---persistence", &debugTerrainParams.humidityPersistence, 0.0f, 1.0f);
-                            ImGui::SliderFloat("---lacunarity", &debugTerrainParams.humidityLacunarity, 1.0f, 4.0f);
-                            ImGui::SliderFloat("---scaling factor", &debugTerrainParams.humidityScalingFactor, 1.0f, 5.0f);
-                        }
-                    }
-
-
                     ImGui::Separator();
 
                     if (ImGui::CollapsingHeader("Heightmap")) {
@@ -1047,6 +1004,10 @@ void App::debugWindow() {
                                           std::to_string(debugTerrainParams.downsample);
                             udpClient->sendPacket(cmd);
                         };
+
+                        if (ImGui::Button("Generate Hydros")) {
+                            sendDumpCommand("hydro");
+                        }
 
                         if (ImGui::Button("Generate Noises")) {
                             sendDumpCommand("noises");

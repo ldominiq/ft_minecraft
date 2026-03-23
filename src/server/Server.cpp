@@ -359,6 +359,9 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
             if (mode == "noises") {
                 world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 1);
                 messages.push_back("[server] Generated noise maps (continentalness/erosion/pv/humidity/temperature)");
+            } else if (mode == "hydro") {
+                world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 2);
+                messages.push_back("[server] Generated hydro maps (river/lake noise + masks)");
             } else if (mode == "heightmap") {
                 world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 0);
                 messages.push_back("[server] Generated terrain heightmap");
@@ -366,7 +369,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
                 world->dumpBiomeMap(centerChunkX, centerChunkZ, size, size, downsample);
                 messages.push_back("[server] Generated biome map");
             } else {
-                messages.push_back("[server] Unknown dump mode. Use: noises | heightmap | biome");
+                messages.push_back("[server] Unknown dump mode. Use: noises | hydro | heightmap | biome");
             }
         }
 	}

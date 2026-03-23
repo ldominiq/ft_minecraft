@@ -85,6 +85,10 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
     std::vector<float> imgPV(outW * outH);
     std::vector<float> imgHumidity(outW * outH);
     std::vector<float> imgTemperature(outW * outH);
+    std::vector<float> imgRiverNoise(outW * outH);
+    std::vector<float> imgRiverMask(outW * outH);
+    std::vector<float> imgLakeNoise(outW * outH);
+    std::vector<float> imgLakeMask(outW * outH);
 
     for (int oz = 0, wz = 0; wz < outH; ++wz, oz += downsample) {
         for (int ox = 0, wx = 0; wx < outW; ++wx, ox += downsample) {
@@ -94,6 +98,7 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
         	const float continentalness = ChunkGeneration::getContinentalness(terrainParams, worldX, worldZ);
         	const float erosion = ChunkGeneration::getErosion(terrainParams, worldX, worldZ);
         	const float pv = ChunkGeneration::getPV(terrainParams, worldX, worldZ);
+            const float baseHeight = ChunkGeneration::surfaceNoiseTransformation(continentalness, 1);
 
             if (image == 0) {
 
@@ -109,7 +114,15 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
                 imgPV[wx + wz * outW] = pv;
             	imgHumidity[wx + wz * outW] = ChunkGeneration::getHumidity(terrainParams, worldX, worldZ);
             	imgTemperature[wx + wz * outW] = ChunkGeneration::getTemperature(terrainParams, worldX, worldZ);
-
+                imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(terrainParams, worldX, worldZ);
+                imgRiverMask[wx + wz * outW] = ChunkGeneration::getRiverMask(terrainParams, worldX, worldZ, continentalness, baseHeight, pv);
+                imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(terrainParams, worldX, worldZ);
+                imgLakeMask[wx + wz * outW] = ChunkGeneration::getLakeMask(terrainParams, worldX, worldZ, continentalness, baseHeight, pv);
+            } else if (image == 2) {
+                imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(terrainParams, worldX, worldZ);
+                imgRiverMask[wx + wz * outW] = ChunkGeneration::getRiverMask(terrainParams, worldX, worldZ, continentalness, baseHeight, pv);
+                imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(terrainParams, worldX, worldZ);
+                imgLakeMask[wx + wz * outW] = ChunkGeneration::getLakeMask(terrainParams, worldX, worldZ, continentalness, baseHeight, pv);
             }
             
         }
@@ -125,6 +138,15 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
     	saveHeightmapPPM("pvNoise.ppm", imgPV, outW, outH);
     	saveHeightmapPPM("humidNoise.ppm", imgHumidity, outW, outH);
     	saveHeightmapPPM("tempNoise.ppm", imgTemperature, outW, outH);
+        saveHeightmapPPM("riverNoise.ppm", imgRiverNoise, outW, outH);
+        saveHeightmapPPM("riverMask.ppm", imgRiverMask, outW, outH);
+        saveHeightmapPPM("lakeNoise.ppm", imgLakeNoise, outW, outH);
+        saveHeightmapPPM("lakeMask.ppm", imgLakeMask, outW, outH);
+    } else if (image == 2) {
+        saveHeightmapPPM("riverNoise.ppm", imgRiverNoise, outW, outH);
+        saveHeightmapPPM("riverMask.ppm", imgRiverMask, outW, outH);
+        saveHeightmapPPM("lakeNoise.ppm", imgLakeNoise, outW, outH);
+        saveHeightmapPPM("lakeMask.ppm", imgLakeMask, outW, outH);
     }
 }
 
@@ -887,7 +909,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			float yawRad = glm::radians(randomAngle);
 
 			// small position offset from the block center
-			glm::vec3 positionOffset = glm::normalize(glm::vec3(std::cos(yawRad), 0.0f, std::sin(yawRad))) 
+			glm::vec3 positionOffset = glm::normalize(glm::vec3(std::cos(yawRad), 0.0f, std::sin(yawRad)))
 									* 0.15f; // radius offset
 
 			// optional: add some slight random variation so they don’t stack perfectly
