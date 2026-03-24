@@ -48,11 +48,57 @@ bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 
     std::shared_ptr<ChunkRenderer> currChunk = it->second;
 
-    // If breaking a block, also clear vegetation above it
+    // Handle vegetation: if breaking a block that has vegetation above, remove the vegetation
     if (type == BlockType::AIR && y + 1 < Chunk::HEIGHT) {
         BlockType blockAbove = currChunk->getBlock(x, y + 1, z);
         if (isBlockVegetation(blockAbove)) {
+            // Remove vegetation from the chunk's vegetation list
+            auto& vegList = currChunk->vegetation;
+            std::erase_if(vegList,
+                          [x, yAbove = y + 1, z](const Chunk::VegetationInstance& v) {
+                              return v.x == x && v.y == yAbove && v.z == z;
+                          });
             currChunk->setBlock(x, y + 1, z, BlockType::AIR);
+        }
+    }
+
+    // If breaking vegetation directly, remove it from the vegetation list
+    BlockType oldBlock = currChunk->getBlock(x, y, z);
+    if (isBlockVegetation(oldBlock) && type == BlockType::AIR) {
+        auto& vegList = currChunk->vegetation;
+        std::erase_if(vegList,
+                [x, y, z](const Chunk::VegetationInstance& v) {
+                    return v.x == x && v.y == y && v.z == z;
+                });
+    }
+
+    // Keep vegetation instance list in sync with placed/replaced block.
+    {
+        auto& vegList = currChunk->vegetation;
+        const bool oldIsVeg = isBlockVegetation(oldBlock);
+        const bool newIsLandVeg = isBlockVegetation(type) && !isSeaVegetation(type);
+
+        if (newIsLandVeg) {
+            auto itVeg = std::find_if(vegList.begin(), vegList.end(),
+                [x, y, z](const Chunk::VegetationInstance& v) {
+                    return v.x == x && v.y == y && v.z == z;
+                });
+
+            if (itVeg != vegList.end()) {
+                itVeg->type = type; // replace existing vegetation at same coords
+            } else {
+                Chunk::VegetationInstance v{};
+                v.x = static_cast<uint8_t>(x);
+                v.y = static_cast<uint8_t>(y);
+                v.z = static_cast<uint8_t>(z);
+                v.type = type;
+                vegList.push_back(v);
+            }
+        } else if (oldIsVeg) {
+            std::erase_if(vegList,
+                [x, y, z](const Chunk::VegetationInstance& v) {
+                    return v.x == x && v.y == y && v.z == z;
+                });
         }
     }
 

@@ -824,6 +824,37 @@ bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
                 });
     }
 
+    // Keep vegetation instance list in sync with placed/replaced block.
+    // Client renders land vegetation from currChunk->vegetation (not cube mesh).
+    {
+        auto& vegList = currChunk->vegetation;
+        const bool oldIsVeg = isBlockVegetation(oldBlock);
+        const bool newIsLandVeg = isBlockVegetation(type) && !isSeaVegetation(type);
+
+        if (newIsLandVeg) {
+            auto itVeg = std::find_if(vegList.begin(), vegList.end(),
+                [x, y, z](const Chunk::VegetationInstance& v) {
+                    return v.x == x && v.y == y && v.z == z;
+                });
+
+            if (itVeg != vegList.end()) {
+                itVeg->type = type; // replace existing vegetation at same coords
+            } else {
+				Chunk::VegetationInstance v{};
+				v.x = static_cast<uint8_t>(x);
+				v.y = static_cast<uint8_t>(y);
+				v.z = static_cast<uint8_t>(z);
+				v.type = type;
+                vegList.push_back(v);
+            }
+        } else if (oldIsVeg) {
+            std::erase_if(vegList,
+                [x, y, z](const Chunk::VegetationInstance& v) {
+                    return v.x == x && v.y == y && v.z == z;
+                });
+        }
+    }
+
     currChunk->setBlock(x, y, z, type);
 
 	// update neat water blocks

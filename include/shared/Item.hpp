@@ -189,6 +189,7 @@ public:
 	}
 };
 
+// If needed, here's the list of all vegetation blocks for quick reference
 inline static constexpr BlockType VEGETATION_BLOCKS[] = {
 	BlockType::SHORT_GRASS,
 	BlockType::CORNFLOWER,
@@ -225,6 +226,7 @@ inline static constexpr BlockType VEGETATION_BLOCKS[] = {
 
 };
 
+// If needed, here's the list of sea vegetation blocks only
 inline static constexpr BlockType SEA_VEGETATION_BLOCKS[] = {
 	BlockType::SEAGRASS,
 	BlockType::TALL_SEAGRASS_BOTTOM,
@@ -244,17 +246,53 @@ inline static constexpr BlockType SEA_VEGETATION_BLOCKS[] = {
 };
 
 inline static bool isSeaVegetation(const BlockType &b) {
-	for (auto s : SEA_VEGETATION_BLOCKS)
-		if (b == s) return true;
-	return false;
+	switch(b) {
+		case BlockType::SEAGRASS:
+		case BlockType::TALL_SEAGRASS_BOTTOM:
+		case BlockType::TALL_SEAGRASS_TOP:
+		case BlockType::KELP:
+		case BlockType::KELP_PLANT:
+		case BlockType::BRAIN_CORAL:
+		case BlockType::BRAIN_CORAL_FAN:
+		case BlockType::BUBBLE_CORAL:
+		case BlockType::BUBBLE_CORAL_FAN:
+		case BlockType::FIRE_CORAL:
+		case BlockType::FIRE_CORAL_FAN:
+		case BlockType::HORN_CORAL:
+		case BlockType::HORN_CORAL_FAN:
+		case BlockType::TUBE_CORAL:
+		case BlockType::TUBE_CORAL_FAN:
+			return true;
+		default:
+			return false;
+	}
 }
 
 inline static bool isBlockVegetation(const BlockType &b) {
-	for (auto v : VEGETATION_BLOCKS)
-		if (b == v) return true;
-	return false;
+	switch(b) {
+		case BlockType::SHORT_GRASS:
+		case BlockType::CORNFLOWER:
+		case BlockType::POPPY:
+		case BlockType::PINK_TULIP:
+		case BlockType::ORANGE_TULIP:
+		case BlockType::RED_TULIP:
+		case BlockType::WHITE_TULIP:
+		case BlockType::BLUE_ORCHID:
+		case BlockType::ALLIUM:
+		case BlockType::AZURE_BLUET:
+		case BlockType::OXEYE_DAISY:
+		case BlockType::LILY_OF_THE_VALLEY:
+		case BlockType::WITHER_ROSE:
+		case BlockType::DANDELION:
+		case BlockType::RED_MUSHROOM:
+		case BlockType::BROWN_MUSHROOM:
+		case BlockType::DEAD_BUSH:
+			return true;
+		default:
+			return false;
+	}
 }
-inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES; }
+inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES || b == BlockType::CACTUS; }
 
 inline static bool isBlockSolid(const BlockType &b) {
 	return b != BlockType::AIR && b != BlockType::WATER && !isBlockVegetation(b);

@@ -208,7 +208,7 @@ void Chunk::computeSkyLight() {
                 continue;
 
             BlockType neighborBlock = getBlock(neighborX, neighborY, neighborZ);
-            if (isBlockSolid(neighborBlock) && !isBlockTransparent(neighborBlock) && neighborBlock != BlockType::CACTUS)
+            if (isBlockSolid(neighborBlock) && !isBlockTransparent(neighborBlock))
                 continue; // Light doesn't pass through solid blocks
 
             int neighborIndex = neighborX + WIDTH * (neighborY + HEIGHT * neighborZ);
@@ -279,19 +279,39 @@ void Chunk::loadFromStream(std::istream& in) {
     blockIndices.loadFromStream(in);
 
 	// --- Load vegetation ---
-	uint32_t vegetationCount;
+	uint32_t vegetationCount = 0;
 	in.read(reinterpret_cast<char*>(&vegetationCount), sizeof(vegetationCount));
 
-	vegetation.clear();
+    if (!in.good()) {
+        // Older or truncated file: no vegetation block present.
+        in.clear(); // clear eof/fail so caller can continue using stream
+        vegetationCount = 0;
+    } else {
+        // Safety cap: one chunk can't reasonably hold infinite vegetation.
+        constexpr uint32_t kMaxVegetationPerChunk = WIDTH * HEIGHT * DEPTH;
+        if (vegetationCount > kMaxVegetationPerChunk) {
+            vegetationCount = kMaxVegetationPerChunk;
+        }
+    }
+
 	vegetation.reserve(vegetationCount);
 
 	for (uint32_t i = 0; i < vegetationCount; ++i) {
-		VegetationInstance veg;
+		VegetationInstance veg{};
+
 		in.read(reinterpret_cast<char*>(&veg.x), sizeof(veg.x));
 		in.read(reinterpret_cast<char*>(&veg.y), sizeof(veg.y));
 		in.read(reinterpret_cast<char*>(&veg.z), sizeof(veg.z));
 		in.read(reinterpret_cast<char*>(&veg.type), sizeof(veg.type));
+
+        if (!in.good()) {
+            // Corrupt/truncated entry list: keep what we already read.
+            in.clear();
+            break;
+        }
+
 		vegetation.push_back(veg);
+        
 		// Don't overwrite water blocks with sea vegetation —
 		// sea vegetation is rendered purely via the vegetation renderer
 		if (!isSeaVegetation(veg.type)) {

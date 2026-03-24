@@ -665,7 +665,7 @@ int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrain
     // find min/max of the erosion spline
     float eroMin = std::numeric_limits<float>::infinity();
     float eroMax = -std::numeric_limits<float>::infinity();
-    for (const auto &val: erosionSpline | std::views::values) { eroMin = glm::min(eroMin, val); eroMax = glm::max(eroMax, val); }
+    for (const auto &p: erosionSpline) { const float val = p.second; eroMin = glm::min(eroMin, val); eroMax = glm::max(eroMax, val); }
 
     const float continentalness = getContinentalness(terrainParams, worldX, worldZ);
     const float erosion = getErosion(terrainParams, worldX, worldZ);
@@ -762,12 +762,12 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 if (surfaceY <= terrainParams.seaLevel)
                     continue;
 
-                // Don't place vegetation on water, sand, or snow
+                // Don't place vegetation on water, or snow
                 if (surfaceBlock == BlockType::WATER ||
                     surfaceBlock == BlockType::SNOW)
                     continue;
 
-                // Only place vegetation on grass or dirt blocks
+                // Only place vegetation on grass, dirt, or sand blocks
                 if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT && surfaceBlock != BlockType::SAND)
                     continue;
 

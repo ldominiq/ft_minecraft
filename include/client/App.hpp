@@ -109,6 +109,7 @@ public:
 
     void run();
 
+private:
     void init(const std::string& serverIp);
     void loadResources();
     void render();
