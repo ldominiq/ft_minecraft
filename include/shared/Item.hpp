@@ -254,7 +254,7 @@ inline static bool isBlockVegetation(const BlockType &b) {
 		if (b == v) return true;
 	return false;
 }
-inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES; }
+inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES || b == BlockType::CACTUS; }
 
 inline static bool isBlockSolid(const BlockType &b) {
 	return b != BlockType::AIR && b != BlockType::WATER && !isBlockVegetation(b);
