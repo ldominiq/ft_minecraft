@@ -636,7 +636,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     surfaceBlock == BlockType::SNOW)
                     continue;
 
-                // Only place vegetation on grass or dirt blocks
+                // Only place vegetation on grass, dirt, or sand blocks
                 if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT && surfaceBlock != BlockType::SAND)
                     continue;
 

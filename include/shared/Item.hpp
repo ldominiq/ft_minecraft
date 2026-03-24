@@ -286,6 +286,7 @@ inline static bool isBlockVegetation(const BlockType &b) {
 		case BlockType::DANDELION:
 		case BlockType::RED_MUSHROOM:
 		case BlockType::BROWN_MUSHROOM:
+		case BlockType::DEAD_BUSH:
 			return true;
 		default:
 			return false;
