@@ -30,6 +30,7 @@
 #include "GBuffer.hpp"
 #include "SSAO.hpp"
 #include "TextureManager.hpp"
+#include "ui/TerrainDebugWindow.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -187,6 +188,9 @@ private:
 	// Render type debug framebuffers
 	std::unique_ptr<RenderTypeFramebuffer> renderTypeFramebuffer;
 
+    // Terrain parameter debugging and tweaking
+    std::unique_ptr<TerrainDebugWindow> terrainDebugWindow;
+    std::unique_ptr<TerrainGenerationParams> terrainDebugWindowParams;
     // SSAO
     std::shared_ptr<GBuffer> gBuffer;
     std::shared_ptr<SSAO> ssao;

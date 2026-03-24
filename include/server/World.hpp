@@ -123,6 +123,28 @@ class World final : public CommonWorld<ChunkGeneration>
 		void saveRegionsOnExit();
 		// Terrain params for ImGui
 		TerrainGenerationParams& getTerrainParams() { return terrainParams;}
+		
+		// Set all terrain parameters at once (used for syncing from client)
+		void setTerrainParams(int32_t seed, int32_t seaLevel, int32_t bedrockLevel,
+			float riverFrequency, int32_t riverOctaves, float riverPersistence, float riverLacunarity,
+			float riverWidth, float riverBankFeather, float riverDepth,
+			float riverWarpFrequency, float riverWarpStrength, float riverMinContinentalness,
+			float lakeFrequency, int32_t lakeOctaves, float lakePersistence, float lakeLacunarity,
+			float lakeThreshold, float lakeFeather, float lakeDepth, float lakeMinContinentalness,
+			int32_t genSize, int32_t downsample,
+			float continentalnessFrequency, int32_t continentalnessOctaves, float continentalnessPersistence,
+			float continentalnessLacunarity, float continentalnessScalingFactor,
+			float erosionFrequency, int32_t erosionOctaves, float erosionPersistence,
+			float erosionLacunarity, float erosionScalingFactor,
+			float peakValleyFrequency, int32_t peakValleyOctaves, float peakValleyPersistence,
+			float peakValleyLacunarity, float peakValleyScalingFactor,
+			float temperatureFrequency, int32_t temperatureOctaves, float temperaturePersistence,
+			float temperatureLacunarity, float temperatureScalingFactor,
+			float humidityFrequency, int32_t humidityOctaves, float humidityPersistence,
+			float humidityLacunarity, float humidityScalingFactor,
+			int32_t biomeScaleChunks, bool snapClimateToCells, float climateWarpFrequency, float climateWarpStrength,
+			float desertMoistureThreshold, float forestMoistureThreshold, float snowTemperatureThreshold,
+			bool debugOresOnly);
 
 		// void setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates, const CPlayerInfo &player);
 		// void updatePlannedChunks(CPlayerInfo &player);

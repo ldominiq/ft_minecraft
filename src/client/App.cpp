@@ -100,6 +100,15 @@ void App::init(const std::string& serverIp) {
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
+    // Initialize terrain debug window for parameter tweaking
+    terrainDebugWindow = std::make_unique<TerrainDebugWindow>();
+    // Set callback to send terrain params to server when changed
+    terrainDebugWindow->setSendParamsCallback([this](const NetTerrainParams& pkt) {
+        if (udpClient) {
+            udpClient->sendPacket(pkt);
+        }
+    });
+
     gBuffer = std::make_shared<GBuffer>(screenWidth, screenHeight);
     ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
@@ -362,6 +371,14 @@ void App::setUdpClientPacketCallback()
                 currentPeakValley = p.peakValley;
                 currentTemperature = p.temperature;
                 currentHumidity = p.humidity;
+                break;
+            }
+
+            case PacketType::NET_TERRAIN_PARAMS: {
+                auto& p = static_cast<NetTerrainParams&>(*pkt);
+                // Log receipt of terrain params update
+                std::cout << "[Client] Received terrain parameters update from server (seed: " << p.seed << ")\n";
+                // Could optionally cache these for UI display, but server will handle actual generation
                 break;
             }
 
@@ -1417,6 +1434,16 @@ void App::debugWindow() {
             if (!uiInteractive) {
                 ImGui::PopStyleVar();
             }
+        }
+
+        // ── Terrain Debug Window ──
+        if (terrainDebugWindow && showDebugWindow) {
+            // Get the actual terrain params from the world (server side)
+            // For now, use default params but they should persist across frames
+            if (!terrainDebugWindowParams) {
+                terrainDebugWindowParams = std::make_unique<TerrainGenerationParams>();
+            }
+            terrainDebugWindow->render(*terrainDebugWindowParams);
         }
 
         // ── Detachable Profiler Window ──

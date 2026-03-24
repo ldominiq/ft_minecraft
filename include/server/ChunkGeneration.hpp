@@ -1,7 +1,8 @@
 #ifndef CHUNK_GENERATION_HPP
 #define CHUNK_GENERATION_HPP
 
-#include "TerrainParams.hpp"
+#include "../shared/TerrainParams.hpp"
+#include "TerrainParams.hpp"  // Includes oreTable and Item.hpp for server builds
 #include "Noise.hpp"
 #include "Chunk.hpp"
 

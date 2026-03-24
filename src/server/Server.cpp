@@ -182,6 +182,12 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::NET_TERRAIN_PARAMS: {
+			auto& p = static_cast<NetTerrainParams&>(*pkt);
+			receiveTerrainParams(p, cliaddr);
+			break;
+		}
+
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
@@ -375,6 +381,38 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 	}
 	else
 		messages.push_back(pkt.message);
+}
+
+void Server::receiveTerrainParams(NetTerrainParams &pkt, const sockaddr_in &cliaddr)
+{
+	// Update world's terrain params from client packet
+	world->setTerrainParams(pkt.seed, pkt.seaLevel, pkt.bedrockLevel,
+		pkt.riverFrequency, pkt.riverOctaves, pkt.riverPersistence, pkt.riverLacunarity,
+		pkt.riverWidth, pkt.riverBankFeather, pkt.riverDepth, 
+		pkt.riverWarpFrequency, pkt.riverWarpStrength, pkt.riverMinContinentalness,
+		pkt.lakeFrequency, pkt.lakeOctaves, pkt.lakePersistence, pkt.lakeLacunarity,
+		pkt.lakeThreshold, pkt.lakeFeather, pkt.lakeDepth, pkt.lakeMinContinentalness,
+		pkt.genSize, pkt.downsample,
+		pkt.continentalnessFrequency, pkt.continentalnessOctaves, pkt.continentalnessPersistence,
+		pkt.continentalnessLacunarity, pkt.continentalnessScalingFactor,
+		pkt.erosionFrequency, pkt.erosionOctaves, pkt.erosionPersistence,
+		pkt.erosionLacunarity, pkt.erosionScalingFactor,
+		pkt.peakValleyFrequency, pkt.peakValleyOctaves, pkt.peakValleyPersistence,
+		pkt.peakValleyLacunarity, pkt.peakValleyScalingFactor,
+		pkt.temperatureFrequency, pkt.temperatureOctaves, pkt.temperaturePersistence,
+		pkt.temperatureLacunarity, pkt.temperatureScalingFactor,
+		pkt.humidityFrequency, pkt.humidityOctaves, pkt.humidityPersistence,
+		pkt.humidityLacunarity, pkt.humidityScalingFactor,
+		pkt.biomeScaleChunks, pkt.snapClimateToCells, pkt.climateWarpFrequency, pkt.climateWarpStrength,
+		pkt.desertMoistureThreshold, pkt.forestMoistureThreshold, pkt.snowTemperatureThreshold,
+		pkt.debugOresOnly);
+
+	// Broadcast the updated params to all connected clients
+	for (auto& player : players) {
+		sendPacketTo(pkt, player.addr);
+	}
+
+	std::cout << "[Server] Terrain parameters updated by client\n";
 }
 
 void Server::sendInventorySlot(int slot, const sockaddr_in &cliaddr)

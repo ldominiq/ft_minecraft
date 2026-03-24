@@ -2,6 +2,7 @@
 #define PROTOCOL_HPP
 
 #include "Network.hpp"
+#include "TerrainParams.hpp"
 
 // NET_CONNECT = 1,  // C2S
 // NET_ACCEPT,       // S2C
@@ -388,5 +389,208 @@ struct NetImGui final : public Packet {
     }
 };
 inline AutoRegister<NetImGui> _reg_NetImGui;
+
+// Terrain generation parameters sync packet (C2S && S2C)
+struct NetTerrainParams final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_TERRAIN_PARAMS;
+
+    int32_t seed = 1337;
+    int32_t seaLevel = 64;
+    int32_t bedrockLevel = 0;
+
+    // River carving params
+    float riverFrequency = 0.0048f;
+    int32_t riverOctaves = 4;
+    float riverPersistence = 0.5f;
+    float riverLacunarity = 2.0f;
+    float riverWidth = 0.030f;
+    float riverBankFeather = 0.060f;
+    float riverDepth = 18.0f;
+    float riverWarpFrequency = 0.0012f;
+    float riverWarpStrength = 180.0f;
+    float riverMinContinentalness = -0.04f;
+
+    // Lake carving params
+    float lakeFrequency = 0.0010f;
+    int32_t lakeOctaves = 3;
+    float lakePersistence = 0.5f;
+    float lakeLacunarity = 2.0f;
+    float lakeThreshold = 0.62f;
+    float lakeFeather = 0.14f;
+    float lakeDepth = 10.0f;
+    float lakeMinContinentalness = -0.02f;
+
+    // Heightmap dump settings
+    int32_t genSize = 500;
+    int32_t downsample = 8;
+
+    // Continentalness noise params
+    float continentalnessFrequency = 0.001f;
+    int32_t continentalnessOctaves = 5;
+    float continentalnessPersistence = 0.245f;
+    float continentalnessLacunarity = 3.250f;
+    float continentalnessScalingFactor = 4.5f;
+
+    // Erosion noise params
+    float erosionFrequency = 0.009f;
+    int32_t erosionOctaves = 5;
+    float erosionPersistence = 0.35f;
+    float erosionLacunarity = 2.37f;
+    float erosionScalingFactor = 2.0f;
+
+    // Peak / valley noise params
+    float peakValleyFrequency = 0.001f;
+    int32_t peakValleyOctaves = 5;
+    float peakValleyPersistence = 0.271f;
+    float peakValleyLacunarity = 1.438f;
+    float peakValleyScalingFactor = 2.5f;
+
+    // Temperature noise params
+    float temperatureFrequency = 0.0012f;
+    int32_t temperatureOctaves = 4;
+    float temperaturePersistence = 0.50f;
+    float temperatureLacunarity = 2.0f;
+    float temperatureScalingFactor = 0.5f;
+
+    // Humidity noise params
+    float humidityFrequency = 0.0015f;
+    int32_t humidityOctaves = 4;
+    float humidityPersistence = 0.50f;
+    float humidityLacunarity = 2.0f;
+    float humidityScalingFactor = 0.5f;
+
+    // Biome params
+    int32_t biomeScaleChunks = 8;
+    bool snapClimateToCells = true;
+    float climateWarpFrequency = 0.0008f;
+    float climateWarpStrength = 180.0f;
+
+    float desertMoistureThreshold = 0.30f;
+    float forestMoistureThreshold = 0.60f;
+    float snowTemperatureThreshold = 0.28f;
+
+    bool debugOresOnly = false;
+
+    NetTerrainParams() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+        w.write_i32(seed);
+        w.write_i32(seaLevel);
+        w.write_i32(bedrockLevel);
+        w.write_f32(riverFrequency);
+        w.write_i32(riverOctaves);
+        w.write_f32(riverPersistence);
+        w.write_f32(riverLacunarity);
+        w.write_f32(riverWidth);
+        w.write_f32(riverBankFeather);
+        w.write_f32(riverDepth);
+        w.write_f32(riverWarpFrequency);
+        w.write_f32(riverWarpStrength);
+        w.write_f32(riverMinContinentalness);
+        w.write_f32(lakeFrequency);
+        w.write_i32(lakeOctaves);
+        w.write_f32(lakePersistence);
+        w.write_f32(lakeLacunarity);
+        w.write_f32(lakeThreshold);
+        w.write_f32(lakeFeather);
+        w.write_f32(lakeDepth);
+        w.write_f32(lakeMinContinentalness);
+        w.write_i32(genSize);
+        w.write_i32(downsample);
+        w.write_f32(continentalnessFrequency);
+        w.write_i32(continentalnessOctaves);
+        w.write_f32(continentalnessPersistence);
+        w.write_f32(continentalnessLacunarity);
+        w.write_f32(continentalnessScalingFactor);
+        w.write_f32(erosionFrequency);
+        w.write_i32(erosionOctaves);
+        w.write_f32(erosionPersistence);
+        w.write_f32(erosionLacunarity);
+        w.write_f32(erosionScalingFactor);
+        w.write_f32(peakValleyFrequency);
+        w.write_i32(peakValleyOctaves);
+        w.write_f32(peakValleyPersistence);
+        w.write_f32(peakValleyLacunarity);
+        w.write_f32(peakValleyScalingFactor);
+        w.write_f32(temperatureFrequency);
+        w.write_i32(temperatureOctaves);
+        w.write_f32(temperaturePersistence);
+        w.write_f32(temperatureLacunarity);
+        w.write_f32(temperatureScalingFactor);
+        w.write_f32(humidityFrequency);
+        w.write_i32(humidityOctaves);
+        w.write_f32(humidityPersistence);
+        w.write_f32(humidityLacunarity);
+        w.write_f32(humidityScalingFactor);
+        w.write_i32(biomeScaleChunks);
+        w.write_u8(snapClimateToCells ? 1 : 0);
+        w.write_f32(climateWarpFrequency);
+        w.write_f32(climateWarpStrength);
+        w.write_f32(desertMoistureThreshold);
+        w.write_f32(forestMoistureThreshold);
+        w.write_f32(snowTemperatureThreshold);
+        w.write_u8(debugOresOnly ? 1 : 0);
+    }
+
+    void decode(BufferReader& r) override {
+        seed = r.read_i32();
+        seaLevel = r.read_i32();
+        bedrockLevel = r.read_i32();
+        riverFrequency = r.read_f32();
+        riverOctaves = r.read_i32();
+        riverPersistence = r.read_f32();
+        riverLacunarity = r.read_f32();
+        riverWidth = r.read_f32();
+        riverBankFeather = r.read_f32();
+        riverDepth = r.read_f32();
+        riverWarpFrequency = r.read_f32();
+        riverWarpStrength = r.read_f32();
+        riverMinContinentalness = r.read_f32();
+        lakeFrequency = r.read_f32();
+        lakeOctaves = r.read_i32();
+        lakePersistence = r.read_f32();
+        lakeLacunarity = r.read_f32();
+        lakeThreshold = r.read_f32();
+        lakeFeather = r.read_f32();
+        lakeDepth = r.read_f32();
+        lakeMinContinentalness = r.read_f32();
+        genSize = r.read_i32();
+        downsample = r.read_i32();
+        continentalnessFrequency = r.read_f32();
+        continentalnessOctaves = r.read_i32();
+        continentalnessPersistence = r.read_f32();
+        continentalnessLacunarity = r.read_f32();
+        continentalnessScalingFactor = r.read_f32();
+        erosionFrequency = r.read_f32();
+        erosionOctaves = r.read_i32();
+        erosionPersistence = r.read_f32();
+        erosionLacunarity = r.read_f32();
+        erosionScalingFactor = r.read_f32();
+        peakValleyFrequency = r.read_f32();
+        peakValleyOctaves = r.read_i32();
+        peakValleyPersistence = r.read_f32();
+        peakValleyLacunarity = r.read_f32();
+        peakValleyScalingFactor = r.read_f32();
+        temperatureFrequency = r.read_f32();
+        temperatureOctaves = r.read_i32();
+        temperaturePersistence = r.read_f32();
+        temperatureLacunarity = r.read_f32();
+        temperatureScalingFactor = r.read_f32();
+        humidityFrequency = r.read_f32();
+        humidityOctaves = r.read_i32();
+        humidityPersistence = r.read_f32();
+        humidityLacunarity = r.read_f32();
+        humidityScalingFactor = r.read_f32();
+        biomeScaleChunks = r.read_i32();
+        snapClimateToCells = r.read_u8() != 0;
+        climateWarpFrequency = r.read_f32();
+        climateWarpStrength = r.read_f32();
+        desertMoistureThreshold = r.read_f32();
+        forestMoistureThreshold = r.read_f32();
+        snowTemperatureThreshold = r.read_f32();
+        debugOresOnly = r.read_u8() != 0;
+    }
+};
+inline AutoRegister<NetTerrainParams> _reg_NetTerrainParams;
 
 #endif

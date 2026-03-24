@@ -1037,3 +1037,92 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 		entityIt++;
 	}
 }
+void World::setTerrainParams(int32_t seed, int32_t seaLevel, int32_t bedrockLevel,
+float riverFrequency, int32_t riverOctaves, float riverPersistence, float riverLacunarity,
+float riverWidth, float riverBankFeather, float riverDepth,
+float riverWarpFrequency, float riverWarpStrength, float riverMinContinentalness,
+float lakeFrequency, int32_t lakeOctaves, float lakePersistence, float lakeLacunarity,
+float lakeThreshold, float lakeFeather, float lakeDepth, float lakeMinContinentalness,
+int32_t genSize, int32_t downsample,
+float continentalnessFrequency, int32_t continentalnessOctaves, float continentalnessPersistence,
+float continentalnessLacunarity, float continentalnessScalingFactor,
+float erosionFrequency, int32_t erosionOctaves, float erosionPersistence,
+float erosionLacunarity, float erosionScalingFactor,
+float peakValleyFrequency, int32_t peakValleyOctaves, float peakValleyPersistence,
+float peakValleyLacunarity, float peakValleyScalingFactor,
+float temperatureFrequency, int32_t temperatureOctaves, float temperaturePersistence,
+float temperatureLacunarity, float temperatureScalingFactor,
+float humidityFrequency, int32_t humidityOctaves, float humidityPersistence,
+float humidityLacunarity, float humidityScalingFactor,
+int32_t biomeScaleChunks, bool snapClimateToCells, float climateWarpFrequency, float climateWarpStrength,
+float desertMoistureThreshold, float forestMoistureThreshold, float snowTemperatureThreshold,
+bool debugOresOnly)
+{
+	terrainParams.seed = seed;
+	terrainParams.seaLevel = seaLevel;
+	terrainParams.bedrockLevel = bedrockLevel;
+	
+	terrainParams.riverFrequency = riverFrequency;
+	terrainParams.riverOctaves = riverOctaves;
+	terrainParams.riverPersistence = riverPersistence;
+	terrainParams.riverLacunarity = riverLacunarity;
+	terrainParams.riverWidth = riverWidth;
+	terrainParams.riverBankFeather = riverBankFeather;
+	terrainParams.riverDepth = riverDepth;
+	terrainParams.riverWarpFrequency = riverWarpFrequency;
+	terrainParams.riverWarpStrength = riverWarpStrength;
+	terrainParams.riverMinContinentalness = riverMinContinentalness;
+	
+	terrainParams.lakeFrequency = lakeFrequency;
+	terrainParams.lakeOctaves = lakeOctaves;
+	terrainParams.lakePersistence = lakePersistence;
+	terrainParams.lakeLacunarity = lakeLacunarity;
+	terrainParams.lakeThreshold = lakeThreshold;
+	terrainParams.lakeFeather = lakeFeather;
+	terrainParams.lakeDepth = lakeDepth;
+	terrainParams.lakeMinContinentalness = lakeMinContinentalness;
+	
+	terrainParams.genSize = genSize;
+	terrainParams.downsample = downsample;
+	
+	terrainParams.continentalnessFrequency = continentalnessFrequency;
+	terrainParams.continentalnessOctaves = continentalnessOctaves;
+	terrainParams.continentalnessPersistence = continentalnessPersistence;
+	terrainParams.continentalnessLacunarity = continentalnessLacunarity;
+	terrainParams.continentalnessScalingFactor = continentalnessScalingFactor;
+	
+	terrainParams.erosionFrequency = erosionFrequency;
+	terrainParams.erosionOctaves = erosionOctaves;
+	terrainParams.erosionPersistence = erosionPersistence;
+	terrainParams.erosionLacunarity = erosionLacunarity;
+	terrainParams.erosionScalingFactor = erosionScalingFactor;
+	
+	terrainParams.peakValleyFrequency = peakValleyFrequency;
+	terrainParams.peakValleyOctaves = peakValleyOctaves;
+	terrainParams.peakValleyPersistence = peakValleyPersistence;
+	terrainParams.peakValleyLacunarity = peakValleyLacunarity;
+	terrainParams.peakValleyScalingFactor = peakValleyScalingFactor;
+	
+	terrainParams.temperatureFrequency = temperatureFrequency;
+	terrainParams.temperatureOctaves = temperatureOctaves;
+	terrainParams.temperaturePersistence = temperaturePersistence;
+	terrainParams.temperatureLacunarity = temperatureLacunarity;
+	terrainParams.temperatureScalingFactor = temperatureScalingFactor;
+	
+	terrainParams.humidityFrequency = humidityFrequency;
+	terrainParams.humidityOctaves = humidityOctaves;
+	terrainParams.humidityPersistence = humidityPersistence;
+	terrainParams.humidityLacunarity = humidityLacunarity;
+	terrainParams.humidityScalingFactor = humidityScalingFactor;
+	
+	terrainParams.biomeScaleChunks = biomeScaleChunks;
+	terrainParams.snapClimateToCells = snapClimateToCells;
+	terrainParams.climateWarpFrequency = climateWarpFrequency;
+	terrainParams.climateWarpStrength = climateWarpStrength;
+	
+	terrainParams.desertMoistureThreshold = desertMoistureThreshold;
+	terrainParams.forestMoistureThreshold = forestMoistureThreshold;
+	terrainParams.snowTemperatureThreshold = snowTemperatureThreshold;
+	
+	terrainParams.debugOresOnly = debugOresOnly;
+}
