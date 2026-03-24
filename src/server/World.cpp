@@ -104,7 +104,8 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
 
             float eroMin = std::numeric_limits<float>::infinity();
             float eroMax = -std::numeric_limits<float>::infinity();
-            for (const auto &val : erosionSpline | std::views::values) {
+            for (const auto &p : erosionSpline) {
+				const float val = p.second;
                 eroMin = glm::min(eroMin, val);
                 eroMax = glm::max(eroMax, val);
             }
@@ -997,9 +998,9 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					continue ;
 
 				glm::vec3 diff = player.movement->getPosition() - entityIt->get()->getPosition();
-				if (abs(diff.x) < 2 &&
+				if (std::abs(diff.x) < 2 &&
 					diff.y >= 0 && diff.y < 4 &&
-					abs(diff.z) < 2)
+					std::abs(diff.z) < 2)
 				{
 					int one = 1;
 					int slotUsed = player.movement->inventory.insertItems(entityIt->get()->getItemType(), one);
