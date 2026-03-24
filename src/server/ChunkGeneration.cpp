@@ -561,7 +561,7 @@ int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrain
     // find min/max of the erosion spline
     float eroMin = std::numeric_limits<float>::infinity();
     float eroMax = -std::numeric_limits<float>::infinity();
-    for (const auto &val: erosionSpline | std::views::values) { eroMin = glm::min(eroMin, val); eroMax = glm::max(eroMax, val); }
+    for (const auto &p: erosionSpline) { const float val = p.second; eroMin = glm::min(eroMin, val); eroMax = glm::max(eroMax, val); }
 
     const float continentalness = getContinentalness(terrainParams, worldX, worldZ);
     const float erosion = getErosion(terrainParams, worldX, worldZ);
