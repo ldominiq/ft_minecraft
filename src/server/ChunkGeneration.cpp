@@ -631,7 +631,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 if (surfaceY <= terrainParams.seaLevel)
                     continue;
 
-                // Don't place vegetation on water, sand, or snow
+                // Don't place vegetation on water, or snow
                 if (surfaceBlock == BlockType::WATER ||
                     surfaceBlock == BlockType::SNOW)
                     continue;
