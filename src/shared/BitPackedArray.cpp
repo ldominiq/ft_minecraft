@@ -54,10 +54,12 @@ uint32_t BitPackedArray::get(size_t index) const {
 }
 
 void BitPackedArray::grow(uint8_t newBitsPerEntry) {
-    if (newBitsPerEntry <= m_bitsPerEntry)
+    if (newBitsPerEntry < 1)
+        throw std::invalid_argument("bitsPerEntry must >= 1");
+    if (newBitsPerEntry == m_bitsPerEntry)
         return;
     if (newBitsPerEntry > 31)
-        throw std::invalid_argument("bitsPerEntry must be between 1 and 31");
+        throw std::invalid_argument("bitsPerEntry must be between <= 31");
 
     std::vector<uint32_t> values;
     decodeAll(values);

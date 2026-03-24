@@ -464,25 +464,24 @@ void ChunkRenderer::buildVegetationMesh() const {
     // Derive vegetation instances from the block grid (land vegetation)
     // and from the vegetation list (sea vegetation, which isn't in the block grid)
     std::vector<Chunk::VegetationInstance> vegInstances;
-    for (int x = 0; x < WIDTH; ++x) {
-        for (int z = 0; z < DEPTH; ++z) {
-            for (int y = 0; y < HEIGHT; ++y) {
-                BlockType block = getBlock(x, y, z);
-                if (isBlockVegetation(block)) {
-                    Chunk::VegetationInstance veg{};
-                    veg.x = static_cast<uint8_t>(x);
-                    veg.y = static_cast<uint8_t>(y);
-                    veg.z = static_cast<uint8_t>(z);
-                    veg.type = block;
-                    vegInstances.push_back(veg);
-                }
-            }
-        }
-    }
+    vegInstances.reserve(vegetation.size()); // start with sea vegetation count, will grow if land vegetation is found
 
-    // Add sea vegetation from the vegetation list (not stored in the block grid)
+    // Primary source: per-chunk vegetation list.
+    // Keep only currently valid entries to avoid stale instances.
     for (const auto& v : vegetation) {
+        // Sea vegetation is not represented in the solid block grid.
         if (isSeaVegetation(v.type)) {
+            vegInstances.push_back(v);
+            continue;
+        }
+
+        // Land vegetation should match block grid.
+        // Skip invalid/out-of-range entries defensively.
+        if (v.x >= WIDTH || v.y >= HEIGHT || v.z >= DEPTH)
+            continue; // out of bounds, skip
+
+        const BlockType block = getBlock(v.x, v.y, v.z);
+        if (block == v.type && isBlockVegetation(block)) {
             vegInstances.push_back(v);
         }
     }
