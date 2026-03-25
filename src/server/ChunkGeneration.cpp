@@ -56,6 +56,12 @@ float ChunkGeneration::getRiverMask(const TerrainGenerationParams& terrainParams
         continentalness
     );
 
+    const float mountainContBlock = 1.0f - glm::smoothstep(
+        terrainParams.riverMaxContinentalness - 0.2f,
+        terrainParams.riverMaxContinentalness,
+        continentalness
+    );
+
     const float lowlandMask = glm::smoothstep(
         static_cast<float>(terrainParams.seaLevel) + 2.0f,
         static_cast<float>(terrainParams.seaLevel) + 30.0f,
@@ -70,7 +76,7 @@ float ChunkGeneration::getRiverMask(const TerrainGenerationParams& terrainParams
 
     const float steepnessMask = 1.0f - glm::smoothstep(0.35f, 0.85f, std::abs(pv));
 
-    return riverCenter * inlandMask * lowlandMask * mountainBlock * steepnessMask;
+    return riverCenter * inlandMask * mountainContBlock * lowlandMask * mountainBlock * steepnessMask;
 }
 
 // Returns lake base noise mapped to [0,1] for debugging and thresholding.
@@ -104,6 +110,12 @@ float ChunkGeneration::getLakeMask(const TerrainGenerationParams& terrainParams,
         continentalness
     );
 
+    const float mountainContBlock = 1.0f - glm::smoothstep(
+        terrainParams.lakeMaxContinentalness - 0.15f,
+        terrainParams.lakeMaxContinentalness,
+        continentalness
+    );
+
     const float flatMask = 1.0f - glm::smoothstep(0.28f, 0.90f, std::abs(pv));
     const float altitudeMask = glm::smoothstep(
         static_cast<float>(terrainParams.seaLevel) + 2.0f,
@@ -111,7 +123,7 @@ float ChunkGeneration::getLakeMask(const TerrainGenerationParams& terrainParams,
         baseHeight
     );
 
-    return lakeCore * inlandMask * flatMask * altitudeMask;
+    return lakeCore * inlandMask * mountainContBlock * flatMask * altitudeMask;
 }
 
 void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {

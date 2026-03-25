@@ -1040,9 +1040,9 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 void World::setTerrainParams(int32_t seed, int32_t seaLevel, int32_t bedrockLevel,
 float riverFrequency, int32_t riverOctaves, float riverPersistence, float riverLacunarity,
 float riverWidth, float riverBankFeather, float riverDepth,
-float riverWarpFrequency, float riverWarpStrength, float riverMinContinentalness,
+float riverWarpFrequency, float riverWarpStrength, float riverMinContinentalness, float riverMaxContinentalness,
 float lakeFrequency, int32_t lakeOctaves, float lakePersistence, float lakeLacunarity,
-float lakeThreshold, float lakeFeather, float lakeDepth, float lakeMinContinentalness,
+float lakeThreshold, float lakeFeather, float lakeDepth, float lakeMinContinentalness, float lakeMaxContinentalness,
 int32_t genSize, int32_t downsample,
 float continentalnessFrequency, int32_t continentalnessOctaves, float continentalnessPersistence,
 float continentalnessLacunarity, float continentalnessScalingFactor,
@@ -1072,7 +1072,8 @@ bool debugOresOnly)
 	terrainParams.riverWarpFrequency = riverWarpFrequency;
 	terrainParams.riverWarpStrength = riverWarpStrength;
 	terrainParams.riverMinContinentalness = riverMinContinentalness;
-	
+	terrainParams.riverMaxContinentalness = riverMaxContinentalness;
+
 	terrainParams.lakeFrequency = lakeFrequency;
 	terrainParams.lakeOctaves = lakeOctaves;
 	terrainParams.lakePersistence = lakePersistence;
@@ -1081,7 +1082,8 @@ bool debugOresOnly)
 	terrainParams.lakeFeather = lakeFeather;
 	terrainParams.lakeDepth = lakeDepth;
 	terrainParams.lakeMinContinentalness = lakeMinContinentalness;
-	
+	terrainParams.lakeMaxContinentalness = lakeMaxContinentalness;
+
 	terrainParams.genSize = genSize;
 	terrainParams.downsample = downsample;
 	

@@ -409,6 +409,7 @@ struct NetTerrainParams final : public Packet {
     float riverWarpFrequency = 0.0012f;
     float riverWarpStrength = 180.0f;
     float riverMinContinentalness = -0.04f;
+    float riverMaxContinentalness = 0.8f;
 
     // Lake carving params
     float lakeFrequency = 0.0010f;
@@ -419,6 +420,7 @@ struct NetTerrainParams final : public Packet {
     float lakeFeather = 0.14f;
     float lakeDepth = 10.0f;
     float lakeMinContinentalness = -0.02f;
+    float lakeMaxContinentalness = 0.6f;
 
     // Heightmap dump settings
     int32_t genSize = 500;
@@ -487,6 +489,7 @@ struct NetTerrainParams final : public Packet {
         w.write_f32(riverWarpFrequency);
         w.write_f32(riverWarpStrength);
         w.write_f32(riverMinContinentalness);
+        w.write_f32(riverMaxContinentalness);
         w.write_f32(lakeFrequency);
         w.write_i32(lakeOctaves);
         w.write_f32(lakePersistence);
@@ -495,6 +498,7 @@ struct NetTerrainParams final : public Packet {
         w.write_f32(lakeFeather);
         w.write_f32(lakeDepth);
         w.write_f32(lakeMinContinentalness);
+        w.write_f32(lakeMaxContinentalness);
         w.write_i32(genSize);
         w.write_i32(downsample);
         w.write_f32(continentalnessFrequency);
@@ -546,6 +550,7 @@ struct NetTerrainParams final : public Packet {
         riverWarpFrequency = r.read_f32();
         riverWarpStrength = r.read_f32();
         riverMinContinentalness = r.read_f32();
+        riverMaxContinentalness = r.read_f32();
         lakeFrequency = r.read_f32();
         lakeOctaves = r.read_i32();
         lakePersistence = r.read_f32();
@@ -554,6 +559,7 @@ struct NetTerrainParams final : public Packet {
         lakeFeather = r.read_f32();
         lakeDepth = r.read_f32();
         lakeMinContinentalness = r.read_f32();
+        lakeMaxContinentalness = r.read_f32();
         genSize = r.read_i32();
         downsample = r.read_i32();
         continentalnessFrequency = r.read_f32();

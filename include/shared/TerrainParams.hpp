@@ -57,26 +57,28 @@ struct TerrainGenerationParams {
     int bedrockLevel = 0;
 
     // River carving params (server-side, no ImGui required)
-    float riverFrequency = 0.0048f;
+    float riverFrequency = 0.008f;
     int riverOctaves = 4;
-    float riverPersistence = 0.5f;
-    float riverLacunarity = 2.0f;
-    float riverWidth = 0.030f;
-    float riverBankFeather = 0.060f;
-    float riverDepth = 18.0f;
-    float riverWarpFrequency = 0.0012f;
-    float riverWarpStrength = 180.0f;
-    float riverMinContinentalness = -0.04f;
+    float riverPersistence = 0.218f;
+    float riverLacunarity = 2.646f;
+    float riverWidth = 0.028f;
+    float riverBankFeather = 0.1f;
+    float riverDepth = 25.276f;
+    float riverWarpFrequency = 0.004f;
+    float riverWarpStrength = 188.979f;
+    float riverMinContinentalness = -0.359f;
+    float riverMaxContinentalness = 0.302f;   // blocks rivers on high-continentalness (mountain) terrain
 
     // Lake carving params (same water level as ocean/sea)
-    float lakeFrequency = 0.0010f;
+    float lakeFrequency = 0.027f;
     int lakeOctaves = 3;
-    float lakePersistence = 0.5f;
-    float lakeLacunarity = 2.0f;
-    float lakeThreshold = 0.62f;
-    float lakeFeather = 0.14f;
-    float lakeDepth = 10.0f;
-    float lakeMinContinentalness = -0.02f;
+    float lakePersistence = 0.312f;
+    float lakeLacunarity = 2.171f;
+    float lakeThreshold = 0.356f;
+    float lakeFeather = 0.331f;
+    float lakeDepth = 46.290f;
+    float lakeMinContinentalness = 0.121f;
+    float lakeMaxContinentalness = 0.461f;    // blocks lakes on high-continentalness (mountain) terrain
 
 
     // heightmap dump settings / helpers (used by World::dumpHeightmap)
@@ -86,9 +88,9 @@ struct TerrainGenerationParams {
     // Continentalness noise params
     float continentalnessFrequency = 0.001f;
     int continentalnessOctaves = 5;
-    float continentalnessPersistence = 0.245f;
-    float continentalnessLacunarity = 3.250f;
-    float continentalnessScalingFactor = 4.5f;
+    float continentalnessPersistence = 0.666f;
+    float continentalnessLacunarity = 1.473f;
+    float continentalnessScalingFactor = 2.558f;
 
     // Erosion noise params
     float erosionFrequency = 0.009f;
