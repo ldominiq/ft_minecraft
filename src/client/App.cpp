@@ -22,6 +22,16 @@ App::App(const std::string& serverIp):
 
 App::~App() { cleanup(); }
 
+GLFWimage load_icon(const char* path) {
+    GLFWimage image;
+    int channels;
+    image.pixels = stbi_load(path, &image.width, &image.height, &channels, 4);
+    if (!image.pixels) {
+        std::cerr << "Failed to load window icon: " << stbi_failure_reason() << std::endl;
+    }
+    return image;
+}
+
 void App::init(const std::string& serverIp) {
     std::string targetIp = serverIp;
 
@@ -50,6 +60,13 @@ void App::init(const std::string& serverIp) {
     window = glfwCreateWindow(windowedWidth, windowedHeight, "ft_minecraft", nullptr, nullptr);
     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
 	glfwSetWindowUserPointer(window, this);
+
+    // Set the window icon
+    GLFWimage image;
+    image = load_icon("assets/textures/icon.png");
+    if (image.pixels)
+        glfwSetWindowIcon(window, 1, &image);
+    
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
