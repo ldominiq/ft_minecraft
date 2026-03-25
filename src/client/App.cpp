@@ -5,8 +5,6 @@
 #include "App.hpp"
 
 App::App():
-			texture(0),
-
 			camera(nullptr),
 			monitor(nullptr),
 			mode(nullptr),
@@ -33,10 +31,19 @@ void App::init() {
 
     window = glfwCreateWindow(windowedWidth, windowedHeight, "ft_minecraft", nullptr, nullptr);
     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+	glfwSetWindowUserPointer(window, this);
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
-        (void)w;
+		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
         glViewport(0, 0, width, height);
+		glfwGetFramebufferSize(w, &app->screenWidth, &app->screenHeight);
+		auto manager = app->menuManager.lock();
+		if (manager)
+			manager->resize(width, height);
+		if (manager != app->inventoryUI)
+			app->inventoryUI->resize(width, height);
+		if (manager != app->chat)
+			app->chat->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -54,6 +61,9 @@ void App::init() {
 	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
 	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
 
+	// ********************Chunk Boundary Renderer**************************
+	chunkBoundaryRenderer = std::make_unique<ChunkBoundaryRenderer>();
+
 	// ********************Render Type Debug Framebuffers********************
 	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
 
@@ -64,9 +74,9 @@ void App::init() {
     lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
 
 	chat = std::make_shared<Chat>(windowedWidth, windowedHeight);
-	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight);
+	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight, &textureManager);
 
-	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>();
+	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
     gBuffer = std::make_shared<GBuffer>(windowedWidth, windowedHeight);
     ssao = std::make_shared<SSAO>(windowedWidth, windowedHeight);
@@ -83,13 +93,19 @@ void App::init() {
 
     // Mouse movement event handling
     camera = std::make_unique<Camera>(glm::vec3(0.0f, 128.0f, 0.0f));
-    glfwSetWindowUserPointer(window, this);
     glfwSetCursorPosCallback(window, [](GLFWwindow* w, const double xpos, const double ypos) {
         static App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
         if (!app) return;
         // Honour ImGui’s mouse capture: if the UI is being interacted with
         // (e.g. hovering/clicking in a window), do not rotate the camera.
         ImGuiIO& io = ImGui::GetIO();
+
+		auto menuManagerPtr = app->menuManager.lock();
+		if (menuManagerPtr)
+		{
+			menuManagerPtr->handleMouseMove(xpos, ypos);
+			return ;
+		}
 
         if (io.WantCaptureMouse || app->uiInteractive) {
             return;
@@ -171,6 +187,28 @@ void App::init() {
 	glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int button, int action, int mods) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		auto manager = app->menuManager.lock();
+		if (manager)
+		{
+			double mouseX, mouseY;
+    		glfwGetCursorPos(w, &mouseX, &mouseY);
+
+			if (manager == app->inventoryUI)
+			{
+				manager->handleMouseClick(mouseX, mouseY, button, action);
+				if (app->inventoryUI->lastAction.has_value())
+				{
+					auto [slot, type] = *app->inventoryUI->lastAction;
+					NetInventoryAction pkt;
+					pkt.actionType = type;
+					pkt.slot = slot;
+					app->udpClient->sendPacket(pkt);
+					app->inventoryUI->lastAction.reset();
+				}
+			}
+			return ;
+		}
 
 		//kinda weird way to do it.
 		uint8_t mouseButtons = 0;
@@ -262,23 +300,20 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
-				glfwTickTime = glfwGetTime();
-				camera->onSnapshot(p, *renderer);
+				// snapshotReceivedTime = glfwGetTime();
+				camera->onSnapshot(p, *renderer, clientTick);
 				break;
 			}
 
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
-				renderer->onEntity(p, glfwTickTime);
+				renderer->onEntity(p, clientTime);
 				break;
 			}
 
 			case PacketType::NET_INVENTORY: {
 				auto& p = static_cast<NetInventory&>(*pkt);
-				if (p.amount > 0)
-					inventoryUI->insertItemsToSlot(static_cast<BlockType>(p.type), p.slot, p.amount); // This cast is not really great. Won't work when/if there are other types of items that aren't blocks. TODO : check if it's still needed once inventoryUI gets more concrete.
-				else
-					inventoryUI->removeItemsFromSlot(p.slot, -p.amount);
+				inventoryUI->setSlot(p.slot, p.amount, p.type);
 				break;
 			}
 
@@ -314,68 +349,87 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
-    texture = activeShader->loadTexture("assets/textures/textures.png");
+
+    // Load individual block textures into a texture array
+    textureManager.loadResourcePack("assets");
 
     activeShader = textureShader;
 
     activeShader->use();
-    activeShader->setInt("atlas", 0);
+    activeShader->setInt("blockTextures", 0);
 
     // shader configuration
     // --------------------
-    textureShader->use();
-    textureShader->setInt("diffuseTexture", 0);
 
 	waterRenderer->setDependencies(lighting, renderer, camera);
 
     gBufferShader = std::make_shared<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
     gBufferShader->use();
-    gBufferShader->setInt("diffuseTexture", 0);
-}
+    gBufferShader->setInt("blockTextures", 0);
 
-void App::gameTick() {
-	// sending/receiving packets and stuff
-
-	udpClient->receivePacket();
-	auto manager = menuManager.lock();
-	if ((keyPressedRecently || mouseMovedRecently) && !manager)
-	{
-		NetPlayerInputs inputs = buildPlayerInputsPacket();
-		udpClient->sendPacket(inputs);
-	}
-
-	static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
-	static float waveSpeed = waterRenderer->waveStrength;
-	waterMoveOffset += waveSpeed * deltaTime;
-	if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
-	waterRenderer->setWaterMoveFactor(waterMoveOffset);
+    // Wire the texture manager to subsystems that need it
+    renderer->setTextureManager(&textureManager);
 }
 
 void App::render() {
 
-    while (!glfwWindowShouldClose(window)) {
+	while (!glfwWindowShouldClose(window)) {
+		// Rotate query index each frame
+		currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
+	
+		// Calculate delta time for frame rate
+		currentFrame = glfwGetTime();
+		deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
 
-        // Rotate query index each frame
-        currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
-    
-        // Calculate delta time for frame rate
-        const float currentFrame = glfwGetTime();
-        deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
+		NetPlayerInputs inputs = buildPlayerInputsPacket();
+		auto manager = menuManager.lock();
 
 		//Tick logic
 		float tickDuration = 1.0f / TPS; // 0.05s per tick
 		static float accumulator = 0.0f;
+		static float accumulatedAccumulator = 0.0f;
 		accumulator += deltaTime;
 
-		while (accumulator >= tickDuration) //should never be more than 1 tick...
+		//if we runs at giga low framerate we skip the first ticks to catch up.
+		while (accumulator >= tickDuration * 2)
 		{
-			// Advance one tick
-			gameTick();
+			camera->predict(*renderer, clientTick);
 			accumulator -= tickDuration;
+			clientTick++;
 		}
 
-		camera->lerpToNextPosition(glfwGetTime() - glfwTickTime);
+		// this is vital. Accumulator based tick loops could end up causing sending 2 ticks in less than 50ms if the client runs at low framerate. This ensures that we only send 1 tick after 50 ms.
+		static std::chrono::steady_clock::time_point LastTickChangeTime = std::chrono::steady_clock::now();
+		std::chrono::duration<float> timeSinceLastTickChange = std::chrono::steady_clock::now() - LastTickChangeTime;
+
+		if (accumulator > tickDuration && timeSinceLastTickChange > TICK_RATE)
+		{
+			if (!manager && (keyPressedRecently || mouseMovedRecently))
+			{
+				// inputs.serverClientReconciliationTick = clientTick;
+				inputs.serverClientReconciliationTick = clientTick;
+				camera->queueInput(inputs, clientTick);
+				// std::cout << "queued input for tick " << clientTick << " with keys " << inputs.keys << "\n";
+				udpClient->sendPacket(inputs);
+			}
+			camera->predict(*renderer, clientTick);
+
+			accumulator -= tickDuration;
+			clientTime = clientTick * tickDuration;
+			clientTickChangedTime = glfwGetTime();
+			clientTick++;
+			LastTickChangeTime = std::chrono::steady_clock::now();
+		}
+		udpClient->receivePacket();
+
+		//for some reason mouse needs a little delay to be put to false otherwise it glitches.
+		if (lastMouseMoveTime > glfwGetTime() + tickDuration * 2)
+			mouseMovedRecently = false;
+
+		double intraTick = (glfwGetTime() - clientTickChangedTime);
+		double delay = (1.0/TPS) * 1;
+		camera->getPlayer()->lerp(clientTime + intraTick - delay); // Interpolate player position based on server snapshots, with a slight delay to account for network latency
 
 		// const double mouseIdleThreshold = 0.2; // seconds
 		// if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
@@ -412,12 +466,11 @@ void App::render() {
 
         updateWindowTitle();
 
-		auto manager = menuManager.lock();
+		// auto manager = menuManager.lock();
 		if (manager != chat)
         	processInput();
 
         // window aspect / uniforms
-        glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
         const float aspect = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
         glm::mat4 view = camera->getViewMatrix();
@@ -436,7 +489,7 @@ void App::render() {
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
-            lighting->updateCSMShadowMaps(*renderer, view);
+            lighting->updateCSMShadowMaps(*renderer, view, textureManager);
 
             glEndQuery(GL_TIME_ELAPSED);
             shadowQueryIssuedThisFrame[currentQueryIndex] = true;
@@ -455,7 +508,7 @@ void App::render() {
             textureShader->setMat4("projection", projection);
             lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texture);
+            textureManager.bind(GL_TEXTURE0);
             renderer->render(textureShader);
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
@@ -470,7 +523,7 @@ void App::render() {
             textureShader->setMat4("projection", projection);
             lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texture);
+            textureManager.bind(GL_TEXTURE0);
             renderer->render(textureShader);
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
@@ -492,8 +545,7 @@ void App::render() {
             gBufferShader->use();
             gBufferShader->setMat4("view", view);
             gBufferShader->setMat4("projection", projection);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texture);
+            textureManager.bind(GL_TEXTURE0);
             renderer->render(gBufferShader);
 
             gBuffer->unbind();
@@ -515,16 +567,22 @@ void App::render() {
             ssaoQueryIssuedThisFrame[currentQueryIndex] = false;
         }
 
+		static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
+		static float waveSpeed = waterRenderer->waveStrength;
+		waterMoveOffset += waveSpeed * deltaTime;
+		if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
+		waterRenderer->setWaterMoveFactor(waterMoveOffset);
+
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
         // Render reflection texture
-    	waterRenderer->renderWaterReflectionPass(activeShader, projection, texture);
+    	waterRenderer->renderWaterReflectionPass(activeShader, projection, textureManager);
 
         glEndQuery(GL_TIME_ELAPSED);
 
 
     	// render refraction texture
-    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, texture);
+    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
 
     	// render to screen
     	renderScene(view, projection, clipPlane);
@@ -538,8 +596,11 @@ void App::render() {
 		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
-		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
+		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius());
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
+
+        // Draw chunk boundary overlay (if enabled)
+        chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), view, projection, *renderer);
 
         glBindVertexArray(0);
         {
@@ -677,7 +738,6 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
 }
 
 void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
-    glViewport(0, 0, screenWidth, screenHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Render sky/clouds first with proper depth
@@ -716,7 +776,7 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     }
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    textureManager.bind(GL_TEXTURE0);
 
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
     renderer->render(activeShader);
@@ -724,37 +784,29 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
     lighting->drawLightCubes(view, projection);
 
-	const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
-	const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
-
-	renderer->buildChunks();
-	renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ));
-
-    camera->drawWireframeSelectedBlockFace(renderer, view, projection);
-    glBindVertexArray(0);
-
-	//THIS CODE IS AWFULLY BAD
+	//this code is mehhhh
+	double intraTick = (glfwGetTime() - clientTickChangedTime);
+	double delay = (1.0/TPS) * 1;
 	//items
 	for (auto &entity : renderer->itemEntities)
 	{
 		if (!entity->positionUpdated) continue ;
-		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - glfwTickTime, entity->prevPosition, entity->nextPosition);
-		entity->setPosition(newEntityPos);
+		entity->lerp(clientTime + intraTick - delay);
 	}
     glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
 	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
-	for (auto &entity : renderer->itemEntities)
-		if (entity->glfwTickTime < glfwTickTime) entity->positionUpdated = false;
 	glEndQuery(GL_TIME_ELAPSED);
 
 	//mobs
 	for (auto &entity : renderer->livingEntities)
 	{
 		if (!entity->positionUpdated) continue ;
-		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - glfwTickTime, entity->prevPosition, entity->nextPosition);
-		entity->setPosition(newEntityPos);
-		// if (entity->glfwTickTime < glfwTickTime) entity->positionUpdated = false;
+		entity->lerp(clientTime + intraTick - delay);
+		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position) entity->positionUpdated = false;
 	}
+
+	for (auto &entity : renderer->itemEntities)
+		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position) entity->positionUpdated = false;
 
 	renderer->drawCharacters(projection, view, deltaTime);
 }
@@ -991,13 +1043,13 @@ void App::debugWindow() {
                                 // Changing this will update the far clipping plane.
                                 ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
 
-                                // Adjust the chunk loading radius.  Casting to int and back avoids
-                                // accidental type issues in the setter.  We clamp the range to a
-                                // reasonable minimum and maximum.
-                                if (renderer) {
-                                    int radius = renderer->getLoadRadius();
-                                    if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-                                        renderer->setLoadRadius(radius);
+								// Adjust the chunk loading radius.  Casting to int and back avoids
+								// accidental type issues in the setter.  We clamp the range to a
+								// reasonable minimum and maximum.
+								if (renderer) {
+									int radius = camera->getPlayer()->getLoadRadius();
+									if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
+										camera->getPlayer()->setLoadRadius(radius);
                                     }
                                 }
 
@@ -1009,6 +1061,14 @@ void App::debugWindow() {
                                 //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
                                 //     }
                                 // }
+
+                                // Chunk boundary viewer
+                                {
+                                    bool cb = chunkBoundaryRenderer->isEnabled();
+                                    if (ImGui::Checkbox("Show Chunk Boundary", &cb))
+                                        chunkBoundaryRenderer->setEnabled(cb);
+                                }
+
                                 ImGui::EndTabItem();
                             }
                             if (ImGui::BeginTabItem("SSAO"))
@@ -1306,12 +1366,14 @@ void App::debugWindow() {
 				{
 					NetMessage pkt;
 					pkt.message = "/gamemode survival";
+					camera->getPlayer()->gamemode = GAMEMODES::SURVIVAL;
 					udpClient->sendPacket(pkt);
 				}
 				else
 				{
 					NetMessage pkt;
 					pkt.message = "/gamemode spectator";
+					camera->getPlayer()->gamemode = GAMEMODES::SPECTATOR;
 					udpClient->sendPacket(pkt);
 				}
 			}
@@ -1425,8 +1487,6 @@ void App::cleanup() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
-
-    glDeleteTextures(1, &texture);
 
     // Query objects (profiling)
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawEntities);
@@ -1551,10 +1611,9 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	inputs.keys = keys;
 	inputs.pitch = camera->getPlayer()->getPitch();
 	inputs.yaw = camera->getPlayer()->getYaw();
-	inputs.loadRadius = camera->getLoadRadius();
+	inputs.loadRadius = camera->getPlayer()->getLoadRadius();
 	inputs.activeHotbarSlot = activeHotbarSlot;
-
-	camera->inputsList.push_back(inputs);
+	inputs.serverClientReconciliationTick = clientTick;
 
 	return inputs;
 }
@@ -1564,6 +1623,15 @@ void App::processInputMenus(int key, int action) {
 	auto manager = menuManager.lock();
 
 	// HANDLE EVENTS WHEN CHAT OPEN
+
+	if (manager && key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+	{
+		menuManager.reset();
+		if (!uiInteractive)
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	}
+
+	//TODO : Change gamemode for player on chat too so prediction works on other modes other than spectator.
 	if (manager == chat)
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
@@ -1577,8 +1645,6 @@ void App::processInputMenus(int key, int action) {
 		}
 		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			chat->removeCharFromCurrMsg();
-		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-			menuManager.reset();
 		if ((key == GLFW_KEY_UP || key == GLFW_KEY_DOWN) && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			chat->goThroughChatLog(key);
 	}
@@ -1588,6 +1654,11 @@ void App::processInputMenus(int key, int action) {
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 			menuManager = chat;
+		if (key == GLFW_KEY_E && action == GLFW_PRESS)
+		{
+			menuManager = inventoryUI;
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		}
 	}
 }
 

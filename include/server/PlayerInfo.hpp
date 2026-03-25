@@ -17,16 +17,24 @@ class CPlayerInfo
 
 		CPlayerInfo();
 
-		int id;
+		int32_t id;
+		int32_t serverClientReconciliationTick; // last sequence number received from this player, used for loss detection (possibly packet ordering..)
+
 		sockaddr_in addr;
 
 		std::string name;
-		uint8_t loadRadius; // TODO : set setter on new packet
 
-		glm::vec3 spawnPosition = glm::vec3(0,150,0);
-		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>(spawnPosition);
+		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>();
 
-		std::unordered_set<ChunkPos> loadedChunks;
+		// TODO: check if surfaceY is below seaLevel and if so, set starting Y to seaLevel + 1 to avoid drowning spawn
+		// (when water physics is implemented) -> max(surfaceY, seaLevel) + offset)
+		/// Set the starting position to the top of the terrain at the given spawn point.
+		void computeSpawnPosition(const TerrainGenerationParams& params) {
+			int surfaceY = ChunkGeneration::computeTerrainHeight(params, 0.0f, 0.0f);
+			movement->spawnPosition = glm::vec3(0.5, surfaceY + 3, 0.5);
+			movement->setPosition(movement->spawnPosition);
+			movement->setYawAndPitch(0.0f, 0.0f);
+		}
 		std::vector<ChunkPos> rdyChunks;
 
 		bool connected; //unused

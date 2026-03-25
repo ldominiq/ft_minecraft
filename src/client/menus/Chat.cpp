@@ -1,20 +1,23 @@
 
 #include "Chat.hpp"
 
-constexpr float scale = 0.3f;
-
-Chat::Chat(float width, float height) : Menu(width, height), textRenderer("fonts/Roboto-Regular.ttf", scale)
+Chat::Chat(float width, float height) : Menu(width, height)
 {
-	x = 0.0;
-	y = 0.0f;
-	w = width / 3.0f;
-	h = height / 3.0f;
+	build();
 	chatColor = glm::vec4(0,0,0,0.6f);
-	textRenderer.setProjection(width, height);
 }
 
 Chat::~Chat()
 {
+}
+
+void Chat::build()
+{
+	x = 0.0;
+	y = 0.0f;
+	w = menuWidth / 3.0f;
+	h =  menuHeight / 3.0f;
+	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 }
 
 void Chat::cleanMsgSent()
@@ -40,8 +43,8 @@ void Chat::goThroughChatLog(const int key)
 void Chat::onRender()
 {
 	drawSimpleQuad(x, y, w, h, chatColor);
-	float offset = 10.0f;
-	float charHeight = (48+10)*scale; //48 cause font is 48 and 10 is height offset
+	float offset = 10.0f * menuScale;
+	float charHeight = (48+10)*textScale; //48 cause font is 48 and 10 is height offset
 
 	textRenderer.renderText(currMsg, x + offset, y + offset, glm::vec3(0.5, 0.8f, 0.2f));
 
@@ -59,8 +62,8 @@ void Chat::renderRecentMessages()
 	auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(timepoint.time_since_epoch()).count();
 	auto nowS = std::chrono::duration_cast<std::chrono::seconds>(timepoint.time_since_epoch()).count();
 
-	float offset = 10.0f;
-	float charHeight = (48+10)*scale; //48 cause font is 48 and 10 is height offset
+	float offset = 10.0f * menuScale;
+	float charHeight = (48+10)*textScale; //48 cause font is 48 and 10 is height offset
 	int currHeight = offset + charHeight;
 
 	glEnable(GL_BLEND);

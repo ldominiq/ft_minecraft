@@ -52,26 +52,27 @@ void UDPClient::sendConnect() {
 }
 
 void UDPClient::receivePacket() {
-    std::vector<uint8_t> buffer(MAXLINE);
-    socklen_t addrlen = sizeof(servaddr);
+	std::vector<uint8_t> buffer(MAXLINE);
+	socklen_t addrlen = sizeof(servaddr);
 
-    while (true) {
-        ssize_t n = recvfrom(sockfd, buffer.data(), buffer.size(), 0,
-                             reinterpret_cast<struct sockaddr*>(&servaddr), &addrlen);
-        if (n < 0) {
-            if (errno == EWOULDBLOCK || errno == EAGAIN) break; // no more packets
-            perror("recvfrom error");
-            break;
-        }
-        // pass the actual number of bytes received
-        dispatch(buffer.data(), static_cast<size_t>(n));
-    }
+	while (true) {
+		ssize_t n = recvfrom(sockfd, buffer.data(), buffer.size(), 0,
+							reinterpret_cast<struct sockaddr*>(&servaddr), &addrlen);
+		if (n < 0) {
+			if (errno == EWOULDBLOCK || errno == EAGAIN) break; // no more packets
+			perror("recvfrom error");
+			break;
+		}
+		// pass the actual number of bytes received
+		dispatch(buffer.data(), static_cast<size_t>(n));
+		bzero(buffer.data(), buffer.size()); // Clear buffer for next recv
+	}
 }
 
 void UDPClient::dispatch(const uint8_t* data, size_t n)
 {
     // 1. Decode packet from buffer (returns unique_ptr<Packet>)
     auto pkt = decodePacket(data, n);
-	if (onPacket) onPacket({ std::move(pkt) });
+	if (onPacket) onPacket(std::move(pkt));
 }
 

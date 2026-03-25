@@ -1,19 +1,16 @@
 
 #include "Character.hpp"
 
-Character::Character(const glm::vec3 &position)
+Character::Character()
 {
 }
 
+// ...existing code...
 void Character::createCharacterAt(const glm::vec3 &pos, float characterScale)
 {
-	Space character;
+    Space character;
 
-	//when building the character. First goes the torso which is centered in the middle. But then legs go under it. This next variable helps recentering the whole character with his center being at 0.0.0
-	//these calculations make no sense. But for now it gives the impression that it works... (only the .scale is good)
-	float upTranslationRatio = (torsoScaleY + headScaleY + legScaleY * 2.0f) / (torsoScaleY / 2.0f + legScaleY * 2.0f);
-	YPositionOffset = glm::vec3(0, -(characterScale * characterScaleNorm * upTranslationRatio * 2), 0);
-    character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
+    // character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
 	character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(characterScale * characterScaleNorm));
 
     // Torso

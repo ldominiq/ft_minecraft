@@ -38,24 +38,24 @@ class Character
 	bool doDraw = true;
 
 	protected:
-		float torsoScaleZ = 2.4f;
-		float torsoScaleY = 5.0f;
+		float torsoScaleZ{0};
+		float torsoScaleY{0};
 
-		float headScaleZ = torsoScaleZ*1.2f;
-		float headScaleY = headScaleZ;
-		float headTransY = (torsoScaleY/2.0f + headScaleY/2.0f) / headScaleY;
+		float headScaleZ{0};
+		float headScaleY{0};
+		float headTransY{0};
 
-		float armScaleZ = torsoScaleZ/2.0f;
-		float armScaleY = (torsoScaleY*7.0f)/11.0f;
-		float armTransZ = (torsoScaleZ/2.0f + armScaleZ/2.0f) / armScaleZ;
-		float armTransY = ((torsoScaleY - armScaleY)/2.0f) / armScaleY;
+		float armScaleZ{0};
+		float armScaleY{0};
+		float armTransZ{0};
+		float armTransY{0};
 
-		float legScaleZ = torsoScaleZ/2.0f;
-		float legScaleY = torsoScaleY*0.6f;
-		float legTransZ = 0.5f;
-		float legTransY = -((torsoScaleY/2.0f + legScaleY/2.0f) / legScaleY); // 0.875 = 3 (torso Y scale) / 2 (Y negative/positive) = 1.5, 4 (rightLeg Y scale) / 2 (Y negative/positive). 1.5+2 / 4 (rightleg Y scale as translation goes scale times fast)
+		float legScaleZ{0};
+		float legScaleY{0};
+		float legTransZ{0};
+		float legTransY{0};
 
-		float characterScaleNorm = 1 / (torsoScaleY + headScaleY + legScaleY * 2.0f);
+		float characterScaleNorm{0};
 
 	virtual void createCharacterAt(const glm::vec3 &pos, float characterScale);
 	public:
@@ -66,7 +66,7 @@ class Character
 		const inline void setDoDraw(bool value) {doDraw = value;}
 		const inline bool DoDraw() const {return doDraw;}
 
-		Character(const glm::vec3 &position);
+		Character();
 		virtual ~Character() = default;
 
 		virtual void walkAnimation(float deltaTime);

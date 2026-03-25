@@ -132,6 +132,12 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::NET_INVENTORY_ACTION: {
+			auto& p = static_cast<NetInventoryAction&>(*pkt);
+			receiveInventoryAction(p, cliaddr);
+			break;
+		}
+
 		case PacketType::NET_MESSAGE: {
 			auto& p = static_cast<NetMessage&>(*pkt);
 			receiveMessage(p, cliaddr);
@@ -153,6 +159,8 @@ void Server::gameTick()
 		world->updateLiquids();
 	}
 
+	if (tick % (static_cast<int>(TPS) * 3) == 0)
+		world->updateRegionStreaming(players);
 	sendAll();
 }
 
@@ -166,9 +174,11 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.id = players.size();
 	p.addr = cliaddr;
 	p.connected = true;
+	p.computeSpawnPosition(world->getTerrainParams());
 
 	players.push_back(p);
 	world->livingEntities.push_back(p.movement);
+	world->updateRegionStreaming(players);
 	
 	sendAccept(cliaddr);
 }
@@ -202,6 +212,7 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		sendPacketTo(pkt, p.addr);
 	}
 
+	world->PlayerKnownChunks[player->id].clear();
 	world->livingEntities.erase(ent);
 	players.erase(player);
 }
@@ -220,24 +231,32 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		ItemType type = player->movement->inventory.getItemAtSlot(player->movement->inventory.activeHotbarSlot);
 		if (player->movement->inventory.removeItemsFromSlot(player->movement->inventory.activeHotbarSlot, 1))
 		{
-			glm::vec3 itemPos = player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f);
+			//instead of player->movement->getEntityHeight() * 0.6f should be some hand/waist height
+			glm::vec3 itemPos = player->movement->getPosition() + glm::vec3(0, player->movement->getEntityHeight() * 0.6f, 0) + player->movement->getCameraDir() * 0.2f;
 
 			world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), type, tick, true));
 
 			NetInventory dropItem;
+			int slot = player->movement->inventory.activeHotbarSlot;
 			dropItem.type = std::visit([](auto& value) -> ItemID {
 				return static_cast<ItemID>(value);
 			}, type);
-			dropItem.amount = -1;
-			dropItem.slot = player->movement->inventory.activeHotbarSlot;
+			dropItem.amount = player->movement->inventory.getSlot(slot).second;
+			dropItem.slot = slot;
 			sendPacketTo(dropItem, cliaddr);
 		}
 	}
 
 	if (pkt.yaw != player->movement->yaw) player->movement->positionUpdated = true;
 
+	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
-	player->loadRadius = pkt.loadRadius;
+
+	if (pkt.loadRadius > 32)
+		pkt.loadRadius = 32;
+	else if (pkt.loadRadius < 4)
+		pkt.loadRadius = 4;
+	player->movement->loadRadius = pkt.loadRadius;
 	player->movement->setYawAndPitch(pkt.yaw, pkt.pitch);
 	player->movement->updateCameraVectors();	//order is vital. updateCameraVectors uses pkt.
 }
@@ -250,11 +269,7 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 
 	if (world->processPlayerMouseInputs(*player, pkt, tick))
 	{
-		NetInventory dropItem;
-		dropItem.type = player->movement->inventory.getActiveItemID();
-		dropItem.amount = -1;
-		dropItem.slot = player->movement->inventory.activeHotbarSlot;
-		sendPacketTo(dropItem, cliaddr);
+		sendInventorySlot(player->movement->inventory.activeHotbarSlot, cliaddr);
 	}
 }
 
@@ -288,14 +303,75 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 		messages.push_back(pkt.message);
 }
 
+void Server::sendInventorySlot(int slot, const sockaddr_in &cliaddr)
+{
+	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (player == players.end())
+		return;
+
+	Inventory inv = player->movement->inventory;
+	ItemID itemIDAtSlot = inv.getItemIDAtSlot(slot);
+	itemStackSize_t amountAtSlot = inv.getSlot(slot).second;
+
+	NetInventory pkt;
+	pkt.type = itemIDAtSlot;
+	pkt.amount = amountAtSlot;
+	pkt.slot = slot;
+	sendPacketTo(pkt, cliaddr);
+}
+
+void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &cliaddr)
+{
+	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (player == players.end())
+		return;
+
+	if (pkt.slot > HAND_ID) return;
+	int slot = pkt.slot;
+
+	Inventory &inv = player->movement->inventory;
+
+	ItemType typeAtSlot = inv.getItemAtSlot(slot);
+	ItemType typeAtHand = inv.getHand().first;
+
+	int amountAtSlot = inv.getSlot(slot).second;
+	int amountAtHand = inv.getHand().second;
+
+	if (pkt.actionType == InventoryActionType::INV_LEFT_CLICK)
+	{
+		if (amountAtHand == 0 || typeAtSlot != typeAtHand)
+			inv.swapSlots(slot, HAND_ID);
+		else
+		{
+			inv.mergeSlot(HAND_ID, slot);
+		}
+	} else if (pkt.actionType == InventoryActionType::INV_RIGHT_CLICK)
+	{
+		if (amountAtHand == 0)
+			inv.takeHalf(slot);
+		else
+		{
+			if (amountAtSlot == 0 || typeAtSlot == typeAtHand)
+				inv.takeOneItemFromSlot(HAND_ID, std::optional<int>(slot));
+			else
+				inv.swapSlots(slot, HAND_ID);
+		}
+	}
+
+	sendInventorySlot(slot, cliaddr);
+	sendInventorySlot(HAND_ID, cliaddr);
+}
+
 // TODO : Multithread
 void Server::sendAll()
 {
 	world->amountOfChunksSentThisTick = 0;
 	sendDeaths();
+	world->updateRdyChunks();
 	for (CPlayerInfo &p : players)
 	{
 		world->updateVisibleChunks(p);
+		world->updatePlayerRdyChunks(p);
 
 		sendChunk(p);
 		sendPositionDeltas(p); //not deltas for now
@@ -308,6 +384,8 @@ void Server::sendAll()
 	world->updatedBlocks.clear();
 	if (!messages.empty())
 		messages.pop_front();
+	
+	world->rdyChunks.clear();
 }
 
 void Server::sendDeaths()
@@ -351,13 +429,21 @@ void Server::sendImGuiData(CPlayerInfo &player) {
     sendPacketTo(pkt, player.addr);
 }
 
-void Server::sendChunk(CPlayerInfo &player) {
+void Server::sendChunk(CPlayerInfo &player)
+{
+	std::vector<ChunkPos> rdyChunk;
+	rdyChunk.swap(player.rdyChunks);
 
-	std::vector<ChunkPos> readyChunks;
-	readyChunks.swap(player.rdyChunks);
+    for (auto& chunkPos : rdyChunk) {
+        std::shared_ptr<ChunkGeneration> chunkG = world->getChunk(chunkPos.first, chunkPos.second);
 
-    for (auto& chunkPos : readyChunks) {
-        ChunkGeneration& chunk = *world->getChunk(chunkPos.first, chunkPos.second);
+		if (!chunkG)
+		{
+			std::cout << "ERROR: Chunk not found\n";
+			continue ;
+		}
+
+		ChunkGeneration& chunk = *chunkG;
 
         // 1. Serialize chunk into memory
         std::ostringstream oss(std::ios::binary);
@@ -410,7 +496,8 @@ void Server::sendChunk(CPlayerInfo &player) {
 void Server::sendPositionDeltas(CPlayerInfo &player)
 {
 	NetPlayerMove pkt;
-	pkt.serverTick = tick;
+
+	pkt.serverClientReconciliationTick = player.serverClientReconciliationTick;
 
 	pkt.positionX = player.movement->getPosition().x;
 	pkt.positionY = player.movement->getPosition().y;
@@ -419,6 +506,9 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.velocityX = player.movement->getVelocity().x;
 	pkt.velocityY = player.movement->getVelocity().y;
 	pkt.velocityZ = player.movement->getVelocity().z;
+
+	pkt.yaw = player.movement->yaw;
+	pkt.pitch = player.movement->pitch;
 
 	pkt.health = player.movement->health;
 
@@ -595,9 +685,12 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			groupPkt.push_back(std::move(pkt));
 		}
 
-		player->movement->inventory.insertItemsToSlot(BlockType::DIRT, 0, 200);
-		player->movement->inventory.insertItemsToSlot(BlockType::WATER, 8, 200);
-		player->movement->inventory.insertItemsToSlot(BlockType::STONE, 1, 200);
+		int twohundred0 = 200;
+		int twohundred1 = 200;
+		int twohundred2 = 200;
+		player->movement->inventory.insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
+		player->movement->inventory.insertItemsToSlot(BlockType::WATER, 8, twohundred1);
+		player->movement->inventory.insertItemsToSlot(BlockType::STONE, 1, twohundred2);
 
 		auto pkt1 = std::make_unique<NetInventory>();
 		pkt1->amount = 200;

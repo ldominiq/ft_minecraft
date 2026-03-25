@@ -5,8 +5,8 @@ Creeper::Creeper(const glm::vec3 &position):	LivingEntity(position)
 {
 	type = CREEPER;
 
-	this->entityWidth = 0.6f;
-	this->entityHeight = 20.0f;
+	this->entityWidth = 2.0f;
+	this->entityHeight = 6.0f;
 
 	SAFE_FALL_DISTANCE = 20;
 }
@@ -15,8 +15,8 @@ Creeper::Creeper(const glm::vec3 &position, float yaw, entityID ID): LivingEntit
 {
 	type = CREEPER;
 
-	this->entityWidth = 0.6f;
-	this->entityHeight = 20.0f;
+	this->entityWidth = 2.0f;
+	this->entityHeight = 6.0f;
 
 	SAFE_FALL_DISTANCE = 20;
 }

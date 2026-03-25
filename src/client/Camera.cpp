@@ -26,13 +26,13 @@ Camera::~Camera() {
 
 glm::mat4 Camera::getViewMatrix() const
 {
+	glm::vec3 playerPos = player->getPosition() + glm::vec3(0, player->getEyesHeight(), 0);
+
 	if (!thirdPersonCamera)
-		return glm::lookAt(player->getPosition(), player->getPosition() + player->Front, player->WorldUp);
+		return glm::lookAt(playerPos, playerPos + player->Front, player->WorldUp);
 
 	float cameraDistance = 3.0f;  // behind the player
 	float cameraHeight   = 1.5f;  // slightly above
-
-    glm::vec3 playerPos = player->getPosition();
 
     float yaw   = glm::radians(player->yaw);
     float pitch = glm::radians(player->pitch);
@@ -57,63 +57,115 @@ glm::mat4 Camera::getViewMatrix() const
     );
 }
 
-void Camera::lerpToNextPosition(float deltaTime)
+void Camera::predict(const Renderer &world, int32_t clientTick) //clientime broken for now
 {
-	if (prevServerTick == 0) return ;
+	if (!startPrediction)
+		return ;
 
-	float currTime = prevServerTick + deltaTime * 1000;
-	currTime = std::clamp(currTime, prevServerTick, serverTick);
-	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
+	float clientTime = clientTick * (1.0f / TPS);
 
-	// std::cout << deltaTime << std::endl;
-	// std::cout << currTime << std::endl;
-	// std::cout << prevServerTick << std::endl;
-	// std::cout << serverTick<< std::endl;
-	// std::cout << intraTick << std::endl;
-	// std::cout << std::endl;
-	glm::vec3 renderPos = player->prevPosition + (player->nextPosition - player->prevPosition) * intraTick;
-	player->setPosition(renderPos);
-}
-		
-glm::vec3 Camera::lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition)
-{
-	if (prevPosition == glm::vec3{}) return nextPosition;
+	//make sure we start from the last state. (so lerp doesn't mess with the prediction)
+	if (!predictedStates.empty())
+	{
+		PredictedStates lastState = predictedStates.back();
+		player->setPosition(lastState.position);
+		player->setVelocity(lastState.velocity);
+		player->setYawAndPitch(lastState.yaw, lastState.pitch);
+		player->health = lastState.health;
+	}
 
-	float currTime = prevServerTick + deltaTime * 1000;
-	currTime = std::clamp(currTime, prevServerTick, serverTick);
-	float intraTick = (currTime - prevServerTick) / (serverTick - prevServerTick);
+	//set player state to the inputs for this tick if there is.
+	if (InputsMap.find(clientTick) != InputsMap.end())
+	{
+		// //set variables for new states
+		player->setLastInputPacketReceived(InputsMap[clientTick]);
+		player->setYawAndPitch(InputsMap[clientTick].yaw, InputsMap[clientTick].pitch);
+	}
 
-	glm::vec3 renderPos = prevPosition + (nextPosition - prevPosition) * intraTick;
-	return renderPos;
-}
+	player->updateCameraVectors();
+	player->calculateNewPosition(world);
 
-// Remove prediction for now. 
-void Camera::predictNTicks(const Renderer &world)
-{
-	// previousPosition = predictedPosition;
-	// static int diff;
-	// diff = serverCurrTick ? tickDiff(currTick, serverCurrTick) : diff; //assumes ping remains constant... this whole logic is... frail
-	// serverCurrTick = currTick - diff;
+	//construct predictions for reconcialiation and snapshots for interpolation
+	predictedStates.emplace_back(PredictedStates{
+		clientTick,
+		player->getPosition(),
+		player->getVelocity(),
+		player->yaw,
+		player->pitch,
+		player->health
+	});
 
-	// for(auto itr = inputsList.cbegin(); itr != inputsList.cend();) {
-	// if (itr->tick < serverCurrTick) {
-	// 	itr = inputsList.erase(itr);
-	// } else
-	// 	++itr;
-	// }
-
-	// for(int i = 0; i < diff - 1; i++)
-	// {
-	// 	if (inputsList.size() > i)
-	// 		movement.lastInputsPktRecvd = inputsList[i];
-	// }
-	// predictedPosition = movement.getPosition();
-	// movement.setPosition(previousPosition);
+	player->snapshots.emplace_back(Snapshot{
+		player->getPosition(),
+		player->getVelocity(),
+		clientTime
+	});
 }
 
-void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
+void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, const Renderer &world)
 {
-	amountOfSnapshotsReceived++;
+	for (auto it = predictedStates.begin(); it != predictedStates.end();)
+	{
+		if (((long)(it->serverClientReconciliationTick) - (long)(correction.serverClientReconciliationTick) < 0))
+		{
+			it = predictedStates.erase(it);
+			continue ;
+		}
+		else if (it->serverClientReconciliationTick == correction.serverClientReconciliationTick)
+		{
+			if (it->position != correction.position ||
+				it->velocity != correction.velocity ||
+				it->health != correction.health ||
+				it->yaw != correction.yaw ||
+				it->pitch != correction.pitch)
+			{
+
+				std::cout << "format : client -> server\n";
+				std::cout << "Prediction error at\n";
+				std::cout << clientTick << " " << it->serverClientReconciliationTick << " " << correction.serverClientReconciliationTick << "\n";
+				std::cout << "--pos---\n";
+				std::cout << it->position.x << " " << it->position.y << " " << it->position.z << std::endl;
+				std::cout << correction.position.x << " " << correction.position.y << " " << correction.position.z << std::endl;
+				std::cout << "--vel---\n";
+				std::cout << it->velocity.x << " " << it->velocity.y << " " << it->velocity.z << std::endl;
+				std::cout << correction.velocity.x << " " << correction.velocity.y << " " << correction.velocity.z << std::endl;
+				std::cout << "--health---\n";
+				std::cout << it->health << " " << correction.health << std::endl;
+				std::cout << "--yawpitch---\n";
+				std::cout << it->yaw << " " << it->pitch << std::endl;
+				std::cout << correction.yaw << " " << correction.pitch << std::endl;
+				std::cout << "------------------\n";
+
+				//restart clean from server state
+				player->snapshots.clear();
+				predictedStates.clear();
+
+				predictedStates.push_back(PredictedStates{
+					correction.serverClientReconciliationTick,
+					correction.position,
+					correction.velocity,
+					correction.yaw,
+					correction.pitch,
+					correction.health
+				});
+				
+				for (int i = correction.serverClientReconciliationTick + 1; i < clientTick; i++)
+					predict(world, i);
+
+			}
+			break ;
+		}
+		else
+			it++;
+	}
+}
+
+void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clientTick)
+{
+	if (!startPrediction)
+		startPrediction = true;
+
+	static int32_t lastReceivedServerClientReconciliationTick = -1;
 
 	glm::vec3 position;
 	position.x = pkt.positionX;
@@ -124,18 +176,33 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world)
 	velocity.x = pkt.velocityX;
 	velocity.y = pkt.velocityY;
 	velocity.z = pkt.velocityZ;
-	player->setVelocity(velocity);
 
-	player->health = pkt.health;
+	PredictedStates correction = PredictedStates{
+		pkt.serverClientReconciliationTick,
+		position,
+		velocity,
+		pkt.yaw,
+		pkt.pitch,
+		pkt.health
+	};
 
-	// movement.setPosition(position);
-	player->prevPosition = player->nextPosition;
-	player->nextPosition = position;
+	// if (lastReceivedServerClientReconciliationTick == pkt.serverClientReconciliationTick)
+		// return ;
+	// lastReceivedServerClientReconciliationTick = pkt.serverClientReconciliationTick;
 
-	prevServerTick = serverTick;
-	serverTick = pkt.serverTick * MS_TICK_RATE;
+	reconcile(correction, clientTick, world);
 
-	predictNTicks(world);
+	// Clean up old inputs. 200 is an arbitrary number and is just used to avoid iterating on each loop on a map.
+	if (InputsMap.size() > 200)
+	{
+		for (auto it = InputsMap.begin(); it != InputsMap.end();)
+		{
+			if (((long)(it->first) - (long)(correction.serverClientReconciliationTick) < 0))
+				it = InputsMap.erase(it);
+			else
+				it++;
+		}
+	}
 }
 
 void Camera::processMouseMovement(float xoffset, float yoffset) {
@@ -197,7 +264,7 @@ void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer,
 	glm::ivec3 faceNormal{};
 	LivingEntity* livingEntity = nullptr;
 
-	if (Renderer->getTarget(player->getPosition(), glm::normalize(player->Front), blockPos, faceNormal, livingEntity) != TargetType::Block)
+	if (Renderer->getTarget(*player, blockPos, faceNormal, livingEntity) != TargetType::Block)
 		return ;
 
 	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));
@@ -206,6 +273,7 @@ void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer,
 	blockWireframeShader->setMat4("model", model);
 	blockWireframeShader->setMat4("view", view);
 	blockWireframeShader->setMat4("projection", projection);
+	blockWireframeShader->setVec3("color", glm::vec3(1.0f, 0.0f, 1.0f));
 
     glBindVertexArray(wireframeVAO);
     glDrawElements(GL_LINES, 24, GL_UNSIGNED_INT, nullptr);

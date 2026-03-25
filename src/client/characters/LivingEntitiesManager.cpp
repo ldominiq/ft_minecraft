@@ -36,10 +36,25 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			c->characterBodyParts.character.translation = glm::translate(glm::mat4(1.0f), c->getPosition() + c->YPositionOffset);
 			c->characterBodyParts.character.compute(identity, projection, view, characterShader);
 			c->walkAnimation(deltaTime);
-			c->positionUpdated = false;
+			// c->positionUpdated = false;
 		}
 		else
 			c->characterBodyParts.character.drawScene(characterShader, projection, view);
+	}
+
+	for (const auto &character : characters)
+	{
+		auto c = character.lock();
+		if (!c)
+			continue ;	//character expired. we removed them later
+		if (!c->DoDraw())
+			continue ;
+		if (true)
+		{
+			AABB box = c->constructAABB(c->getPosition());
+			glm::vec3 col(1.0f, 0.0f, 0.0f); // red
+			hbRenderer.drawAABB(box, view, projection, col);
+		}
 	}
 
 	//remove expired characters.

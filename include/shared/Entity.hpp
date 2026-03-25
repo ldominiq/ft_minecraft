@@ -5,9 +5,11 @@
 #include <cmath>
 #include <queue>
 #include <iostream>
+#include <deque>
 
 #include "Network.hpp" // For inputs. Maybe should do it in some other way
 #include "Item.hpp"
+#include "Chunk.hpp"
 // #include "CommonWorld.hpp"
 
 constexpr float EPS = 1e-5f;
@@ -67,6 +69,16 @@ class ItemEntityIDManager {
 		}
 };
 
+class TextureManager;
+
+//only used in client.
+struct Snapshot
+{
+	glm::vec3 position;
+	glm::vec3 velocity;
+	double time;
+};
+
 class Entity {
 
 	static ItemEntityIDManager idManager;
@@ -108,7 +120,7 @@ class Entity {
 		inline virtual EEntityTypes getEntityType() const = 0;
 		virtual void calculateNewPosition(const ICommonWorld &world);
 		inline const glm::vec3 getPosition() const { return position; }
-		inline const float getEntityWidth() const { return entityWidth; }
+		inline const float getentityWidth() const { return entityWidth; }
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const entityID getID() const { return ID; }
 
@@ -117,15 +129,42 @@ class Entity {
 			this->position = position;
 		}
 
+		inline ChunkPos getChunkPos() const {
+			int chunkX = static_cast<int>(std::floor(position.x / Chunk::WIDTH));
+			int chunkZ = static_cast<int>(std::floor(position.z / Chunk::DEPTH));
+			return ChunkPos(chunkX, chunkZ);
+		}
+
 		//ONLY USED IN CLIENT :
-		//TODO move all of this and get a normal tick on client.
-		glm::vec3 prevPosition{};
-		glm::vec3 nextPosition{};
-		float glfwTickTime = 0;
+		//TODO move all of this.
+		std::deque<Snapshot> snapshots;
 		
 		bool removed = false; //item entities only
-		virtual void createMesh(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
+		
+		virtual void lerp(double glfwTime)
+		{
+			if (snapshots.size() < 2) return;
+			while (snapshots.size() > 2 && snapshots[1].time <= glfwTime) {
+				snapshots.pop_front();
+			}
+
+			// std::cout << "Lerping entity " << ID << " with " << snapshots.size() << " snapshots\n";
+
+			auto& start = snapshots[0];
+			auto& end   = snapshots[1];
+
+			double t = (glfwTime - start.time) / (end.time - start.time);
+			t = std::clamp(t, 0.0, 1.0);
+
+			glm::vec3 interpolatedPosition = glm::mix(start.position, end.position, t);
+			setPosition(interpolatedPosition);
+		};
+		//virtual void predict();
+
+		virtual void createMesh(std::vector<float> &meshVertices, const TextureManager* texMgr = nullptr) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
 		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //living entities only
+
+		//the not yet Implemented is a lie. Those are only client functions defined in the client.
 };
 
 #endif

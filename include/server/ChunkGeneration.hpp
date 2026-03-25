@@ -17,10 +17,10 @@ class ChunkGeneration : public Chunk {
 		ChunkGeneration(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
 
 		void generate(const TerrainGenerationParams& terrainParams);
+		void generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
+		void placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ, int surfaceY, int treeHeight);
 		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
-
-		bool preGenerated = false;
 
 		static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
 
@@ -33,6 +33,9 @@ class ChunkGeneration : public Chunk {
 
 		static float surfaceNoiseTransformation(float noise, int splineIndex);
 
+		// TODO: check if surfaceY is below seaLevel and if so, set starting Y to seaLevel + 1 to avoid drowning spawn
+		// (when water physics is implemented) -> max(surfaceY, seaLevel) + offset)
+		/// Set the starting position to the top of the terrain at the given spawn point.
 		static int computeTerrainHeight(const TerrainGenerationParams& terrainParams, float worldX, float worldZ);
 		static BiomeType computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height);
 

@@ -4,58 +4,62 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <ranges>
+#include <deque>
 
 #include "Protocol.hpp"
 #include "Renderer.hpp"
 #include "GLFW/glfw3.h"
 #include "ClientPlayer.hpp"
 
+struct PredictedStates
+{
+	int32_t serverClientReconciliationTick;
+	glm::vec3 position;
+	glm::vec3 velocity;
+	float yaw;
+	float pitch;
+	float health;
+};
+
 class Camera {
 
 	GLuint wireframeVAO, wireframeVBO, wireframeEBO;
 
 	void initWireframeCube();
-	void predictNTicks(const Renderer &world);
 	std::unique_ptr<Shader> blockWireframeShader = nullptr;
 
-	int64_t amountOfSnapshotsReceived = 0;
+	bool startPrediction = false;
 
 	//TODO : get all the tick logic elsewhere;
-	float serverTick = 0;
-	float prevServerTick = 0;
+	std::deque<Snapshot> snapshots;
 
 	std::shared_ptr<ClientPlayer> player;
 	bool thirdPersonCamera = false;
+	// std::unordered_map<int32_t, PredictedStates> predictedStates;
+	std::vector<PredictedStates> predictedStates;
+
+	void reconcile(const PredictedStates &correction, int32_t clientTick, const Renderer &world);
+	std::map<int32_t, NetPlayerInputs> InputsMap;
 
 public:
-	std::vector<NetPlayerInputs> inputsList;
 
-    float MouseSensitivity;
-
-	uint8_t loadRadius = 12; // 4 - 32
+    float MouseSensitivity{};
 
     explicit Camera(glm::vec3 position);
 	~Camera();
 
     glm::mat4 getViewMatrix() const;
     void processMouseMovement(float xoffset, float yoffset);
-	void onSnapshot(NetPlayerMove &pkt, const Renderer &world);
-	void lerpToNextPosition(float deltaTime);
-
-	//maybe refactor some day and put somewhere else
-	glm::vec3 lerpEntityToNextPosition(float deltaTime, const glm::vec3 &prevPosition, const glm::vec3 &nextPosition);
-
-	inline const uint8_t getLoadRadius() const { return loadRadius; }
-	// inline int tickDiff(int clientTick, int serverTick) { return clientTick - serverTick; }
-
-	inline const int64_t getAmountOfSnapsReceived() const { return amountOfSnapshotsReceived;}
+	void onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clientTick);
 
 	void drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 
 	const inline bool isThirdPersonCameraActive() const {return thirdPersonCamera;}
 	const inline void toggleThirdPersonCamera() {thirdPersonCamera = !thirdPersonCamera; player->setDoDraw(thirdPersonCamera);}
-	const inline std::shared_ptr<ClientPlayer> getPlayer() {return player;};
-};
+	inline std::shared_ptr<ClientPlayer> getPlayer() {return player;};
 
+	void predict(const Renderer &world, int32_t clientTick);
+	inline void queueInput(const NetPlayerInputs &inputs, int32_t clientTick) { InputsMap[clientTick] = inputs; }
+};
 
 #endif // CAMERA_HPP

@@ -200,7 +200,7 @@ void Chunk::computeSkyLight() {
                 continue;
 
             BlockType neighborBlock = getBlock(neighborX, neighborY, neighborZ);
-            if (isBlockSolid(neighborBlock))
+            if (isBlockSolid(neighborBlock) && !isBlockTransparent(neighborBlock))
                 continue; // Light doesn't pass through solid blocks
 
             int neighborIndex = neighborX + WIDTH * (neighborY + HEIGHT * neighborZ);

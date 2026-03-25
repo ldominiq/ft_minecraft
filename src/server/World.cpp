@@ -4,6 +4,39 @@
 
 #include "World.hpp"
 
+World::World() {
+    std::mt19937 rng(time(nullptr));
+    terrainParams.seed = rng();
+
+	std::string regionsDirName = "Regions/";
+	regionDirName = regionsDirName + "region-" + std::to_string(terrainParams.seed);
+	if (SAVES_ACTIVE)
+	{
+		std::filesystem::create_directories(regionsDirName);
+		std::filesystem::create_directories(regionDirName);
+	}
+    std::cout << "World seed: " << terrainParams.seed << std::endl;
+
+	CircularGrid = buildCircularOffsets(MAX_RADIUS);
+}
+
+World::World(int seed) {
+	std::cout << "World seed: " << seed << std::endl;
+	std::string regionsDirName = "Regions/";
+	regionDirName = regionsDirName + "region-" + std::to_string(seed);
+	if (SAVES_ACTIVE)
+	{
+		std::filesystem::create_directories(regionsDirName);
+		std::filesystem::create_directories(regionDirName);
+	}
+    terrainParams.seed = seed;
+
+	CircularGrid = buildCircularOffsets(MAX_RADIUS);
+}
+
+World::~World() {
+}
+
 // helper to write PPM
 static void saveHeightmapPPM(const std::string &path, const std::vector<float> &heightmap, int w, int h) {
     float minH = std::numeric_limits<float>::infinity();
@@ -172,64 +205,6 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
 	}
 }
 
-World::World() {
-    std::mt19937 rng(time(nullptr));
-    terrainParams.seed = rng();
-
-	std::string regionsDirName = "Regions/";
-	regionDirName = regionsDirName + "region-" + std::to_string(terrainParams.seed);
-	if (SAVES_ACTIVE)
-	{
-		std::filesystem::create_directories(regionsDirName);
-		std::filesystem::create_directories(regionDirName);
-	}
-    std::cout << "World seed: " << terrainParams.seed << std::endl;
-}
-
-World::World(int seed) {
-	std::cout << "World seed: " << seed << std::endl;
-	std::string regionsDirName = "Regions/";
-	regionDirName = regionsDirName + "region-" + std::to_string(seed);
-	if (SAVES_ACTIVE)
-	{
-		std::filesystem::create_directories(regionsDirName);
-		std::filesystem::create_directories(regionDirName);
-	}
-    terrainParams.seed = seed;
-}
-
-World::~World() {
-}
-
-//TODO change it. removing from memory based on player loadRadius makes no sense
-void World::handleOutOfMemory(int currentChunkX, int currentChunkZ, int loadRadius) {
-	if (!outOfMemory) {
-		try {
-			updateRegionStreaming(currentChunkX, currentChunkZ);
-		} catch (std::exception &e) {
-			std::cerr << "Error in updateRegionStreaming: " << e.what() << " - possibly out of memory." << std::endl;
-
-			outOfMemory = true;
-		}
-	} else {
-		//remove chunks to not go out of memory;
-		const int unloadRadius = loadRadius + REGION_SIZE;
-		std::vector<ChunkPos> toRemove;
-		for (const auto& entry : chunks) {
-			const int cx = entry.first.first;
-			const int cz = entry.first.second;
-			const int dx = cx - currentChunkX;
-			const int dz = cz - currentChunkZ;
-			if (dx * dx + dz * dz > unloadRadius * unloadRadius) {
-				toRemove.push_back(entry.first);
-			}
-		}
-		for (auto k : toRemove){
-			chunks.erase(k);
-		}
-	}
-}
-
 void World::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneration> &chunk) {
 
     const int dirX[] = { 0, 0, 1, -1 };
@@ -249,158 +224,127 @@ void World::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneratio
     }
 }
 
-void World::removeLoadedChunksFromPlayer(CPlayerInfo &player)
+// std::vector<ChunkPos> CircularGrid
+std::vector<ChunkPos> World::buildCircularOffsets(int radius)
 {
-    int unloadRadius = player.loadRadius + 16;
+    std::vector<ChunkPos> v;
 
-    // convert player position (world coords) to chunk coords
-    int playerChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
-    int playerChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
-
-    for (auto it = player.loadedChunks.begin(); it != player.loadedChunks.end(); )
+    for (int x = -radius; x <= radius; x++)
     {
-        int dx = it->first - playerChunkX;
-        int dz = it->second - playerChunkZ;
+        for (int y = -radius; y <= radius; y++)
+        {
+            if (x*x + y*y <= radius*radius)
+            {
+                v.push_back({x,y});
+            }
+        }
+    }
+
+    std::sort(v.begin(), v.end(), [](const ChunkPos& a, const ChunkPos& b)
+    {
+        int da = a.first*a.first + a.second*a.second;
+        int db = b.first*b.first + b.second*b.second;
+        return da < db;
+    });
+
+    return v;
+}
+
+ChunkPos World::findNextChunk(CPlayerInfo& player)
+{
+	int baseChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+	int baseChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
+
+	auto& known = PlayerKnownChunks[player.id];
+	int r2 = player.movement->loadRadius * player.movement->loadRadius;
+
+	for (const ChunkPos& off : CircularGrid)
+	{
+		if (off.first * off.first + off.second * off.second > r2)
+			break;
+
+		ChunkPos c{baseChunkX + off.first, baseChunkZ + off.second};
+
+		if (!known.contains(c) && !plannedChunks.contains(c))
+			return c;
+	}
+
+	return INVALID_CHUNK;
+}
+
+void World::unloadPlayerKnownChunks(CPlayerInfo &player)
+{
+	int unloadRadius = player.movement->loadRadius * 4;
+	int playerChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+	int playerChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
+
+    for (auto it = PlayerKnownChunks[player.id].begin(); it != PlayerKnownChunks[player.id].end(); )
+    {
+        const ChunkPos& chunkPos = *it;
+
+        // Compute squared distance between chunk coordinates
+        int dx = chunkPos.first - playerChunkX;
+        int dz = chunkPos.second - playerChunkZ;
         int distSq = dx * dx + dz * dz;
 
-        if (distSq >= unloadRadius * unloadRadius)
-        {
-            it = player.loadedChunks.erase(it); // erase returns next iterator
-        }
+        if (distSq > unloadRadius * unloadRadius)
+            it = PlayerKnownChunks[player.id].erase(it);
         else
-        {
             ++it;
-        }
     }
 }
 
-void World::setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates,
-                          const CPlayerInfo &player)
+void World::updateVisibleChunks(CPlayerInfo &player)
 {
-    glm::vec2 camDir = glm::normalize(glm::vec2(player.movement->getCameraDir().x, player.movement->getCameraDir().z));
-    float maxDist = static_cast<float>(player.loadRadius);
-
-    // Get player’s current chunk position
-    int baseChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
-    int baseChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
-
-    for (int dx = -player.loadRadius; dx <= player.loadRadius; ++dx) {
-        for (int dz = -player.loadRadius; dz <= player.loadRadius; ++dz) {
-            if (dx * dx + dz * dz >= (int)maxDist * (int)maxDist)
-                continue;
-
-            int cx = baseChunkX + dx;
-            int cz = baseChunkZ + dz;
-
-            float dist = std::sqrt(static_cast<float>(dx * dx + dz * dz));
-            glm::vec2 offset(dx, dz);
-            float dirScore = glm::dot(glm::normalize(offset), camDir);
-
-            candidates.emplace_back(cx, cz, dist, dirScore);
-        }
-    }
-
-    // Sort: closest first, then by direction (front first)
-    std::sort(candidates.begin(), candidates.end(),
-        [](const auto& a, const auto& b) {
-            float distA = std::get<2>(a), distB = std::get<2>(b);
-            if (distA != distB) return distA < distB; // nearer chunks first
-            return std::get<3>(a) > std::get<3>(b);   // if same dist, prefer forward
-        });
-}
-
-// updates Planned Chunks AND sets chunks to send player
-void World::updatePlannedChunks(CPlayerInfo &player)
-{
-	std::vector<std::tuple<int, int, float, float>> candidates;
-
-	setCandidates(candidates, player);
-
-	for (auto [cx, cz, dist, distCore] : candidates)
+	// generate chunks in parallel
+	for(int i = 0; i < maxConcurrentGenerationPerPlayer && plannedChunks.size() < maxConcurrentGeneration; i++)
 	{
-		ChunkPos key = Chunk::toKey(cx, cz);
-		std::shared_ptr<ChunkGeneration> chunk = getChunk(cx, cz);
-		if (!chunk && !plannedChunks.contains(key)) { // contains is c++ 20
-			plannedChunks.insert(key);
-		}
+		ChunkPos bestChunk = findNextChunk(player);
+		if (bestChunk == INVALID_CHUNK) break;
 
-		if (chunk && !player.loadedChunks.contains(key))
-		{
-			player.loadedChunks.insert(key);
-			player.rdyChunks.push_back(key);
-			amountOfChunksSentThisTick++;
-			if (amountOfChunksSentThisTick > MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK) return ;
+		PlayerKnownChunks[player.id].insert(bestChunk);
+
+		if (chunks.find(bestChunk) != chunks.end())
+			rdyChunks.push_back(bestChunk);
+		else
+		{	
+			plannedChunks.insert(bestChunk);
+			chunkJobs[bestChunk] = std::async(std::launch::async, [this, bestChunk]() {
+				return std::make_shared<ChunkGeneration>(bestChunk.first, bestChunk.second, terrainParams);
+			});
 		}
+	}
+
+	unloadPlayerKnownChunks(player);
+}
+
+//Catch Chunk when generated
+void World::updateRdyChunks()
+{
+	for (auto it = chunkJobs.begin(); it != chunkJobs.end(); )
+	{
+		auto& future = it->second;
+		if (future.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+		{
+			std::shared_ptr<ChunkGeneration> chunk = future.get();
+			chunks[chunk->getPos()] = chunk;
+			linkNeighbors(chunk->getPos().first, chunk->getPos().second, chunk);
+
+			rdyChunks.push_back(chunk->getPos());
+			plannedChunks.erase(it->first);
+			it = chunkJobs.erase(it);
+		}
+		else
+			++it;
 	}
 }
 
-//TODO fix the load / saave regions with multiple players
-void World::updateVisibleChunks(CPlayerInfo &player) {
-    // Unload distant chunks to free memory.  Chunks beyond (loadRadius + 2)
-    // in a circular distance from the camera are removed.  We copy the keys
-    // to a temporary list to avoid invalidating the iterator while erasing.
-
-	const int currentChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
-	const int currentChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
-
-	handleOutOfMemory(currentChunkX, currentChunkZ, player.loadRadius);
-	
-	// std::unordered_set<ChunkPos> generatingChunks;
-	uint amountOfConcurrentChunksBeingGenerated = 0;
-
-	removeLoadedChunksFromPlayer(player);
-	updatePlannedChunks(player);
-	
-	for (const auto& [cx, cz] : plannedChunks) {
-        ChunkPos key = Chunk::toKey(cx, cz);
-        std::shared_ptr<ChunkGeneration> chunk = getChunk(cx, cz);
-
-        if (!chunk && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) {
-            const int cxCopy = cx;
-            const int czCopy = cz;
-            const ChunkPos keyCopy = key;
-
-            generationFutures.push_back(std::async(std::launch::async, [this,cxCopy,czCopy, keyCopy]() {
-                std::shared_ptr<ChunkGeneration> newChunk = std::make_shared<ChunkGeneration>(cxCopy, czCopy, terrainParams);
-                return std::make_pair(keyCopy, newChunk);
-            }));
-            amountOfConcurrentChunksBeingGenerated++;
-        }
-        else if (chunk && chunk->preGenerated && amountOfConcurrentChunksBeingGenerated < maxConcurrentGeneration) 
-        {
-            // generatingChunks.insert(key);
-            amountOfConcurrentChunksBeingGenerated++;
-            chunk->preGenerated = false;
-        }
-    }
-
-    // Process a limited number of ready futures.  This spreads the cost of
-    // inserting chunks into the world over multiple frames and avoids long
-    // stalls while waiting for all chunks to generate at once.  We loop
-    // through the futures vector, checking each for readiness with a
-    // zero-duration wait. 
-
-	// Set of chunks currently being generated asynchronously.  We use
-    // ChunkKey pairs to avoid scheduling the same chunk multiple times.
-
-	std::size_t processed = 0;
-	for (auto it = generationFutures.begin(); it != generationFutures.end(); ) {
-		std::future<std::pair<ChunkPos, std::shared_ptr<ChunkGeneration>>>& fut = *it;
-		
-		if (fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-			auto result = fut.get();
-			// generatingChunks.insert(result.first);
-			chunks[result.first] = result.second;
-			linkNeighbors(result.first.first, result.first.second, result.second);
-
-			plannedChunks.erase(result.first);
-
-			it = generationFutures.erase(it);
-			processed++;
-		}
-		else {
-			it++;
-		}
+void World::updatePlayerRdyChunks(CPlayerInfo &player)
+{
+	for (const auto& chunkPos : rdyChunks)
+	{
+		if (PlayerKnownChunks[player.id].find(chunkPos) != PlayerKnownChunks[player.id].end())
+			player.rdyChunks.push_back(chunkPos);
 	}
 }
 
@@ -598,33 +542,63 @@ void World::saveRegionsOnExit()
     }
 }
 
-void World::updateRegionStreaming(int currentChunkX, int currentChunkZ) {
-    const int REGION_SIZE = 32;
+void World::unloadChunksInRegion(int RegionX, int RegionZ)
+{
+	for (int x = RegionX * REGION_SIZE; x < (RegionX + 1) * REGION_SIZE; x++) {
+		for (int z = RegionZ * REGION_SIZE; z < (RegionZ + 1) * REGION_SIZE; z++) {
+			auto it = chunks.find(Chunk::toKey(x, z));
+			if (it != chunks.end()) {
+				chunks.erase(it);
+			}
+		}
+	}
+}
 
-    // Determine current region
-    int regionX = floorDiv(currentChunkX, REGION_SIZE);
-    int regionZ = floorDiv(currentChunkZ, REGION_SIZE);
+void World::updateRegionStreaming(std::vector<CPlayerInfo> &players)
+{
+	std::unordered_set<ChunkPos> regionsToKeep;
 
-    std::unordered_set<ChunkPos> regionsToKeep;
+	for (auto &player : players)
+	{
+		ChunkPos playerChunk = player.movement->getChunkPos();
+		int chunkX = playerChunk.first;
+		int chunkZ = playerChunk.second;
 
-    // Always keep current region + 8 surrounding regions
-    for (int dx = -1; dx <= 1; ++dx) {
-        for (int dz = -1; dz <= 1; ++dz) {
-            ChunkPos neighbor(regionX + dx, regionZ + dz);
-            regionsToKeep.insert(neighbor);
+		int regionX = floorDiv(chunkX, REGION_SIZE);
+		int regionZ = floorDiv(chunkZ, REGION_SIZE);
 
-            if (!loadedRegions.count(neighbor)) {
-                loadRegion(neighbor.first, neighbor.second);
-                loadedRegions.insert(neighbor);
-            }
-        }
-    }
+		for (int dx = -RADIUS_OF_REGIONS_TO_KEEP; dx <= RADIUS_OF_REGIONS_TO_KEEP; ++dx) {
+			for (int dz = -RADIUS_OF_REGIONS_TO_KEEP; dz <= RADIUS_OF_REGIONS_TO_KEEP; ++dz) {
+				ChunkPos neighbor(regionX + dx, regionZ + dz);
+				regionsToKeep.insert(neighbor);
 
-    // Unload regions that are not in the 3x3 grid
-	// TODO : saveRegions if no player is in it...? Or something like that
+				if (!loadedRegions.count(neighbor)) {
+					loadRegion(neighbor.first, neighbor.second);
+					loadedRegions.insert(neighbor);
+				}
+			}
+		}
+	}
+
+    // Unload? save regions that are not in the 3x3 grid
     for (auto it = loadedRegions.begin(); it != loadedRegions.end();) {
         if (!regionsToKeep.count(*it)) {
-            // saveRegion(it->first, it->second);
+
+			//Save region if possible
+			if (!outOfMemory && SAVES_ACTIVE) {
+				try {
+					saveRegion(it->first, it->second);
+				} catch (std::exception &e) {
+					std::cerr << "Error in updateRegionStreaming: " << e.what() << " - possibly out of memory." << std::endl;
+
+					outOfMemory = true;
+				}
+			}
+			else
+			{
+				unloadChunksInRegion(it->first, it->second);
+			}
+
             it = loadedRegions.erase(it);
         } else {
             ++it;
@@ -851,11 +825,11 @@ void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 	currChunk->setBlock(x, y, z, type);
 }
 
-bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t serverTick)
+bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t clientTick)
 {
 	LivingEntity* livingEntity = nullptr;
 	glm::ivec3 blockPos, faceNormal;
-	TargetType target = getTarget(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal, livingEntity);
+	TargetType target = getTarget(*player.movement, blockPos, faceNormal, livingEntity);
 
 	ItemType item = player.movement->inventory.getItemAtSlot(player.movement->inventory.activeHotbarSlot);
 
@@ -866,7 +840,10 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			for (auto &entity : livingEntities)
 				if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
 			if (setBlockWorld(blockPos, faceNormal, std::get<BlockType>(item)))
+			{
+				player.movement->inventory.removeItemsFromSlot(player.movement->inventory.activeHotbarSlot, 1);
 				return true;
+			}
 		}
 	}
 	else if (pkt.mouseButtons & IN_LEFT_CLICK)
@@ -897,7 +874,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			// spawn the entity at block center + offset
 			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
 
-			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, serverTick));
+			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, clientTick));
 		}
 		else if (target == TargetType::LivingEntity && livingEntity)
 		{
@@ -906,12 +883,12 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 
 		if (target == TargetType::Block)
 			if (setBlockWorld(blockPos, std::nullopt, BlockType::AIR))
-				return true;
+				return false;
 	}
 	return false;
 }
 
-void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t serverTick)
+void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t clientTick)
 {
 	for (auto &entity : livingEntities)
 		entity->calculateNewPosition(*this);
@@ -919,7 +896,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{
 		//Checks for every prop if there's a player nearby that can pick it up. TODO: if this is too expensive do it every n ticks instead.
-		if (entityIt->get()->getSpawnTick() + TPS * 1.5 < serverTick)
+		if (entityIt->get()->getSpawnTick() + TPS * 1.5 < clientTick)
 		{
 			bool itemErased = false;
 			for (auto &player : players)
@@ -932,7 +909,8 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					diff.y >= 0 && diff.y < 4 &&
 					abs(diff.z) < 2)
 				{
-					int slotUsed = player.movement->inventory.insertItems(entityIt->get()->getItemType(), 1);
+					int one = 1;
+					int slotUsed = player.movement->inventory.insertItems(entityIt->get()->getItemType(), one);
 					if (slotUsed == INVALID_SLOT) continue ;
 
 					NetEntityMove pkt;
@@ -941,7 +919,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					pkt.type = -1;
 
 					pkt.positionX = player.movement->getPosition().x;
-					pkt.positionY = player.movement->getPosition().y;
+					pkt.positionY = player.movement->getPosition().y + player.movement->getEyesHeight();
 					pkt.positionZ = player.movement->getPosition().z;
 					pkt.yaw = entityIt->get()->yaw;
 
@@ -949,7 +927,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 
 					NetInventory pickedUpItem;
 					pickedUpItem.type = entityIt->get()->getItemID();
-					pickedUpItem.amount = 1;
+					pickedUpItem.amount = player.movement->inventory.getSlot(slotUsed).second;
 					pickedUpItem.slot = slotUsed;
 					pickedUpItems.push_back({player.addr, pickedUpItem});
 

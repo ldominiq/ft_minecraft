@@ -115,10 +115,12 @@ void Renderer::buildChunks()
 }
 
 //sets rendered chunks and unloads far away chunks
-void Renderer::organizeChunks(const std::pair<int, int> pos)
+void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
 {
     // Clear renderedChunks first
     renderedChunks.clear();
+
+	int unloadRadius = loadRadius * 4;
 
     for (auto it = chunks.begin(); it != chunks.end(); )
     {
@@ -184,6 +186,7 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
         std::istringstream iss(std::string(decompressed.begin(), decompressed.end()), std::ios::binary);
 
         std::shared_ptr<ChunkRenderer> newChunk = std::make_shared<ChunkRenderer>(iss);
+		newChunk->setTextureManager(textureManager);
 		// Compute sky-light immediately so that any neighbor chunk
 		// building its mesh later can read valid skyLight values
 		// from this chunk, even if this chunk isn't in chunksToBuild
@@ -203,7 +206,7 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
 void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, const uint &meshVerticesSize) const {
     shader->use();
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 10); // 10 floats per vertex
+    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 11); // 11 floats per vertex
 }
 
 void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
@@ -288,7 +291,7 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 	}
 }
 
-void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
+void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 {
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
 	entityID ID = pkt.entityID;
@@ -299,11 +302,10 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 	{
 		auto ent = entity->second.lock();
 		if (ent) {
-			ent->prevPosition = ent->nextPosition;
-			ent->nextPosition = position;
+			ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			ent->yaw = yaw;
 			ent->positionUpdated = true;
-			ent->glfwTickTime = glfwTickTime;
+
 			if (pkt.type == static_cast<uint16_t>(-1))
 			{
 				ent->removed = true;
@@ -325,9 +327,8 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 	{
 		if (pkt.eEntityType == EEntityTypes::ITEMS)
 		{
-			BlockType type = static_cast<BlockType>(pkt.type);
+			ItemType type = itemIDToItemType(pkt.type);
 			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
-			entityPtr->glfwTickTime = glfwTickTime;
 			itemEntities.push_back(entityPtr);
 			entitiesMap[ID] = entityPtr;
 		}
@@ -348,10 +349,8 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 					return;
 			}
 
-			entityPtr->prevPosition = position;
-			entityPtr->nextPosition = position;
 			entityPtr->positionUpdated = true;
-			entityPtr->glfwTickTime = glfwTickTime;
+			entityPtr->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			livingEntitiesManager.add(entityPtr);
 
 			// Convert to shared_ptr<LivingEntity> safely
@@ -386,7 +385,7 @@ void Renderer::renderWater() const {
             }
 
             glBindVertexArray(chunk->getWaterVao());
-            glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 10);
+            glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);
         }
     }
 	glEnable(GL_CULL_FACE);

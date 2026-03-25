@@ -46,6 +46,8 @@ private:
 	void receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &clieaddr);
 	void receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &clieddr);
 	void receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr);
+	void receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &cliaddr);
+	void sendInventorySlot(int slot, const sockaddr_in &cliaddr);
 
 	void sendAll();
 	void sendNewGroupPacketTo(std::vector<PacketPtr> &pkts, const sockaddr_in &cliaddr);

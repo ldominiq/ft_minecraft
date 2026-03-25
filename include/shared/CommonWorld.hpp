@@ -36,8 +36,8 @@ class CommonWorld : public ICommonWorld{
 		bool isBlockVisibleWorld(glm::ivec3 globalCoords);
 
 		bool rayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir, const AABB& box, float maxDistance, float& outT);
-		bool findClosestEntityHit(const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, LivingEntity*& outEntity, float& outT);
-		TargetType getTarget(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, glm::ivec3 &hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity = nullptr, float maxDistance = 100);
+		bool findClosestEntityHit(const LivingEntity& src, float maxDistance, LivingEntity*& outEntity, float& outT);
+		TargetType getTarget(const LivingEntity& src, glm::ivec3 &hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity = nullptr, float maxDistance = 100);
 		// bool removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, BlockType &dropped);
 		// bool setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block);
 

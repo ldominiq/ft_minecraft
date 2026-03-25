@@ -99,6 +99,8 @@ inline AutoRegister<NetAccept> _reg_NetAccept;
 struct NetPlayerInputs final : public Packet {
     static constexpr PacketType ID = PacketType::PLAYER_INPUT;
 
+	int32_t serverClientReconciliationTick = -999; //for client reconciliation.
+
 	uint16_t keys = 0;	// bitfield
 	uint8_t activeHotbarSlot = -1;
     float pitch = 0.0f;   // absolute rotation around X axis
@@ -108,6 +110,7 @@ struct NetPlayerInputs final : public Packet {
     NetPlayerInputs() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
+		w.write_i32(serverClientReconciliationTick);
         w.write_u16(keys);
 		w.write_u8(activeHotbarSlot);
         w.write_f32(pitch);
@@ -116,6 +119,7 @@ struct NetPlayerInputs final : public Packet {
     }
 
     void decode(BufferReader& r) override {
+        serverClientReconciliationTick = r.read_i32();
         keys = r.read_u16();
 		activeHotbarSlot = r.read_u8();
         pitch = r.read_f32();
@@ -143,10 +147,10 @@ struct NetPlayerMouseInputs final : public Packet {
 };
 inline AutoRegister<NetPlayerMouseInputs> _reg_NetPlayerMouseInput;
 
-// TODO : add delta compression & put inside of a new Snapshot packet
+// TODO : add delta compression & put inside of a new Snapshot packet sometimeTM
 struct NetPlayerMove final : public Packet {
 	static constexpr PacketType ID = PacketType::PLAYER_MOVE;
-	int32_t serverTick; // TODO : move to snapshot packet
+	int32_t serverClientReconciliationTick = 0; //server tick at which the client has done his inputs/prediction corresponding to this packet.
 
 	float positionX;
 	float positionY;
@@ -156,28 +160,35 @@ struct NetPlayerMove final : public Packet {
 	float velocityY;
 	float velocityZ;
 
-	float health; // Health shouldn't really be here as it should probably just be sent when it's updated. but it's whatever!
+	float yaw;
+	float pitch;
+
+	float health;
 
 	NetPlayerMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
-		w.write_i32(serverTick);
+		w.write_i32(serverClientReconciliationTick);
 		w.write_f32(positionX);
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
 		w.write_f32(velocityX);
 		w.write_f32(velocityY);
 		w.write_f32(velocityZ);
+		w.write_f32(yaw);
+		w.write_f32(pitch);
 		w.write_f32(health);
     }
     void decode(BufferReader& r) override {
-		serverTick = r.read_i32();
+		serverClientReconciliationTick = r.read_i32();
 		positionX = r.read_f32();
 		positionY = r.read_f32();
 		positionZ = r.read_f32();
 		velocityX = r.read_f32();
 		velocityY = r.read_f32();
 		velocityZ = r.read_f32();
+		yaw = r.read_f32();
+		pitch = r.read_f32();
 		health = r.read_f32();
     }
 };
@@ -242,24 +253,44 @@ struct NetInventory final : public Packet {
 	static constexpr PacketType ID = PacketType::NET_INVENTORY;
 
 	uint16_t type = 0;
-	int16_t amount = 0;
-	uint8_t slot = 0;
+	uint8_t amount = 0;
+	uint8_t slot = 0;	// HAND_ID for hand (37)
 
 	NetInventory() : Packet(ID) {}
 
 	void encode(BufferWriter& w) const override {
 		w.write_u16(type);
-		w.write_i16(amount);
+		w.write_u8(amount);
 		w.write_u8(slot);
     }
 
 	void decode(BufferReader& r) override {
 		type = r.read_u16();
-		amount = r.read_i16();
+		amount = r.read_u8();
 		slot = r.read_u8();
     }
 };
 inline AutoRegister<NetInventory> _reg_NetInventory;
+
+struct NetInventoryAction final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_INVENTORY_ACTION;
+
+    uint8_t actionType = 0;
+    uint8_t slot = 0;
+
+    NetInventoryAction() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+        w.write_u8(actionType);
+        w.write_u8(slot);
+    }
+
+    void decode(BufferReader& r) override {
+        actionType = r.read_u8();
+        slot = r.read_u8();
+    }
+};
+inline AutoRegister<NetInventoryAction> _reg_NetInventoryAction;
 
 struct NetChunkHeader final : public Packet {
     static constexpr PacketType ID = PacketType::CHUNK_HEADER;

@@ -1,16 +1,19 @@
 
 #include "PlayerMovement.hpp"
 
-PlayerMovement::PlayerMovement(const glm::vec3 &position):	LivingEntity(position)
+PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 {
 	type = PLAYER;
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;
 	this->entityHeight = 1.8f;
+
     this->Front = glm::vec3(0.0f, 0.0f, -1.0f); //not really needed
 	spawnPosition = position;
 	yaw = 0;
 	pitch = 0;
+
+	eyesheight = entityHeight - forehead;
 }
 
 //client
@@ -20,6 +23,8 @@ PlayerMovement::PlayerMovement(const glm::vec3 &position, float yaw, entityID ID
 
 	this->entityWidth = 0.6f;
 	this->entityHeight = 1.8f;
+
+	eyesheight = entityHeight - forehead;
 }
 
 PlayerMovement::~PlayerMovement()
@@ -35,36 +40,48 @@ void PlayerMovement::onDeath()
 //for creative
 void PlayerMovement::updatePosition()
 {
-	NetPlayerInputs inputs = lastInputsPktRecvd;
+    NetPlayerInputs inputs = lastInputsPktRecvd;
 
     this->movementSpeed = (inputs.keys & IN_RUN) ? FLY_SPEED : DEFAULT_SPEED;
 
-	float deltaTime = MS_TICK_RATE/1000.0f;
-	float velocity = this->movementSpeed * deltaTime;
+    float deltaTime = MS_TICK_RATE / 1000.0f;
+    float velocity = this->movementSpeed * deltaTime;
 
-    // Minecraft'ish camera. Doesn't move along the Y axis
-    glm::vec3 horizontalFront = glm::normalize(glm::vec3(this->Front.x, 0.0f, this->Front.z));
+    glm::vec3 prevPosition = this->position;
 
-	glm::vec3 prevPosition = this->position;
+    // --- Local movement input ---
+    float lx = 0.0f;
+    float lz = 0.0f;
 
-	// 4 directions
-	if (inputs.keys & IN_FORWARD)
-		this->position += horizontalFront * velocity;
-	if (inputs.keys & IN_BACKWARD)
-		this->position -= horizontalFront * velocity;
-	if (inputs.keys & IN_LEFT)
-		this->position -= glm::normalize(glm::cross(horizontalFront, this->WorldUp)) * velocity;
-	if (inputs.keys & IN_RIGHT)
-		this->position += glm::normalize(glm::cross(horizontalFront, this->WorldUp)) * velocity;
+    if (inputs.keys & IN_FORWARD)  lx += 1.0f;
+    if (inputs.keys & IN_BACKWARD) lx -= 1.0f;
+    if (inputs.keys & IN_LEFT)     lz -= 1.0f;
+    if (inputs.keys & IN_RIGHT)    lz += 1.0f;
 
-	// Up and Down
-	if (inputs.keys & IN_UP)
-		this->position.y += this->WorldUp.y * velocity;
-	if (inputs.keys & IN_DOWN)
-		this->position.y -= this->WorldUp.y * velocity; 
+    glm::vec2 inputDir(lx, lz);
+    if (glm::length(inputDir) > 0.0f)
+        inputDir = glm::normalize(inputDir);
 
-	if (prevPosition != this->position)
-		positionUpdated = true;
+    // --- Rotate by yaw ---
+    float yawRad = glm::radians(yaw);
+
+    glm::vec2 worldDir;
+    worldDir.x = inputDir.x * std::cos(yawRad) - inputDir.y * std::sin(yawRad);
+    worldDir.y = inputDir.x * std::sin(yawRad) + inputDir.y * std::cos(yawRad);
+
+    // --- Apply movement ---
+    this->position.x += worldDir.x * velocity;
+    this->position.z += worldDir.y * velocity;
+
+    // Vertical movement
+    if (inputs.keys & IN_UP)
+        this->position.y += velocity;
+
+    if (inputs.keys & IN_DOWN)
+        this->position.y -= velocity;
+
+    if (prevPosition != this->position)
+        positionUpdated = true;
 }
 
 void PlayerMovement::updateCameraVectors() {
@@ -154,10 +171,6 @@ glm::vec3 PlayerMovement::getDesiredMove()
 
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 {
-	constexpr float forehead = 0.3f;
-	float headHeight = this->entityHeight - forehead;
-	this->position.y -= headHeight;
-
 	// TODO : return early if no new packet to read and velocities are 0 and there is no collision with block under. To avoid doing unnecessary calculations. Do the same with every other entity
 
 	if (gamemode == GAMEMODES::SURVIVAL)
@@ -171,7 +184,6 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 	{
 		updatePosition();
 	}
-	this->position.y += headHeight;
 
 	lastInputsPktRecvd = {};
 	this->jump = false;

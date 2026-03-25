@@ -83,16 +83,20 @@ bool CommonWorld<ChunkT>::rayIntersectsAABB(const glm::vec3& rayOrigin, const gl
 }
 
 template <typename ChunkT>
-bool CommonWorld<ChunkT>::findClosestEntityHit(const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, LivingEntity*& outEntity, float& outT)
+bool CommonWorld<ChunkT>::findClosestEntityHit(const LivingEntity& src, float maxDistance, LivingEntity*& outEntity, float& outT)
 {
     outT = maxDistance;
     outEntity = nullptr;
+
+    glm::vec3 rayOrigin = src.getPosition() + glm::vec3(0, src.getEyesHeight(), 0);
+    glm::vec3 rayDir = src.Front;
 
     for (const auto& e : livingEntities) {
         AABB box = e->constructAABB(e->getPosition());
 
         float t;
         if (rayIntersectsAABB(rayOrigin, rayDir, box, maxDistance, t)) {
+			if (e.get() == &src) continue; //don't hit yourself
             if (t < outT) {
                 outT = t;
                 outEntity = e.get();
@@ -104,12 +108,15 @@ bool CommonWorld<ChunkT>::findClosestEntityHit(const glm::vec3& rayOrigin, const
 }
 
 template <typename ChunkT>
-TargetType CommonWorld<ChunkT>::getTarget(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, glm::ivec3& hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance)
+TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance)
 {
 	bool entityHit = false;
 	float entityT = maxDistance;
 
-	entityHit = findClosestEntityHit(rayOrigin+rayDir, rayDir, maxDistance, livingEntity, entityT); //+rayDir ugly hack used so the ray doesn't start inside the player/the player doesn't end up being the target. It should take into account the width or whatever
+	glm::vec3 rayOrigin = src.getPosition() + glm::vec3(0, src.getEyesHeight(), 0);
+	glm::vec3 rayDir = src.Front;
+
+	entityHit = findClosestEntityHit(src, maxDistance, livingEntity, entityT);
 
     glm::ivec3 blockPos = glm::floor(rayOrigin);
 
