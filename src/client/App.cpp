@@ -963,6 +963,9 @@ void App::debugWindow() {
                         (static_cast<BiomeType>(currentBiome) == BiomeType::SWAMP)  ? "SWAMP"  :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::OCEAN)  ? "OCEAN"  :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::BIRCH_FOREST) ? "BIRCH_FOREST" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::JUNGLE) ? "JUNGLE" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::SAVANNA) ? "SAVANNA" :
                                                                                     "UNKNOWN";
                     ImGui::Text("BIOME: %s", biomeName);
 

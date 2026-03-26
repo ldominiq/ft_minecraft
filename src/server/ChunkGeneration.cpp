@@ -172,20 +172,16 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
             for (int y = std::max(terrainParams.bedrockLevel + 1, surfaceY - 3); y < surfaceY && y < HEIGHT; y++) {
                 switch (biome) {
                     case BiomeType::DESERT:
+                    case BiomeType::SWAMP:
                         top = fill = BlockType::SAND;
                         break;
                     case BiomeType::TUNDRA:
                         top = BlockType::SNOW;
                         fill = BlockType::DIRT;
                         break;
-                    case BiomeType::DARK_FOREST: {
-                        top = BlockType::GRASS;
-                        fill = BlockType::DIRT;
+                    case BiomeType::MOUNTAIN:
+                        top = fill = BlockType::STONE;
                         break;
-                    }
-                        
-                    case BiomeType::SWAMP: top = fill = BlockType::SAND; break;
-                    case BiomeType::MOUNTAIN: top = fill = BlockType::STONE; break;
                     default:
                         top = BlockType::GRASS;
                         fill = BlockType::DIRT; // PLAINS
@@ -243,7 +239,8 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 // trunkWorldX/Z is the world-space column of the trunk.
 // Only blocks that fall within this chunk's bounds are written.
 void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ,
-                                int surfaceY, int treeHeight) const {
+                                int surfaceY, int treeHeight,
+                                BlockType logType, BlockType leafType, int canopyStyle) const {
     // Convert trunk world coords to local coords
     const int trunkLocalX = trunkWorldX - originX;
     const int trunkLocalZ = trunkWorldZ - originZ;
@@ -254,11 +251,13 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
         blocks.at(trunkLocalX, surfaceY, trunkLocalZ) = BlockType::DIRT;
     }
 
+    // TODO: based on tree type and canopyStyle, we could have different leaf arrangements and heights. For now we do a simple 4-layer canopy for all trees.
+
     // Trunk
     if (trunkLocalX >= 0 && trunkLocalX < WIDTH &&
         trunkLocalZ >= 0 && trunkLocalZ < DEPTH) {
         for (int treeY = surfaceY + 1; treeY <= surfaceY + treeHeight && treeY < HEIGHT; ++treeY) {
-            blocks.at(trunkLocalX, treeY, trunkLocalZ) = BlockType::DARK_OAK_LOG;
+            blocks.at(trunkLocalX, treeY, trunkLocalZ) = logType;
         }
     }
 
@@ -285,8 +284,8 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
                     leafLocalZ < 0 || leafLocalZ >= DEPTH)
                     continue;
 
-                if (blocks.at(leafLocalX, ly, leafLocalZ) != BlockType::DARK_OAK_LOG)
-                    blocks.at(leafLocalX, ly, leafLocalZ) = BlockType::DARK_OAK_LEAVES;
+                if (blocks.at(leafLocalX, ly, leafLocalZ) != logType)
+                    blocks.at(leafLocalX, ly, leafLocalZ) = leafType;
             }
         }
     }
@@ -332,7 +331,7 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
                 static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
 
             // Place tree type in different biomes ( PLAINS, DARK_FOREST, TUNDRA, JUNGLE, SAVANNA, BIRCH_FOREST )
-            if (biome != BiomeType::DARK_FOREST) {
+            if (biome != BiomeType::DARK_FOREST && biome != BiomeType::JUNGLE && biome != BiomeType::SAVANNA && biome != BiomeType::BIRCH_FOREST) {
                 rng();
                 continue;
             }
@@ -349,8 +348,24 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
             if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                 localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH)
                 continue;
-
-            placeTree(blocks, worldX, worldZ, surfaceY, treeHeight);
+            
+            // TODO: place tree based on biome
+            switch (biome) {
+                case BiomeType::DARK_FOREST:
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::DARK_OAK_LOG, BlockType::DARK_OAK_LEAVES, 0);
+                    break;
+                case BiomeType::JUNGLE:
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight + 5, BlockType::JUNGLE_LOG, BlockType::JUNGLE_LEAVES, 0);
+                    break;
+                case BiomeType::SAVANNA:
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight + 3, BlockType::ACACIA_LOG, BlockType::ACACIA_LEAVES, 1);
+                    break;
+                case BiomeType::BIRCH_FOREST:
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::BIRCH_LOG, BlockType::BIRCH_LEAVES, 0);
+                    break;
+                default:
+                    break;
+            }
         }
     }
 }
@@ -660,6 +675,8 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     // Cold lowlands
     if (climate < 0.16f) return BiomeType::TUNDRA;
     if (height > terrainParams.seaLevel + 30 && tempCoarse < 0.45f) return BiomeType::TUNDRA;
+    
+    if (tempCoarse > 0.6f && humidCoarse > 0.6f) return BiomeType::JUNGLE;
 
     // SWAMP: wet, low-lying, mild temps
     if (height <= terrainParams.seaLevel + 6 &&
@@ -668,8 +685,15 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
         return BiomeType::SWAMP;
     }
 
+    if (tempCoarse > 0.35f && tempCoarse < 0.55f && humidCoarse > 0.50f) return BiomeType::BIRCH_FOREST;
+
     // Forest: moist and not too hot
     if (humidCoarse > terrainParams.forestMoistureThreshold * 0.9f && climate < 0.65f) return BiomeType::DARK_FOREST;
+
+
+    if (tempCoarse > 0.55f && humidCoarse > 0.35f && humidCoarse < 0.55f) return BiomeType::SAVANNA;
+
+
 
     return BiomeType::PLAINS;
 

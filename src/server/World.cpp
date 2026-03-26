@@ -229,6 +229,10 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
                 case BiomeType::SWAMP:   color = { 150, 140, 45 }; break;
                 case BiomeType::OCEAN:   color = { 40, 60, 160 }; break;
             	case BiomeType::MOUNTAIN: color = { 100, 100, 100 }; break;
+				case BiomeType::BIRCH_FOREST: color = { 120, 190, 110 }; break;
+				// Jungle red for debug
+				case BiomeType::JUNGLE: color = {255, 0, 0 }; break;
+				case BiomeType::SAVANNA: color = { 200, 190, 70 }; break;
                 default:                  color = { 255, 0, 255 }; break;
             }
 
