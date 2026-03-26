@@ -141,7 +141,7 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
                 // Count solid blocks and leaves (leaves partially block light)
                 if (isBlockSolid(above)) {
                     blockedCount += 2; // Solid blocks block more
-                } else if (above == BlockType::LEAVES) {
+                } else if (above == BlockType::DARK_OAK_LEAVES) {
                     blockedCount += 1; // Leaves partially block
                 }
             }

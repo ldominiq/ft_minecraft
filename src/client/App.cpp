@@ -958,7 +958,7 @@ void App::debugWindow() {
                     const char* biomeName =
                         (static_cast<BiomeType>(currentBiome) == BiomeType::PLAINS) ? "PLAINS" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::DESERT) ? "DESERT" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::FOREST) ? "FOREST" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::DARK_FOREST) ? "DARK_FOREST" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::TUNDRA) ? "TUNDRA" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::SWAMP)  ? "SWAMP"  :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::OCEAN)  ? "OCEAN"  :

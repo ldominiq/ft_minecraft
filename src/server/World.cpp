@@ -224,7 +224,7 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
             switch (biome) {
                 case BiomeType::PLAINS:  color = { 80, 200, 120 }; break;
                 case BiomeType::DESERT:  color = { 210, 180, 80 }; break;
-                case BiomeType::FOREST:  color = { 40, 160, 60 }; break;
+                case BiomeType::DARK_FOREST:  color = { 40, 160, 60 }; break;
                 case BiomeType::TUNDRA:  color = { 200, 220, 230 }; break;
                 case BiomeType::SWAMP:   color = { 150, 140, 45 }; break;
                 case BiomeType::OCEAN:   color = { 40, 60, 160 }; break;

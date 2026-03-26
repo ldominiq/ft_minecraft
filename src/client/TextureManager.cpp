@@ -238,9 +238,15 @@ void TextureManager::setupBlockTextureMapping() {
     // them by a biome color at runtime.  We do it once at load time.
 
     // Plains grass tint (Minecraft: #91BD59)
-    int grassTopTinted  = addTintedLayer("grass_block_top", 0x91, 0xBD, 0x59);
-    // Plains leaves tint (Minecraft: #77AB2F)
-    int leavesTinted = addTintedLayer("spruce_leaves", 0x61, 0x99, 0x61);
+    int grassBlockTopTinted  = addTintedLayer("grass_block_top", 0x91, 0xBD, 0x59);
+    // Leaves tint
+    int oakLeavesTinted = addTintedLayer("oak_leaves", 0x61, 0x99, 0x61);
+    int spruceLeavesTinted = addTintedLayer("spruce_leaves", 0x17, 0x2B, 0x17);
+    int birchLeavesTinted = addTintedLayer("birch_leaves", 0x44, 0x78, 0x44);
+    int jungleLeavesTinted = addTintedLayer("jungle_leaves", 0x27, 0x8A, 0x27);
+    int acaciaLeavesTinted = addTintedLayer("acacia_leaves", 0x94, 0xA3, 0x1D);
+    int darkOakLeavesTinted = addTintedLayer("dark_oak_leaves", 0x4E, 0x96, 0x4E);
+    // other Tints
     int waterTinted = addTintedLayer("water_overlay", 0x64, 0x64, 0xFF);
     int grassTinted = addTintedLayer("grass", 0x91, 0xBD, 0x59);
 
@@ -255,7 +261,12 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::SAND,                  layer("sand") },
         { BlockType::SNOW,                  layer("snow") },
         { BlockType::BEDROCK,               layer("bedrock") },
-        { BlockType::LEAVES,                leavesTinted },
+        { BlockType::OAK_LEAVES,            oakLeavesTinted },
+        { BlockType::SPRUCE_LEAVES,         spruceLeavesTinted },
+        { BlockType::BIRCH_LEAVES,          birchLeavesTinted },
+        { BlockType::JUNGLE_LEAVES,         jungleLeavesTinted },
+        { BlockType::ACACIA_LEAVES,         acaciaLeavesTinted },
+        { BlockType::DARK_OAK_LEAVES,       darkOakLeavesTinted },
         { BlockType::IRON,                  layer("iron_ore") },
         { BlockType::GOLD,                  layer("gold_ore") },
         { BlockType::DIAMOND,               layer("diamond_ore") },
@@ -293,20 +304,55 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::TUBE_CORAL,            layer("tube_coral") },
         { BlockType::TUBE_CORAL_FAN,        layer("tube_coral_fan") },
         { BlockType::DEAD_BUSH,             layer("dead_bush") },
+        { BlockType::TERRACOTTA,            layer("terracotta") },
+        { BlockType::RED_TERRACOTTA,        layer("red_terracotta") },
+        { BlockType::GRAY_TERRACOTTA,       layer("gray_terracotta") },
+        { BlockType::PINK_TERRACOTTA,       layer("pink_terracotta") },
+        { BlockType::BLACK_TERRACOTTA,      layer("black_terracotta") },
+        { BlockType::BROWN_TERRACOTTA,      layer("brown_terracotta") },
+        { BlockType::WHITE_TERRACOTTA,      layer("white_terracotta") },
+        { BlockType::ORANGE_TERRACOTTA,     layer("orange_terracotta") },
+        { BlockType::YELLOW_TERRACOTTA,     layer("yellow_terracotta") },
+        { BlockType::LIGHT_GRAY_TERRACOTTA, layer("light_gray_terracotta") },
     };
     for (const auto& [type, l] : uniformBlocks) {
         blockTextureMap[type] = BlockTextures::uniform(l);
     }
     
     blockTextureMap[BlockType::GRASS]   = BlockTextures::topBottomSides(
-                                            grassTopTinted,
+                                            grassBlockTopTinted,
                                             layer("dirt"),
                                             layer("grass_block_side"));
 
-    blockTextureMap[BlockType::LOG]     = BlockTextures::topBottomSides(
+    blockTextureMap[BlockType::OAK_LOG]     = BlockTextures::topBottomSides(
+                                            layer("oak_log_top"),
+                                            layer("oak_log_top"),
+                                            layer("oak_log"));
+
+    blockTextureMap[BlockType::BIRCH_LOG]   = BlockTextures::topBottomSides(
+                                            layer("birch_log_top"),
+                                            layer("birch_log_top"),
+                                            layer("birch_log"));
+
+    blockTextureMap[BlockType::ACACIA_LOG] = BlockTextures::topBottomSides(
+                                            layer("acacia_log_top"),
+                                            layer("acacia_log_top"),
+                                            layer("acacia_log"));
+
+    blockTextureMap[BlockType::JUNGLE_LOG] = BlockTextures::topBottomSides(
+                                            layer("jungle_log_top"),
+                                            layer("jungle_log_top"),
+                                            layer("jungle_log"));
+
+    blockTextureMap[BlockType::SPRUCE_LOG] = BlockTextures::topBottomSides(
                                             layer("spruce_log_top"),
                                             layer("spruce_log_top"),
                                             layer("spruce_log"));
+
+    blockTextureMap[BlockType::DARK_OAK_LOG] = BlockTextures::topBottomSides(
+                                            layer("dark_oak_log_top"),
+                                            layer("dark_oak_log_top"),
+                                            layer("dark_oak_log"));
 
     blockTextureMap[BlockType::CACTUS]     = BlockTextures::topBottomSides(
                                             layer("cactus_top"),

@@ -177,7 +177,7 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
                         top = BlockType::SNOW;
                         fill = BlockType::DIRT;
                         break;
-                    case BiomeType::FOREST: {
+                    case BiomeType::DARK_FOREST: {
                         top = BlockType::GRASS;
                         fill = BlockType::DIRT;
                         break;
@@ -257,7 +257,7 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
     if (trunkLocalX >= 0 && trunkLocalX < WIDTH &&
         trunkLocalZ >= 0 && trunkLocalZ < DEPTH) {
         for (int treeY = surfaceY + 1; treeY <= surfaceY + treeHeight && treeY < HEIGHT; ++treeY) {
-            blocks.at(trunkLocalX, treeY, trunkLocalZ) = BlockType::LOG;
+            blocks.at(trunkLocalX, treeY, trunkLocalZ) = BlockType::DARK_OAK_LOG;
         }
     }
 
@@ -284,8 +284,8 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
                     leafLocalZ < 0 || leafLocalZ >= DEPTH)
                     continue;
 
-                if (blocks.at(leafLocalX, ly, leafLocalZ) != BlockType::LOG)
-                    blocks.at(leafLocalX, ly, leafLocalZ) = BlockType::LEAVES;
+                if (blocks.at(leafLocalX, ly, leafLocalZ) != BlockType::DARK_OAK_LOG)
+                    blocks.at(leafLocalX, ly, leafLocalZ) = BlockType::DARK_OAK_LEAVES;
             }
         }
     }
@@ -329,7 +329,9 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
 
             const BiomeType biome = computeBiome(terrainParams,
                 static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
-            if (biome != BiomeType::FOREST) {
+
+            // Place tree type in different biomes ( PLAINS, DARK_FOREST, TUNDRA, JUNGLE, SAVANNA, BIRCH_FOREST )
+            if (biome != BiomeType::DARK_FOREST) {
                 rng();
                 continue;
             }
@@ -666,7 +668,7 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     }
 
     // Forest: moist and not too hot
-    if (humidCoarse > terrainParams.forestMoistureThreshold * 0.9f && climate < 0.65f) return BiomeType::FOREST;
+    if (humidCoarse > terrainParams.forestMoistureThreshold * 0.9f && climate < 0.65f) return BiomeType::DARK_FOREST;
 
     return BiomeType::PLAINS;
 
@@ -800,7 +802,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             int spawnChance; // out of 100
             switch (biome) {
                 case BiomeType::PLAINS:  spawnChance = 10; break;
-                case BiomeType::FOREST:  spawnChance = 5; break;
+                case BiomeType::DARK_FOREST:  spawnChance = 5; break;
                 case BiomeType::SWAMP:   spawnChance = 0; break;
                 case BiomeType::OCEAN:   spawnChance = 20; break;
                 case BiomeType::DESERT:  spawnChance = 1;  break;
@@ -870,7 +872,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     vegTable = plainsVeg;
                     vegTableSize = std::size(plainsVeg);
                     break;
-                case BiomeType::FOREST:
+                case BiomeType::DARK_FOREST:
                     vegTable = forestVeg;
                     vegTableSize = std::size(forestVeg);
                     break;
