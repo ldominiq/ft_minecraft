@@ -48,22 +48,6 @@ struct IVec3Hash {
 };
 
 class Chunk {
-
-	protected:
-		int originX; // X coordinate of the chunck origin
-		int originZ; // Z coordinate of the chunck origin
-
-		std::vector<BlockType> palette; // Index -> BlockType
-		std::unordered_map<BlockType, uint32_t> paletteMap; // BlockType -> Index
-		BitPackedArray blockIndices;
-		
-		std::weak_ptr<Chunk> adjacentChunks[4] = {};
-
-		// Sky-light level per block (0 = full darkness, 15 = full sunlight).
-		// Indexed as: x + WIDTH * (y + HEIGHT * z)
-		// Computed client-side during mesh building via BFS flood-fill.
-		std::vector<uint8_t> skyLight;
-
 	public:
 
 		std::vector<s_liquid> liquids; //TODO put this in the bitpacker.
@@ -73,6 +57,7 @@ class Chunk {
 		struct VegetationInstance {
 			uint8_t x, y, z;  // local coordinates within chunk
 			BlockType type;   // SHORT_GRASS, TALL_GRASS, CORNFLOWER
+			uint8_t biome;   // biome type for tinting
 		};
 		std::vector<VegetationInstance> vegetation;
 
@@ -124,6 +109,26 @@ class Chunk {
 		static inline ChunkPos toKey(int32_t chunkX, int32_t chunkZ) { //boff
 			return std::make_pair(chunkX, chunkZ);
 		}
+
+		BiomeType getBiomeAt(int localX, int localZ) const;
+		void setBiomeAt(int localX, int localZ, BiomeType biome);
+
+	protected:
+		int originX; // X coordinate of the chunck origin
+		int originZ; // Z coordinate of the chunck origin
+
+		std::vector<BlockType> palette; // Index -> BlockType
+		std::unordered_map<BlockType, uint32_t> paletteMap; // BlockType -> Index
+		BitPackedArray blockIndices;
+		
+		std::weak_ptr<Chunk> adjacentChunks[4] = {};
+
+		// Sky-light level per block (0 = full darkness, 15 = full sunlight).
+		// Indexed as: x + WIDTH * (y + HEIGHT * z)
+		// Computed client-side during mesh building via BFS flood-fill.
+		std::vector<uint8_t> skyLight;
+
+		std::array<BiomeType, WIDTH * DEPTH> biomeMap{}; // Biome type per block
 };
 
 #endif

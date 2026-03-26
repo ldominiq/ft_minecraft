@@ -237,8 +237,21 @@ void TextureManager::setupBlockTextureMapping() {
     // Minecraft grass/leaves textures are grayscale — the game multiplies
     // them by a biome color at runtime.  We do it once at load time.
 
-    // Plains grass tint (Minecraft: #91BD59)
-    int grassBlockTopTinted  = addTintedLayer("grass_block_top", 0x91, 0xBD, 0x59);
+    unsigned char r = 0xff, g = 0x00, b = 0x00; // red tint debug
+    // Biome grass tints
+    biomeGrassTopLayer[BiomeType::PLAINS] = addTintedLayer("grass_block_top", 0x91, 0xBD, 0x59);
+    biomeGrassTopLayer[BiomeType::SAVANNA] = addTintedLayer("grass_block_top", 0xB3, 0xBD, 0x59);
+    biomeGrassTopLayer[BiomeType::JUNGLE] = addTintedLayer("grass_block_top", 0x44, 0xB5, 0x33);
+    biomeGrassTopLayer[BiomeType::DARK_FOREST] = addTintedLayer("grass_block_top", 0x26, 0x63, 0x1D);
+    biomeGrassTopLayer[BiomeType::BIRCH_FOREST] = addTintedLayer("grass_block_top", 0x71, 0xBF,  0x4B);
+
+    // Short grass tints
+    biomeShortGrassLayer[BiomeType::PLAINS] = addTintedLayer("grass", 0x91, 0xBD, 0x59);
+    biomeShortGrassLayer[BiomeType::SAVANNA] = addTintedLayer("grass", 0xB3, 0xBD, 0x59);
+    biomeShortGrassLayer[BiomeType::JUNGLE] = addTintedLayer("grass", 0x44, 0xB5, 0x33);
+    biomeShortGrassLayer[BiomeType::DARK_FOREST] = addTintedLayer("grass", 0x26, 0x63, 0x1D);
+    biomeShortGrassLayer[BiomeType::BIRCH_FOREST] = addTintedLayer("grass", 0x71, 0xBF,  0x4B);
+    
     // Leaves tint
     int oakLeavesTinted = addTintedLayer("oak_leaves", 0x61, 0x99, 0x61);
     int spruceLeavesTinted = addTintedLayer("spruce_leaves", 0x17, 0x2B, 0x17);
@@ -248,7 +261,6 @@ void TextureManager::setupBlockTextureMapping() {
     int darkOakLeavesTinted = addTintedLayer("dark_oak_leaves", 0x4E, 0x96, 0x4E);
     // other Tints
     int waterTinted = addTintedLayer("water_overlay", 0x64, 0x64, 0xFF);
-    int grassTinted = addTintedLayer("grass", 0x91, 0xBD, 0x59);
 
     struct UniformEntry {
         BlockType type;
@@ -272,7 +284,7 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::DIAMOND,               layer("diamond_ore") },
         { BlockType::URANIUM,               layer("emerald_ore") },
         { BlockType::WATER,                 waterTinted },
-        { BlockType::SHORT_GRASS,           grassTinted },
+        { BlockType::SHORT_GRASS,           biomeShortGrassLayer[BiomeType::PLAINS] }, // will be overridden by biome-specific tints in shader
         { BlockType::CORNFLOWER,            layer("cornflower") },
         { BlockType::POPPY,                 layer("poppy") },
         { BlockType::PINK_TULIP,            layer("pink_tulip") },
@@ -320,7 +332,7 @@ void TextureManager::setupBlockTextureMapping() {
     }
     
     blockTextureMap[BlockType::GRASS]   = BlockTextures::topBottomSides(
-                                            grassBlockTopTinted,
+                                            biomeGrassTopLayer[BiomeType::PLAINS],
                                             layer("dirt"),
                                             layer("grass_block_side"));
 
@@ -358,4 +370,14 @@ void TextureManager::setupBlockTextureMapping() {
                                             layer("cactus_top"),
                                             layer("cactus_bottom"),
                                             layer("cactus_side"));
+}
+
+int TextureManager::getGrassTintLayer(BiomeType biome) const {
+    auto it = biomeGrassTopLayer.find(biome);
+    return it != biomeGrassTopLayer.end() ? it->second : biomeGrassTopLayer.at(BiomeType::PLAINS); // default to plains tint if biome not found
+}
+
+int TextureManager::getShortGrassTintLayer(BiomeType biome) const {
+    auto it = biomeShortGrassLayer.find(biome);
+    return it != biomeShortGrassLayer.end() ? it->second : biomeShortGrassLayer.at(BiomeType::PLAINS); // default to plains tint if biome not found
 }

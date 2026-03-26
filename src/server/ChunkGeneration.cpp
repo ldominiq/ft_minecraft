@@ -166,6 +166,7 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
             // Compute biome
             const BiomeType biome = computeBiome(terrainParams, worldX, worldZ, surfaceY);
+            setBiomeAt(x, z, biome);
 
             // Set blocks based on biome
             for (int y = std::max(terrainParams.bedrockLevel + 1, surfaceY - 3); y < surfaceY && y < HEIGHT; y++) {
@@ -763,8 +764,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             const BlockType surfaceBlock = blocks.at(x, surfaceY, z);
             const BlockType aboveBlock = blocks.at(x, surfaceY + 1, z);
 
-            const BiomeType biome = computeBiome(terrainParams, worldX, worldZ, surfaceY);
-
+            const BiomeType biome = getBiomeAt(x, z);
             if (biome == BiomeType::OCEAN) {
                 // Ocean vegetation: surface must be sand and above must be water
                 if (surfaceBlock != BlockType::SAND)
@@ -958,6 +958,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 veg.y = static_cast<uint8_t>(surfaceY + 1); // Place above surface
                 veg.z = static_cast<uint8_t>(z);
                 veg.type = vegType;
+                veg.biome = static_cast<uint8_t>(biome);
                 vegetation.push_back(veg);
 
                 // Also store in block grid so raycasting can target it

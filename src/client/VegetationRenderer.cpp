@@ -94,6 +94,9 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
         // Get texture layer for this vegetation type
         const auto& textures = textureManager->getBlockTextures(veg.type);
         float texLayer = static_cast<float>(textures.top);
+        if (veg.type == BlockType::SHORT_GRASS) {
+            texLayer = textureManager->getShortGrassTintLayer(static_cast<BiomeType>(veg.biome));
+        }
 
         // Random rotation for variety (seeded by position for determinism)
         std::seed_seq seed{static_cast<uint32_t>(static_cast<int>(worldX)),

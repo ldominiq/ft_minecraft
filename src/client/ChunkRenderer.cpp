@@ -132,6 +132,9 @@ void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockTy
     if (textureManager) {
         const BlockTextures& bt = textureManager->getBlockTextures(type);
         texLayer = static_cast<float>(bt.getLayerForFace(face));
+        if (type == BlockType::GRASS && face == 2) {
+            texLayer = textureManager->getGrassTintLayer(getBiomeAt(x, z));
+        }
     }
 
     // Build six vertices for this face using the computed light
@@ -477,7 +480,7 @@ void ChunkRenderer::buildVegetationMesh() const {
 
         // Land vegetation should match block grid.
         // Skip invalid/out-of-range entries defensively.
-        if (v.x >= WIDTH || v.y >= HEIGHT || v.z >= DEPTH)
+        if (static_cast<size_t>(v.x) >= WIDTH || static_cast<size_t>(v.y) >= HEIGHT || static_cast<size_t>(v.z) >= DEPTH)
             continue; // out of bounds, skip
 
         const BlockType block = getBlock(v.x, v.y, v.z);

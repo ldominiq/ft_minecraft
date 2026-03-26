@@ -246,6 +246,9 @@ void Chunk::saveToStream(std::ostream& out) const {
 	// Save block data
     blockIndices.saveToStream(out);
 
+    // Biome map
+    out.write(reinterpret_cast<const char*>(biomeMap.data()), biomeMap.size() * sizeof(BiomeType));
+
 	// --- Save vegetation ---
 	uint32_t vegetationCount = static_cast<uint32_t>(vegetation.size());
 	out.write(reinterpret_cast<const char*>(&vegetationCount), sizeof(vegetationCount));
@@ -255,6 +258,7 @@ void Chunk::saveToStream(std::ostream& out) const {
 		out.write(reinterpret_cast<const char*>(&veg.y), sizeof(veg.y));
 		out.write(reinterpret_cast<const char*>(&veg.z), sizeof(veg.z));
 		out.write(reinterpret_cast<const char*>(&veg.type), sizeof(veg.type));
+        out.write(reinterpret_cast<const char*>(&veg.biome), sizeof(veg.biome));
 	}
 }
 
@@ -277,6 +281,9 @@ void Chunk::loadFromStream(std::istream& in) {
 
 	// Load block data
     blockIndices.loadFromStream(in);
+
+    // --- Load biome map ---
+    in.read(reinterpret_cast<char*>(biomeMap.data()), biomeMap.size() * sizeof(BiomeType));
 
 	// --- Load vegetation ---
 	uint32_t vegetationCount = 0;
@@ -303,6 +310,7 @@ void Chunk::loadFromStream(std::istream& in) {
 		in.read(reinterpret_cast<char*>(&veg.y), sizeof(veg.y));
 		in.read(reinterpret_cast<char*>(&veg.z), sizeof(veg.z));
 		in.read(reinterpret_cast<char*>(&veg.type), sizeof(veg.type));
+        in.read(reinterpret_cast<char*>(&veg.biome), sizeof(veg.biome));
 
         if (!in.good()) {
             // Corrupt/truncated entry list: keep what we already read.
@@ -318,4 +326,13 @@ void Chunk::loadFromStream(std::istream& in) {
 			setBlock(veg.x, veg.y, veg.z, veg.type);
 		}
 	}
+}
+
+BiomeType Chunk::getBiomeAt(int localX, int localZ) const {
+    return biomeMap[localX + WIDTH * localZ];
+}
+
+
+void Chunk::setBiomeAt(int localX, int localZ, BiomeType biome) {
+    biomeMap[localX + WIDTH * localZ] = biome;
 }

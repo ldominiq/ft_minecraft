@@ -92,6 +92,7 @@ bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
                 v.y = static_cast<uint8_t>(y);
                 v.z = static_cast<uint8_t>(z);
                 v.type = type;
+                v.biome = static_cast<uint8_t>(currChunk->getBiomeAt(x, z));
                 vegList.push_back(v);
             }
         } else if (oldIsVeg) {
