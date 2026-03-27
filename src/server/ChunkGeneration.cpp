@@ -268,7 +268,7 @@ static inline bool shouldSkipEdgeLeaf(int wx, int wy, int wz, int twx, int twz) 
 void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ,
                                 int surfaceY, int treeHeight,
                                 BlockType logType, BlockType leafType, int canopyStyle,
-                                std::mt19937 &rng) const {
+                                int maxTrunkWidth, std::mt19937 &rng) const {
 
     // Helper: write a log block at world (wx, wz, y), bounds-checked to this chunk.
     auto placeLog = [&](int wx, int wz, int y) {
@@ -301,17 +301,24 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
         }
     };
 
+    // --- Compute trunk width (used by trunk placement and canopy) ---
+    // Only dark oak, jungle and spruce can have wider trunks (2x2 or 3x3).
+    int trunkW = 1;
+    if (canopyStyle != 1) { // acacia always 1x1 (builds its own angled trunk)
+        if (maxTrunkWidth >= 3 && treeHeight >= 18)
+            trunkW = 3;
+        else if (maxTrunkWidth >= 2 && treeHeight >= 10)
+            trunkW = 2;
+    }
+
+    // Canopy center and extra radius to account for wider trunks.
+    // For 2x2: center at +1, extraR=1. For 3x3: center at +1, extraR=1.
+    const int canopyCX = trunkWorldX + trunkW / 2;
+    const int canopyCZ = trunkWorldZ + trunkW / 2;
+    const int extraR   = (trunkW > 1) ? 1 : 0;
+
     // --- Trunk (acacia builds its own angled trunk inside the switch) ---
     if (canopyStyle != 1) {
-        // Spruce/Jungle very tall → 3x3 base; tall dark oak/spruce/jungle → 2x2; else 1x1.
-        const bool isThick      = (canopyStyle == 0 && treeHeight >= 9)  ||
-                                  (canopyStyle == 2 && treeHeight >= 10) ||
-                                  (canopyStyle == 3 && treeHeight >= 12);
-        const bool isExtraThick = (canopyStyle == 2 && treeHeight >= 18) ||
-                                  (canopyStyle == 3 && treeHeight >= 20);
-        const int  trunkW       = isExtraThick ? 3 : (isThick ? 2 : 1);
-        const int  thickLevels  = (trunkW > 1)  ? treeHeight / 4 : 0;
-
         if (trunkW > 1) {
             // Dirt under entire base footprint
             for (int ox = 0; ox < trunkW; ++ox)
@@ -321,14 +328,11 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
                     if (lx >= 0 && lx < WIDTH && lz >= 0 && lz < DEPTH)
                         blocks.at(lx, surfaceY, lz) = BlockType::DIRT;
                 }
-            // Thick zone: full trunkW × trunkW
-            for (int y = surfaceY + 1; y <= surfaceY + thickLevels && y < HEIGHT; ++y)
+            // Full-width trunk goes all the way to the top
+            for (int y = surfaceY + 1; y <= surfaceY + treeHeight && y < HEIGHT; ++y)
                 for (int ox = 0; ox < trunkW; ++ox)
                     for (int oz = 0; oz < trunkW; ++oz)
                         placeLog(trunkWorldX + ox, trunkWorldZ + oz, y);
-            // Thin 1×1 zone above
-            for (int y = surfaceY + thickLevels + 1; y <= surfaceY + treeHeight && y < HEIGHT; ++y)
-                placeLog(trunkWorldX, trunkWorldZ, y);
         } else {
             const int tlx = trunkWorldX - originX, tlz = trunkWorldZ - originZ;
             if (tlx >= 0 && tlx < WIDTH && tlz >= 0 && tlz < DEPTH) {
@@ -361,8 +365,11 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
 
             if (branchY >= HEIGHT) continue;
 
-            int curX = trunkWorldX, curZ = trunkWorldZ;
-            for (int seg = 0; seg < branchLen; ++seg) {
+            // Branch starts from the edge of the trunk
+            int curX = canopyCX + bdx[dir] * (trunkW / 2 + 1);
+            int curZ = canopyCZ + bdz[dir] * (trunkW / 2 + 1);
+            placeLog(curX, curZ, branchY);
+            for (int seg = 1; seg < branchLen; ++seg) {
                 curX += bdx[dir]; curZ += bdz[dir];
                 placeLog(curX, curZ, branchY);
             }
@@ -381,63 +388,92 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
             // Round pyramid (Oak, Birch, Dark Oak): organic ragged edges
             constexpr int leafRadii[4] = {2, 2, 1, 0};
             for (int layer = 0; layer < 4; ++layer)
-                placeLeafLayer(trunkWorldX, trunkWorldZ, surfaceY + treeHeight - 2 + layer, leafRadii[layer], true, true);
+                placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight - 2 + layer, leafRadii[layer] + extraR, true, true);
             // Leaf cap above trunk tip
-            placeLeafLayer(trunkWorldX, trunkWorldZ, surfaceY + treeHeight + 1, 0, false);
+            placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight + 1, extraR, false);
             break;
         }
         case 1: {
-            // Acacia: angled trunk (4 segments, 3 one-block lean shifts) + flat canopy.
-            // The straight trunk placed above is skipped for this style.
-            const int leanDir = static_cast<int>(rng() % 4);
-            const int segLen  = 3 + static_cast<int>(rng() % 2); // 3 or 4 logs per segment
+            // Acacia: angled main trunk + extra branches that fork off similarly.
+            // Branches go mostly sideways: 1 block horizontal shift per 1 block up.
             constexpr int adx[4] = {1, -1,  0, 0};
             constexpr int adz[4] = {0,  0,  1, -1};
-            const int dx = adx[leanDir], dz = adz[leanDir];
 
             // Dirt under base
             { const int lx = trunkWorldX - originX, lz = trunkWorldZ - originZ;
               if (lx >= 0 && lx < WIDTH && lz >= 0 && lz < DEPTH)
                   blocks.at(lx, surfaceY, lz) = BlockType::DIRT; }
 
-            int curX = trunkWorldX, curZ = trunkWorldZ, curY = surfaceY;
-
-            // 4 vertical segments; shift between segments 0→1, 1→2, 2→3
-            for (int seg = 0; seg < 4; ++seg) {
-                for (int s = 0; s < segLen && curY + 1 < HEIGHT; ++s) {
-                    ++curY;
-                    placeLog(curX, curZ, curY);
-                }
-                if (seg < 3) {
-                    // Diagonal transition log — one step up and one to the side
+            // Helper: build an angled acacia trunk/branch.
+            // Pattern: for each step, place 1 log going sideways, then 1 log going up.
+            // This creates a shallow ~45° angle that spreads outward.
+            struct BranchTip { int x, z, y; };
+            auto buildAcaciaTrunk = [&](int startX, int startZ, int startY,
+                                        int numSteps, int leanDir) -> BranchTip {
+                const int dx = adx[leanDir], dz = adz[leanDir];
+                int curX = startX, curZ = startZ, curY = startY;
+                for (int step = 0; step < numSteps && curY + 1 < HEIGHT; ++step) {
+                    // Go sideways
                     curX += dx; curZ += dz;
+                    // Then go up
                     ++curY;
                     placeLog(curX, curZ, curY);
                 }
+                return {curX, curZ, curY};
+            };
+
+            // Straight vertical trunk base (3-5 blocks tall)
+            const int baseHeight = 3 + static_cast<int>(rng() % 3);
+            { const int tlx = trunkWorldX - originX, tlz = trunkWorldZ - originZ;
+              if (tlx >= 0 && tlx < WIDTH && tlz >= 0 && tlz < DEPTH) {
+                  for (int y = surfaceY + 1; y <= surfaceY + baseHeight && y < HEIGHT; ++y)
+                      blocks.at(tlx, y, tlz) = logType;
+              }
             }
 
-            // Wide flat canopy at the leaned tip
-            const int topY = curY;
-            placeLeafLayer(curX, curZ, topY + 2, 3, false);
-            placeLeafLayer(curX, curZ, topY + 1, 3, false);
-            placeLeafLayer(curX, curZ, topY,     2, false);
-            placeLeafLayer(curX, curZ, topY - 1, 2, false);
+            // Main angled section from top of base
+            const int mainLeanDir = static_cast<int>(rng() % 4);
+            const int mainSteps   = 3 + static_cast<int>(rng() % 3); // 3..5 steps
+            auto mainTip = buildAcaciaTrunk(trunkWorldX, trunkWorldZ,
+                                            surfaceY + baseHeight, mainSteps, mainLeanDir);
+
+            // Main canopy
+            placeLeafLayer(mainTip.x, mainTip.z, mainTip.y + 2, 3, false);
+            placeLeafLayer(mainTip.x, mainTip.z, mainTip.y + 1, 3, false);
+            placeLeafLayer(mainTip.x, mainTip.z, mainTip.y,     2, false);
+            placeLeafLayer(mainTip.x, mainTip.z, mainTip.y - 1, 2, false);
+
+            // Extra branches forking off the vertical base
+            const int numBranches = 1 + static_cast<int>(rng() % 3); // 1..3 branches
+            for (int b = 0; b < numBranches; ++b) {
+                // Pick a direction different from the main lean
+                int branchDir = static_cast<int>(rng() % 4);
+                if (branchDir == mainLeanDir)
+                    branchDir = (branchDir + 1 + static_cast<int>(rng() % 3)) % 4;
+
+                // Fork from somewhere on the vertical base
+                const int forkY    = surfaceY + 2 + static_cast<int>(rng() % std::max(1, baseHeight - 1));
+                const int bSteps   = 2 + static_cast<int>(rng() % 3); // 2..4 steps
+
+                auto branchTip = buildAcaciaTrunk(trunkWorldX, trunkWorldZ,
+                                                  forkY, bSteps, branchDir);
+
+                // Smaller canopy on branches
+                placeLeafLayer(branchTip.x, branchTip.z, branchTip.y + 2, 2, false);
+                placeLeafLayer(branchTip.x, branchTip.z, branchTip.y + 1, 2, false);
+                placeLeafLayer(branchTip.x, branchTip.z, branchTip.y,     1, false);
+            }
             break;
         }
         case 2: {
-            // Spruce: pinecone shape.
-            // From tip (i=0) downward to base of leaf zone (i=N-1):
-            //   - narrow at base (bottom of leaves), widens going up, peaks in the upper-middle,
-            //     narrows to a point at the top.
-            //   - every other layer (odd i) is 1 radius narrower → visible scale/ring effect.
-            // Leaves span the upper ~(treeHeight-2) levels; max 14 layers.
+            // Spruce: pinecone shape, scaled for trunk width.
             const int  N    = std::max(4, std::min(treeHeight - 2, 14));
-            const float maxR = (N >= 12) ? 4.0f : (N >= 8) ? 3.0f : 2.0f;
+            const float maxR = ((N >= 12) ? 4.0f : (N >= 8) ? 3.0f : 2.0f) + extraR;
 
             for (int i = 0; i < N; ++i) {
                 int r;
                 if (i == 0) {
-                    r = 0; // very tip — blocked by trunk log, leaf cap handles above
+                    r = 0;
                 } else {
                     const float t    = static_cast<float>(i) / (N - 1);
                     float envR;
@@ -446,24 +482,23 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
                     else
                         envR = maxR - (t - 0.55f) / 0.45f * (maxR - 1.0f);
                     envR = std::max(1.0f, std::min(maxR, envR));
-                    // Even i → ceiling (full ring); odd i → floor (narrower ring)
                     r = (i % 2 == 0) ? static_cast<int>(std::ceil(envR))
                                      : static_cast<int>(std::floor(envR));
                     r = std::max(1, std::min(static_cast<int>(maxR), r));
                 }
-                placeLeafLayer(trunkWorldX, trunkWorldZ, surfaceY + treeHeight - i, r, true);
+                placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight - i, r, true);
             }
             // Leaf cap one block above the trunk tip
-            placeLeafLayer(trunkWorldX, trunkWorldZ, surfaceY + treeHeight + 1, 0, false);
+            placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight + 1, extraR, false);
             break;
         }
         case 3: {
-            // Jungle: wide 5-layer lush canopy, organic edges
-            constexpr int jungleRadii[] = {1, 2, 3, 3, 2};
+            // Jungle: wide 5-layer lush canopy, organic edges, scaled for trunk width
+            const int jungleRadii[] = {1 + extraR, 2 + extraR, 3 + extraR, 3 + extraR, 2 + extraR};
             for (int layer = 0; layer < 5; ++layer)
-                placeLeafLayer(trunkWorldX, trunkWorldZ, surfaceY + treeHeight - 1 + layer, jungleRadii[layer], false, true);
+                placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight - 1 + layer, jungleRadii[layer], false, true);
             // Leaf cap
-            placeLeafLayer(trunkWorldX, trunkWorldZ, surfaceY + treeHeight + 1, 0, false);
+            placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight + 1, extraR, false);
             break;
         }
     }
@@ -475,8 +510,8 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
     // over the current chunk and all 8 neighbors' tree positions.
 
     // The maximum horizontal reach of a tree canopy in blocks.
-    // Acacia: 3 lean shifts + leaf radius 3 = 6. All other trees stay within 5.
-    constexpr int TREE_REACH = 6;
+    // Acacia: up to 5 sideways steps + leaf radius 3 = 8. Wide trunks add ~1 extra.
+    constexpr int TREE_REACH = 9;
 
     // Iterate only over columns whose trees can reach into this chunk:
     // expand the area by TREE_REACH in all directions around [originX, originZ].
@@ -524,28 +559,28 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
                     treeHeight = 8 + static_cast<int>(rng() % 19); // 8..26, tip up to 27 blocks
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
-                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::DARK_OAK_LOG, BlockType::DARK_OAK_LEAVES, 0, rng);
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::DARK_OAK_LOG, BlockType::DARK_OAK_LEAVES, 0, 3, rng);
                     break;
                 case BiomeType::JUNGLE:
                     if (chanceRoll >= 20) continue;  // 2.0%
                     treeHeight = 12 + static_cast<int>(rng() % 13); // 12..24, canopy tip up to 27 blocks
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
-                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::JUNGLE_LOG, BlockType::JUNGLE_LEAVES, 3, rng);
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::JUNGLE_LOG, BlockType::JUNGLE_LEAVES, 3, 2, rng);
                     break;
                 case BiomeType::SAVANNA:
                     if (chanceRoll >= 6) continue;   // 0.6%
                     treeHeight = 4 + static_cast<int>(rng() % 4);
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
-                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::ACACIA_LOG, BlockType::ACACIA_LEAVES, 1, rng);
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::ACACIA_LOG, BlockType::ACACIA_LEAVES, 1, 1, rng);
                     break;
                 case BiomeType::BIRCH_FOREST:
                     if (chanceRoll >= 12) continue;  // 1.2%
                     treeHeight = 5 + static_cast<int>(rng() % 5);
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
-                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::BIRCH_LOG, BlockType::BIRCH_LEAVES, 0, rng);
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::BIRCH_LOG, BlockType::BIRCH_LEAVES, 0, 1, rng);
                     break;
                 case BiomeType::PLAINS:
                     if (chanceRoll >= 1) continue;          // initial 0.1% filter
@@ -553,14 +588,14 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
                     treeHeight = 4 + static_cast<int>(rng() % 5);
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
-                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::OAK_LOG, BlockType::OAK_LEAVES, 0, rng);
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::OAK_LOG, BlockType::OAK_LEAVES, 0, 1, rng);
                     break;
                 case BiomeType::TUNDRA:
                     if (chanceRoll >= 5) continue;   // 0.5%
                     treeHeight = 8 + static_cast<int>(rng() % 19); // 8..26, tip up to 27 blocks
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
-                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::SPRUCE_LOG, BlockType::SPRUCE_LEAVES, 2, rng);
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::SPRUCE_LOG, BlockType::SPRUCE_LEAVES, 2, 3, rng);
                     break;
                 default:
                     continue;
