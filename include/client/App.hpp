@@ -5,6 +5,12 @@
 #ifndef APP_HPP
 #define APP_HPP
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -30,6 +36,7 @@
 #include <iostream>
 // glm for vector types used in lighting controls
 #include <glm/vec3.hpp>
+#include <cstdint>
 #include <memory>
 
 #include <optional>
@@ -41,7 +48,12 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#if !defined(_WIN32)
 #include <unistd.h> // for sysconf
+#else
+#include <windows.h>
+#include <psapi.h>
+#endif
 #include <stdio.h>  // for FILE, fopen
 #include <cstdlib>
 
@@ -174,7 +186,7 @@ private:
 
 	std::optional<int> seed;
 
-    u_int8_t currentBiome;
+    uint8_t currentBiome;
 
     float lastX = 400, lastY = 300;
     bool firstMouse = true;

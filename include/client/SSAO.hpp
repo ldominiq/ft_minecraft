@@ -1,6 +1,12 @@
 #ifndef SSAO_HPP
 #define SSAO_HPP
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include "Shader.hpp"
 #include "GBuffer.hpp"
 

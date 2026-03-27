@@ -97,6 +97,8 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
     generateTrees(blocks, terrainParams);
 
+    generateTrees(blocks, terrainParams);
+
     generateOres(blocks, terrainParams);
 
     // DEBUG: strip everything except ores so they're visible in isolation

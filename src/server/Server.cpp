@@ -2,6 +2,13 @@
 
 #include "Creeper.hpp"
 Server::Server() {
+#ifdef _WIN32
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed\n";
+        exit(EXIT_FAILURE);
+    }
+#endif
     createSocket();
     fillServerInfo();
     bindSocket();
@@ -9,6 +16,9 @@ Server::Server() {
 
 Server::~Server() {
     close(sockfd);
+#ifdef _WIN32
+    WSACleanup();
+#endif
 }
 
 void Server::run(std::optional<int> &seed) {
@@ -36,6 +46,13 @@ void Server::createSocket() {
         exit(EXIT_FAILURE);
     }
 
+#ifdef _WIN32
+    u_long mode = 1;
+    if (ioctlsocket(sockfd, FIONBIO, &mode) != 0) {
+        perror("ioctlsocket failed");
+        exit(EXIT_FAILURE);
+    }
+#else
     // Get current flags
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1) {
@@ -48,6 +65,7 @@ void Server::createSocket() {
         perror("fcntl F_SETFL failed");
         exit(EXIT_FAILURE);
     }
+#endif
 }
 
 void Server::fillServerInfo() {
@@ -78,10 +96,25 @@ void Server::loop() {
 		
 		// 1. Poll sockets (non-blocking)
 		while (true) {
-			ssize_t n = recvfrom(sockfd, buffer, MAXLINE, 0, (sockaddr*)&cliaddr, &addrLen);
+			int n = recvfrom(sockfd, reinterpret_cast<char*>(buffer), MAXLINE, 0, (sockaddr*)&cliaddr, &addrLen);
 			if (n < 0) {
+#ifdef _WIN32
+				int err = WSAGetLastError();
+				if (err == WSAEWOULDBLOCK) break;
+				if (err == WSAECONNRESET) {
+					// Connection reset by peer, prevent server crash
+					// TODO: handle correctly
+					continue;
+				}
+				std::cerr << "recvfrom error: " << err << "\n";
+#else
 				if (errno == EWOULDBLOCK || errno == EAGAIN) break; // no more packets
+				if (errno == ECONNREFUSED) {
+					// ICMP Port Unreachable received, ignore it for UDP
+					continue;
+				}
 				perror("recvfrom error");
+#endif
 				break;
 			}
 			dispatch(buffer, n, cliaddr);
@@ -651,7 +684,7 @@ void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_i
 
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
 	auto bytes = encodePacket(pkt);
-	sendto(sockfd, bytes.data(), bytes.size(), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
+	sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
 }
 
 void Server::sendAccept(const sockaddr_in &cliaddr)

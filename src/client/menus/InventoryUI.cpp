@@ -246,6 +246,7 @@ void InventoryUI::drawHotbar()
     glEnable(GL_DEPTH_TEST);
 }
 
+<<<<<<< HEAD
 void InventoryUI::drawHealth(float health) const
 {
 	glDisable(GL_DEPTH_TEST);
@@ -284,6 +285,8 @@ void InventoryUI::drawHealth(float health) const
     glEnable(GL_DEPTH_TEST);
 }
 
+=======
+>>>>>>> dev
 int InventoryUI::getSlotAt(double mouseX, double mouseY) const
 {
 	mouseY = fullscreenHeight - mouseY;

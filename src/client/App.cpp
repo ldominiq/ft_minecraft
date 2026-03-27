@@ -1655,7 +1655,7 @@ void App::processInputMenus(int key, int action) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 
-	//TODO : Change gamemode for player on chat too so prediction works on other modes other than spectator.
+	//TODO : Change gamemode for player on chat too so prediction works on other modes other than spectator when changing gamemode by chat.
 	if (manager == chat)
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
@@ -1860,6 +1860,12 @@ size_t App::getCurrentRSS() {
     }
     pageSize = sysconf(_SC_PAGESIZE);
     return (size_t)rss * (size_t)pageSize;
+#elif defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        return pmc.WorkingSetSize;
+    }
+    return 0;
 #else
     return 0;
 #endif

@@ -2,7 +2,12 @@
 #ifndef PLAYER_INFO_HPP
 #define PLAYER_INFO_HPP
 
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <netinet/in.h>
+#endif
 #include <string>
 #include <vector>
 #include <glm/vec3.hpp>

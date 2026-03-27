@@ -1,4 +1,6 @@
 
+#include <algorithm>
+#include <chrono>
 #include "Chat.hpp"
 
 Chat::Chat(float width, float height) : Menu(width, height)
