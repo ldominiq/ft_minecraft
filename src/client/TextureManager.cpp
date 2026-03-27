@@ -256,7 +256,7 @@ void TextureManager::setupBlockTextureMapping() {
     int oakLeavesTinted = addTintedLayer("oak_leaves", 0x61, 0x99, 0x61);
     int spruceLeavesTinted = addTintedLayer("spruce_leaves", 0x17, 0x2B, 0x17);
     int birchLeavesTinted = addTintedLayer("birch_leaves", 0x44, 0x78, 0x44);
-    int jungleLeavesTinted = addTintedLayer("jungle_leaves", 0x27, 0x8A, 0x27);
+    int jungleLeavesTinted = addTintedLayer("jungle_leaves", 0x48, 0xBE, 0x48);
     int acaciaLeavesTinted = addTintedLayer("acacia_leaves", 0x94, 0xA3, 0x1D);
     int darkOakLeavesTinted = addTintedLayer("dark_oak_leaves", 0x4E, 0x96, 0x4E);
     // other Tints
