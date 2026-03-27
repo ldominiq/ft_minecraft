@@ -72,6 +72,7 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 		player->setVelocity(lastState.velocity);
 		player->setYawAndPitch(lastState.yaw, lastState.pitch);
 		player->health = lastState.health;
+		player->setSlipperinessPrev(lastState.slipperinessPrev);
 	}
 
 	//set player state to the inputs for this tick if there is.
@@ -82,7 +83,7 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 		player->setYawAndPitch(InputsMap[clientTick].yaw, InputsMap[clientTick].pitch);
 	}
 
-	player->updateCameraVectors();
+	// player->updateCameraVectors();
 	player->calculateNewPosition(world);
 
 	//construct predictions for reconcialiation and snapshots for interpolation
@@ -92,7 +93,8 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 		player->getVelocity(),
 		player->yaw,
 		player->pitch,
-		player->health
+		player->health,
+		player->getSlipperinessPrev()
 	});
 
 	player->snapshots.emplace_back(Snapshot{
@@ -100,6 +102,15 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 		player->getVelocity(),
 		clientTime
 	});
+
+	// std::cout << "tick: " << clientTick << "\n" <<
+	// "pos: (" << player->getPosition().x << ", " << player->getPosition().y << ", " << player->getPosition().z << ")\n" <<
+	// "vel: (" << player->getVelocity().x << ", " << player->getVelocity().y << ", " << player->getVelocity().z << ")\n" <<
+	// "splitPrev: (" << player->getSlipperinessPrev() << ")\n" <<
+	// "onGround: (" << player->isOnGround() << ")\n" <<
+	// "fallDistance: (" << player->getAccumulatedFallDistance() << ")\n" <<
+	// "jumpBoost: (" << player->getJumpBoostApplied() << ")\n";
+	// std::cout << "------------------\n\n";
 }
 
 void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, const Renderer &world)
@@ -146,7 +157,8 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 					correction.velocity,
 					correction.yaw,
 					correction.pitch,
-					correction.health
+					correction.health,
+					correction.slipperinessPrev
 				});
 				
 				for (int i = correction.serverClientReconciliationTick + 1; i < clientTick; i++)
@@ -183,7 +195,8 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clien
 		velocity,
 		pkt.yaw,
 		pkt.pitch,
-		pkt.health
+		pkt.health,
+		pkt.slipperinessPrev
 	};
 
 	// if (lastReceivedServerClientReconciliationTick == pkt.serverClientReconciliationTick)

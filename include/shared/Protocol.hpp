@@ -165,6 +165,9 @@ struct NetPlayerMove final : public Packet {
 
 	float health;
 
+	float slipperinessPrev;
+	bool onGround;
+
 	NetPlayerMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
@@ -178,6 +181,8 @@ struct NetPlayerMove final : public Packet {
 		w.write_f32(yaw);
 		w.write_f32(pitch);
 		w.write_f32(health);
+		w.write_f32(slipperinessPrev);
+		w.write_u8(onGround ? 1 : 0);
     }
     void decode(BufferReader& r) override {
 		serverClientReconciliationTick = r.read_i32();
@@ -190,9 +195,26 @@ struct NetPlayerMove final : public Packet {
 		yaw = r.read_f32();
 		pitch = r.read_f32();
 		health = r.read_f32();
+		slipperinessPrev = r.read_f32();
+		onGround = r.read_u8() != 0;
     }
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;
+
+struct NetPlayerGameMode final : public Packet {
+	static constexpr PacketType ID = PacketType::PLAYER_GAMEMODE;
+	uint8_t gamemode = 0; // 0 = survival, 1 = creative, 2 = adventure, 3 = spectator
+
+	NetPlayerGameMode() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+		w.write_u8(gamemode);
+    }
+    void decode(BufferReader& r) override {
+		gamemode = r.read_u8();
+    }
+};
+inline AutoRegister<NetPlayerGameMode> _reg_NetPlayerGameMode;
 
 
 // TODO : add delta compression & put inside of a new Snapshot packet

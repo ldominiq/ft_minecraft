@@ -34,6 +34,12 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 
 	for (auto entity = entities.begin(); entity != entities.end();)
 	{
+		if (entity->get()->DoDraw() == false)
+		{
+			entity++;
+			continue ;
+		}
+
 		if (entity->get()->removed && !entity->get()->positionUpdated)
 		{
 			entity = entities.erase(entity);

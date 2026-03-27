@@ -34,9 +34,9 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 		{
 			c->characterBodyParts.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));
 			c->characterBodyParts.character.translation = glm::translate(glm::mat4(1.0f), c->getPosition() + c->YPositionOffset);
-			c->characterBodyParts.character.compute(identity, projection, view, characterShader);
 			c->walkAnimation(deltaTime);
-			// c->positionUpdated = false;
+			c->characterBodyParts.character.compute(identity, projection, view, characterShader);
+			c->positionUpdated = false;
 		}
 		else
 			c->characterBodyParts.character.drawScene(characterShader, projection, view);

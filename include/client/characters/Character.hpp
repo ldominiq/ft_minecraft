@@ -26,7 +26,6 @@ class Character
 		bool onWalkAnimation = false;
 		float walkingAnimationSpeed = 0.8;
 		float walkAnimationFrameStart = 0;
-		float normalizedWalkAnimationCycle = 0;
 
 		float walkPhase = 0;
 
@@ -34,8 +33,6 @@ class Character
 		float jumpPhase = 0;
 		float jumpOffset = 0;
 	};
-
-	bool doDraw = true;
 
 	protected:
 		float torsoScaleZ{0};
@@ -55,16 +52,19 @@ class Character
 		float legTransZ{0};
 		float legTransY{0};
 
-		float characterScaleNorm{0};
+		float characterXScaleNorm{0};
+		float characterYScaleNorm{0};
+		float characterZScaleNorm{0};
+		float feetPositionY{0};
 
-	virtual void createCharacterAt(const glm::vec3 &pos, float characterScale);
+	virtual void setPartsDimensions();
+	virtual void createCharacterAt(const glm::vec3 &pos, float width, float height);
+	void rotateBodyPart(const std::shared_ptr<Shape>& bodyPart, float pivot, float angle);
+
 	public:
 		s_character characterBodyParts;
 
 		glm::vec3 YPositionOffset = {};
-
-		const inline void setDoDraw(bool value) {doDraw = value;}
-		const inline bool DoDraw() const {return doDraw;}
 
 		Character();
 		virtual ~Character() = default;

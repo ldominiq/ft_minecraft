@@ -128,7 +128,6 @@ void BitPackedArray::encodeAll(
     }
 }
 
-
 void BitPackedArray::saveToStream(std::ostream& out) const {
     // Write header
     out.write(reinterpret_cast<const char*>(&m_size), sizeof(m_size));

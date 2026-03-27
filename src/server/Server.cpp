@@ -296,6 +296,10 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 				glm::vec3 vel = player->movement->getVelocity();
 				player->movement->setVelocity(glm::vec3(vel.x, 0.0f, vel.z));
 				player->movement->accumulatedFallDistance = 0.0f;
+
+				NetPlayerGameMode pkt;
+				pkt.gamemode = static_cast<uint8_t>(itMode->second);
+				sendPacketTo(pkt, cliaddr);
 			}
 		}
 	}
@@ -511,6 +515,15 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.pitch = player.movement->pitch;
 
 	pkt.health = player.movement->health;
+
+	std::cout << "tick: " << pkt.serverClientReconciliationTick << "\n" <<
+	"pos: (" << pkt.positionX << ", " << pkt.positionY << ", " << pkt.positionZ << ")\n" <<
+	"vel: (" << pkt.velocityX << ", " << pkt.velocityY << ", " << pkt.velocityZ << ")\n" <<
+	"splitPrev: (" << player.movement->getSlipperinessPrev() << ")\n" <<
+	"onGround: (" << player.movement->isOnGround() << ")\n" <<
+	"fallDistance: (" << player.movement->getAccumulatedFallDistance() << ")\n" <<
+	"jumpBoost: (" << player.movement->getJumpBoostApplied() << ")\n";
+	std::cout << "------------------\n\n";
 
 	sendPacketTo(pkt, player.addr);
 }

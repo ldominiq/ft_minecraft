@@ -61,6 +61,7 @@ class LivingEntity : public Entity
 		inline LivingEntityType getLivingEntityType() const { return type; }
 		inline float getEyesHeight() const { return eyesheight; }
 		glm::vec3 getDesiredMove() override;
+		float getAccumulatedFallDistance() const { return accumulatedFallDistance; }
 };
 
 #endif

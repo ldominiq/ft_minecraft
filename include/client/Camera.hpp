@@ -19,6 +19,9 @@ struct PredictedStates
 	float yaw;
 	float pitch;
 	float health;
+
+	float slipperinessPrev;
+	// bool onGround;
 };
 
 class Camera {

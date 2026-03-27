@@ -116,30 +116,30 @@ void PlayerMovement::doJump(const ICommonWorld &world)
 
 glm::vec3 PlayerMovement::getDesiredMove()
 {
-    NetPlayerInputs inputs = lastInputsPktRecvd;
+	NetPlayerInputs inputs = lastInputsPktRecvd;
 
-	float effectMultiplier = 1.0f; 
+	float effectMultiplier = 1.0f;
 	float slipperiness = onGround ? SM_DEFAULT : SM_AIRBORNE; 
 
 	float movementMultiplier = MM_WALKING;
 	if (inputs.keys & IN_RUN) movementMultiplier = MM_SPRINTING;
 
 	//x and z inverted for some obscure reason
-    float lx = 0.0f, lz = 0.0f;
-    if (inputs.keys & IN_FORWARD)  lx += 1.0f;
-    if (inputs.keys & IN_BACKWARD) lx -= 1.0f;
-    if (inputs.keys & IN_LEFT)     lz -= 1.0f;
-    if (inputs.keys & IN_RIGHT)    lz += 1.0f;
+	float lx = 0.0f, lz = 0.0f;
+	if (inputs.keys & IN_FORWARD)  lx += 1.0f;
+	if (inputs.keys & IN_BACKWARD) lx -= 1.0f;
+	if (inputs.keys & IN_LEFT)     lz -= 1.0f;
+	if (inputs.keys & IN_RIGHT)    lz += 1.0f;
 
-    bool hasMovementInput = (std::abs(lx) > 0.0f || std::abs(lz) > 0.0f);
+	bool hasMovementInput = (std::abs(lx) > 0.0f || std::abs(lz) > 0.0f);
 
 	glm::vec2 inputDir(lx, lz);
-    if (glm::length(inputDir) > 0.0f) inputDir = glm::normalize(inputDir);
+	if (glm::length(inputDir) > 0.0f) inputDir = glm::normalize(inputDir);
 
-    float yawRad = glm::radians(yaw);
-    glm::vec2 inputWorld;
-    inputWorld.x = inputDir.x * std::cos(yawRad) - inputDir.y * std::sin(yawRad);
-    inputWorld.y = inputDir.x * std::sin(yawRad) + inputDir.y * std::cos(yawRad);
+	float yawRad = glm::radians(yaw);
+	glm::vec2 inputWorld;
+	inputWorld.x = inputDir.x * std::cos(yawRad) - inputDir.y * std::sin(yawRad);
+	inputWorld.y = inputDir.x * std::sin(yawRad) + inputDir.y * std::cos(yawRad);
 
 	glm::vec2 prevV(this->velocity.x, this->velocity.z);
 	glm::vec2 momentum = prevV * (slipperiness_prev * 0.91f);
@@ -166,7 +166,7 @@ glm::vec3 PlayerMovement::getDesiredMove()
 	if (std::abs(this->velocity.x) < EPS) this->velocity.x = 0;
 	if (std::abs(this->velocity.z) < EPS) this->velocity.z = 0;
 
-    return glm::vec3(this->velocity.x, 0.0f, this->velocity.z);
+	return glm::vec3(this->velocity.x, 0.0f, this->velocity.z);
 }
 
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
@@ -175,7 +175,7 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 
 	if (gamemode == GAMEMODES::SURVIVAL)
 	{
-		doJump(world);
+		// doJump(world);
 		glm::vec3 desiredMove = getDesiredMove();
 		this->calculateNewXZPosition(world, desiredMove);
 		this->calculateNewYPosition(world);

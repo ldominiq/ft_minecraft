@@ -116,6 +116,9 @@ class Entity {
 		// position has been changed since last check.
 		bool positionUpdated = true;
 
+		inline float getSlipperinessPrev() const { return slipperiness_prev; }
+		inline bool isOnGround() const { return onGround; }
+
 		void applyImpulse(const glm::vec3& impulse) { velocity += impulse; }
 		inline virtual EEntityTypes getEntityType() const = 0;
 		virtual void calculateNewPosition(const ICommonWorld &world);
@@ -124,6 +127,7 @@ class Entity {
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const entityID getID() const { return ID; }
 
+		inline void setSlipperinessPrev(float slipperiness) { this->slipperiness_prev = slipperiness; }
 		inline void setPosition(glm::vec3 position) {
 			if (this->position != position) positionUpdated = true;
 			this->position = position;
@@ -165,6 +169,10 @@ class Entity {
 		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //living entities only
 
 		//the not yet Implemented is a lie. Those are only client functions defined in the client.
+
+		bool doDraw = true; //this should kinda be private
+		const inline void setDoDraw(bool value) {doDraw = value;}
+		const inline bool DoDraw() const {return doDraw;}
 };
 
 #endif

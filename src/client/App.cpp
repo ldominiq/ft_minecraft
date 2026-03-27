@@ -305,6 +305,12 @@ void App::setUdpClientPacketCallback()
 				break;
 			}
 
+			case PacketType::PLAYER_GAMEMODE: {
+				auto& p = static_cast<NetPlayerGameMode&>(*pkt);
+				camera->getPlayer()->gamemode = static_cast<GAMEMODES>(p.gamemode);
+				break;
+			}
+
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
 				renderer->onEntity(p, clientTime);
@@ -784,6 +790,20 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
     lighting->drawLightCubes(view, projection);
 
+	// Check if the entity is within the player's load radius
+	auto updateDrawState = [&](auto &entity)
+	{
+		glm::vec3 playerPos = camera->getPlayer()->getPosition();
+		glm::vec3 entityPos = entity->getPosition();
+
+		glm::vec2 diff(playerPos.x - entityPos.x, playerPos.z - entityPos.z);
+
+		float distSq = glm::dot(diff, diff);
+		float radius = camera->getPlayer()->getLoadRadius() * Chunk::WIDTH;
+
+		entity->setDoDraw(distSq <= radius * radius);
+	};
+
 	//this code is mehhhh
 	double intraTick = (glfwGetTime() - clientTickChangedTime);
 	double delay = (1.0/TPS) * 1;
@@ -800,13 +820,19 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 	//mobs
 	for (auto &entity : renderer->livingEntities)
 	{
+		updateDrawState(entity);
+
 		if (!entity->positionUpdated) continue ;
 		entity->lerp(clientTime + intraTick - delay);
 		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position) entity->positionUpdated = false;
 	}
 
 	for (auto &entity : renderer->itemEntities)
+	{
+		updateDrawState(entity);
+
 		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position) entity->positionUpdated = false;
+	}
 
 	renderer->drawCharacters(projection, view, deltaTime);
 }
@@ -1366,14 +1392,12 @@ void App::debugWindow() {
 				{
 					NetMessage pkt;
 					pkt.message = "/gamemode survival";
-					camera->getPlayer()->gamemode = GAMEMODES::SURVIVAL;
 					udpClient->sendPacket(pkt);
 				}
 				else
 				{
 					NetMessage pkt;
 					pkt.message = "/gamemode spectator";
-					camera->getPlayer()->gamemode = GAMEMODES::SPECTATOR;
 					udpClient->sendPacket(pkt);
 				}
 			}
