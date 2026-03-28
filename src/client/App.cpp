@@ -824,14 +824,18 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
 		if (!entity->positionUpdated) continue ;
 		entity->lerp(clientTime + intraTick - delay);
-		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position) entity->positionUpdated = false;
+		static bool firstFrame = true; //side effect of doing it like this is that the character will start by doing 1 walk animation cycle
+		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) entity->positionUpdated = false;
+		firstFrame = false;
 	}
 
 	for (auto &entity : renderer->itemEntities)
 	{
 		updateDrawState(entity);
 
-		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position) entity->positionUpdated = false;
+		static bool firstFrame = true;
+		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) entity->positionUpdated = false;
+		firstFrame = false;
 	}
 
 	renderer->drawCharacters(projection, view, deltaTime);

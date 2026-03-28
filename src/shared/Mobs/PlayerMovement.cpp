@@ -175,7 +175,7 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 
 	if (gamemode == GAMEMODES::SURVIVAL)
 	{
-		// doJump(world);
+		doJump(world);
 		glm::vec3 desiredMove = getDesiredMove();
 		this->calculateNewXZPosition(world, desiredMove);
 		this->calculateNewYPosition(world);
