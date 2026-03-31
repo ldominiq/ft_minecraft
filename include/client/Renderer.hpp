@@ -63,6 +63,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		void setTextureManager(const TextureManager* tm) { textureManager = tm; }
 		void setVegetationShader(const std::shared_ptr<Shader>& shader) { vegetationShader = shader; }
+		const std::shared_ptr<Shader>& getVegetationShader() const { return vegetationShader; }
 
 		/// Draw a top-down ImGui radar showing which chunks pass frustum culling.
 		void drawFrustumCullingDebug(const glm::vec3& cameraPos, const glm::vec3& cameraFront,
