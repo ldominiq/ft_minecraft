@@ -81,8 +81,8 @@ void main() {
 
         worldPosition.x += sway;
         worldPosition.z += sway * 0.5 * sin(time * 1.1 + plantPhase); // slight figure-8 in Z
-        //TODO: remove lol
-//        worldPosition.y += sway * 10;
+        // uncomment for bouncy vegetation
+        // worldPosition.y += sway * 10;
     }
 
     vs_out.FragPos = worldPosition.xyz;

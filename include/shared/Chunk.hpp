@@ -86,6 +86,9 @@ class Chunk {
 
 		BlockType getBlock(int x, int y, int z) const;
 		void setBlock(int x, int y, int z, BlockType block);
+		// Like setBlock, but also clears any land vegetation directly above when placing AIR.
+		// Returns true if a vegetation block above was also cleared.
+		bool setBlockCascade(int x, int y, int z, BlockType type);
 
 		bool isBlockVisible(glm::ivec3 blockPos);
 

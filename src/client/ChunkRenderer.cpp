@@ -464,28 +464,28 @@ void ChunkRenderer::buildVegetationMesh() const {
 
     vegetationRenderer->setTextureManager(textureManager);
 
-    // Derive vegetation instances from the block grid (land vegetation)
-    // and from the vegetation list (sea vegetation, which isn't in the block grid)
+    // Sea vegetation comes from the vegetation list (not stored in the block grid).
+    // Land vegetation is derived by scanning the block grid directly.
     std::vector<Chunk::VegetationInstance> vegInstances;
-    vegInstances.reserve(vegetation.size()); // start with sea vegetation count, will grow if land vegetation is found
+    vegInstances.reserve(vegetation.size());
 
-    // Primary source: per-chunk vegetation list.
-    // Keep only currently valid entries to avoid stale instances.
     for (const auto& v : vegetation) {
-        // Sea vegetation is not represented in the solid block grid.
-        if (isSeaVegetation(v.type)) {
-            vegInstances.push_back(v);
-            continue;
-        }
+        vegInstances.push_back(v); // sea veg only
+    }
 
-        // Land vegetation should match block grid.
-        // Skip invalid/out-of-range entries defensively.
-        if (static_cast<size_t>(v.x) >= WIDTH || static_cast<size_t>(v.y) >= HEIGHT || static_cast<size_t>(v.z) >= DEPTH)
-            continue; // out of bounds, skip
-
-        const BlockType block = getBlock(v.x, v.y, v.z);
-        if (block == v.type && isBlockVegetation(block)) {
-            vegInstances.push_back(v);
+    for (int lx = 0; lx < WIDTH; ++lx) {
+        for (int lz = 0; lz < DEPTH; ++lz) {
+            for (int ly = 0; ly < HEIGHT; ++ly) {
+                const BlockType b = getBlock(lx, ly, lz);
+                if (isBlockVegetation(b)) {
+                    vegInstances.push_back({
+                        static_cast<uint8_t>(lx),
+                        static_cast<uint8_t>(ly),
+                        static_cast<uint8_t>(lz),
+                        b
+                    });
+                }
+            }
         }
     }
 

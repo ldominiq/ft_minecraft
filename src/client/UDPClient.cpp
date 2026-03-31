@@ -108,11 +108,7 @@ void UDPClient::dispatch(const uint8_t* data, size_t n)
     // 1. Decode packet from buffer (returns unique_ptr<Packet>)
     auto pkt = decodePacket(data, n);
     if (pkt) {
-		// std::cout << "[Network] Received packet type: " << static_cast<int>(pkt->type) << " (" << n << " bytes)" << std::endl;
-        if (pkt->type == PacketType::CHUNK_DATA) {
-            // Optional: log chunk data packets if debugging loss
-            // std::cout << "[Network] Received chunk data packet (" << n << " bytes)\n";
-        } else if (pkt->type == PacketType::NET_ACCEPT) {
+        if (pkt->type == PacketType::NET_ACCEPT) {
             std::cout << "[Network] Successfully decoded NET_ACCEPT packet\n";
         }
 		if (onPacket) onPacket({ std::move(pkt) });
