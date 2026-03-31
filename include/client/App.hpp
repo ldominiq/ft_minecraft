@@ -114,7 +114,7 @@ private:
     void init(const std::string& serverIp);
     void loadResources();
     void render();
-	void renderScene(const glm::mat4 &view, const glm::mat4 &projection, glm::vec4 clipPlane) const;
+	void renderScene(const glm::mat4 &view, const glm::mat4 &projection, glm::vec4 clipPlane, bool useSSAO = true) const;
 	void gameTick();
 
     void cleanup();
@@ -284,11 +284,13 @@ private:
     GLuint queryDrawSkyPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawCloudsPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawWaterReflectionPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawWaterRefractionPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawShadowsPool[QUERY_POOL_SIZE]{};
     GLuint queryRenderShaderPool[QUERY_POOL_SIZE]{};
     GLuint queryRenderWaterPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawEntities[QUERY_POOL_SIZE]{};
     GLuint querySSAOPool[QUERY_POOL_SIZE]{};
+    GLuint queryGBufferPool[QUERY_POOL_SIZE]{};
 
     // Track which queries were actually issued this frame (conditional passes like shadows/SSAO)
     bool shadowQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
@@ -302,11 +304,13 @@ private:
     double measuredAverageMsDrawSky = 0.0;
     double measuredAverageMsDrawClouds = 0.0;
     double measuredAverageMsDrawWaterReflection = 0.0;
+    double measuredAverageMsDrawWaterRefraction = 0.0;
     double measuredAverageMsDrawShadows = 0.0;
     double measuredAverageMsRenderShader = 0.0;
     double measuredAverageMsRenderWater = 0.0;
     double measuredAverageMsDrawEntities = 0.0;
     double measuredAverageMsSSAO = 0.0;
+    double measuredAverageMsGBuffer = 0.0;
 };
 
 #endif //APP_HPP

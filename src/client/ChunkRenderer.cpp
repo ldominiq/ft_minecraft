@@ -3,6 +3,8 @@
 
 ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVerticesSize(0), waterMeshVerticesSize(0) {
     vegetationRenderer = std::make_unique<VegetationRenderer>();
+    cachedMinP = glm::vec3(static_cast<float>(originX), 0.0f, static_cast<float>(originZ));
+    cachedMaxP = glm::vec3(static_cast<float>(originX) + Chunk::WIDTH, static_cast<float>(Chunk::HEIGHT), static_cast<float>(originZ) + Chunk::DEPTH);
 }
 
 ChunkRenderer::~ChunkRenderer() {

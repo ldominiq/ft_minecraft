@@ -303,6 +303,8 @@ void App::init(const std::string& serverIp) {
     glGenQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawCloudsPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glGenQueries(QUERY_POOL_SIZE, queryDrawWaterRefractionPool);
+    glGenQueries(QUERY_POOL_SIZE, queryGBufferPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
@@ -541,6 +543,8 @@ void App::render() {
         lighting->updateSkyLUT(camera->getPlayer()->getPosition().y);
 
 
+        renderer->processMeshUpdates();
+
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
@@ -590,6 +594,7 @@ void App::render() {
         }
 
         // GBuffer pass
+        glBeginQuery(GL_TIME_ELAPSED, queryGBufferPool[currentQueryIndex]);
         if (ssao && ssao->isEnabled()) {
             gBuffer->resize(screenWidth, screenHeight);
             ssao->resize(screenWidth, screenHeight);
@@ -604,8 +609,11 @@ void App::render() {
             renderer->render(gBufferShader);
 
             gBuffer->unbind();
+        }
+        glEndQuery(GL_TIME_ELAPSED);
 
-            // SSAO pass
+        // SSAO pass
+        if (ssao && ssao->isEnabled()) {
             glBeginQuery(GL_TIME_ELAPSED, querySSAOPool[currentQueryIndex]);
 
             ssao->renderSSAO(*gBuffer, projection);
@@ -633,13 +641,15 @@ void App::render() {
         glEndQuery(GL_TIME_ELAPSED);
 
 
-    	if (waterVisible) {
+        glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterRefractionPool[currentQueryIndex]);
+        if (waterVisible) {
             // render refraction texture
             waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
         }
+        glEndQuery(GL_TIME_ELAPSED);
 
-    	// render to screen
-    	renderScene(view, projection, clipPlane);
+    	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
+    	renderScene(view, projection, clipPlane, !waterVisible);
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
@@ -744,6 +754,8 @@ void App::render() {
             readGPUQueryEMA(queryDrawSkyPool[readIndex], measuredAverageMsDrawSky, a);
             readGPUQueryEMA(queryDrawCloudsPool[readIndex], measuredAverageMsDrawClouds, a);
             readGPUQueryEMA(queryDrawWaterReflectionPool[readIndex], measuredAverageMsDrawWaterReflection, a);
+            readGPUQueryEMA(queryDrawWaterRefractionPool[readIndex], measuredAverageMsDrawWaterRefraction, a);
+            readGPUQueryEMA(queryGBufferPool[readIndex], measuredAverageMsGBuffer, a);
             readGPUQueryEMA(queryRenderShaderPool[readIndex], measuredAverageMsRenderShader, a);
             readGPUQueryEMA(queryRenderWaterPool[readIndex], measuredAverageMsRenderWater, a);
             readGPUQueryEMA(queryDrawEntities[readIndex], measuredAverageMsDrawEntities, a);
@@ -791,7 +803,7 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
     return true;
 }
 
-void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4 clipPlane) const {
+void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4 clipPlane, bool useSSAO) const {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Render sky/clouds first with proper depth
@@ -822,7 +834,8 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     lighting->uploadCSMUniforms(*activeShader, view);
 
     // Bind SSAO texture for the lighting shader (must be after activeShader->use())
-    if (ssao && ssao->isEnabled()) {
+    // useSSAO is false when the GBuffer pass was skipped (e.g. water visible this frame).
+    if (ssao && ssao->isEnabled() && useSSAO) {
         glActiveTexture(GL_TEXTURE5);
         glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
         activeShader->setInt("ssaoTexture", 5);
@@ -1480,7 +1493,8 @@ void App::debugWindow() {
                 // Calculate totals
                 float totalGPU = static_cast<float>(
                     measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
-                    measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
+                    measuredAverageMsDrawShadows + measuredAverageMsGBuffer + measuredAverageMsSSAO +
+                    measuredAverageMsDrawWaterReflection + measuredAverageMsDrawWaterRefraction +
                     measuredAverageMsRenderWater + measuredAverageMsDrawEntities);
 
                 // Frame budget target
@@ -1506,7 +1520,9 @@ void App::debugWindow() {
                 showTimingBar("Clouds",        measuredAverageMsDrawClouds,          ImVec4(0.8f, 0.8f, 0.9f, 1.0f));
                 showTimingBar("Terrain",       measuredAverageMsRenderShader,        ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
                 showTimingBar("Shadows",       measuredAverageMsDrawShadows,         ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+                showTimingBar("GBuffer",       measuredAverageMsGBuffer,             ImVec4(0.5f, 0.3f, 0.7f, 1.0f));
                 showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
+                showTimingBar("Water Refract", measuredAverageMsDrawWaterRefraction, ImVec4(0.2f, 0.4f, 0.75f, 1.0f));
                 showTimingBar("Water Render",  measuredAverageMsRenderWater,         ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
                 showTimingBar("Entities",      measuredAverageMsDrawEntities,        ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
                 showTimingBar("SSAO",          measuredAverageMsSSAO,                ImVec4(0.6f, 0.2f, 0.8f, 1.0f));
@@ -1536,6 +1552,8 @@ void App::debugWindow() {
                         measuredAverageMsDrawSky = 0.0;
                         measuredAverageMsDrawClouds = 0.0;
                         measuredAverageMsDrawWaterReflection = 0.0;
+                        measuredAverageMsDrawWaterRefraction = 0.0;
+                        measuredAverageMsGBuffer = 0.0;
                         measuredAverageMsDrawShadows = 0.0;
                         measuredAverageMsRenderShader = 0.0;
                         measuredAverageMsRenderWater = 0.0;
@@ -1572,6 +1590,8 @@ void App::cleanup() {
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawCloudsPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterRefractionPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryGBufferPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
