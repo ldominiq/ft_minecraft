@@ -843,10 +843,10 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setFloat("seaLevel", 64.0f);
 
         // Underwater fog for vegetation
-        vegetationShader->setBool("cameraUnderwater", camera->getPlayer()->isUnderwater(*renderer));
-    	vegetationShader->setVec3("underwaterTintColor", lighting->getUnderwaterTintColor());
-    	vegetationShader->setVec3("underwaterFogColor", lighting->getUnderwaterFogColor());
-    	vegetationShader->setFloat("underwaterFogDensity", lighting->getUnderwaterFogDensity());
+        vegShader->setBool("cameraUnderwater", camera->getPlayer()->isUnderwater(*renderer));
+    	vegShader->setVec3("underwaterTintColor", lighting->getUnderwaterTintColor());
+    	vegShader->setVec3("underwaterFogColor", lighting->getUnderwaterFogColor());
+    	vegShader->setFloat("underwaterFogDensity", lighting->getUnderwaterFogDensity());
 
         // Upload CSM shadow uniforms to vegetation shader
         lighting->uploadCSMUniforms(*vegShader, view);
