@@ -89,7 +89,7 @@ void Server::bindSocket() {
 }
 
 void Server::loop() {
-	sockaddr_in cliaddr;
+	sockaddr_in cliaddr{};
 	socklen_t addrLen = sizeof(cliaddr);
 
 	auto nextTick = std::chrono::steady_clock::now();

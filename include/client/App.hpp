@@ -165,7 +165,6 @@ private:
     std::shared_ptr<Lighting> lighting;
     std::shared_ptr<Shader> textureShader;
     std::shared_ptr<Shader> gradientShader;
-    std::shared_ptr<Shader> vegetationShader;
 
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
 

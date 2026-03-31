@@ -910,14 +910,8 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 continue;
 
             if (isSeaVegetation(vegType)) {
-                if (vegType == BlockType::SEAGRASS || 
-                    vegType == BlockType::BRAIN_CORAL || vegType == BlockType::BUBBLE_CORAL || 
-                    vegType == BlockType::BRAIN_CORAL_FAN || vegType == BlockType::BUBBLE_CORAL_FAN ||
-                    vegType == BlockType::FIRE_CORAL || vegType == BlockType::FIRE_CORAL_FAN ||
-                    vegType == BlockType::HORN_CORAL || vegType == BlockType::HORN_CORAL_FAN ||
-                    vegType == BlockType::TUBE_CORAL || vegType == BlockType::TUBE_CORAL_FAN
-                    ) {
-                    // Simple seagrass/coral: place a single instance
+                if (!isStackableSeaVegetation(vegType)) {
+                    // Single-block plant: seagrass or coral
                     VegetationInstance veg{};
                     veg.x = static_cast<uint8_t>(x);
                     veg.y = static_cast<uint8_t>(surfaceY + 1);
@@ -951,14 +945,8 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 }
                 // Don't store in block grid — keep water blocks intact
             } else {
-                VegetationInstance veg{};
-                veg.x = static_cast<uint8_t>(x);
-                veg.y = static_cast<uint8_t>(surfaceY + 1); // Place above surface
-                veg.z = static_cast<uint8_t>(z);
-                veg.type = vegType;
-                vegetation.push_back(veg);
-
-                // Also store in block grid so raycasting can target it
+                // Land vegetation: stored only in the block grid.
+                // buildVegetationMesh() scans blocks to derive instances for rendering.
                 setBlock(x, surfaceY + 1, z, vegType);
             }
         }

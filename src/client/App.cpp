@@ -395,8 +395,6 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
-    vegetationShader = std::make_shared<Shader>("shaders/vegetation.vert", "shaders/vegetation.frag");
-
     // Load individual block textures into a texture array
     textureManager.loadResourcePack("assets");
 
@@ -404,9 +402,6 @@ void App::loadResources() {
 
     activeShader->use();
     activeShader->setInt("blockTextures", 0);
-
-    vegetationShader->use();
-    vegetationShader->setInt("blockTextures", 0);
 
     // shader configuration
     // --------------------
@@ -419,7 +414,9 @@ void App::loadResources() {
 
     // Wire the texture manager and shaders to subsystems that need them
     renderer->setTextureManager(&textureManager);
-    renderer->setVegetationShader(vegetationShader);
+    renderer->setVegetationShader(std::make_shared<Shader>("shaders/vegetation.vert", "shaders/vegetation.frag"));
+    renderer->getVegetationShader()->use();
+    renderer->getVegetationShader()->setInt("blockTextures", 0);
 }
 
 void App::gameTick() {
@@ -822,12 +819,12 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     textureManager.bind(GL_TEXTURE0);
 
     // Setup vegetation shader with same lighting as terrain
-    if (vegetationShader) {
-        vegetationShader->use();
-        vegetationShader->setVec4("clipPlane", clipPlane);
-        vegetationShader->setMat4("view", view);
-        vegetationShader->setMat4("projection", projection);
-        vegetationShader->setVec3("viewPos", camera->getPlayer()->getPosition());
+    if (const auto& vegShader = renderer->getVegetationShader()) {
+        vegShader->use();
+        vegShader->setVec4("clipPlane", clipPlane);
+        vegShader->setMat4("view", view);
+        vegShader->setMat4("projection", projection);
+        vegShader->setVec3("viewPos", camera->getPlayer()->getPosition());
 
         // Use the same day/night cycle as the main lighting system
         glm::vec3 sunDir = lighting->getDirectionalLightDirection();
@@ -839,11 +836,11 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         glm::vec3 ambientColor = lighting->getDirectionalAmbientColor() * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
         glm::vec3 diffuseColor = lighting->getDirectionalDiffuseColor() * day;
 
-        vegetationShader->setVec3("lightDir", -sunDir);
-        vegetationShader->setVec3("lightColor", diffuseColor);
-        vegetationShader->setVec3("ambientColor", ambientColor);
-        vegetationShader->setFloat("time", static_cast<float>(glfwGetTime()));
-        vegetationShader->setFloat("seaLevel", 64.0f);
+        vegShader->setVec3("lightDir", -sunDir);
+        vegShader->setVec3("lightColor", diffuseColor);
+        vegShader->setVec3("ambientColor", ambientColor);
+        vegShader->setFloat("time", static_cast<float>(glfwGetTime()));
+        vegShader->setFloat("seaLevel", 64.0f);
 
         // Underwater fog for vegetation
         vegetationShader->setBool("cameraUnderwater", camera->getPlayer()->isUnderwater(*renderer));
@@ -852,8 +849,8 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     	vegetationShader->setFloat("underwaterFogDensity", lighting->getUnderwaterFogDensity());
 
         // Upload CSM shadow uniforms to vegetation shader
-        lighting->uploadCSMUniforms(*vegetationShader, view);
-        vegetationShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
+        lighting->uploadCSMUniforms(*vegShader, view);
+        vegShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
 
         activeShader->use(); // Switch back to main shader
     }
