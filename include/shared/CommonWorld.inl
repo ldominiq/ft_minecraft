@@ -27,34 +27,40 @@ void CommonWorld<ChunkT>::globalCoordsToLocalCoords(int &x, int &y, int &z, int 
 }
 
 template <typename ChunkT>
-BlockType CommonWorld<ChunkT>::getBlockWorld(glm::ivec3 globalCoords) const
+std::shared_ptr<ChunkT> CommonWorld<ChunkT>::resolveTarget(glm::ivec3 globalCoords,
+                                                            std::optional<glm::ivec3> faceNormal,
+                                                            int& x, int& y, int& z) const
 {
-	int x, y, z;
+	if (faceNormal.has_value())
+		globalCoords += *faceNormal;
+
 	int chunkX, chunkZ;
 	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
 
 	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-	if (it == chunks.end()) {
+	if (it == chunks.end())
+		return nullptr;
+	return it->second;
+}
+
+template <typename ChunkT>
+BlockType CommonWorld<ChunkT>::getBlockWorld(glm::ivec3 globalCoords) const
+{
+	int x, y, z;
+	auto chunk = resolveTarget(globalCoords, std::nullopt, x, y, z);
+	if (!chunk)
 		return BlockType::END;
-	}
-	std::shared_ptr<Chunk> currChunk = it->second;
-	return currChunk->getBlock(x, y, z);
+	return chunk->getBlock(x, y, z);
 }
 
 template <typename ChunkT>
 bool CommonWorld<ChunkT>::isBlockVisibleWorld(glm::ivec3 globalCoords)
 {
 	int x, y, z;
-	int chunkX, chunkZ;
-	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
-
-	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-	if (it == chunks.end()) {
+	auto chunk = resolveTarget(globalCoords, std::nullopt, x, y, z);
+	if (!chunk)
 		return false;
-	}
-
-	std::shared_ptr<Chunk> currChunk = it->second;
-	return currChunk->isBlockVisible(glm::vec3(x, y ,z));
+	return chunk->isBlockVisible(glm::vec3(x, y, z));
 }
 
 template <typename ChunkT>

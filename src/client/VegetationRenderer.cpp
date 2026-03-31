@@ -12,23 +12,11 @@ VegetationRenderer::~VegetationRenderer() {
 
 void VegetationRenderer::releaseGL() {
     if (glfwGetCurrentContext()) {
-        if (VAO) {
-            glDeleteVertexArrays(1, &VAO);
-            VAO = 0;
-        }
-        if (VBO) {
-            glDeleteBuffers(1, &VBO);
-            VBO = 0;
-        }
-        if (instanceVBO) {
-            glDeleteBuffers(1, &instanceVBO);
-            instanceVBO = 0;
-        }
-    } else {
-        VAO = 0;
-        VBO = 0;
-        instanceVBO = 0;
+        if (VAO) glDeleteVertexArrays(1, &VAO);
+        if (VBO) glDeleteBuffers(1, &VBO);
+        if (instanceVBO) glDeleteBuffers(1, &instanceVBO);
     }
+    VAO = VBO = instanceVBO = 0;
 }
 
 std::vector<float> VegetationRenderer::generateCrossPatternMesh() {

@@ -268,6 +268,19 @@ inline static bool isSeaVegetation(const BlockType &b) {
 	}
 }
 
+// Sea vegetation that grows in stacks (kelp, tall seagrass), as opposed to single-block plants
+inline static bool isStackableSeaVegetation(const BlockType &b) {
+	switch (b) {
+		case BlockType::KELP:
+		case BlockType::KELP_PLANT:
+		case BlockType::TALL_SEAGRASS_BOTTOM:
+		case BlockType::TALL_SEAGRASS_TOP:
+			return true;
+		default:
+			return false;
+	}
+}
+
 inline static bool isBlockVegetation(const BlockType &b) {
 	switch(b) {
 		case BlockType::SHORT_GRASS:
