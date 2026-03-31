@@ -52,6 +52,19 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
     blockIndices.set(index, paletteIndex);
 }
 
+bool Chunk::setBlockCascade(int x, int y, int z, BlockType type) {
+    bool clearedVeg = false;
+    if (type == BlockType::AIR && y + 1 < HEIGHT) {
+        BlockType above = getBlock(x, y + 1, z);
+        if (isBlockVegetation(above)) {
+            setBlock(x, y + 1, z, BlockType::AIR);
+            clearedVeg = true;
+        }
+    }
+    setBlock(x, y, z, type);
+    return clearedVeg;
+}
+
 bool Chunk::isBlockVisible(glm::ivec3 pos) {
     int x = pos.x, y = pos.y, z = pos.z;
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH)
@@ -160,8 +173,8 @@ void Chunk::computeSkyLight() {
         for (int z = 0; z < DEPTH; ++z) {
             for (int y = HEIGHT - 1; y >= 0; --y) {
                 BlockType block = getBlock(x, y, z);
-                if (isBlockSolid(block) && block != BlockType::CACTUS)
-                    break; // Sunlight can't pass through solid blocks
+                if (isBlockSolid(block) && !isBlockTransparent(block))
+                    break; // Sunlight can't pass through solid opaque blocks
 
                 int index = x + WIDTH * (y + HEIGHT * z);
                 localSkyLight[index] = 15;

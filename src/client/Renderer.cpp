@@ -30,79 +30,15 @@ void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRender
 
 bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
-    // Offset the global coordinates in the direction of the face normal
-    glm::ivec3 targetCoords = globalCoords;
-    if (faceNormal.has_value()) {
-        targetCoords += *faceNormal;
-    }
-
     int x, y, z;
-    int chunkX, chunkZ;
-    globalCoordsToLocalCoords(x, y, z, 
-        targetCoords.x, targetCoords.y, targetCoords.z, 
-        chunkX, chunkZ);
-
-    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-    if (it == chunks.end())
+    auto currChunk = resolveTarget(globalCoords, faceNormal, x, y, z);
+    if (!currChunk)
         return false;
 
-    std::shared_ptr<ChunkRenderer> currChunk = it->second;
-
-    // Handle vegetation: if breaking a block that has vegetation above, remove the vegetation
-    if (type == BlockType::AIR && y + 1 < Chunk::HEIGHT) {
-        BlockType blockAbove = currChunk->getBlock(x, y + 1, z);
-        if (isBlockVegetation(blockAbove)) {
-            // Remove vegetation from the chunk's vegetation list
-            auto& vegList = currChunk->vegetation;
-            std::erase_if(vegList,
-                          [x, yAbove = y + 1, z](const Chunk::VegetationInstance& v) {
-                              return v.x == x && v.y == yAbove && v.z == z;
-                          });
-            currChunk->setBlock(x, y + 1, z, BlockType::AIR);
-        }
-    }
-
-    // If breaking vegetation directly, remove it from the vegetation list
-    BlockType oldBlock = currChunk->getBlock(x, y, z);
-    if (isBlockVegetation(oldBlock) && type == BlockType::AIR) {
-        auto& vegList = currChunk->vegetation;
-        std::erase_if(vegList,
-                [x, y, z](const Chunk::VegetationInstance& v) {
-                    return v.x == x && v.y == y && v.z == z;
-                });
-    }
-
-    // Keep vegetation instance list in sync with placed/replaced block.
-    {
-        auto& vegList = currChunk->vegetation;
-        const bool oldIsVeg = isBlockVegetation(oldBlock);
-        const bool newIsLandVeg = isBlockVegetation(type) && !isSeaVegetation(type);
-
-        if (newIsLandVeg) {
-            auto itVeg = std::find_if(vegList.begin(), vegList.end(),
-                [x, y, z](const Chunk::VegetationInstance& v) {
-                    return v.x == x && v.y == y && v.z == z;
-                });
-
-            if (itVeg != vegList.end()) {
-                itVeg->type = type; // replace existing vegetation at same coords
-            } else {
-                Chunk::VegetationInstance v{};
-                v.x = static_cast<uint8_t>(x);
-                v.y = static_cast<uint8_t>(y);
-                v.z = static_cast<uint8_t>(z);
-                v.type = type;
-                vegList.push_back(v);
-            }
-        } else if (oldIsVeg) {
-            std::erase_if(vegList,
-                [x, y, z](const Chunk::VegetationInstance& v) {
-                    return v.x == x && v.y == y && v.z == z;
-                });
-        }
-    }
-
-    currChunk->setBlock(x, y, z, type);
+    // Place/break the block, cascading to clear any land vegetation above when breaking.
+    // Land vegetation is tracked only in the block grid; buildVegetationMesh() derives
+    // instances by scanning blocks, so no separate vegetation list sync is needed.
+    currChunk->setBlockCascade(x, y, z, type);
 	currChunk->needsUpdate = true;
 
 	// //update possible neighbour

@@ -41,9 +41,9 @@ void main() {
     if (texColor.a < 0.5)
         discard;
 
-    // Unpremultiply alpha to get original colors (only for semi-transparent pixels)
-    // For opaque or nearly-opaque pixels (alpha > 0.95), skip to avoid precision issues
-    if (texColor.a > 0.01 && texColor.a < 0.95) {
+    // Unpremultiply alpha to get original colors
+    // Skip nearly-opaque pixels (alpha >= 0.95) to avoid precision issues
+    if (texColor.a < 0.95) {
         texColor.rgb /= texColor.a;
     }
 
