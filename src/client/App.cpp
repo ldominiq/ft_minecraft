@@ -421,8 +421,13 @@ void App::render() {
 			}
 			camera->predict(*renderer, clientTick);
 
+
+			if (camera->getPlayer()->gamemode == GAMEMODES::SURVIVAL)
+				clientTime = camera->getLatestSnapshot().time;
+			else
+				clientTime = clientTick * tickDuration;
+
 			accumulator -= tickDuration;
-			clientTime = clientTick * tickDuration;
 			clientTickChangedTime = glfwGetTime();
 			clientTick++;
 			LastTickChangeTime = std::chrono::steady_clock::now();

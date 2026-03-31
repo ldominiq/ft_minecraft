@@ -116,6 +116,7 @@ class Entity {
 		// position has been changed since last check.
 		bool positionUpdated = true;
 
+		// unused. Supposed to be for prediction
 		inline float getSlipperinessPrev() const { return slipperiness_prev; }
 		inline bool isOnGround() const { return onGround; }
 

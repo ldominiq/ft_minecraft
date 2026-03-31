@@ -99,7 +99,7 @@ inline AutoRegister<NetAccept> _reg_NetAccept;
 struct NetPlayerInputs final : public Packet {
     static constexpr PacketType ID = PacketType::PLAYER_INPUT;
 
-	int32_t serverClientReconciliationTick = -999; //for client reconciliation.
+	int32_t serverClientReconciliationTick = -1; //for client reconciliation.
 
 	uint16_t keys = 0;	// bitfield
 	uint8_t activeHotbarSlot = -1;
@@ -165,8 +165,8 @@ struct NetPlayerMove final : public Packet {
 
 	float health;
 
-	float slipperinessPrev;
-	bool onGround;
+	// float slipperinessPrev;
+	// bool onGround;
 
 	NetPlayerMove() : Packet(ID) {}
 
@@ -181,8 +181,8 @@ struct NetPlayerMove final : public Packet {
 		w.write_f32(yaw);
 		w.write_f32(pitch);
 		w.write_f32(health);
-		w.write_f32(slipperinessPrev);
-		w.write_u8(onGround ? 1 : 0);
+		// w.write_f32(slipperinessPrev);
+		// w.write_u8(onGround ? 1 : 0);
     }
     void decode(BufferReader& r) override {
 		serverClientReconciliationTick = r.read_i32();
@@ -195,8 +195,8 @@ struct NetPlayerMove final : public Packet {
 		yaw = r.read_f32();
 		pitch = r.read_f32();
 		health = r.read_f32();
-		slipperinessPrev = r.read_f32();
-		onGround = r.read_u8() != 0;
+		// slipperinessPrev = r.read_f32();
+		// onGround = r.read_u8() != 0;
     }
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;

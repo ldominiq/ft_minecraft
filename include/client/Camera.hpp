@@ -20,7 +20,7 @@ struct PredictedStates
 	float pitch;
 	float health;
 
-	float slipperinessPrev;
+	// float slipperinessPrev;
 	// bool onGround;
 };
 
@@ -32,9 +32,6 @@ class Camera {
 	std::unique_ptr<Shader> blockWireframeShader = nullptr;
 
 	bool startPrediction = false;
-
-	//TODO : get all the tick logic elsewhere;
-	std::deque<Snapshot> snapshots;
 
 	std::shared_ptr<ClientPlayer> player;
 	bool thirdPersonCamera = false;
@@ -54,6 +51,7 @@ public:
     glm::mat4 getViewMatrix() const;
     void processMouseMovement(float xoffset, float yoffset);
 	void onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clientTick);
+	Snapshot getLatestSnapshot() { return getPlayer()->snapshots.empty() ? Snapshot{} : getPlayer()->snapshots.back(); }
 
 	void drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer, glm::mat4 &view, glm::mat4 &projection);
 

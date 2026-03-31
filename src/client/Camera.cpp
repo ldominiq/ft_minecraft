@@ -59,7 +59,7 @@ glm::mat4 Camera::getViewMatrix() const
 
 void Camera::predict(const Renderer &world, int32_t clientTick) //clientime broken for now
 {
-	if (!startPrediction)
+	if (!startPrediction || getPlayer()->gamemode == GAMEMODES::SURVIVAL)
 		return ;
 
 	float clientTime = clientTick * (1.0f / TPS);
@@ -72,13 +72,12 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 		player->setVelocity(lastState.velocity);
 		player->setYawAndPitch(lastState.yaw, lastState.pitch);
 		player->health = lastState.health;
-		player->setSlipperinessPrev(lastState.slipperinessPrev);
+		// player->setSlipperinessPrev(lastState.slipperinessPrev);
 	}
 
 	//set player state to the inputs for this tick if there is.
 	if (InputsMap.find(clientTick) != InputsMap.end())
 	{
-		// //set variables for new states
 		player->setLastInputPacketReceived(InputsMap[clientTick]);
 		player->setYawAndPitch(InputsMap[clientTick].yaw, InputsMap[clientTick].pitch);
 	}
@@ -94,7 +93,7 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 		player->yaw,
 		player->pitch,
 		player->health,
-		player->getSlipperinessPrev()
+		// player->getSlipperinessPrev()
 	});
 
 	player->snapshots.emplace_back(Snapshot{
@@ -130,7 +129,6 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 				it->yaw != correction.yaw ||
 				it->pitch != correction.pitch)
 			{
-
 				std::cout << "format : client -> server\n";
 				std::cout << "Prediction error at\n";
 				std::cout << clientTick << " " << it->serverClientReconciliationTick << " " << correction.serverClientReconciliationTick << "\n";
@@ -147,7 +145,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 				std::cout << correction.yaw << " " << correction.pitch << std::endl;
 				std::cout << "------------------\n";
 
-				//restart clean from server state
+				// restart clean from server state
 				player->snapshots.clear();
 				predictedStates.clear();
 
@@ -158,7 +156,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 					correction.yaw,
 					correction.pitch,
 					correction.health,
-					correction.slipperinessPrev
+					// correction.slipperinessPrev
 				});
 				
 				for (int i = correction.serverClientReconciliationTick + 1; i < clientTick; i++)
@@ -196,14 +194,20 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clien
 		pkt.yaw,
 		pkt.pitch,
 		pkt.health,
-		pkt.slipperinessPrev
+		// pkt.slipperinessPrev
 	};
 
-	// if (lastReceivedServerClientReconciliationTick == pkt.serverClientReconciliationTick)
-		// return ;
-	// lastReceivedServerClientReconciliationTick = pkt.serverClientReconciliationTick;
-
-	reconcile(correction, clientTick, world);
+	if (getPlayer()->gamemode == GAMEMODES::SURVIVAL)
+	{
+		player->snapshots.emplace_back(Snapshot{
+			position,
+			velocity,
+			clientTick * (1.0f / TPS)
+		});
+		player->health = pkt.health;
+	}
+	else
+		reconcile(correction, clientTick, world);
 
 	// Clean up old inputs. 200 is an arbitrary number and is just used to avoid iterating on each loop on a map.
 	if (InputsMap.size() > 200)
