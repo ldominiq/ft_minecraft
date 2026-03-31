@@ -288,8 +288,23 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
                 if (skipCorners && abs(lx) == radius && abs(lz) == radius)
                     continue;
                 if (organic && (abs(lx) == radius || abs(lz) == radius)) {
-                    if (shouldSkipEdgeLeaf(cwx + lx, ly, cwz + lz, trunkWorldX, trunkWorldZ))
-                        continue;
+                    if (shouldSkipEdgeLeaf(cwx + lx, ly, cwz + lz, trunkWorldX, trunkWorldZ)) {
+                        // Don't skip if an adjacent block in this layer is a log
+                        const int dx[] = {1, -1, 0, 0};
+                        const int dz[] = {0, 0, 1, -1};
+                        bool nextToLog = false;
+                        for (int d = 0; d < 4; ++d) {
+                            const int nx = cwx + lx + dx[d] - originX;
+                            const int nz = cwz + lz + dz[d] - originZ;
+                            if (nx >= 0 && nx < WIDTH && nz >= 0 && nz < DEPTH &&
+                                blocks.at(nx, ly, nz) == logType) {
+                                nextToLog = true;
+                                break;
+                            }
+                        }
+                        if (!nextToLog)
+                            continue;
+                    }
                 }
                 const int leafLocalX = cwx + lx - originX;
                 const int leafLocalZ = cwz + lz - originZ;
