@@ -71,6 +71,11 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     if (!cloudsEnabled || !cloudFBO || !cloudShader)
         return;
 
+    // Save the currently bound framebuffer so we can restore it after cloud rendering.
+    // CloudFramebuffer::unbind() hardcodes FBO 0, so we bypass it below.
+    GLint savedFBO = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &savedFBO);
+
     cloudFBO->bind();
     glViewport(0, 0, cloudFBO->getWidth(), cloudFBO->getHeight());
     glDisable(GL_DEPTH_TEST);
@@ -137,9 +142,10 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
 
-    CloudFramebuffer::unbind();
+    // Restore the previously bound framebuffer instead of unconditionally binding FBO 0.
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(savedFBO));
 
-    // Restore default viewport for subsequent passes
+    // Restore viewport for subsequent passes
     glViewport(0, 0, width, height);
 }
 
@@ -1011,6 +1017,7 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
         glClear(GL_DEPTH_BUFFER_BIT);
 
         csmDepthShader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
+        csmDepthShader->setInt("cascadeIndex", i);
         renderer.renderShadow(csmDepthShader, csmLightSpaceMatrices[i]);
     }
 

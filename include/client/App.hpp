@@ -193,7 +193,6 @@ private:
     // SSAO
     std::shared_ptr<GBuffer> gBuffer;
     std::shared_ptr<SSAO> ssao;
-    std::shared_ptr<Shader> gBufferShader;
 
 	std::optional<int> seed;
 

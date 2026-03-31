@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_set>
 #include <future>
+#include <climits>
 
 #include <glm/glm.hpp>
 #include <memory>
@@ -40,7 +41,10 @@ struct chunkData {
 class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::unordered_map<ChunkPos, chunkData> chunksData; //building chunk
 	std::unordered_set<ChunkPos> chunksToBuild; // chunk to build and upload mesh
-	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
+	std::vector<std::shared_ptr<ChunkRenderer>> renderedChunks;
+	int lastOrganizeChunkX = INT_MIN;
+	int lastOrganizeChunkZ = INT_MIN;
+	bool organizeChunksDirty = true;
 	Frustum cameraFrustum;
 	bool frustumCullingEnabled = true;
 	const TextureManager* textureManager = nullptr;
@@ -50,7 +54,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::unordered_map<ItemID, std::weak_ptr<Entity>> entitiesMap; //fast lookup
 
 	public:
-		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
+		std::vector<std::shared_ptr<ChunkRenderer>> getRenderedChunks();
 
 		/// Update the camera frustum for culling. Call once per frame before render().
 		void updateFrustum(const glm::mat4& viewProjection) { cameraFrustum.update(viewProjection); }

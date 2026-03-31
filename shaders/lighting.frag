@@ -9,6 +9,8 @@ in VS_OUT {
 } fs_in;
 
 out vec4 FragColor;
+layout(location = 1) out vec4 gPosition; // view-space position for SSAO
+layout(location = 2) out vec4 gNormal;   // view-space normal for SSAO
 
 struct Material {
     sampler2D diffuse;
@@ -196,6 +198,12 @@ void main()
 
         FragColor.rgb = mix(underwaterFogColor, tintedColor, fogFactor);
     }
+
+    // MRT: write view-space position and normal for next frame's SSAO pass.
+    // When bound to the default FBO these outputs are silently discarded.
+    vec4 vsPos = view * vec4(fs_in.FragPos, 1.0);
+    gPosition = vec4(vsPos.xyz, 1.0);
+    gNormal   = vec4(normalize(mat3(view) * fs_in.Normal), 0.0);
 
     //FragColor = vec4(lighting, texColor.a); // Lighting
     //FragColor = vec4(fs_in.TexCoord, 0.0, 1.0); // Visualize texture coordinates

@@ -54,7 +54,7 @@ bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 	return true;
 }
 
-std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
+std::vector<std::shared_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
 {
 	return renderedChunks;
 }
@@ -108,6 +108,13 @@ void Renderer::buildChunks()
 //sets rendered chunks and unloads far away chunks
 void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
 {
+    // Skip rebuild if player chunk position hasn't changed and no new chunks arrived.
+    if (pos.first == lastOrganizeChunkX && pos.second == lastOrganizeChunkZ && !organizeChunksDirty)
+        return;
+    lastOrganizeChunkX = pos.first;
+    lastOrganizeChunkZ = pos.second;
+    organizeChunksDirty = false;
+
     // Clear renderedChunks first
     renderedChunks.clear();
 
@@ -188,6 +195,7 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
 		newChunk->computeSkyLight();
 		linkNeighbors(pkt.X, pkt.Z, newChunk);
 		chunks[{pkt.X, pkt.Z}] = newChunk;
+		organizeChunksDirty = true; // new chunk arrived — rebuild renderedChunks next frame
 		// newChunk->buildMesh();
         data->second.chunkBuffer.clear();
     }
@@ -211,19 +219,17 @@ void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& 
 }
 
 void Renderer::processMeshUpdates() {
-	for (auto& weakChunk : renderedChunks) {
-		if (auto chunk = weakChunk.lock())
-			if (chunk->needsUpdate)
-				chunk->updateMesh();
+	for (auto& chunk : renderedChunks) {
+		if (chunk->needsUpdate)
+			chunk->updateMesh();
 	}
 }
 
 void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation) const {
 	std::vector<std::shared_ptr<ChunkRenderer>> visibleChunks;
 
-	for (auto& weakChunk : renderedChunks) {
-		auto chunk = weakChunk.lock();
-		if (!chunk || chunk->getMeshVerticesSize() == 0)
+	for (auto& chunk : renderedChunks) {
+		if (chunk->getMeshVerticesSize() == 0)
 			continue;
 
 		// Frustum cull: skip chunks entirely outside the camera view
@@ -247,11 +253,7 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderV
 }
 
 void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const {
-	for (auto& weakChunk : renderedChunks) {
-		auto chunk = weakChunk.lock();
-		if (!chunk)
-			continue;
-
+	for (auto& chunk : renderedChunks) {
 		// Skip empty chunks (no geometry to cast shadows)
 		if (chunk->getMeshVerticesSize() == 0)
 			continue;
@@ -376,33 +378,29 @@ void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view
 
 void Renderer::renderWater() const {
 	glDisable(GL_CULL_FACE);
-    for (const auto& weakChunk : renderedChunks) {
-        if (auto chunk = weakChunk.lock()) {
-            if (chunk->getWaterMeshVerticesSize() == 0)
-                continue;
+    for (const auto& chunk : renderedChunks) {
+        if (chunk->getWaterMeshVerticesSize() == 0)
+            continue;
 
-            // Frustum cull water the same as terrain
-            if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
-                continue;
+        // Frustum cull water the same as terrain
+        if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
+            continue;
 
-            glBindVertexArray(chunk->getWaterVao());
-            glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);
-        }
+        glBindVertexArray(chunk->getWaterVao());
+        glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);
     }
 	glEnable(GL_CULL_FACE);
 }
 
 bool Renderer::hasVisibleWater() const {
-	for (const auto& weakChunk : renderedChunks) {
-		if (auto chunk = weakChunk.lock()) {
-			if (chunk->getWaterMeshVerticesSize() == 0)
-				continue;
+	for (const auto& chunk : renderedChunks) {
+		if (chunk->getWaterMeshVerticesSize() == 0)
+			continue;
 
-			if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
-				continue;
+		if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
+			continue;
 
-			return true; // Found at least one visible water chunk
-		}
+		return true; // Found at least one visible water chunk
 	}
 	return false;
 }
@@ -491,10 +489,7 @@ void Renderer::drawFrustumCullingDebug(const glm::vec3& cameraPos,
     int culledChunks  = 0;
     int emptyChunks   = 0;
 
-    for (auto& weakChunk : renderedChunks) {
-        auto chunk = weakChunk.lock();
-        if (!chunk) continue;
-
+    for (auto& chunk : renderedChunks) {
         const float x0 = static_cast<float>(chunk->getOriginX());
         const float z0 = static_cast<float>(chunk->getOriginZ());
         const float x1 = x0 + static_cast<float>(Chunk::WIDTH);

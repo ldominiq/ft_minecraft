@@ -263,8 +263,8 @@ private:
     std::shared_ptr<Shader> csmDepthShader;
     GLuint csmFBO = 0;
     GLuint csmDepthMaps = 0;
-    unsigned int depthMapResolution = 2048;
-    float cameraFarPlane = 500.0f;
+    unsigned int depthMapResolution = 1024;
+    float cameraFarPlane = 256.0f;
     std::vector<glm::mat4> csmLightSpaceMatrices;
 
     // Screen dimensions

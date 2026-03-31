@@ -427,10 +427,6 @@ void App::loadResources() {
 
 	waterRenderer->setDependencies(lighting, renderer, camera);
 
-    gBufferShader = std::make_shared<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
-    gBufferShader->use();
-    gBufferShader->setInt("blockTextures", 0);
-
     // Wire the texture manager and shaders to subsystems that need them
     renderer->setTextureManager(&textureManager);
     renderer->setVegetationShader(std::make_shared<Shader>("shaders/vegetation.vert", "shaders/vegetation.frag"));
@@ -593,26 +589,17 @@ void App::render() {
             textureShader->setInt("renderType", selectedRenderType); // Normal lighting mode
         }
 
-        // GBuffer pass
+        // GBuffer pass eliminated — gPosition/gNormal are now written as MRT
+        // outputs during the main lighting pass (see lighting.frag). SSAO uses
+        // the previous frame's data (1-frame lag, imperceptible in practice).
         glBeginQuery(GL_TIME_ELAPSED, queryGBufferPool[currentQueryIndex]);
         if (ssao && ssao->isEnabled()) {
             gBuffer->resize(screenWidth, screenHeight);
             ssao->resize(screenWidth, screenHeight);
-
-            gBuffer->bind();
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            gBufferShader->use();
-            gBufferShader->setMat4("view", view);
-            gBufferShader->setMat4("projection", projection);
-            textureManager.bind(GL_TEXTURE0);
-            renderer->render(gBufferShader);
-
-            gBuffer->unbind();
         }
         glEndQuery(GL_TIME_ELAPSED);
 
-        // SSAO pass
+        // SSAO pass — reads gPosition/gNormal captured last frame via MRT
         if (ssao && ssao->isEnabled()) {
             glBeginQuery(GL_TIME_ELAPSED, querySSAOPool[currentQueryIndex]);
 
@@ -631,7 +618,7 @@ void App::render() {
         }
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
-        
+
         bool waterVisible = renderer->hasVisibleWater();
         if (waterVisible) {
             // Render reflection texture
@@ -648,8 +635,30 @@ void App::render() {
         }
         glEndQuery(GL_TIME_ELAPSED);
 
-    	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
+        // Bind GBuffer FBO for the main scene render so lighting.frag MRT outputs
+        // update gPosition/gNormal for the next frame's SSAO pass.
+        if (ssao && ssao->isEnabled())
+            gBuffer->bind();
+
     	renderScene(view, projection, clipPlane, !waterVisible);
+
+        // Blit scene color and depth from GBuffer to the default framebuffer.
+        // Depth is needed so subsequent passes (water surface, UI) depth-test correctly.
+        // Color and depth are blitted separately so a depth format mismatch does not
+        // silently abort the color blit.
+        if (ssao && ssao->isEnabled()) {
+            gBuffer->unbind();
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer->getFBO());
+            glReadBuffer(GL_COLOR_ATTACHMENT0);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            glBlitFramebuffer(0, 0, screenWidth, screenHeight,
+                              0, 0, screenWidth, screenHeight,
+                              GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            glBlitFramebuffer(0, 0, screenWidth, screenHeight,
+                              0, 0, screenWidth, screenHeight,
+                              GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
@@ -988,11 +997,9 @@ void App::debugWindow() {
 
                         size_t solidVertices = 0;
                         size_t waterVertices = 0;
-                        for (auto& weakChunk : renderer->getRenderedChunks()) {
-                            if (auto chunk = weakChunk.lock()) {
-                                solidVertices += chunk->getMeshVerticesSize() / 10;
-                                waterVertices += chunk->getWaterMeshVerticesSize() / 10;
-                            }
+                        for (auto& chunk : renderer->getRenderedChunks()) {
+                            solidVertices += chunk->getMeshVerticesSize() / 10;
+                            waterVertices += chunk->getWaterMeshVerticesSize() / 10;
                         }
                         
                         size_t totalVertices = solidVertices + waterVertices;
@@ -1774,11 +1781,8 @@ void App::processInput() {
 	//reload chunk. F3 + A; TODO : also add the neighbours logic. Otherwise some "walls" could be rendered
 	if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS &&
     	glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-		for (auto &chunkPtr : renderer->getRenderedChunks())
-		{
-			if (auto chunk = chunkPtr.lock())
-				chunk->buildMesh();
-		}
+		for (auto &chunk : renderer->getRenderedChunks())
+			chunk->buildMesh();
 		return;
 	}
 

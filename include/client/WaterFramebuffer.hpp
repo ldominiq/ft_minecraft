@@ -25,8 +25,8 @@ public:
 private:
     static constexpr int REFLECTION_WIDTH = 320;
     static constexpr int REFLECTION_HEIGHT = 180;
-    static constexpr int REFRACTION_WIDTH = 1280;
-    static constexpr int REFRACTION_HEIGHT = 720;
+    static constexpr int REFRACTION_WIDTH = 640;
+    static constexpr int REFRACTION_HEIGHT = 360;
 
     GLuint reflectionFrameBuffer = 0;
     GLuint reflectionTexture = 0;
