@@ -68,6 +68,14 @@ class Chunk {
 
 		std::vector<s_liquid> liquids; //TODO put this in the bitpacker.
 
+		// Vegetation: store local positions (x,y,z) and type
+		// Uses local chunk coordinates (0-15 for x/z, 0-255 for y)
+		struct VegetationInstance {
+			uint8_t x, y, z;  // local coordinates within chunk
+			BlockType type;   // SHORT_GRASS, TALL_GRASS, CORNFLOWER
+		};
+		std::vector<VegetationInstance> vegetation;
+
 		Chunk(int chunkX, int chunkZ, int bitsPerEntry = 4)
         : originX(chunkX * WIDTH),
           originZ(chunkZ * DEPTH),
@@ -93,6 +101,9 @@ class Chunk {
 
 		BlockType getBlock(int x, int y, int z) const;
 		void setBlock(int x, int y, int z, BlockType block);
+		// Like setBlock, but also clears any land vegetation directly above when placing AIR.
+		// Returns true if a vegetation block above was also cleared.
+		bool setBlockCascade(int x, int y, int z, BlockType type);
 
 		bool isBlockVisible(glm::ivec3 blockPos);
 

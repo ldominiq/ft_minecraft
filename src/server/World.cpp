@@ -389,7 +389,7 @@ std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialB
 
 				BlockType type = getBlockWorld(newPosition);
 
-				if (type == BlockType::AIR)
+				if (type == BlockType::AIR || isBlockVegetation(type))
 				{
 					if (dir == down)
 					{
@@ -421,7 +421,8 @@ std::vector<std::shared_ptr<s_liquid>> World::waterFlowTowardsShortestPath(const
 		glm::ivec3 pos = path.currPath.front();
 		glm::ivec3 position = pos + initialBlockPos;
 
-		if (getBlockWorld(position) != BlockType::AIR) continue ;
+		BlockType block = getBlockWorld(position);
+		if (block != BlockType::AIR && !isBlockVegetation(block)) continue ;
 
 		int newLiquidPropagationValue = liquid->currPropagation - 1;
 		if (path.currPath.size() == 2 && path.currPath.back() == down) // if propagation goes to 0 but last is down. make sure it goes down and doesn't keep floating
@@ -506,7 +507,7 @@ void World::updateLiquids()
 			visitedPositions.insert(newPosition);
 
 			BlockType neighbor = getBlockWorld(newPosition);
-			if (neighbor == BlockType::AIR)
+			if (neighbor == BlockType::AIR || isBlockVegetation(neighbor))
 			{
 				std::shared_ptr<s_liquid> newLiquidPtr = std::make_shared<s_liquid>();
 				newLiquidPtr->currPropagation = liquid->currPropagation - 1;
@@ -731,26 +732,19 @@ std::string World::getRegionFilename(int regionX, int regionZ) const {
 
 bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
-    // Offset the global coordinates in the direction of the face normal
-    glm::ivec3 targetCoords = globalCoords;
-    if (faceNormal.has_value()) {
-        targetCoords += *faceNormal;
-    }
-
     int x, y, z;
-    int chunkX, chunkZ;
-    globalCoordsToLocalCoords(x, y, z, 
-        targetCoords.x, targetCoords.y, targetCoords.z, 
-        chunkX, chunkZ);
-
-    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-    if (it == chunks.end())
+    auto currChunk = resolveTarget(globalCoords, faceNormal, x, y, z);
+    if (!currChunk)
         return false;
 
-    std::shared_ptr<Chunk> currChunk = it->second;
-
+    glm::ivec3 targetCoords = globalCoords + faceNormal.value_or(glm::ivec3{0});
 	updatedBlocks.push_back({targetCoords, type});
-    currChunk->setBlock(x, y, z, type);
+
+    // Place/break the block, cascading to clear any land vegetation above when breaking.
+    // Land vegetation is tracked only in the block grid; the vegetation list holds sea veg only.
+    bool clearedVegAbove = currChunk->setBlockCascade(x, y, z, type);
+    if (clearedVegAbove)
+        updatedBlocks.push_back({targetCoords + glm::ivec3(0, 1, 0), BlockType::AIR});
 
 	// update neat water blocks
 	static const glm::ivec3 directions[6] = {

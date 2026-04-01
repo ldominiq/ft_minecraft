@@ -1,7 +1,9 @@
 
 #include "ChunkRenderer.hpp"
 
-ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVerticesSize(0), waterMeshVerticesSize(0) {}
+ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVerticesSize(0), waterMeshVerticesSize(0) {
+    vegetationRenderer = std::make_unique<VegetationRenderer>();
+}
 
 ChunkRenderer::~ChunkRenderer() {
     if (glfwGetCurrentContext()) {
@@ -36,8 +38,8 @@ void ChunkRenderer::updateMesh()
 
 	// //update possible neighbour
 	if (neighbourNeedUpdate[WEST]) {
-		if (auto westChunkBase = getAdjacentChunks()[WEST].lock()) {
-			if (auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
+		if (const auto westChunkBase = getAdjacentChunks()[WEST].lock()) {
+			if (const auto westChunk = std::dynamic_pointer_cast<ChunkRenderer>(westChunkBase)) {
 				if (westChunk->hasAllAdjacentChunkLoaded())
 					westChunk->buildMesh();
 			}
@@ -45,8 +47,8 @@ void ChunkRenderer::updateMesh()
 	}
 
 	if (neighbourNeedUpdate[EAST]) {
-		if (auto eastChunkBase = getAdjacentChunks()[EAST].lock()) {
-			if (auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
+		if (const auto eastChunkBase = getAdjacentChunks()[EAST].lock()) {
+			if (const auto eastChunk = std::dynamic_pointer_cast<ChunkRenderer>(eastChunkBase)) {
 				if (eastChunk->hasAllAdjacentChunkLoaded())
 					eastChunk->buildMesh();
 			}
@@ -54,8 +56,8 @@ void ChunkRenderer::updateMesh()
 	}
 
 	if (neighbourNeedUpdate[SOUTH]) {
-		if (auto southChunkBase = getAdjacentChunks()[SOUTH].lock()) {
-			if (auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
+		if (const auto southChunkBase = getAdjacentChunks()[SOUTH].lock()) {
+			if (const auto southChunk = std::dynamic_pointer_cast<ChunkRenderer>(southChunkBase)) {
 				if (southChunk->hasAllAdjacentChunkLoaded())
 					southChunk->buildMesh();
 			}
@@ -63,8 +65,8 @@ void ChunkRenderer::updateMesh()
 	}
 
 	if (neighbourNeedUpdate[NORTH]) {
-		if (auto northChunkBase = getAdjacentChunks()[NORTH].lock()) {
-			if (auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
+		if (const auto northChunkBase = getAdjacentChunks()[NORTH].lock()) {
+			if (const auto northChunk = std::dynamic_pointer_cast<ChunkRenderer>(northChunkBase)) {
 				if (northChunk->hasAllAdjacentChunkLoaded())
 					northChunk->buildMesh();
 			}
@@ -74,7 +76,7 @@ void ChunkRenderer::updateMesh()
 	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
 }
 
-void ChunkRenderer::addFace(int x, int y, int z, BlockType type, int face, float skyLightLevel) {
+void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockType type, const int face, const float skyLightLevel) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(originZ + z);
@@ -133,10 +135,21 @@ void ChunkRenderer::addFace(int x, int y, int z, BlockType type, int face, float
     }
 
     // Build six vertices for this face using the computed light
+    bool isCactusSide = (type == BlockType::CACTUS && face != 2 && face != 3);
+    constexpr float cactusInset = 1.0f / 16.0f;
+
     for (int i = 0; i < 6; ++i) {
         float px = faceX + faceData[face][i * 3 + 0];
         float py = faceY + faceData[face][i * 3 + 1];
         float pz = faceZ + faceData[face][i * 3 + 2];
+
+        // Cactus: inset side faces by 1/16 of a block
+        if (isCactusSide) {
+            if (face == 0) pz = faceZ + 1.0f - cactusInset;   // front (Z+): pull inward
+            if (face == 1) pz = faceZ + cactusInset;           // back  (Z-): push inward
+            if (face == 4) px = faceX + 1.0f - cactusInset;   // right (X+): pull inward
+            if (face == 5) px = faceX + cactusInset;           // left  (X-): push inward
+        }
 
         float baseU = uvCoords[i * 2 + 0]; // 0 → 1
         float baseV = uvCoords[i * 2 + 1]; // 0 → 1
@@ -158,7 +171,7 @@ void ChunkRenderer::addFace(int x, int y, int z, BlockType type, int face, float
     }
 }
 
-void ChunkRenderer::addWaterFace(int x, int y, int z, int face, float skyLightLevel) {
+void ChunkRenderer::addWaterFace(const int x, const int y, const int z, const int face, const float skyLightLevel) {
     const float faceX = static_cast<float>(originX + x);
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(originZ + z);
@@ -239,6 +252,7 @@ void ChunkRenderer::buildMesh() {
 	computeSkyLight();
 	buildMeshData();
 	uploadMesh();
+	buildVegetationMesh();
 }
 
 void ChunkRenderer::buildMeshData() {
@@ -304,100 +318,68 @@ void ChunkRenderer::buildMeshData() {
         }
 
         // Neighbor is in an adjacent chunk → read its skyLight
-        auto adjacentChunk = adjacentChunks[dir].lock();
+        const auto adjacentChunk = adjacentChunks[dir].lock();
         if (!adjacentChunk) return 15; // Not loaded yet, assume sunlit
 
-        int remappedX = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : blockX));
-        int remappedZ = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : blockZ));
+        const int remappedX = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : blockX));
+        const int remappedZ = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : blockZ));
         return adjacentChunk->getSkyLight(remappedX, neighborY, remappedZ);
+    };
+
+    struct FaceDir {
+        int dx, dy, dz;
+        Direction neighborDir;
+        int faceIndex;
+    };
+
+    static constexpr FaceDir faces[6] = {
+        {  0,  0, +1, NORTH, 0 }, // front
+        {  0,  0, -1, SOUTH, 1 }, // back
+        {  0, +1,  0, NONE,  2 }, // top
+        {  0, -1,  0, NONE,  3 }, // bottom
+        { +1,  0,  0, EAST,  4 }, // right
+        { -1,  0,  0, WEST,  5 }  // left
+    };
+
+    // Helper: convert a sky-light value (0–15) to a 0.0–1.0 float
+    // for the vertex data.  We do this once per face.
+    auto lightToFloat = [](const uint8_t lightVal) -> float {
+        return static_cast<float>(lightVal) / 15.0f;
     };
 
     for (int x = 0; x < WIDTH; ++x) {
         for (int y = 0; y < HEIGHT; ++y) {
             for (int z = 0; z < DEPTH; ++z) {
-                int idx = x + WIDTH * (y + HEIGHT * z);
+                const int idx = x + WIDTH * (y + HEIGHT * z);
                 BlockType currentBlock = blockTypeVector[idx];
                 
                 if (currentBlock == BlockType::AIR) continue;
+                if (isBlockVegetation(currentBlock)) continue;
 
-                bool isWater = (currentBlock == BlockType::WATER);
+                const bool isWater = (currentBlock == BlockType::WATER);
 
-                // Helper: convert a sky-light value (0–15) to a 0.0–1.0 float
-                // for the vertex data.  We do this once per face.
-                auto lightToFloat = [](uint8_t lightVal) -> float {
-                    return static_cast<float>(lightVal) / 15.0f;
-                };
-
-                // FRONT (+Z)
-                BlockType neighborBlock = getBlockOrNeighbor(x, y, z, 0, 0, +1, NORTH);
-                float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, 0, +1, NORTH));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 0, faceSkyLight);
+                for (const FaceDir& face : faces) {
+                    BlockType neighborBlock;
+                    if ((face.dy == +1 && y == HEIGHT - 1) || (face.dy == -1 && y == 0)) {
+                        neighborBlock = BlockType::AIR; // world edge
+                    } else {
+                        neighborBlock = getBlockOrNeighbor(x, y, z, face.dx, face.dy, face.dz, face.neighborDir);
                     }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 0, faceSkyLight);
-                }
 
-                // BACK (-Z)
-                neighborBlock = getBlockOrNeighbor(x, y, z, 0, 0, -1, SOUTH);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, 0, -1, SOUTH));
+                    const float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, face.dx, face.dy, face.dz, face.neighborDir));
 
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 1, faceSkyLight);
+                    if (isWater) {
+                        if (neighborBlock == BlockType::AIR || isBlockTransparent(neighborBlock) || isBlockVegetation(neighborBlock)) {
+                            addWaterFace(x, y, z, face.faceIndex, faceSkyLight);
+                        }
+                    } else if (currentBlock == BlockType::CACTUS) {
+                        bool isSide = (face.faceIndex != 2 && face.faceIndex != 3);
+                        if (isSide || !isBlockSolid(neighborBlock) || neighborBlock != BlockType::CACTUS) {
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                        }
+                    } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock) || neighborBlock == BlockType::CACTUS) {
+                        addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
                     }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 1, faceSkyLight);
-                }
-
-                // TOP (+Y)
-                neighborBlock = (y == HEIGHT - 1) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, +1, 0, NONE);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, +1, 0, NONE));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 2, faceSkyLight);
-                    }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 2, faceSkyLight);
-                }
-
-                // BOTTOM (-Y)
-                neighborBlock = (y == 0) ? BlockType::AIR : getBlockOrNeighbor(x, y, z, 0, -1, 0, NONE);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, 0, -1, 0, NONE));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 3, faceSkyLight);
-                    }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 3, faceSkyLight);
-                }
-
-                // RIGHT (+X)
-                neighborBlock = getBlockOrNeighbor(x, y, z, +1, 0, 0, EAST);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, +1, 0, 0, EAST));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 4, faceSkyLight);
-                    }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 4, faceSkyLight);
-                }
-
-                // LEFT (-X)
-                neighborBlock = getBlockOrNeighbor(x, y, z, -1, 0, 0, WEST);
-                faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, -1, 0, 0, WEST));
-
-                if (isWater) {
-                    if (neighborBlock == BlockType::AIR) {
-                        addWaterFace(x, y, z, 5, faceSkyLight);
-                    }
-                } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock)) {
-                    addFace(x, y, z, currentBlock, 5, faceSkyLight);
                 }
             }
         }
@@ -471,4 +453,43 @@ void ChunkRenderer::uploadMesh() {
     
     waterMeshVertices.clear();
     waterMeshVertices.shrink_to_fit();
+}
+
+void ChunkRenderer::buildVegetationMesh() const {
+    if (!vegetationRenderer || !textureManager)
+        return;
+
+    vegetationRenderer->setTextureManager(textureManager);
+
+    // Sea vegetation comes from the vegetation list (not stored in the block grid).
+    // Land vegetation is derived by scanning the block grid directly.
+    std::vector<Chunk::VegetationInstance> vegInstances;
+    vegInstances.reserve(vegetation.size());
+
+    for (const auto& v : vegetation) {
+        vegInstances.push_back(v); // sea veg only
+    }
+
+    for (int lx = 0; lx < WIDTH; ++lx) {
+        for (int lz = 0; lz < DEPTH; ++lz) {
+            for (int ly = 0; ly < HEIGHT; ++ly) {
+                const BlockType b = getBlock(lx, ly, lz);
+                if (isBlockVegetation(b)) {
+                    vegInstances.push_back({
+                        static_cast<uint8_t>(lx),
+                        static_cast<uint8_t>(ly),
+                        static_cast<uint8_t>(lz),
+                        b
+                    });
+                }
+            }
+        }
+    }
+
+    if (!vegInstances.empty()) {
+        vegetationRenderer->buildInstances(vegInstances.data(), vegInstances.size(), originX, originZ, this);
+        vegetationRenderer->uploadMesh();
+    } else {
+        vegetationRenderer->clearInstances();
+    }
 }

@@ -101,6 +101,26 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
             pixels = std::move(resized);
         }
 
+        // Check if texture has any transparency
+        bool hasTransparency = false;
+        for (size_t t = 3; t < pixels.size(); t += 4) {
+            if (pixels[t] < 255) {
+                hasTransparency = true;
+                break;
+            }
+        }
+
+        // Only premultiply alpha for textures with transparency to prevent mipmap edge artifacts
+        // For opaque textures, leave them unchanged to avoid precision issues
+        if (hasTransparency) {
+            for (size_t p = 0; p < pixels.size(); p += 4) {
+                const float alpha = pixels[p + 3] / 255.0f;
+                pixels[p + 0] = static_cast<unsigned char>(pixels[p + 0] * alpha);
+                pixels[p + 1] = static_cast<unsigned char>(pixels[p + 1] * alpha);
+                pixels[p + 2] = static_cast<unsigned char>(pixels[p + 2] * alpha);
+            }
+        }
+
         glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
                          0, 0, i,                       // x, y, layer
                          textureSize, textureSize, 1,   // width, height, depth
@@ -160,6 +180,7 @@ int TextureManager::addTintedLayer(const std::string& sourceTexture, unsigned ch
     // create tinted pixels
     std::vector<unsigned char> tinted = layerPixels[srcLayer];
     for (size_t i = 0; i < tinted.size(); i += 4) {
+        // Note: source already has premultiplied alpha, so we just tint the RGB
         tinted[i + 0] = (tinted[i + 0] * r) / 255;
         tinted[i + 1] = (tinted[i + 1] * g) / 255;
         tinted[i + 2] = (tinted[i + 2] * b) / 255;
@@ -215,38 +236,80 @@ void TextureManager::setupBlockTextureMapping() {
     // ── Tinted variants ────────────────────────────────────────────
     // Minecraft grass/leaves textures are grayscale — the game multiplies
     // them by a biome color at runtime.  We do it once at load time.
-    //
-    // These RGB values come from Minecraft's plains biome foliage/grass colors.
-    // We can add more biomes later and pick the right layer in buildMeshData
-    // based on the chunk's biome.
 
     // Plains grass tint (Minecraft: #91BD59)
     int grassTopTinted  = addTintedLayer("grass_block_top", 0x91, 0xBD, 0x59);
-
     // Plains leaves tint (Minecraft: #77AB2F)
     int leavesTinted = addTintedLayer("spruce_leaves", 0x61, 0x99, 0x61);
-
     int waterTinted = addTintedLayer("water_overlay", 0x64, 0x64, 0xFF);
+    int grassTinted = addTintedLayer("grass", 0x91, 0xBD, 0x59);
 
-    blockTextureMap[BlockType::DIRT]    = BlockTextures::uniform(layer("dirt"));
-    blockTextureMap[BlockType::STONE]   = BlockTextures::uniform(layer("stone"));
-    blockTextureMap[BlockType::SAND]    = BlockTextures::uniform(layer("sand"));
-    blockTextureMap[BlockType::SNOW]    = BlockTextures::uniform(layer("snow"));
-    blockTextureMap[BlockType::BEDROCK] = BlockTextures::uniform(layer("bedrock"));
-    blockTextureMap[BlockType::LEAVES]  = BlockTextures::uniform(leavesTinted);
-    blockTextureMap[BlockType::IRON]    = BlockTextures::uniform(layer("iron_ore"));
-    blockTextureMap[BlockType::GOLD]    = BlockTextures::uniform(layer("gold_ore"));
-    blockTextureMap[BlockType::DIAMOND] = BlockTextures::uniform(layer("diamond_ore"));
-    blockTextureMap[BlockType::URANIUM] = BlockTextures::uniform(layer("emerald_ore"));
-    blockTextureMap[BlockType::WATER]   = BlockTextures::uniform(waterTinted);
+    struct UniformEntry {
+        BlockType type;
+        int layer;
+    };
+
+    UniformEntry uniformBlocks[] = {
+        { BlockType::DIRT,                  layer("dirt") },
+        { BlockType::STONE,                 layer("stone") },
+        { BlockType::SAND,                  layer("sand") },
+        { BlockType::SNOW,                  layer("snow") },
+        { BlockType::BEDROCK,               layer("bedrock") },
+        { BlockType::LEAVES,                leavesTinted },
+        { BlockType::IRON,                  layer("iron_ore") },
+        { BlockType::GOLD,                  layer("gold_ore") },
+        { BlockType::DIAMOND,               layer("diamond_ore") },
+        { BlockType::URANIUM,               layer("emerald_ore") },
+        { BlockType::WATER,                 waterTinted },
+        { BlockType::SHORT_GRASS,           grassTinted },
+        { BlockType::CORNFLOWER,            layer("cornflower") },
+        { BlockType::POPPY,                 layer("poppy") },
+        { BlockType::PINK_TULIP,            layer("pink_tulip") },
+        { BlockType::WHITE_TULIP,           layer("white_tulip") },
+        { BlockType::ORANGE_TULIP,          layer("orange_tulip") },
+        { BlockType::RED_TULIP,             layer("red_tulip") },
+        { BlockType::ALLIUM,                layer("allium") },
+        { BlockType::AZURE_BLUET,           layer("azure_bluet") },
+        { BlockType::BLUE_ORCHID,           layer("blue_orchid") },
+        { BlockType::DANDELION,             layer("dandelion") },
+        { BlockType::LILY_OF_THE_VALLEY,    layer("lily_of_the_valley") },
+        { BlockType::OXEYE_DAISY,           layer("oxeye_daisy") },
+        { BlockType::RED_MUSHROOM,          layer("red_mushroom") },
+        { BlockType::BROWN_MUSHROOM,        layer("brown_mushroom") },
+        { BlockType::WITHER_ROSE,           layer("wither_rose") },
+        { BlockType::SEAGRASS,              layer("seagrass") },
+        { BlockType::TALL_SEAGRASS_BOTTOM,  layer("tall_seagrass_bottom") },
+        { BlockType::TALL_SEAGRASS_TOP,     layer("tall_seagrass_top") },
+        { BlockType::KELP,                  layer("kelp") },
+        { BlockType::KELP_PLANT,            layer("kelp_plant") },
+        { BlockType::BRAIN_CORAL,           layer("brain_coral") },
+        { BlockType::BRAIN_CORAL_FAN,       layer("brain_coral_fan") },
+        { BlockType::BUBBLE_CORAL,          layer("bubble_coral") },
+        { BlockType::BUBBLE_CORAL_FAN,      layer("bubble_coral_fan") },
+        { BlockType::FIRE_CORAL,            layer("fire_coral") },
+        { BlockType::FIRE_CORAL_FAN,        layer("fire_coral_fan") },
+        { BlockType::HORN_CORAL,            layer("horn_coral") },
+        { BlockType::HORN_CORAL_FAN,        layer("horn_coral_fan") },
+        { BlockType::TUBE_CORAL,            layer("tube_coral") },
+        { BlockType::TUBE_CORAL_FAN,        layer("tube_coral_fan") },
+        { BlockType::DEAD_BUSH,             layer("dead_bush") },
+    };
+    for (const auto& [type, l] : uniformBlocks) {
+        blockTextureMap[type] = BlockTextures::uniform(l);
+    }
     
     blockTextureMap[BlockType::GRASS]   = BlockTextures::topBottomSides(
                                             grassTopTinted,
                                             layer("dirt"),
                                             layer("grass_block_side"));
+
     blockTextureMap[BlockType::LOG]     = BlockTextures::topBottomSides(
                                             layer("spruce_log_top"),
                                             layer("spruce_log_top"),
                                             layer("spruce_log"));
-    
+
+    blockTextureMap[BlockType::CACTUS]     = BlockTextures::topBottomSides(
+                                            layer("cactus_top"),
+                                            layer("cactus_bottom"),
+                                            layer("cactus_side"));
 }

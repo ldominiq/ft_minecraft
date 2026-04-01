@@ -4,10 +4,11 @@
 
 #include "App.hpp"
 
-App::App():
+App::App(const std::string& serverIp):
 			camera(nullptr),
 			monitor(nullptr),
 			mode(nullptr),
+			serverIp(serverIp),
 
             lighting(nullptr),
             textureShader(nullptr),
@@ -20,7 +21,21 @@ App::App():
 
 App::~App() { cleanup(); }
 
-void App::init() {
+void App::init(const std::string& serverIp) {
+    std::string targetIp = serverIp;
+
+    {
+        // Check for a server.txt file in the current directory
+        std::ifstream serverFile("server.txt");
+        if (serverFile.is_open()) {
+            std::string line;
+            if (std::getline(serverFile, line) && !line.empty()) {
+                targetIp = line;
+                std::cout << "[Config] Found server.txt, overriding IP with: " << targetIp << std::endl;
+            }
+        }
+    }
+
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -29,12 +44,17 @@ void App::init() {
     monitor = glfwGetPrimaryMonitor();
     mode = glfwGetVideoMode(monitor);
 
+	std::cout << "[Config] Using monitor resolution: " << mode->width << "x" << mode->height << std::endl;
+
     window = glfwCreateWindow(windowedWidth, windowedHeight, "ft_minecraft", nullptr, nullptr);
     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
 	glfwSetWindowUserPointer(window, this);
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
+		// Skip resize if window is minimized (0x0)
+		if (width == 0 || height == 0)
+			return;
         glViewport(0, 0, width, height);
 		glfwGetFramebufferSize(w, &app->screenWidth, &app->screenHeight);
 		auto manager = app->menuManager.lock();
@@ -49,15 +69,16 @@ void App::init() {
     glfwMakeContextCurrent(window);
     gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
 
-    glfwGetFramebufferSize(window, &windowedWidth, &windowedHeight);
+    glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
+    glViewport(0, 0, screenWidth, screenHeight);
 
-	udpClient = std::make_unique<UDPClient>("127.0.0.1");
+	udpClient = std::make_unique<UDPClient>(targetIp.c_str());
 	setUdpClientPacketCallback();
 
 	renderer = std::make_unique<Renderer>();
 
 	// ********************Water Renderer setup******************************
-	waterFramebuffer = std::make_shared<WaterFramebuffer>(windowedWidth, windowedHeight);
+	waterFramebuffer = std::make_shared<WaterFramebuffer>(screenWidth, screenHeight);
 	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
 	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
 
@@ -65,21 +86,21 @@ void App::init() {
 	chunkBoundaryRenderer = std::make_unique<ChunkBoundaryRenderer>();
 
 	// ********************Render Type Debug Framebuffers********************
-	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
+	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(screenWidth, screenHeight);
 
 	loader = std::make_unique<Loader>();
 	// GUI textures are now dynamically managed based on debug flags
     guiRenderer = std::make_unique<GuiRenderer>(*loader);
 
-    lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
+    lighting = std::make_unique<Lighting>(screenWidth, screenHeight);
 
-	chat = std::make_shared<Chat>(windowedWidth, windowedHeight);
-	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight, &textureManager);
+	chat = std::make_shared<Chat>(screenWidth, screenHeight);
+	inventoryUI = std::make_shared<InventoryUI>(screenWidth, screenHeight, &textureManager);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
-    gBuffer = std::make_shared<GBuffer>(windowedWidth, windowedHeight);
-    ssao = std::make_shared<SSAO>(windowedWidth, windowedHeight);
+    gBuffer = std::make_shared<GBuffer>(screenWidth, screenHeight);
+    ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
     glEnable(GL_DEPTH_TEST);
     
@@ -349,7 +370,6 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
-
     // Load individual block textures into a texture array
     textureManager.loadResourcePack("assets");
 
@@ -367,8 +387,11 @@ void App::loadResources() {
     gBufferShader->use();
     gBufferShader->setInt("blockTextures", 0);
 
-    // Wire the texture manager to subsystems that need it
+    // Wire the texture manager and shaders to subsystems that need them
     renderer->setTextureManager(&textureManager);
+    renderer->setVegetationShader(std::make_shared<Shader>("shaders/vegetation.vert", "shaders/vegetation.frag"));
+    renderer->getVegetationShader()->use();
+    renderer->getVegetationShader()->setInt("blockTextures", 0);
 }
 
 void App::gameTick() {
@@ -392,6 +415,12 @@ void App::gameTick() {
 void App::render() {
 
     while (!glfwWindowShouldClose(window)) {
+
+        // Skip rendering if window is minimized
+        if (screenWidth == 0 || screenHeight == 0) {
+            glfwPollEvents();
+            continue;
+        }
 
         // Rotate query index each frame
         currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
@@ -553,21 +582,27 @@ void App::render() {
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
-        // Render reflection texture
-    	waterRenderer->renderWaterReflectionPass(activeShader, projection, textureManager);
+        bool waterVisible = renderer->hasVisibleWater();
+        if (waterVisible) {
+            // Render reflection texture
+            waterRenderer->renderWaterReflectionPass(activeShader, projection, textureManager);
+        }
 
         glEndQuery(GL_TIME_ELAPSED);
 
 
-    	// render refraction texture
-    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
+    	if (waterVisible) {
+            // render refraction texture
+            waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
+        }
 
     	// render to screen
     	renderScene(view, projection, clipPlane);
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
-    	waterRenderer->renderWaterSurface(projection);
+        if (waterVisible)
+    	    waterRenderer->renderWaterSurface(projection);
         glEndQuery(GL_TIME_ELAPSED);
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
@@ -714,7 +749,7 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
     return true;
 }
 
-void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
+void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4 clipPlane) const {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Render sky/clouds first with proper depth
@@ -754,6 +789,37 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
+
+    // Setup vegetation shader with same lighting as terrain
+    if (const auto& vegShader = renderer->getVegetationShader()) {
+        vegShader->use();
+        vegShader->setVec4("clipPlane", clipPlane);
+        vegShader->setMat4("view", view);
+        vegShader->setMat4("projection", projection);
+        vegShader->setVec3("viewPos", camera->getPlayer()->getPosition());
+
+        // Use the same day/night cycle as the main lighting system
+        glm::vec3 sunDir = lighting->getDirectionalLightDirection();
+        float sunElevation = sunDir.y;
+        float day = glm::clamp(sunElevation * 2.0f, 0.0f, 1.0f);
+        day = glm::smoothstep(0.0f, 1.0f, day);
+
+        constexpr float nightAmbientMin = 0.3f;
+        glm::vec3 ambientColor = lighting->getDirectionalAmbientColor() * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
+        glm::vec3 diffuseColor = lighting->getDirectionalDiffuseColor() * day;
+
+        vegShader->setVec3("lightDir", -sunDir);
+        vegShader->setVec3("lightColor", diffuseColor);
+        vegShader->setVec3("ambientColor", ambientColor);
+        vegShader->setFloat("time", static_cast<float>(glfwGetTime()));
+        vegShader->setFloat("seaLevel", 64.0f);
+
+        // Upload CSM shadow uniforms to vegetation shader
+        lighting->uploadCSMUniforms(*vegShader, view);
+        vegShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
+
+        activeShader->use(); // Switch back to main shader
+    }
 
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
     renderer->render(activeShader);
@@ -1244,7 +1310,7 @@ void App::debugWindow() {
                                     lighting->setSkyLUTEnabled(skyLUTEnabled);
                                 if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                                     lighting->setSkyTimePaused(skyTimePaused);
-                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
+                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f"))
                                     lighting->setSkyTimeOffset(skyTimeOffset);
                                 if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
                                     lighting->setSunYawDeg(sunYawDeg);
@@ -1448,7 +1514,7 @@ void App::debugWindow() {
 }
 
 void App::run() {
-    init();
+    init(serverIp);
     loadResources();
     render();
 }

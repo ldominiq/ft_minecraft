@@ -114,6 +114,12 @@ void main()
     if (texColor.a < 0.1)
         discard;
 
+    // Unpremultiply alpha to get original colors (only for semi-transparent pixels)
+    // For opaque or nearly-opaque pixels (alpha > 0.95), skip to avoid precision issues
+    if (texColor.a > 0.01 && texColor.a < 0.95) {
+        texColor.rgb /= texColor.a;
+    }
+
     // properties
     vec3 color = texColor.rgb;
     vec3 norm = normalize(fs_in.Normal);

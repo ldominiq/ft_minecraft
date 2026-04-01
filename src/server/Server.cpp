@@ -76,13 +76,17 @@ void Server::fillServerInfo() {
 
 void Server::bindSocket() {
     if (bind(sockfd, (const struct sockaddr*)&servaddr, sizeof(servaddr)) < 0) {
+#ifdef _WIN32
+        std::cerr << "bind failed: " << WSAGetLastError() << "\n";
+#else
         perror("bind failed");
+#endif
         exit(EXIT_FAILURE);
     }
 }
 
 void Server::loop() {
-	sockaddr_in cliaddr;
+	sockaddr_in cliaddr{};
 	socklen_t addrLen = sizeof(cliaddr);
 
 	auto nextTick = std::chrono::steady_clock::now();
@@ -199,7 +203,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 {
 	if (players.size() >= MAX_CLIENTS) return ;
 
-	std::cout << "New client connected!\n";
+	std::cout << "New client connecting from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << "...\n";
 
     CPlayerInfo p; //deserializePlayerInfo(pkt.payload);
 	p.id = players.size();
@@ -629,7 +633,20 @@ void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_i
 
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
 	auto bytes = encodePacket(pkt);
-	sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
+	int n = sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
+    if (n < 0) {
+#ifdef _WIN32
+        std::cerr << "[Network] Failed to send packet type " << static_cast<int>(pkt.type) << " to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << ". Error: " << WSAGetLastError() << std::endl;
+#else
+        perror("sendto failed");
+#endif
+    } else {
+        if (pkt.type == PacketType::CHUNK_HEADER) {
+            // std::cout << "[Network] Sent CHUNK_HEADER to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << " (" << n << " bytes)\n";
+        } else if (pkt.type == PacketType::NET_ACCEPT) {
+            std::cout << "[Network] Sent NET_ACCEPT to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << " (" << n << " bytes)\n";
+        }
+    }
 }
 
 void Server::sendAccept(const sockaddr_in &cliaddr)
@@ -679,9 +696,11 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		int twohundred0 = 200;
 		int twohundred1 = 200;
 		int twohundred2 = 200;
+		int twohundred3 = 200;
 		player->movement->inventory.insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
 		player->movement->inventory.insertItemsToSlot(BlockType::WATER, 8, twohundred1);
 		player->movement->inventory.insertItemsToSlot(BlockType::STONE, 1, twohundred2);
+		player->movement->inventory.insertItemsToSlot(BlockType::CACTUS, 2, twohundred3);
 
 		auto pkt1 = std::make_unique<NetInventory>();
 		pkt1->amount = 200;
@@ -698,9 +717,15 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		pkt3->slot = 1;
 		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);
 
+		auto pkt4 = std::make_unique<NetInventory>();
+		pkt4->amount = 200;
+		pkt4->slot = 2;
+		pkt4->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::CACTUS);
+
 		groupPkt.push_back(std::move(pkt1));
 		groupPkt.push_back(std::move(pkt2));
 		groupPkt.push_back(std::move(pkt3));
+		groupPkt.push_back(std::move(pkt4));
 	}
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);

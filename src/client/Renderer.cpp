@@ -30,25 +30,15 @@ void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRender
 
 bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
-    // Offset the global coordinates in the direction of the face normal
-    glm::ivec3 targetCoords = globalCoords;
-    if (faceNormal.has_value()) {
-        targetCoords += *faceNormal;
-    }
-
     int x, y, z;
-    int chunkX, chunkZ;
-    globalCoordsToLocalCoords(x, y, z, 
-        targetCoords.x, targetCoords.y, targetCoords.z, 
-        chunkX, chunkZ);
-
-    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-    if (it == chunks.end())
+    auto currChunk = resolveTarget(globalCoords, faceNormal, x, y, z);
+    if (!currChunk)
         return false;
 
-    std::shared_ptr<ChunkRenderer> currChunk = it->second;
-
-    currChunk->setBlock(x, y, z, type);
+    // Place/break the block, cascading to clear any land vegetation above when breaking.
+    // Land vegetation is tracked only in the block grid; buildVegetationMesh() derives
+    // instances by scanning blocks, so no separate vegetation list sync is needed.
+    currChunk->setBlockCascade(x, y, z, type);
 	currChunk->needsUpdate = true;
 
 	// //update possible neighbour
@@ -107,6 +97,7 @@ void Renderer::buildChunks()
 		auto chunk = getChunk(pos.first, pos.second);
 		if (chunk) {
 			chunk->uploadMesh();
+			chunk->buildVegetationMesh(); // Build vegetation after mesh is uploaded
 			chunks[{pos.first, pos.second}] = chunk;
 		}
 		it = meshFutures.erase(it);
@@ -209,7 +200,17 @@ void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, co
     glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 11); // 11 floats per vertex
 }
 
-void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
+void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
+                                        const glm::vec4& clipPlane, const glm::vec3& viewPos) const {
+	if (!vegetationShader) return;
+	vegetationShader->use();
+	vegetationShader->setMat4("view", view);
+	vegetationShader->setMat4("projection", projection);
+	vegetationShader->setVec4("clipPlane", clipPlane);
+	vegetationShader->setVec3("viewPos", viewPos);
+}
+
+void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation) const {
 	for (auto& weakChunk : renderedChunks) {
 		if (auto chunk = weakChunk.lock())
 		{
@@ -231,6 +232,18 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
 			}
 
 			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+
+			// Render vegetation for this chunk if it exists
+			if (renderVegetation && vegetationShader && chunk->getVegetationRenderer()) {
+				auto vegRenderer = chunk->getVegetationRenderer();
+				if (vegRenderer->getInstanceCount() > 0) {
+					// Switch to vegetation shader (uniforms already set in renderScene)
+					vegetationShader->use();
+					vegRenderer->render();
+					// Switch back to main shader
+					shaderProgram->use();
+				}
+			}
 		}
 	}
 }
@@ -312,11 +325,8 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 				ent->removed = true;
 				if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
 				{
-					livingEntities.erase(
-						std::remove_if(livingEntities.begin(), livingEntities.end(),
-							[ID](const std::shared_ptr<Entity>& e){ return e->getID() == ID; }),
-						livingEntities.end()
-					);
+					std::erase_if(livingEntities,
+					              [ID](const std::shared_ptr<Entity>& e){ return e->getID() == ID; });
 				}
 			}
 		}
@@ -393,6 +403,28 @@ void Renderer::renderWater() const {
         }
     }
 	glEnable(GL_CULL_FACE);
+}
+
+bool Renderer::hasVisibleWater() const {
+	for (const auto& weakChunk : renderedChunks) {
+		if (auto chunk = weakChunk.lock()) {
+			if (chunk->getWaterMeshVerticesSize() == 0)
+				continue;
+
+			if (frustumCullingEnabled) {
+				const float x0 = static_cast<float>(chunk->getOriginX());
+				const float z0 = static_cast<float>(chunk->getOriginZ());
+				const glm::vec3 minP(x0, 0.0f, z0);
+				const glm::vec3 maxP(x0 + Chunk::WIDTH, Chunk::HEIGHT, z0 + Chunk::DEPTH);
+
+				if (!cameraFrustum.isBoxVisible(minP, maxP))
+					continue;
+			}
+
+			return true; // Found at least one visible water chunk
+		}
+	}
+	return false;
 }
 
 // ---------------------------------------------------------------------------

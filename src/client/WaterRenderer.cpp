@@ -92,6 +92,8 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     texMgr.bind(GL_TEXTURE0);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
     lighting->drawSky(skyView, projection, reflectCamPos);
+    // Update vegetation shader with reflected view/clip before rendering
+    renderer->updateVegetationUniforms(reflectView, projection, clipPlane, reflectCamPos);
     renderer->render(sceneShader);
 
     glDisable(GL_CLIP_DISTANCE0);
@@ -118,7 +120,9 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     // Disable SSAO for water refraction (SSAO is computed for main camera only)
     sceneShader->setInt("ssaoEnabled", 0);
     texMgr.bind(GL_TEXTURE0);
-    renderer->render(sceneShader);
+    // Render with vegetation so sea vegetation is visible in the refraction texture
+    renderer->updateVegetationUniforms(view, projection, clipPlane, camera->getPlayer()->getPosition());
+    renderer->render(sceneShader, true);
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();

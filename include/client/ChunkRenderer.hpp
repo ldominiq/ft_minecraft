@@ -10,6 +10,8 @@
 #include "Chunk.hpp"
 #include "TextureManager.hpp"
 #include "blockRenderingHelperFunctions.hpp"
+#include "VegetationRenderer.hpp"
+#include <memory>
 
 #ifdef _WIN32
 typedef unsigned int uint;
@@ -28,6 +30,8 @@ class ChunkRenderer : public Chunk {
 	std::vector<float> waterMeshVertices;
 
 	const TextureManager* textureManager = nullptr;
+
+	std::unique_ptr<VegetationRenderer> vegetationRenderer;
 
     void addFace(int x, int y, int z, BlockType type, int face, float skyLightLevel); // Add a face to the mesh vertices (solid blocks)
 	void addWaterFace(int x, int y, int z, int face, float skyLightLevel); // Add a face to water mesh
@@ -50,12 +54,15 @@ class ChunkRenderer : public Chunk {
 		void buildMesh(); // Build both solid and water meshes
 		void buildMeshData();
 		void uploadMesh();
+		void buildVegetationMesh() const; // Build vegetation instanced mesh
 
 		inline const GLuint getVao() const {return VAO;}
 		inline const uint getMeshVerticesSize() const {return meshVerticesSize;}
-		
+
 		inline const GLuint getWaterVao() const {return waterVAO;}
 		inline const uint getWaterMeshVerticesSize() const {return waterMeshVerticesSize;}
+
+		inline VegetationRenderer* getVegetationRenderer() const { return vegetationRenderer.get(); }
 };
 
 #endif

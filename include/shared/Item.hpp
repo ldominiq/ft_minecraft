@@ -38,6 +38,39 @@ enum class BlockType : ItemID {
 	DIAMOND,
 	URANIUM,
 	LAVA,
+	SHORT_GRASS,
+	CORNFLOWER,
+	POPPY,
+	PINK_TULIP,
+	ORANGE_TULIP,
+	RED_TULIP,
+	WHITE_TULIP,
+	BLUE_ORCHID,
+	ALLIUM,
+	AZURE_BLUET,
+	OXEYE_DAISY,
+	LILY_OF_THE_VALLEY,
+	WITHER_ROSE,
+	DANDELION,
+	RED_MUSHROOM,
+	BROWN_MUSHROOM,
+	SEAGRASS,
+	TALL_SEAGRASS_BOTTOM,
+	TALL_SEAGRASS_TOP,
+	KELP,
+	KELP_PLANT,
+	BRAIN_CORAL,
+	BRAIN_CORAL_FAN,
+	BUBBLE_CORAL,
+	BUBBLE_CORAL_FAN,
+	FIRE_CORAL,
+	FIRE_CORAL_FAN,
+	HORN_CORAL,
+	HORN_CORAL_FAN,
+	TUBE_CORAL,
+	TUBE_CORAL_FAN,
+	DEAD_BUSH,
+	CACTUS,
 	END
 };
 
@@ -84,21 +117,39 @@ public:
     }
 
 	static inline std::vector<ItemDef> blocks = {
-		ItemDef{ makeBlock(BlockType::AIR, "Air", 0) },
-		ItemDef{ makeBlock(BlockType::GRASS, "Grass", 10) },
-		ItemDef{ makeBlock(BlockType::DIRT, "Dirt", 10) },
-		ItemDef{ makeBlock(BlockType::STONE, "Stone", 10) },
-		ItemDef{ makeBlock(BlockType::SAND, "Sand", 10) }, 
-		ItemDef{ makeBlock(BlockType::SNOW, "Snow", 10) },
-		ItemDef{ makeLiquid(BlockType::WATER, "Water", 7) },
-		ItemDef{ makeBlock(BlockType::BEDROCK, "Bedrock", 10) },
-		ItemDef{ makeBlock(BlockType::LOG, "Log", 10) },
-		ItemDef{ makeBlock(BlockType::LEAVES, "Leaves", 10) },
-		ItemDef{ makeBlock(BlockType::IRON, "Iron", 10) },
-		ItemDef{ makeBlock(BlockType::GOLD, "Gold", 10) },
-		ItemDef{ makeBlock(BlockType::DIAMOND, "Diamond", 10) },
-		ItemDef{ makeBlock(BlockType::URANIUM, "Uranium", 10) },
-		ItemDef{ makeLiquid(BlockType::LAVA, "Lava", 4) },
+		ItemDef{ makeBlock(BlockType::AIR, 					"Air", 0) },
+		ItemDef{ makeBlock(BlockType::GRASS,				"Grass", 10) },
+		ItemDef{ makeBlock(BlockType::DIRT, 				"Dirt", 10) },
+		ItemDef{ makeBlock(BlockType::STONE,	 			"Stone", 10) },
+		ItemDef{ makeBlock(BlockType::SAND, 				"Sand", 10) },
+		ItemDef{ makeBlock(BlockType::SNOW, 				"Snow", 10) },
+		ItemDef{ makeLiquid(BlockType::WATER, 				"Water", 7) },
+		ItemDef{ makeBlock(BlockType::BEDROCK, 				"Bedrock", 10) },
+		ItemDef{ makeBlock(BlockType::LOG, 					"Log", 10) },
+		ItemDef{ makeBlock(BlockType::LEAVES, 				"Leaves", 10) },
+		ItemDef{ makeBlock(BlockType::IRON, 				"Iron", 10) },
+		ItemDef{ makeBlock(BlockType::GOLD, 				"Gold", 10) },
+		ItemDef{ makeBlock(BlockType::DIAMOND, 				"Diamond", 10) },
+		ItemDef{ makeBlock(BlockType::URANIUM, 				"Uranium", 10) },
+		ItemDef{ makeLiquid(BlockType::LAVA, 				"Lava", 4) },
+		ItemDef{ makeBlock(BlockType::SHORT_GRASS, 			"Short Grass", 1) },
+		ItemDef{ makeBlock(BlockType::CORNFLOWER, 			"Cornflower", 1) },
+		ItemDef{ makeBlock(BlockType::POPPY, 				"Poppy", 1) },
+		ItemDef{ makeBlock(BlockType::PINK_TULIP, 			"Pink Tulip", 1) },
+		ItemDef{ makeBlock(BlockType::ORANGE_TULIP, 		"Orange Tulip", 1) },
+		ItemDef{ makeBlock(BlockType::RED_TULIP, 			"Red Tulip", 1) },
+		ItemDef{ makeBlock(BlockType::WHITE_TULIP, 			"White Tulip", 1) },
+		ItemDef{ makeBlock(BlockType::BLUE_ORCHID, 			"Blue Orchid", 1) },
+		ItemDef{ makeBlock(BlockType::ALLIUM, 				"Allium", 1) },
+		ItemDef{ makeBlock(BlockType::AZURE_BLUET, 			"Azure Bluet", 1) },
+		ItemDef{ makeBlock(BlockType::OXEYE_DAISY, 			"Oxeye Daisy", 1) },
+		ItemDef{ makeBlock(BlockType::LILY_OF_THE_VALLEY, 	"Lily of the Valley", 1) },
+		ItemDef{ makeBlock(BlockType::WITHER_ROSE, 			"Wither Rose", 1) },
+		ItemDef{ makeBlock(BlockType::DANDELION, 			"Dandelion", 1) },
+		ItemDef{ makeBlock(BlockType::RED_MUSHROOM, 		"Red Mushroom", 1) },
+		ItemDef{ makeBlock(BlockType::BROWN_MUSHROOM, 		"Brown Mushroom", 1) },
+		ItemDef{ makeBlock(BlockType::DEAD_BUSH, 			"Dead Bush", 1) },
+		ItemDef{ makeBlock(BlockType::CACTUS, 				"Cactus", 1) },
 	};
 
 	// static inline std::vector<ItemDef> liquids = {
@@ -138,8 +189,127 @@ public:
 	}
 };
 
-inline static bool isBlockSolid(const BlockType &b) { return b != BlockType::AIR && b != BlockType::WATER; }
-inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES; }
+// If needed, here's the list of all vegetation blocks for quick reference
+inline static constexpr BlockType VEGETATION_BLOCKS[] = {
+	BlockType::SHORT_GRASS,
+	BlockType::CORNFLOWER,
+	BlockType::POPPY,
+	BlockType::PINK_TULIP,
+	BlockType::ORANGE_TULIP,
+	BlockType::RED_TULIP,
+	BlockType::WHITE_TULIP,
+	BlockType::BLUE_ORCHID,
+	BlockType::ALLIUM,
+	BlockType::AZURE_BLUET,
+	BlockType::OXEYE_DAISY,
+	BlockType::LILY_OF_THE_VALLEY,
+	BlockType::WITHER_ROSE,
+	BlockType::DANDELION,
+	BlockType::RED_MUSHROOM,
+	BlockType::BROWN_MUSHROOM,
+	BlockType::SEAGRASS,
+	BlockType::TALL_SEAGRASS_BOTTOM,
+	BlockType::TALL_SEAGRASS_TOP,
+	BlockType::KELP,
+	BlockType::KELP_PLANT,
+	BlockType::BRAIN_CORAL,
+	BlockType::BRAIN_CORAL_FAN,
+	BlockType::BUBBLE_CORAL,
+	BlockType::BUBBLE_CORAL_FAN,
+	BlockType::FIRE_CORAL,
+	BlockType::FIRE_CORAL_FAN,
+	BlockType::HORN_CORAL,
+	BlockType::HORN_CORAL_FAN,
+	BlockType::TUBE_CORAL,
+	BlockType::TUBE_CORAL_FAN,
+	BlockType::DEAD_BUSH,
+
+};
+
+// If needed, here's the list of sea vegetation blocks only
+inline static constexpr BlockType SEA_VEGETATION_BLOCKS[] = {
+	BlockType::SEAGRASS,
+	BlockType::TALL_SEAGRASS_BOTTOM,
+	BlockType::TALL_SEAGRASS_TOP,
+	BlockType::KELP,
+	BlockType::KELP_PLANT,
+	BlockType::BRAIN_CORAL,
+	BlockType::BRAIN_CORAL_FAN,
+	BlockType::BUBBLE_CORAL,
+	BlockType::BUBBLE_CORAL_FAN,
+	BlockType::FIRE_CORAL,
+	BlockType::FIRE_CORAL_FAN,
+	BlockType::HORN_CORAL,
+	BlockType::HORN_CORAL_FAN,
+	BlockType::TUBE_CORAL,
+	BlockType::TUBE_CORAL_FAN,
+};
+
+inline static bool isSeaVegetation(const BlockType &b) {
+	switch(b) {
+		case BlockType::SEAGRASS:
+		case BlockType::TALL_SEAGRASS_BOTTOM:
+		case BlockType::TALL_SEAGRASS_TOP:
+		case BlockType::KELP:
+		case BlockType::KELP_PLANT:
+		case BlockType::BRAIN_CORAL:
+		case BlockType::BRAIN_CORAL_FAN:
+		case BlockType::BUBBLE_CORAL:
+		case BlockType::BUBBLE_CORAL_FAN:
+		case BlockType::FIRE_CORAL:
+		case BlockType::FIRE_CORAL_FAN:
+		case BlockType::HORN_CORAL:
+		case BlockType::HORN_CORAL_FAN:
+		case BlockType::TUBE_CORAL:
+		case BlockType::TUBE_CORAL_FAN:
+			return true;
+		default:
+			return false;
+	}
+}
+
+// Sea vegetation that grows in stacks (kelp, tall seagrass), as opposed to single-block plants
+inline static bool isStackableSeaVegetation(const BlockType &b) {
+	switch (b) {
+		case BlockType::KELP:
+		case BlockType::KELP_PLANT:
+		case BlockType::TALL_SEAGRASS_BOTTOM:
+		case BlockType::TALL_SEAGRASS_TOP:
+			return true;
+		default:
+			return false;
+	}
+}
+
+inline static bool isBlockVegetation(const BlockType &b) {
+	switch(b) {
+		case BlockType::SHORT_GRASS:
+		case BlockType::CORNFLOWER:
+		case BlockType::POPPY:
+		case BlockType::PINK_TULIP:
+		case BlockType::ORANGE_TULIP:
+		case BlockType::RED_TULIP:
+		case BlockType::WHITE_TULIP:
+		case BlockType::BLUE_ORCHID:
+		case BlockType::ALLIUM:
+		case BlockType::AZURE_BLUET:
+		case BlockType::OXEYE_DAISY:
+		case BlockType::LILY_OF_THE_VALLEY:
+		case BlockType::WITHER_ROSE:
+		case BlockType::DANDELION:
+		case BlockType::RED_MUSHROOM:
+		case BlockType::BROWN_MUSHROOM:
+		case BlockType::DEAD_BUSH:
+			return true;
+		default:
+			return false;
+	}
+}
+inline static bool isBlockTransparent(const BlockType &b) { return b == BlockType::LEAVES || b == BlockType::CACTUS; }
+
+inline static bool isBlockSolid(const BlockType &b) {
+	return b != BlockType::AIR && b != BlockType::WATER && !isBlockVegetation(b);
+}
 
 template<typename Enum>
 constexpr bool inRange(ItemID id)

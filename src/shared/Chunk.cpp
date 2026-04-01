@@ -40,11 +40,29 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
         paletteIndex = static_cast<uint32_t>(palette.size());
         palette.push_back(type);
         paletteMap[type] = paletteIndex;
+        if (paletteIndex >= (1u << blockIndices.bitsPerEntry())) {
+            uint8_t needed = 1;
+            while ((1u << needed) <= paletteIndex) ++needed;
+            blockIndices.grow(needed);
+        }
     } else {
     	paletteIndex = it->second;
     }
 
     blockIndices.set(index, paletteIndex);
+}
+
+bool Chunk::setBlockCascade(int x, int y, int z, BlockType type) {
+    bool clearedVeg = false;
+    if (type == BlockType::AIR && y + 1 < HEIGHT) {
+        BlockType above = getBlock(x, y + 1, z);
+        if (isBlockVegetation(above)) {
+            setBlock(x, y + 1, z, BlockType::AIR);
+            clearedVeg = true;
+        }
+    }
+    setBlock(x, y, z, type);
+    return clearedVeg;
 }
 
 bool Chunk::isBlockVisible(glm::ivec3 pos) {
@@ -54,7 +72,10 @@ bool Chunk::isBlockVisible(glm::ivec3 pos) {
 
 	if (!hasAllAdjacentChunkLoaded()) return false;
 
-    if (!isBlockSolid(getBlock(x,y,z)))
+    BlockType block = getBlock(x, y, z);
+    if (isBlockVegetation(block))
+        return true;
+    if (!isBlockSolid(block))
         return false;
 
     auto getBlockOrNeighbor = [&](int dx, int dy, int dz, Direction dir) -> BlockType {
@@ -152,8 +173,8 @@ void Chunk::computeSkyLight() {
         for (int z = 0; z < DEPTH; ++z) {
             for (int y = HEIGHT - 1; y >= 0; --y) {
                 BlockType block = getBlock(x, y, z);
-                if (isBlockSolid(block))
-                    break; // Sunlight can't pass through solid blocks
+                if (isBlockSolid(block) && !isBlockTransparent(block))
+                    break; // Sunlight can't pass through solid opaque blocks
 
                 int index = x + WIDTH * (y + HEIGHT * z);
                 localSkyLight[index] = 15;
@@ -237,6 +258,17 @@ void Chunk::saveToStream(std::ostream& out) const {
 
 	// Save block data
     blockIndices.saveToStream(out);
+
+	// --- Save vegetation ---
+	uint32_t vegetationCount = static_cast<uint32_t>(vegetation.size());
+	out.write(reinterpret_cast<const char*>(&vegetationCount), sizeof(vegetationCount));
+
+	for (const auto& veg : vegetation) {
+		out.write(reinterpret_cast<const char*>(&veg.x), sizeof(veg.x));
+		out.write(reinterpret_cast<const char*>(&veg.y), sizeof(veg.y));
+		out.write(reinterpret_cast<const char*>(&veg.z), sizeof(veg.z));
+		out.write(reinterpret_cast<const char*>(&veg.type), sizeof(veg.type));
+	}
 }
 
 void Chunk::loadFromStream(std::istream& in) {
@@ -258,4 +290,45 @@ void Chunk::loadFromStream(std::istream& in) {
 
 	// Load block data
     blockIndices.loadFromStream(in);
+
+	// --- Load vegetation ---
+	uint32_t vegetationCount = 0;
+	in.read(reinterpret_cast<char*>(&vegetationCount), sizeof(vegetationCount));
+
+    if (!in.good()) {
+        // Older or truncated file: no vegetation block present.
+        in.clear(); // clear eof/fail so caller can continue using stream
+        vegetationCount = 0;
+    } else {
+        // Safety cap: one chunk can't reasonably hold infinite vegetation.
+        constexpr uint32_t kMaxVegetationPerChunk = WIDTH * HEIGHT * DEPTH;
+        if (vegetationCount > kMaxVegetationPerChunk) {
+            vegetationCount = kMaxVegetationPerChunk;
+        }
+    }
+
+	vegetation.reserve(vegetationCount);
+
+	for (uint32_t i = 0; i < vegetationCount; ++i) {
+		VegetationInstance veg{};
+
+		in.read(reinterpret_cast<char*>(&veg.x), sizeof(veg.x));
+		in.read(reinterpret_cast<char*>(&veg.y), sizeof(veg.y));
+		in.read(reinterpret_cast<char*>(&veg.z), sizeof(veg.z));
+		in.read(reinterpret_cast<char*>(&veg.type), sizeof(veg.type));
+
+        if (!in.good()) {
+            // Corrupt/truncated entry list: keep what we already read.
+            in.clear();
+            break;
+        }
+
+		vegetation.push_back(veg);
+        
+		// Don't overwrite water blocks with sea vegetation —
+		// sea vegetation is rendered purely via the vegetation renderer
+		if (!isSeaVegetation(veg.type)) {
+			setBlock(veg.x, veg.y, veg.z, veg.type);
+		}
+	}
 }

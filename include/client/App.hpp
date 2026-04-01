@@ -99,16 +99,16 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha);
 
 class App {
 public:
-    App();
+    App(const std::string& serverIp = "127.0.0.1");
     ~App();
 
     void run();
 
 private:
-    void init();
+    void init(const std::string& serverIp);
     void loadResources();
     void render();
-	void renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane);
+	void renderScene(const glm::mat4 &view, const glm::mat4 &projection, glm::vec4 clipPlane) const;
 	void gameTick();
 
     void cleanup();
@@ -208,6 +208,8 @@ private:
     int windowedHeight = 720;
 	int screenWidth = 1280;
 	int screenHeight = 720;
+
+    std::string serverIp;
 
     bool useGradientShader = false;
 

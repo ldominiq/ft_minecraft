@@ -44,6 +44,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	Frustum cameraFrustum;
 	bool frustumCullingEnabled = true;
 	const TextureManager* textureManager = nullptr;
+	std::shared_ptr<Shader> vegetationShader = nullptr;
 
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
 	std::unordered_map<ItemID, std::weak_ptr<Entity>> entitiesMap; //fast lookup
@@ -61,15 +62,25 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void setFrustumCullingEnabled(bool enabled) { frustumCullingEnabled = enabled; }
 
 		void setTextureManager(const TextureManager* tm) { textureManager = tm; }
+		void setVegetationShader(const std::shared_ptr<Shader>& shader) { vegetationShader = shader; }
+		const std::shared_ptr<Shader>& getVegetationShader() const { return vegetationShader; }
 
 		/// Draw a top-down ImGui radar showing which chunks pass frustum culling.
 		void drawFrustumCullingDebug(const glm::vec3& cameraPos, const glm::vec3& cameraFront,
 		                             float fovDeg, float aspectRatio, float nearP, float farP);
 
-		void render(const std::shared_ptr<Shader> &shaderProgram) const ;
+		void render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation = true) const ;
+
+		/// Update vegetation shader uniforms (for reflection pass where view/clip differ from main camera)
+		void updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
+		                              const glm::vec4& clipPlane, const glm::vec3& viewPos) const;
+
 		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
 		void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const;
 		void renderWater() const;
+
+		/// Returns true if any water chunk is visible in the current frustum.
+		bool hasVisibleWater() const;
 
 		void buildChunks();
 		void updateChunk(const NetModifiedBlockData &pkt);
