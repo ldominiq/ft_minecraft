@@ -21,7 +21,53 @@ enum class BiomeType {
     TUNDRA,
 	SWAMP,
 	OCEAN,
-	MOUNTAIN
+	MOUNTAIN,
+	CANYON,
+	ICE_PLAINS,
+	VOLCANIC,
+};
+
+enum class ClimateTemperature : uint8_t {
+	VERY_COLD = 0,
+	COLD = 1,
+	TEMPERATE = 2,
+	WARM = 3,
+	HOT = 4
+};
+
+enum class ClimateMoisture : uint8_t {
+	ARID = 0,
+	DRY = 1,
+	NEUTRAL = 2,
+	HUMID = 3,
+	WET = 4
+};
+
+enum class ClimateErosion : uint8_t {
+	E0 = 0,
+	E1 = 1,
+	E2 = 2,
+	E3 = 3,
+	E4 = 4,
+	E5 = 5,
+	E6 = 6
+};
+
+enum class ClimateContinentalness : uint8_t {
+	MUSHROOM = 0,
+	OCEAN = 1,
+	COAST = 2,
+	NEAR_INLAND = 3,
+	MID_INLAND = 4,
+	FAR_INLAND = 5
+};
+
+enum class ClimatePeaksValleys : uint8_t {
+	VALLEY = 0,
+	LOW = 1,
+	MID = 2,
+	HIGH = 3,
+	PEAK = 4
 };
 
 // Maybe careful in the futur to not break the ordering of blocks for world saves : append new blocks at the end
