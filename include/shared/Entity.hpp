@@ -158,7 +158,13 @@ class Entity {
 			auto& start = snapshots[0];
 			auto& end   = snapshots[1];
 
-			double t = (glfwTime - start.time) / (end.time - start.time);
+			double duration = end.time - start.time;
+			if (duration <= 0.0) {
+				setPosition(end.position);
+				snapshots.pop_front();
+				return;
+			}
+			double t = (glfwTime - start.time) / duration;
 			t = std::clamp(t, 0.0, 1.0);
 
 			glm::vec3 interpolatedPosition = glm::mix(start.position, end.position, t);

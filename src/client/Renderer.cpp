@@ -302,6 +302,14 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 	{
 		auto ent = entity->second.lock();
 		if (ent) {
+			const double oneTick = 1.0 / TPS;
+			bool stale = ent->snapshots.empty()
+			          || !ent->positionUpdated
+			          || ent->snapshots.back().time < serverTime - 2.0 * oneTick;
+			if (stale) {
+				ent->snapshots.clear();
+				ent->snapshots.emplace_back(Snapshot{ent->getPosition(), glm::vec3(0.0f), serverTime - oneTick});
+			}
 			ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			ent->yaw = yaw;
 			ent->positionUpdated = true;

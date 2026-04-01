@@ -59,7 +59,7 @@ glm::mat4 Camera::getViewMatrix() const
 
 void Camera::predict(const Renderer &world, int32_t clientTick) //clientime broken for now
 {
-	if (!startPrediction || getPlayer()->gamemode == GAMEMODES::SURVIVAL)
+	if (!startPrediction)
 		return ;
 
 	float clientTime = clientTick * (1.0f / TPS);
@@ -114,6 +114,42 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 
 void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, const Renderer &world)
 {
+	constexpr float kPosErrorThreshold = 0.05f; // 5 cm
+	constexpr float kVelErrorThreshold = 0.05f;
+	const float kPosErrorThresholdSq = kPosErrorThreshold * kPosErrorThreshold;
+	const float kVelErrorThresholdSq = kVelErrorThreshold * kVelErrorThreshold;
+
+	auto hardReconcile = [&]() {
+		// restart clean from server state
+		player->snapshots.clear();
+		predictedStates.clear();
+
+		player->setPosition(correction.position);
+		player->setVelocity(correction.velocity);
+		player->setYawAndPitch(correction.yaw, correction.pitch);
+		player->health = correction.health;
+
+		predictedStates.push_back(PredictedStates{
+			correction.serverClientReconciliationTick,
+			correction.position,
+			correction.velocity,
+			correction.yaw,
+			correction.pitch,
+			correction.health,
+			// correction.slipperinessPrev
+		});
+
+		player->snapshots.emplace_back(Snapshot{
+			correction.position,
+			correction.velocity,
+			correction.serverClientReconciliationTick * (1.0f / TPS)
+		});
+
+		for (int i = correction.serverClientReconciliationTick + 1; i < clientTick; i++)
+			predict(world, i);
+	};
+
+	bool foundMatchingTick = false;
 	for (auto it = predictedStates.begin(); it != predictedStates.end();)
 	{
 		if (((long)(it->serverClientReconciliationTick) - (long)(correction.serverClientReconciliationTick) < 0))
@@ -123,8 +159,15 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 		}
 		else if (it->serverClientReconciliationTick == correction.serverClientReconciliationTick)
 		{
-			if (it->position != correction.position ||
-				it->velocity != correction.velocity ||
+			foundMatchingTick = true;
+
+			glm::vec3 positionDiff = it->position - correction.position;
+			glm::vec3 velocityDiff = it->velocity - correction.velocity;
+			float positionErrorSq = glm::dot(positionDiff, positionDiff);
+			float velocityErrorSq = glm::dot(velocityDiff, velocityDiff);
+
+			if (positionErrorSq > kPosErrorThresholdSq ||
+				velocityErrorSq > kVelErrorThresholdSq ||
 				it->health != correction.health ||
 				it->yaw != correction.yaw ||
 				it->pitch != correction.pitch)
@@ -145,28 +188,26 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 				std::cout << correction.yaw << " " << correction.pitch << std::endl;
 				std::cout << "------------------\n";
 
-				// restart clean from server state
-				player->snapshots.clear();
-				predictedStates.clear();
-
-				predictedStates.push_back(PredictedStates{
-					correction.serverClientReconciliationTick,
-					correction.position,
-					correction.velocity,
-					correction.yaw,
-					correction.pitch,
-					correction.health,
-					// correction.slipperinessPrev
-				});
-				
-				for (int i = correction.serverClientReconciliationTick + 1; i < clientTick; i++)
-					predict(world, i);
-
+				hardReconcile();
 			}
 			break ;
 		}
 		else
 			it++;
+	}
+
+	if (!foundMatchingTick)
+	{
+		const PredictedStates *referenceState = predictedStates.empty() ? nullptr : &predictedStates.back();
+		glm::vec3 positionDiff = (referenceState ? referenceState->position : player->getPosition()) - correction.position;
+		glm::vec3 velocityDiff = (referenceState ? referenceState->velocity : player->getVelocity()) - correction.velocity;
+		float positionErrorSq = glm::dot(positionDiff, positionDiff);
+		float velocityErrorSq = glm::dot(velocityDiff, velocityDiff);
+
+		if (positionErrorSq > kPosErrorThresholdSq ||
+			velocityErrorSq > kVelErrorThresholdSq ||
+			(referenceState && (referenceState->health != correction.health || referenceState->yaw != correction.yaw || referenceState->pitch != correction.pitch)))
+			hardReconcile();
 	}
 }
 
@@ -176,6 +217,10 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clien
 		startPrediction = true;
 
 	static int32_t lastReceivedServerClientReconciliationTick = -1;
+	// if (lastReceivedServerClientReconciliationTick != -1
+	// 	&& ((long)(pkt.serverClientReconciliationTick) - (long)(lastReceivedServerClientReconciliationTick) < 0))
+	// 	return;
+	// lastReceivedServerClientReconciliationTick = pkt.serverClientReconciliationTick;
 
 	glm::vec3 position;
 	position.x = pkt.positionX;
@@ -197,17 +242,7 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clien
 		// pkt.slipperinessPrev
 	};
 
-	if (getPlayer()->gamemode == GAMEMODES::SURVIVAL)
-	{
-		player->snapshots.emplace_back(Snapshot{
-			position,
-			velocity,
-			clientTick * (1.0f / TPS)
-		});
-		player->health = pkt.health;
-	}
-	else
-		reconcile(correction, clientTick, world);
+	reconcile(correction, clientTick, world);
 
 	// Clean up old inputs. 200 is an arbitrary number and is just used to avoid iterating on each loop on a map.
 	if (InputsMap.size() > 200)

@@ -413,19 +413,14 @@ void App::render() {
 		{
 			if (!manager && (keyPressedRecently || mouseMovedRecently))
 			{
-				// inputs.serverClientReconciliationTick = clientTick;
 				inputs.serverClientReconciliationTick = clientTick;
 				camera->queueInput(inputs, clientTick);
-				// std::cout << "queued input for tick " << clientTick << " with keys " << inputs.keys << "\n";
 				udpClient->sendPacket(inputs);
 			}
 			camera->predict(*renderer, clientTick);
 
 
-			if (camera->getPlayer()->gamemode == GAMEMODES::SURVIVAL)
-				clientTime = camera->getLatestSnapshot().time;
-			else
-				clientTime = clientTick * tickDuration;
+			clientTime = clientTick * tickDuration;
 
 			accumulator -= tickDuration;
 			clientTickChangedTime = glfwGetTime();
@@ -827,11 +822,9 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 	{
 		updateDrawState(entity);
 
-		if (!entity->positionUpdated) continue ;
 		entity->lerp(clientTime + intraTick - delay);
-		static bool firstFrame = true; //side effect of doing it like this is that the character will start by doing 1 walk animation cycle
-		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) entity->positionUpdated = false;
-		firstFrame = false;
+
+		// firstFrame = false;
 	}
 
 	for (auto &entity : renderer->itemEntities)
@@ -839,7 +832,9 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 		updateDrawState(entity);
 
 		static bool firstFrame = true;
-		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) entity->positionUpdated = false;
+		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) { 
+            entity->positionUpdated = false; 
+        }
 		firstFrame = false;
 	}
 

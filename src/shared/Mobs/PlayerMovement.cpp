@@ -185,6 +185,6 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 		updatePosition();
 	}
 
-	lastInputsPktRecvd = {};
+	// lastInputsPktRecvd = {};
 	this->jump = false;
 }
