@@ -96,8 +96,25 @@ void UDPClient::receivePacket() {
 #endif
             break;
         }
-        // pass the actual number of bytes received
-        dispatch(buffer.data(), static_cast<size_t>(n));
+
+        if (m_simLatencyMs > 0.0f) {
+            auto dispatchAt = std::chrono::steady_clock::now()
+                + std::chrono::microseconds(static_cast<long long>(m_simLatencyMs * 1000.0f));
+            m_receiveDelayQueue.push_back({dispatchAt,
+                std::vector<uint8_t>(buffer.data(), buffer.data() + n)});
+        } else {
+            dispatch(buffer.data(), static_cast<size_t>(n));
+        }
+    }
+
+    // Flush any packets whose simulated delay has expired
+    auto now = std::chrono::steady_clock::now();
+    while (!m_receiveDelayQueue.empty() &&
+           m_receiveDelayQueue.front().dispatchAt <= now)
+    {
+        auto& pkt = m_receiveDelayQueue.front();
+        dispatch(pkt.data.data(), pkt.data.size());
+        m_receiveDelayQueue.pop_front();
     }
 }
 

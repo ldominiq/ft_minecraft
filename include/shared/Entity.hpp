@@ -129,6 +129,7 @@ class Entity {
 		inline const entityID getID() const { return ID; }
 
 		inline void setSlipperinessPrev(float slipperiness) { this->slipperiness_prev = slipperiness; }
+       inline void setOnGround(bool value) { this->onGround = value; }
 		inline void setPosition(glm::vec3 position) {
 			if (this->position != position) positionUpdated = true;
 			this->position = position;

@@ -382,11 +382,14 @@ void App::render() {
 	while (!glfwWindowShouldClose(window)) {
 		// Rotate query index each frame
 		currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
-	
+
 		// Calculate delta time for frame rate
 		currentFrame = glfwGetTime();
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
+
+		if (camera)
+			camera->updateSmoothing(deltaTime);
 
 		NetPlayerInputs inputs = buildPlayerInputsPacket();
 		auto manager = menuManager.lock();
@@ -394,48 +397,40 @@ void App::render() {
 		//Tick logic
 		float tickDuration = 1.0f / TPS; // 0.05s per tick
 		static float accumulator = 0.0f;
-		static float accumulatedAccumulator = 0.0f;
 		accumulator += deltaTime;
 
-		//if we runs at giga low framerate we skip the first ticks to catch up.
-		while (accumulator >= tickDuration * 2)
-		{
-			camera->predict(*renderer, clientTick);
-			accumulator -= tickDuration;
-			clientTick++;
-		}
+        int simulatedTicksThisFrame = 0;
+        constexpr int kMaxSimulatedTicksPerFrame = 6;
+        while (accumulator >= tickDuration && simulatedTicksThisFrame < kMaxSimulatedTicksPerFrame)
+        {
+            NetPlayerInputs tickInputs = inputs;
+            if (manager)
+                tickInputs.keys = 0;
 
-		// this is vital. Accumulator based tick loops could end up causing sending 2 ticks in less than 50ms if the client runs at low framerate. This ensures that we only send 1 tick after 50 ms.
-		static std::chrono::steady_clock::time_point LastTickChangeTime = std::chrono::steady_clock::now();
-		std::chrono::duration<float> timeSinceLastTickChange = std::chrono::steady_clock::now() - LastTickChangeTime;
+            tickInputs.serverClientReconciliationTick = clientTick;
+            camera->queueInput(tickInputs, clientTick);
+            udpClient->sendPacket(tickInputs);
+            camera->predict(*renderer, clientTick);
 
-		if (accumulator > tickDuration && timeSinceLastTickChange > TICK_RATE)
-		{
-			if (!manager && (keyPressedRecently || mouseMovedRecently))
-			{
-				inputs.serverClientReconciliationTick = clientTick;
-				camera->queueInput(inputs, clientTick);
-				udpClient->sendPacket(inputs);
-			}
-			camera->predict(*renderer, clientTick);
+            clientTime = clientTick * tickDuration;
+            accumulator -= tickDuration;
+            clientTickChangedTime = glfwGetTime();
+            clientTick++;
+            simulatedTicksThisFrame++;
+        }
 
+        if (simulatedTicksThisFrame == kMaxSimulatedTicksPerFrame && accumulator > tickDuration * 2.0f)
+            accumulator = tickDuration * 2.0f;
 
-			clientTime = clientTick * tickDuration;
-
-			accumulator -= tickDuration;
-			clientTickChangedTime = glfwGetTime();
-			clientTick++;
-			LastTickChangeTime = std::chrono::steady_clock::now();
-		}
+        camera->setRenderTickAlpha(accumulator / tickDuration);
 		udpClient->receivePacket();
+        camera->flushPendingSnapshot(*renderer, clientTick);
 
 		//for some reason mouse needs a little delay to be put to false otherwise it glitches.
 		if (lastMouseMoveTime > glfwGetTime() + tickDuration * 2)
 			mouseMovedRecently = false;
 
-		double intraTick = (glfwGetTime() - clientTickChangedTime);
-		double delay = (1.0/TPS) * 1;
-		camera->getPlayer()->lerp(clientTime + intraTick - delay); // Interpolate player position based on server snapshots, with a slight delay to account for network latency
+     // Local player must be rendered from current predicted state (present time), not interpolated in the past.
 
 		// const double mouseIdleThreshold = 0.2; // seconds
 		// if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
@@ -1369,6 +1364,57 @@ void App::debugWindow() {
                 		ImGui::SliderFloat("Water dudv tiling", &waterRenderer->dudvTiling, 0.000f, 0.09f, "%.2f");
 
                 	}
+
+					ImGui::Separator();
+					if (ImGui::CollapsingHeader("Network Debug")) {
+                        auto netStats = camera->getReconcileDebugStats();
+                        ImGui::Text("Client Tick: %d", clientTick);
+                        ImGui::Text("Last Ack Tick: %d", camera->getLastAppliedAckTick());
+                        ImGui::Text("Pending Snapshot Tick: %d", camera->getPendingCorrectionTick());
+                     ImGui::Text("Last effective ack tick: %d", netStats.lastEffectiveAckTick);
+                        ImGui::Text("Predicted States: %zu", camera->getPredictedStateCount());
+                        ImGui::Text("Pending Inputs: %zu", camera->getPendingInputCount());
+                        ImGui::Text("Corrections total/applied/ignored: %llu / %llu / %llu",
+                            static_cast<unsigned long long>(netStats.totalCorrections),
+                            static_cast<unsigned long long>(netStats.appliedCorrections),
+                            static_cast<unsigned long long>(netStats.ignoredCorrections));
+                        ImGui::Text("Suspected 1-tick phase mismatch count: %llu",
+                            static_cast<unsigned long long>(netStats.suspectedOffByOneCorrections));
+                        ImGui::Text("Last errors: pos=%.6f vel=%.6f horiz=%.6f vert=%.6f",
+                            netStats.lastPosErr,
+                            netStats.lastVelErr,
+                            netStats.lastHorizontalErr,
+                            netStats.lastVerticalErr);
+                        ImGui::Text("Ack match check: err(ack)=%.6f err(ack-1)=%.6f",
+                            netStats.lastErrAtAckTick,
+                            netStats.lastErrAtAckMinusOneTick);
+
+						if (uiInteractive) {
+							float simLatMs = udpClient->getSimulatedLatency();
+							if (ImGui::SliderFloat("Sim Latency (ms)", &simLatMs, 0.0f, 500.0f, "%.0f ms"))
+								udpClient->setSimulatedLatency(simLatMs);
+
+                            float posThreshold = camera->getReconcilePosErrorThreshold();
+                            if (ImGui::SliderFloat("Reconcile Pos Threshold", &posThreshold, 0.01f, 0.5f, "%.3f"))
+                                camera->setReconcilePosErrorThreshold(posThreshold);
+
+                            float velThreshold = camera->getReconcileVelErrorThreshold();
+                            if (ImGui::SliderFloat("Reconcile Vel Threshold", &velThreshold, 0.001f, 0.5f, "%.3f"))
+                                camera->setReconcileVelErrorThreshold(velThreshold);
+
+                            bool reconcileLogEnabled = camera->isReconcileLogEnabled();
+                            if (ImGui::Checkbox("Verbose Reconcile Logs", &reconcileLogEnabled))
+                                camera->setReconcileLogEnabled(reconcileLogEnabled);
+
+                            bool reconcileAutoPhaseAdjust = camera->isReconcileAutoPhaseAdjustEnabled();
+                            if (ImGui::Checkbox("Auto Ack Phase Adjust", &reconcileAutoPhaseAdjust))
+                                camera->setReconcileAutoPhaseAdjustEnabled(reconcileAutoPhaseAdjust);
+
+							ImGui::TextDisabled("Simulates S->C receive delay for reconciliation testing.");
+						} else {
+							ImGui::Text("Sim Latency: %.0f ms", udpClient->getSimulatedLatency());
+						}
+					}
 
                     ImGui::EndTabItem();
                 }

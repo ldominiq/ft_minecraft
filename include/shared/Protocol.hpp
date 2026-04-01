@@ -164,9 +164,10 @@ struct NetPlayerMove final : public Packet {
 	float pitch;
 
 	float health;
-
-	// float slipperinessPrev;
-	// bool onGround;
+	float slipperinessPrev;
+	float accumulatedFallDistance;
+	uint8_t onGround = 0;
+	uint8_t jumpBoostApplied = 0;
 
 	NetPlayerMove() : Packet(ID) {}
 
@@ -181,8 +182,10 @@ struct NetPlayerMove final : public Packet {
 		w.write_f32(yaw);
 		w.write_f32(pitch);
 		w.write_f32(health);
-		// w.write_f32(slipperinessPrev);
-		// w.write_u8(onGround ? 1 : 0);
+       w.write_f32(slipperinessPrev);
+		w.write_f32(accumulatedFallDistance);
+		w.write_u8(onGround);
+		w.write_u8(jumpBoostApplied);
     }
     void decode(BufferReader& r) override {
 		serverClientReconciliationTick = r.read_i32();
@@ -195,8 +198,10 @@ struct NetPlayerMove final : public Packet {
 		yaw = r.read_f32();
 		pitch = r.read_f32();
 		health = r.read_f32();
-		// slipperinessPrev = r.read_f32();
-		// onGround = r.read_u8() != 0;
+     slipperinessPrev = r.read_f32();
+		accumulatedFallDistance = r.read_f32();
+		onGround = r.read_u8();
+		jumpBoostApplied = r.read_u8();
     }
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;

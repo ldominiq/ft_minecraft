@@ -1,4 +1,5 @@
 #include "Camera.hpp"
+#include <limits>
 
 Camera::Camera(glm::vec3 position)
     : MouseSensitivity(0.1f) {
@@ -6,6 +7,9 @@ Camera::Camera(glm::vec3 position)
 	//TODO position & yaw should be given by server
 	glm::vec3 startingPos = glm::vec3(0,150,0);
 	player = std::make_shared<ClientPlayer>(startingPos, 0, -1);
+  renderPrevPosition = startingPos;
+	renderCurrPosition = startingPos;
+	renderPositionInitialized = true;
     player->updateCameraVectors();
 	initWireframeCube();
 
@@ -26,7 +30,10 @@ Camera::~Camera() {
 
 glm::mat4 Camera::getViewMatrix() const
 {
-	glm::vec3 playerPos = player->getPosition() + glm::vec3(0, player->getEyesHeight(), 0);
+  glm::vec3 interpolatedPos = player->getPosition();
+	if (renderPositionInitialized)
+		interpolatedPos = glm::mix(renderPrevPosition, renderCurrPosition, renderTickAlpha);
+	glm::vec3 playerPos = interpolatedPos + glm::vec3(0, player->getEyesHeight(), 0) + visualOffset;
 
 	if (!thirdPersonCamera)
 		return glm::lookAt(playerPos, playerPos + player->Front, player->WorldUp);
@@ -34,28 +41,38 @@ glm::mat4 Camera::getViewMatrix() const
 	float cameraDistance = 3.0f;  // behind the player
 	float cameraHeight   = 1.5f;  // slightly above
 
-    float yaw   = glm::radians(player->yaw);
-    float pitch = glm::radians(player->pitch);
+	float yaw   = glm::radians(player->yaw);
+	float pitch = glm::radians(player->pitch);
 
-    // Direction the player is looking
-    glm::vec3 forward(
-        cos(pitch) * cos(yaw),
-        sin(pitch),
-        cos(pitch) * sin(yaw)
-    );
+	// Direction the player is looking
+	glm::vec3 forward(
+		cos(pitch) * cos(yaw),
+		sin(pitch),
+		cos(pitch) * sin(yaw)
+	);
 
-    // Camera position BEHIND the player, opposite of forward
-    glm::vec3 camPos =
-        playerPos
-        - forward * cameraDistance  // behind
-        + glm::vec3(0, cameraHeight, 0); // slight upward offset
+	// Camera position BEHIND the player, opposite of forward
+	glm::vec3 camPos =
+		playerPos
+		- forward * cameraDistance  // behind
+		+ glm::vec3(0, cameraHeight, 0); // slight upward offset
 
-    return glm::lookAt(
-        camPos,
-        playerPos + forward * 10.0f,   // look where the player is looking
-        glm::vec3(0, 1, 0)
-    );
+	return glm::lookAt(
+		camPos,
+		playerPos + forward * 10.0f,   // look where the player is looking
+		glm::vec3(0, 1, 0)
+	);
 }
+
+void Camera::updateSmoothing(float deltaTime) {
+	if (glm::length(visualOffset) > 0.001f) {
+		float decayRate = 12.0f; // Tune this to make corrections faster or slower
+		visualOffset *= std::max(0.0f, 1.0f - decayRate * deltaTime);
+	} else {
+		visualOffset = glm::vec3(0.0f);
+	}
+}
+
 
 void Camera::predict(const Renderer &world, int32_t clientTick) //clientime broken for now
 {
@@ -72,7 +89,10 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 		player->setVelocity(lastState.velocity);
 		player->setYawAndPitch(lastState.yaw, lastState.pitch);
 		player->health = lastState.health;
-		// player->setSlipperinessPrev(lastState.slipperinessPrev);
+     player->setSlipperinessPrev(lastState.slipperinessPrev);
+		player->accumulatedFallDistance = lastState.accumulatedFallDistance;
+		player->setOnGround(lastState.onGround);
+		player->setJumpBoostApplied(lastState.jumpBoostApplied);
 	}
 
 	//set player state to the inputs for this tick if there is.
@@ -85,6 +105,15 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 	// player->updateCameraVectors();
 	player->calculateNewPosition(world);
 
+	if (!renderPositionInitialized) {
+		renderPrevPosition = player->getPosition();
+		renderCurrPosition = player->getPosition();
+		renderPositionInitialized = true;
+	} else {
+		renderPrevPosition = renderCurrPosition;
+		renderCurrPosition = player->getPosition();
+	}
+
 	//construct predictions for reconcialiation and snapshots for interpolation
 	predictedStates.emplace_back(PredictedStates{
 		clientTick,
@@ -93,7 +122,10 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 		player->yaw,
 		player->pitch,
 		player->health,
-		// player->getSlipperinessPrev()
+        player->getSlipperinessPrev(),
+		player->getAccumulatedFallDistance(),
+		player->isOnGround(),
+		player->getJumpBoostApplied(),
 	});
 
 	player->snapshots.emplace_back(Snapshot{
@@ -101,6 +133,9 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 		player->getVelocity(),
 		clientTime
 	});
+
+	if (static_cast<int32_t>(predictedStates.size()) > kMaxPredictedStates)
+		predictedStates.pop_front();
 
 	// std::cout << "tick: " << clientTick << "\n" <<
 	// "pos: (" << player->getPosition().x << ", " << player->getPosition().y << ", " << player->getPosition().z << ")\n" <<
@@ -114,101 +149,215 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 
 void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, const Renderer &world)
 {
-	constexpr float kPosErrorThreshold = 0.05f; // 5 cm
-	constexpr float kVelErrorThreshold = 0.05f;
-	const float kPosErrorThresholdSq = kPosErrorThreshold * kPosErrorThreshold;
-	const float kVelErrorThresholdSq = kVelErrorThreshold * kVelErrorThreshold;
+  reconcileDebugStats.totalCorrections++;
+	reconcileDebugStats.lastClientTick = clientTick;
+	reconcileDebugStats.lastAckTick = correction.serverClientReconciliationTick;
+	reconcileDebugStats.lastEffectiveAckTick = correction.serverClientReconciliationTick;
 
-	auto hardReconcile = [&]() {
-		// restart clean from server state
-		player->snapshots.clear();
-		predictedStates.clear();
+	PredictedStates effectiveCorrection = correction;
 
-		player->setPosition(correction.position);
-		player->setVelocity(correction.velocity);
-		player->setYawAndPitch(correction.yaw, correction.pitch);
-		player->health = correction.health;
+	const float localYaw = player->yaw;
+	const float localPitch = player->pitch;
 
-		predictedStates.push_back(PredictedStates{
-			correction.serverClientReconciliationTick,
-			correction.position,
-			correction.velocity,
-			correction.yaw,
-			correction.pitch,
-			correction.health,
-			// correction.slipperinessPrev
-		});
+ auto it = std::find_if(predictedStates.begin(), predictedStates.end(), [&](const PredictedStates& st) {
+		return st.serverClientReconciliationTick == correction.serverClientReconciliationTick;
+	});
 
-		player->snapshots.emplace_back(Snapshot{
-			correction.position,
-			correction.velocity,
-			correction.serverClientReconciliationTick * (1.0f / TPS)
-		});
+	if (reconcileAutoPhaseAdjust && !predictedStates.empty()) {
+		auto scoreForTick = [&](int32_t tickCandidate) -> float {
+			auto candIt = std::find_if(predictedStates.begin(), predictedStates.end(), [&](const PredictedStates& st) {
+				return st.serverClientReconciliationTick == tickCandidate;
+			});
+			if (candIt == predictedStates.end())
+				return std::numeric_limits<float>::max();
 
-		for (int i = correction.serverClientReconciliationTick + 1; i < clientTick; i++)
-			predict(world, i);
-	};
+			glm::vec3 posDiff = candIt->position - correction.position;
+			glm::vec3 velDiff = candIt->velocity - correction.velocity;
+			return glm::length(posDiff) + glm::length(velDiff) * 0.25f;
+		};
 
-	bool foundMatchingTick = false;
-	for (auto it = predictedStates.begin(); it != predictedStates.end();)
-	{
-		if (((long)(it->serverClientReconciliationTick) - (long)(correction.serverClientReconciliationTick) < 0))
-		{
-			it = predictedStates.erase(it);
-			continue ;
+		const int32_t ack = correction.serverClientReconciliationTick;
+		const float scoreMinusOne = scoreForTick(ack - 1);
+		const float scoreAck = scoreForTick(ack);
+		const float scorePlusOne = scoreForTick(ack + 1);
+
+		int32_t bestTick = ack;
+		float bestScore = scoreAck;
+		if (scoreMinusOne < bestScore) {
+			bestScore = scoreMinusOne;
+			bestTick = ack - 1;
 		}
-		else if (it->serverClientReconciliationTick == correction.serverClientReconciliationTick)
-		{
-			foundMatchingTick = true;
+		if (scorePlusOne < bestScore) {
+			bestScore = scorePlusOne;
+			bestTick = ack + 1;
+		}
 
-			glm::vec3 positionDiff = it->position - correction.position;
-			glm::vec3 velocityDiff = it->velocity - correction.velocity;
-			float positionErrorSq = glm::dot(positionDiff, positionDiff);
-			float velocityErrorSq = glm::dot(velocityDiff, velocityDiff);
+		effectiveCorrection.serverClientReconciliationTick = bestTick;
+		reconcileDebugStats.lastEffectiveAckTick = bestTick;
+	}
 
-			if (positionErrorSq > kPosErrorThresholdSq ||
-				velocityErrorSq > kVelErrorThresholdSq ||
-				it->health != correction.health ||
-				it->yaw != correction.yaw ||
-				it->pitch != correction.pitch)
-			{
-				std::cout << "format : client -> server\n";
-				std::cout << "Prediction error at\n";
-				std::cout << clientTick << " " << it->serverClientReconciliationTick << " " << correction.serverClientReconciliationTick << "\n";
-				std::cout << "--pos---\n";
-				std::cout << it->position.x << " " << it->position.y << " " << it->position.z << std::endl;
-				std::cout << correction.position.x << " " << correction.position.y << " " << correction.position.z << std::endl;
-				std::cout << "--vel---\n";
-				std::cout << it->velocity.x << " " << it->velocity.y << " " << it->velocity.z << std::endl;
-				std::cout << correction.velocity.x << " " << correction.velocity.y << " " << correction.velocity.z << std::endl;
-				std::cout << "--health---\n";
-				std::cout << it->health << " " << correction.health << std::endl;
-				std::cout << "--yawpitch---\n";
-				std::cout << it->yaw << " " << it->pitch << std::endl;
-				std::cout << correction.yaw << " " << correction.pitch << std::endl;
-				std::cout << "------------------\n";
+	it = std::find_if(predictedStates.begin(), predictedStates.end(), [&](const PredictedStates& st) {
+		return st.serverClientReconciliationTick == effectiveCorrection.serverClientReconciliationTick;
+	});
 
-				hardReconcile();
+	if (it != predictedStates.end()) {
+     glm::vec3 posDiff = it->position - effectiveCorrection.position;
+		glm::vec3 velDiff = it->velocity - effectiveCorrection.velocity;
+
+		float hPosErr = std::sqrt(posDiff.x * posDiff.x + posDiff.z * posDiff.z);
+		float vPosErr = std::abs(posDiff.y);
+		float vErr = glm::length(velDiff);
+		reconcileDebugStats.lastErrAtAckTick = glm::length(posDiff);
+
+		if (it != predictedStates.begin()) {
+			auto prevIt = std::prev(it);
+         glm::vec3 prevPosDiff = prevIt->position - effectiveCorrection.position;
+			reconcileDebugStats.lastErrAtAckMinusOneTick = glm::length(prevPosDiff);
+			if (reconcileDebugStats.lastErrAtAckMinusOneTick + 0.01f < reconcileDebugStats.lastErrAtAckTick)
+				reconcileDebugStats.suspectedOffByOneCorrections++;
+		} else {
+			reconcileDebugStats.lastErrAtAckMinusOneTick = 0.0f;
+		}
+
+		// If disagreement is below threshold, prune history and trust client simulation
+       if (hPosErr < reconcilePosErrorThreshold && vPosErr < reconcilePosErrorThreshold && vErr < reconcileVelErrorThreshold) {
+			reconcileDebugStats.ignoredCorrections++;
+			predictedStates.erase(predictedStates.begin(), it);
+
+            float correctionTime = effectiveCorrection.serverClientReconciliationTick * (1.0f / TPS);
+			auto snapIt = std::find_if(player->snapshots.begin(), player->snapshots.end(), [&](const Snapshot& sn) {
+				return sn.time >= correctionTime;   
+			});
+			if (snapIt != player->snapshots.begin()) {
+				player->snapshots.erase(player->snapshots.begin(), snapIt);
 			}
-			break ;
+			return;
 		}
-		else
-			it++;
 	}
 
-	if (!foundMatchingTick)
+	// Guard: stale correction older than oldest history entry — already processed
+	if (!predictedStates.empty() &&
+     effectiveCorrection.serverClientReconciliationTick < predictedStates.front().serverClientReconciliationTick)
 	{
-		const PredictedStates *referenceState = predictedStates.empty() ? nullptr : &predictedStates.back();
-		glm::vec3 positionDiff = (referenceState ? referenceState->position : player->getPosition()) - correction.position;
-		glm::vec3 velocityDiff = (referenceState ? referenceState->velocity : player->getVelocity()) - correction.velocity;
-		float positionErrorSq = glm::dot(positionDiff, positionDiff);
-		float velocityErrorSq = glm::dot(velocityDiff, velocityDiff);
-
-		if (positionErrorSq > kPosErrorThresholdSq ||
-			velocityErrorSq > kVelErrorThresholdSq ||
-			(referenceState && (referenceState->health != correction.health || referenceState->yaw != correction.yaw || referenceState->pitch != correction.pitch)))
-			hardReconcile();
+		return;
 	}
+
+	const PredictedStates oldCurrentState = predictedStates.empty()
+		? PredictedStates{
+			clientTick,
+			player->getPosition(),
+			player->getVelocity(),
+			player->yaw,
+			player->pitch,
+			player->health,
+		   player->getSlipperinessPrev(),
+			player->getAccumulatedFallDistance(),
+			player->isOnGround(),
+			player->getJumpBoostApplied(),
+		}
+		: predictedStates.back();
+
+	player->snapshots.clear();
+	predictedStates.clear();
+
+   player->setPosition(effectiveCorrection.position);
+	player->setVelocity(effectiveCorrection.velocity);
+	player->health = effectiveCorrection.health;
+	player->setSlipperinessPrev(effectiveCorrection.slipperinessPrev);
+	player->accumulatedFallDistance = effectiveCorrection.accumulatedFallDistance;
+	player->setOnGround(effectiveCorrection.onGround);
+	player->setJumpBoostApplied(effectiveCorrection.jumpBoostApplied);
+
+	predictedStates.push_back(PredictedStates{
+      effectiveCorrection.serverClientReconciliationTick,
+		effectiveCorrection.position,
+		effectiveCorrection.velocity,
+		effectiveCorrection.yaw,
+		effectiveCorrection.pitch,
+		effectiveCorrection.health,
+	 effectiveCorrection.slipperinessPrev,
+		effectiveCorrection.accumulatedFallDistance,
+		effectiveCorrection.onGround,
+		effectiveCorrection.jumpBoostApplied,
+	});
+
+	player->snapshots.emplace_back(Snapshot{
+        effectiveCorrection.position,
+		effectiveCorrection.velocity,
+		effectiveCorrection.serverClientReconciliationTick * (1.0f / TPS)
+	});
+
+    for (int i = effectiveCorrection.serverClientReconciliationTick + 1; i < clientTick; i++)
+		predict(world, i);
+
+	const PredictedStates reconciledCurrentState = predictedStates.empty()
+		? PredictedStates{
+			clientTick,
+			player->getPosition(),
+			player->getVelocity(),
+			player->yaw,
+			player->pitch,
+			player->health,
+		   player->getSlipperinessPrev(),
+			player->getAccumulatedFallDistance(),
+			player->isOnGround(),
+			player->getJumpBoostApplied(),
+		}
+		: predictedStates.back();
+
+	glm::vec3 positionDiff = reconciledCurrentState.position - oldCurrentState.position;
+	glm::vec3 velocityDiff = reconciledCurrentState.velocity - oldCurrentState.velocity;
+	const float horizontalPosErr = std::sqrt(positionDiff.x * positionDiff.x + positionDiff.z * positionDiff.z);
+	const float verticalPosErr = std::abs(positionDiff.y);
+	const float velocityErr = std::sqrt(glm::dot(velocityDiff, velocityDiff));
+	reconcileDebugStats.lastPosErr = std::sqrt(glm::dot(positionDiff, positionDiff));
+	reconcileDebugStats.lastVelErr = velocityErr;
+	reconcileDebugStats.lastHorizontalErr = horizontalPosErr;
+	reconcileDebugStats.lastVerticalErr = verticalPosErr;
+	reconcileDebugStats.appliedCorrections++;
+
+    if (horizontalPosErr > reconcilePosErrorThreshold || verticalPosErr > reconcilePosErrorThreshold || velocityErr > reconcileVelErrorThreshold)
+	{
+        // Smooth visual popping by setting a bounded camera offset that decays over time.
+		glm::vec3 desiredVisualOffset = oldCurrentState.position - reconciledCurrentState.position;
+		constexpr float kMaxVisualOffset = 0.35f;
+		const float desiredLen = glm::length(desiredVisualOffset);
+		if (desiredLen > kMaxVisualOffset && desiredLen > 0.0f)
+			desiredVisualOffset = (desiredVisualOffset / desiredLen) * kMaxVisualOffset;
+		visualOffset = desiredVisualOffset;
+
+        if (reconcileLogEnabled) {
+			std::cout << "[RECONCILE] clientTick=" << clientTick
+				<< " ackTick=" << correction.serverClientReconciliationTick
+				<< " effectiveAckTick=" << effectiveCorrection.serverClientReconciliationTick
+				<< " posErr=" << std::sqrt(glm::dot(positionDiff, positionDiff))
+				<< " velErr=" << velocityErr
+				<< " horizontalErr=" << horizontalPosErr
+				<< " verticalErr=" << verticalPosErr
+				<< " oldPos=(" << oldCurrentState.position.x << ", " << oldCurrentState.position.y << ", " << oldCurrentState.position.z << ")"
+				<< " newPos=(" << reconciledCurrentState.position.x << ", " << reconciledCurrentState.position.y << ", " << reconciledCurrentState.position.z << ")\n";
+
+			if (reconcileDebugStats.lastErrAtAckMinusOneTick + 0.01f < reconcileDebugStats.lastErrAtAckTick) {
+				std::cout << "[RECONCILE_HINT] snapshot may be phase-shifted by ~1 tick: err(ackTick)="
+					<< reconcileDebugStats.lastErrAtAckTick
+					<< " err(ackTick-1)="
+					<< reconcileDebugStats.lastErrAtAckMinusOneTick
+					<< "\n";
+			}
+		}
+	}
+
+	player->setYawAndPitch(localYaw, localPitch);
+	player->updateCameraVectors();
+   if (!predictedStates.empty())
+	{
+		predictedStates.back().yaw = localYaw;
+		predictedStates.back().pitch = localPitch;
+	}
+
+	renderPrevPosition = player->getPosition();
+	renderCurrPosition = player->getPosition();
+	renderPositionInitialized = true;
 }
 
 void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clientTick)
@@ -216,11 +365,9 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clien
 	if (!startPrediction)
 		startPrediction = true;
 
-	static int32_t lastReceivedServerClientReconciliationTick = -1;
-	// if (lastReceivedServerClientReconciliationTick != -1
-	// 	&& ((long)(pkt.serverClientReconciliationTick) - (long)(lastReceivedServerClientReconciliationTick) < 0))
-	// 	return;
-	// lastReceivedServerClientReconciliationTick = pkt.serverClientReconciliationTick;
+	if (lastAppliedServerClientReconciliationTick != -1 &&
+		((long)(pkt.serverClientReconciliationTick) - (long)(lastAppliedServerClientReconciliationTick) <= 0))
+		return;
 
 	glm::vec3 position;
 	position.x = pkt.positionX;
@@ -232,28 +379,49 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clien
 	velocity.y = pkt.velocityY;
 	velocity.z = pkt.velocityZ;
 
-	PredictedStates correction = PredictedStates{
+   PredictedStates correction = PredictedStates{
 		pkt.serverClientReconciliationTick,
 		position,
 		velocity,
 		pkt.yaw,
 		pkt.pitch,
 		pkt.health,
-		// pkt.slipperinessPrev
+     pkt.slipperinessPrev,
+		pkt.accumulatedFallDistance,
+		pkt.onGround != 0,
+		pkt.jumpBoostApplied != 0,
 	};
 
-	reconcile(correction, clientTick, world);
-
-	// Clean up old inputs. 200 is an arbitrary number and is just used to avoid iterating on each loop on a map.
-	if (InputsMap.size() > 200)
+	if (!pendingCorrection.has_value() ||
+		((long)(correction.serverClientReconciliationTick) - (long)(pendingCorrectionTick) > 0))
 	{
-		for (auto it = InputsMap.begin(); it != InputsMap.end();)
-		{
-			if (((long)(it->first) - (long)(correction.serverClientReconciliationTick) < 0))
-				it = InputsMap.erase(it);
-			else
-				it++;
-		}
+		pendingCorrection = correction;
+		pendingCorrectionTick = correction.serverClientReconciliationTick;
+	}
+
+	(void)world;
+	(void)clientTick;
+}
+
+void Camera::flushPendingSnapshot(const Renderer &world, int32_t clientTick)
+{
+	if (!pendingCorrection.has_value())
+		return;
+
+	reconcile(*pendingCorrection, clientTick, world);
+	lastAppliedServerClientReconciliationTick = pendingCorrection->serverClientReconciliationTick;
+
+	const auto correctionTick = pendingCorrection->serverClientReconciliationTick;
+	pendingCorrection.reset();
+	pendingCorrectionTick = -1;
+
+	// Clean up inputs older than the correction tick.
+	for (auto it = InputsMap.begin(); it != InputsMap.end();)
+	{
+		if (((long)(it->first) - (long)(correctionTick) < 0))
+			it = InputsMap.erase(it);
+		else
+			it++;
 	}
 }
 

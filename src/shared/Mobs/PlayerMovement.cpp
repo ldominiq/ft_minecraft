@@ -171,7 +171,16 @@ glm::vec3 PlayerMovement::getDesiredMove()
 
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 {
-	// TODO : return early if no new packet to read and velocities are 0 and there is no collision with block under. To avoid doing unnecessary calculations. Do the same with every other entity
+	// Server only: don't re-apply a stale input that was already used last tick.
+	// This prevents the server from accumulating extra physics steps when no
+	// new client input arrived, which would cause a systematic 1-tick position
+	// drift vs. the client's prediction (observed as ~0.22-unit oscillation).
+	// The flag is left false on the client so prediction replay is never blocked.
+	if (skipDuplicateInputs &&
+		lastInputsPktRecvd.serverClientReconciliationTick == lastAppliedServerClientReconciliationTick)
+		return;
+
+	lastAppliedServerClientReconciliationTick = lastInputsPktRecvd.serverClientReconciliationTick;
 
 	if (gamemode == GAMEMODES::SURVIVAL)
 	{

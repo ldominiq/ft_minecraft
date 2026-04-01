@@ -23,7 +23,7 @@ class CPlayerInfo
 		CPlayerInfo();
 
 		int32_t id;
-		int32_t serverClientReconciliationTick; // last sequence number received from this player, used for loss detection (possibly packet ordering..)
+     int32_t serverClientReconciliationTick = -1; // last sequence number received from this player, used for loss detection (possibly packet ordering..)
 
 		sockaddr_in addr;
 
@@ -39,6 +39,7 @@ class CPlayerInfo
 			movement->spawnPosition = glm::vec3(0.5, surfaceY + 3, 0.5);
 			movement->setPosition(movement->spawnPosition);
 			movement->setYawAndPitch(0.0f, 0.0f);
+			movement->skipDuplicateInputs = true; // server: don't re-run physics with stale inputs
 		}
 		std::vector<ChunkPos> rdyChunks;
 

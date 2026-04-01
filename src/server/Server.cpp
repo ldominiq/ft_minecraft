@@ -256,6 +256,10 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (player == players.end())
 		return ;
 
+ // Discard outdated or duplicate packets
+	if (pkt.serverClientReconciliationTick <= player->serverClientReconciliationTick)
+		return;
+
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
 		player->movement->inventory.activeHotbarSlot = pkt.activeHotbarSlot;
 
@@ -534,7 +538,7 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 {
 	NetPlayerMove pkt;
 
-	pkt.serverClientReconciliationTick = player.serverClientReconciliationTick;
+ pkt.serverClientReconciliationTick = player.movement->getLastAppliedServerClientReconciliationTick();
 
 	pkt.positionX = player.movement->getPosition().x;
 	pkt.positionY = player.movement->getPosition().y;
@@ -548,6 +552,10 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.pitch = player.movement->pitch;
 
 	pkt.health = player.movement->health;
+	pkt.slipperinessPrev = player.movement->getSlipperinessPrev();
+	pkt.accumulatedFallDistance = player.movement->getAccumulatedFallDistance();
+	pkt.onGround = player.movement->isOnGround() ? 1 : 0;
+	pkt.jumpBoostApplied = player.movement->getJumpBoostApplied() ? 1 : 0;
 
 	std::cout << "tick: " << pkt.serverClientReconciliationTick << "\n" <<
 	"pos: (" << pkt.positionX << ", " << pkt.positionY << ", " << pkt.positionZ << ")\n" <<
