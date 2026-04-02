@@ -5,6 +5,7 @@
 #include "LivingEntity.hpp"
 #include "Protocol.hpp"
 #include "Inventory.hpp"
+#include <deque>
 
 #define FLY_SPEED 50.0f
 #define DEFAULT_SPEED 5.0f
@@ -23,6 +24,7 @@ struct PlayerMovement : public virtual LivingEntity {
 	bool jumpBoostApplied = false;
     int32_t lastAppliedServerClientReconciliationTick = -2; // -1 is the default "no input yet" client tick
 	bool skipDuplicateInputs = false; // set true on server to prevent re-applying stale inputs
+	std::deque<NetPlayerInputs> pendingInputs; // server-side queue: one physics step per entry
 	uint8_t loadRadius = 16;
 
 	GAMEMODES gamemode = GAMEMODES::SPECTATOR;

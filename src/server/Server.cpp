@@ -289,6 +289,14 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
 
+	// Queue this input for physics processing.  The queue is drained in
+	// calculateNewPosition (one physics step per entry), so when the client
+	// sends several inputs in rapid succession (low-FPS catch-up) the server
+	// runs the matching number of physics steps instead of just one.
+	constexpr int kMaxQueuedInputs = 20;
+	if (static_cast<int>(player->movement->pendingInputs.size()) < kMaxQueuedInputs)
+		player->movement->pendingInputs.push_back(pkt);
+
 	if (pkt.loadRadius > 32)
 		pkt.loadRadius = 32;
 	else if (pkt.loadRadius < 4)

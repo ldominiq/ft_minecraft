@@ -171,29 +171,47 @@ glm::vec3 PlayerMovement::getDesiredMove()
 
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 {
-	// Server only: don't re-apply a stale input that was already used last tick.
-	// This prevents the server from accumulating extra physics steps when no
-	// new client input arrived, which would cause a systematic 1-tick position
-	// drift vs. the client's prediction (observed as ~0.22-unit oscillation).
-	// The flag is left false on the client so prediction replay is never blocked.
-	if (skipDuplicateInputs &&
-		lastInputsPktRecvd.serverClientReconciliationTick == lastAppliedServerClientReconciliationTick)
-		return;
+	if (skipDuplicateInputs) {
+		// Server path: drain the per-player input queue, running one physics step per
+		// queued input.  When the client sends N inputs in a single frame (low FPS
+		// catch-up), all N packets end up here and each gets its own step — keeping
+		// server and client tick counts in sync instead of the server skipping to the
+		// last input and being N-1 ticks behind.
+		if (pendingInputs.empty())
+			return;
 
-	lastAppliedServerClientReconciliationTick = lastInputsPktRecvd.serverClientReconciliationTick;
+		constexpr int kMaxCatchup = 6;
+		int processed = 0;
+		while (!pendingInputs.empty() && processed < kMaxCatchup) {
+			lastInputsPktRecvd = pendingInputs.front();
+			pendingInputs.pop_front();
+			lastAppliedServerClientReconciliationTick = lastInputsPktRecvd.serverClientReconciliationTick;
+			setYawAndPitch(lastInputsPktRecvd.yaw, lastInputsPktRecvd.pitch);
+			updateCameraVectors();
 
-	if (gamemode == GAMEMODES::SURVIVAL)
-	{
-		doJump(world);
-		glm::vec3 desiredMove = getDesiredMove();
-		this->calculateNewXZPosition(world, desiredMove);
-		this->calculateNewYPosition(world);
+			if (gamemode == GAMEMODES::SURVIVAL) {
+				doJump(world);
+				glm::vec3 desiredMove = getDesiredMove();
+				this->calculateNewXZPosition(world, desiredMove);
+				this->calculateNewYPosition(world);
+			} else if (gamemode == GAMEMODES::SPECTATOR) {
+				updatePosition();
+			}
+			this->jump = false;
+			processed++;
+		}
+	} else {
+		// Client path: original single-step behavior used by prediction and replay.
+		lastAppliedServerClientReconciliationTick = lastInputsPktRecvd.serverClientReconciliationTick;
+
+		if (gamemode == GAMEMODES::SURVIVAL) {
+			doJump(world);
+			glm::vec3 desiredMove = getDesiredMove();
+			this->calculateNewXZPosition(world, desiredMove);
+			this->calculateNewYPosition(world);
+		} else if (gamemode == GAMEMODES::SPECTATOR) {
+			updatePosition();
+		}
+		this->jump = false;
 	}
-	else if (gamemode == GAMEMODES::SPECTATOR)
-	{
-		updatePosition();
-	}
-
-	// lastInputsPktRecvd = {};
-	this->jump = false;
 }
