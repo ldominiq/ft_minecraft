@@ -565,14 +565,14 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.onGround = player.movement->isOnGround() ? 1 : 0;
 	pkt.jumpBoostApplied = player.movement->getJumpBoostApplied() ? 1 : 0;
 
-	std::cout << "tick: " << pkt.serverClientReconciliationTick << "\n" <<
-	"pos: (" << pkt.positionX << ", " << pkt.positionY << ", " << pkt.positionZ << ")\n" <<
-	"vel: (" << pkt.velocityX << ", " << pkt.velocityY << ", " << pkt.velocityZ << ")\n" <<
-	"splitPrev: (" << player.movement->getSlipperinessPrev() << ")\n" <<
-	"onGround: (" << player.movement->isOnGround() << ")\n" <<
-	"fallDistance: (" << player.movement->getAccumulatedFallDistance() << ")\n" <<
-	"jumpBoost: (" << player.movement->getJumpBoostApplied() << ")\n";
-	std::cout << "------------------\n\n";
+	//std::cout << "tick: " << pkt.serverClientReconciliationTick << "\n" <<
+	//"pos: (" << pkt.positionX << ", " << pkt.positionY << ", " << pkt.positionZ << ")\n" <<
+	//"vel: (" << pkt.velocityX << ", " << pkt.velocityY << ", " << pkt.velocityZ << ")\n" <<
+	//"splitPrev: (" << player.movement->getSlipperinessPrev() << ")\n" <<
+	//"onGround: (" << player.movement->isOnGround() << ")\n" <<
+	//"fallDistance: (" << player.movement->getAccumulatedFallDistance() << ")\n" <<
+	//"jumpBoost: (" << player.movement->getJumpBoostApplied() << ")\n";
+	//std::cout << "------------------\n\n";
 
 	sendPacketTo(pkt, player.addr);
 }

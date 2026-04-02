@@ -93,9 +93,7 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
         }
     }
 
-    // generateCaves(blocks, terrainParams);
-
-    generateTrees(blocks, terrainParams);
+    generateCaves(blocks, terrainParams);
 
     generateTrees(blocks, terrainParams);
 
