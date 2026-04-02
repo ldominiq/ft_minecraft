@@ -423,8 +423,8 @@ struct NetTerrainParams final : public Packet {
     float lakeMaxContinentalness = 0.6f;
 
     // Heightmap dump settings
-    int32_t genSize = 500;
-    int32_t downsample = 8;
+    int32_t genSize = 1000;
+    int32_t downsample = 16;
 
     // Continentalness noise params
     float continentalnessFrequency = 0.001f;

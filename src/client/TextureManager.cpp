@@ -326,6 +326,23 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::ORANGE_TERRACOTTA,     layer("orange_terracotta") },
         { BlockType::YELLOW_TERRACOTTA,     layer("yellow_terracotta") },
         { BlockType::LIGHT_GRAY_TERRACOTTA, layer("light_gray_terracotta") },
+        { BlockType::ICE,                   layer("ice") },
+        { BlockType::PACKED_ICE,            layer("packed_ice") },
+        { BlockType::BLUE_ICE,              layer("blue_ice") },
+        { BlockType::CLAY,                  layer("clay") },
+        { BlockType::COARSE_DIRT,           layer("coarse_dirt") },
+        { BlockType::COBBLESTONE,           layer("cobblestone") },
+        { BlockType::GRAVEL,                layer("gravel") },
+        { BlockType::MOSSY_COBBLESTONE,     layer("mossy_cobblestone") },
+        { BlockType::CRYING_OBSIDIAN,       layer("crying_obsidian") },
+        { BlockType::NETHERRACK,            layer("netherrack") },
+        { BlockType::SOUL_SAND,             layer("soul_sand") },
+        { BlockType::CRIMSON_NYLIUM,        layer("crimson_nylium") },
+        { BlockType::RED_SAND,              layer("red_sand") },
+        { BlockType::ANDESITE,              layer("andesite") },
+        { BlockType::GRANITE,               layer("granite") },
+        { BlockType::DIORITE,               layer("diorite") },
+        { BlockType::RED_MUSHROOM_BLOCK,    layer("red_mushroom_block") },
     };
     for (const auto& [type, l] : uniformBlocks) {
         blockTextureMap[type] = BlockTextures::uniform(l);
@@ -370,6 +387,27 @@ void TextureManager::setupBlockTextureMapping() {
                                             layer("cactus_top"),
                                             layer("cactus_bottom"),
                                             layer("cactus_side"));
+
+    blockTextureMap[BlockType::BASALT]     = BlockTextures::topBottomSides(
+                                            layer("basalt_top"),
+                                            layer("basalt"),
+                                            layer("basalt"));
+
+    blockTextureMap[BlockType::BLACKSTONE]  = BlockTextures::topBottomSides(
+                                            layer("blackstone_top"),
+                                            layer("blackstone"),
+                                            layer("blackstone"));
+
+    blockTextureMap[BlockType::RED_SANDSTONE]  = BlockTextures::topBottomSides(
+                                            layer("red_sandstone_top"),
+                                            layer("red_sandstone_bottom"),
+                                            layer("red_sandstone"));
+
+    blockTextureMap[BlockType::SANDSTONE]  = BlockTextures::topBottomSides(
+                                            layer("sandstone_top"),
+                                            layer("sandstone_bottom"),
+                                            layer("sandstone"));                                            
+
 }
 
 int TextureManager::getGrassTintLayer(BiomeType biome) const {

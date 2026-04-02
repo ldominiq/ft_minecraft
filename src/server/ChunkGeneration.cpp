@@ -172,15 +172,50 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
             for (int y = std::max(terrainParams.bedrockLevel + 1, surfaceY - 3); y < surfaceY && y < HEIGHT; y++) {
                 switch (biome) {
                     case BiomeType::DESERT:
+                        top = BlockType::SAND;
+                        fill = BlockType::SANDSTONE;
+                        break;
                     case BiomeType::SWAMP:
-                        top = fill = BlockType::SAND;
+                        top = BlockType::CLAY;
+                        fill = BlockType::COARSE_DIRT;
                         break;
                     case BiomeType::TUNDRA:
                         top = BlockType::SNOW;
                         fill = BlockType::DIRT;
                         break;
-                    case BiomeType::MOUNTAIN:
-                        top = fill = BlockType::STONE;
+                    case BiomeType::VOLCANIC:
+                        top = fill = BlockType::BASALT;
+                        break;
+
+                    case BiomeType::ICE_PLAINS:
+                        top = BlockType::ICE;
+                        fill = BlockType::PACKED_ICE;
+                        break;
+
+                    case BiomeType::MOUNTAIN: {
+                        static constexpr BlockType mountainLayers[] = {
+                            BlockType::STONE, BlockType::GRANITE, BlockType::STONE,
+                            BlockType::DIORITE, BlockType::STONE, BlockType::ANDESITE,
+                            BlockType::STONE, BlockType::COBBLESTONE,
+                        };
+                        constexpr int N = static_cast<int>(std::size(mountainLayers));
+                        fill = mountainLayers[((y % N) + N) % N];
+                        top = BlockType::STONE;
+                        break;
+                    }
+
+                    case BiomeType::RED_DESERT:
+                        top = BlockType::RED_SAND;
+                        fill = BlockType::RED_SANDSTONE;
+                        break;
+
+                    case BiomeType::NETHER:
+                        top = fill = BlockType::NETHERRACK;
+                        break;
+
+                    case BiomeType::MUSHROOM_ISLAND:
+                        top = BlockType::RED_MUSHROOM_BLOCK;
+                        fill = BlockType::COARSE_DIRT;
                         break;
                     case BiomeType::MESA: {
                         static constexpr BlockType mesaLayers[] = {
@@ -879,6 +914,54 @@ float ChunkGeneration::surfaceNoiseTransformation(float noise, int splineIndex) 
     return noiseTransform;
 }
 
+static ClimateTemperature quantizeTemp(float t) {
+    // t in [0,1]
+    if (t < 0.2f) return ClimateTemperature::VERY_COLD;
+    if (t < 0.4f) return ClimateTemperature::COLD;
+    if (t < 0.6f) return ClimateTemperature::TEMPERATE;
+    if (t < 0.8f) return ClimateTemperature::WARM;
+    return ClimateTemperature::HOT;
+}
+
+static ClimateHumidity quantizeHumidity(float h) {
+    // h in [0,1]
+    if (h < 0.2f) return ClimateHumidity::ARID;
+    if (h < 0.4f) return ClimateHumidity::DRY;
+    if (h < 0.6f) return ClimateHumidity::NEUTRAL;
+    if (h < 0.8f) return ClimateHumidity::HUMID;
+    return ClimateHumidity::WET;
+}
+
+static ClimateErosion quantizeErosion(float e) {
+    // e in [-1,1]
+    if (e < -0.71f) return ClimateErosion::E0;
+    if (e < -0.43f) return ClimateErosion::E1;
+    if (e < -0.14f) return ClimateErosion::E2;
+    if (e < 0.14f) return ClimateErosion::E3;
+    if (e < 0.43f) return ClimateErosion::E4;
+    if (e < 0.71f) return ClimateErosion::E5;
+    return ClimateErosion::E6;
+}
+
+static ClimateContinentalness quantizeContinentalness(float c) {
+    // c in [-3.8,3.8]
+    if (c < -1.05f) return ClimateContinentalness::MUSHROOM;
+    if (c < -0.455f) return ClimateContinentalness::OCEAN;
+    if (c < -0.15f) return ClimateContinentalness::COAST;
+    if (c < 0.165f) return ClimateContinentalness::NEAR_INLAND;
+    if (c < 0.73f) return ClimateContinentalness::MID_INLAND;
+    return ClimateContinentalness::FAR_INLAND;
+}
+
+static ClimatePeaksValleys quantizePV(float pv) {
+    // pv in [-1,1]
+    if (pv < -0.6f) return ClimatePeaksValleys::VALLEY;
+    if (pv < -0.2f) return ClimatePeaksValleys::LOW;
+    if (pv < 0.2f) return ClimatePeaksValleys::MID;
+    if (pv < 0.6f) return ClimatePeaksValleys::HIGH;
+    return ClimatePeaksValleys::PEAK;
+}
+
 BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height) {
 
     // Build very low-frequency (coarse) climate fields so biomes form large contiguous regions.
@@ -893,59 +976,152 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     const float freqCoarse = 1.0f / glm::max(256.0f, worldUnitsPerPatch);
 
     // Coarse climate fields in [0..1]
-    float tempCoarse  = (tempNoise.fractalBrownianMotion2D(worldX * freqCoarse,            worldZ * freqCoarse,            4, 2.0f, 0.5f) + 1.0f) * 0.5f;
-    float humidCoarse = (humidNoise.fractalBrownianMotion2D(worldX * freqCoarse * 0.9f,    worldZ * freqCoarse * 0.9f,    4, 2.0f, 0.5f) + 1.0f) * 0.5f;
-
-    // Small regional bias
-    static Noise regionBias(terrainParams.seed + 4242);
-    float bias = (regionBias.fractalBrownianMotion2D(worldX * freqCoarse * 0.6f, worldZ * freqCoarse * 0.6f, 3, 2.0f, 0.5f) + 1.0f) * 0.5f;
-
-    float climate = glm::clamp(glm::mix(tempCoarse, 1.0f - humidCoarse, 0.35f) * 0.7f + bias * 0.3f, 0.0f, 1.0f);
+    // Perlin's actual output range is ~[-0.5, 0.5] (unit gradient dot sub-cell distance),
+    // so multiply by 2 before normalizing to stretch the full [0,1] range and reach
+    // extreme buckets (VERY_COLD, HOT) that produce Tundra, Mesa, and Jungle.
+    float tempCoarse  = glm::clamp((tempNoise.fractalBrownianMotion2D(worldX * freqCoarse,         worldZ * freqCoarse,         4, 2.0f, 0.5f) * 2.0f + 1.0f) * 0.5f, 0.0f, 1.0f);
+    float humidCoarse = glm::clamp((humidNoise.fractalBrownianMotion2D(worldX * freqCoarse * 0.9f, worldZ * freqCoarse * 0.9f, 4, 2.0f, 0.5f) * 2.0f + 1.0f) * 0.5f, 0.0f, 1.0f);
 
 
-    climate = glm::clamp((climate - 0.5f) * 1.2f + 0.5f, 0.0f, 1.0f);
+    const float rawCont = getContinentalness(terrainParams, worldX, worldZ);
+    const float rawEro = getErosion(terrainParams, worldX, worldZ);
+    const float rawPV = getPV(terrainParams, worldX, worldZ);
 
-    // High, cold overrides
-    // if (height > terrainParams.seaLevel + 28) {
-        if (tempCoarse < terrainParams.snowTemperatureThreshold) return BiomeType::TUNDRA;
-        // return BiomeType::MOUNTAIN;
-    // }
-    float pv = getPV(terrainParams, worldX, worldZ);
-    float aridity = (1.0f - humidCoarse) * tempCoarse;
+    const auto ct = quantizeTemp(tempCoarse);
+    const auto ch = quantizeHumidity(humidCoarse);
+    const auto ce = quantizeErosion(rawEro);
+    const auto cc = quantizeContinentalness(rawCont);
+    const auto cpv = quantizePV(rawPV);
 
-    // MESA: hot + very dry — terracotta terrain
-    if (tempCoarse > 0.60f && humidCoarse < 0.35f && aridity > 0.25f)
-        return BiomeType::MESA;
+    // OCEAN
+    // if (cc == ClimateContinentalness::OCEAN) return BiomeType::OCEAN;
 
-    // --- DESERT: hot + dry, inland, mid elevations ---
-    if (aridity > 0.3f &&
-        tempCoarse > 0.40f &&
-        humidCoarse < 0.45f &&
-        height <= 90 && pv < 0.2f
-        ){
-        return BiomeType::DESERT;
-        }
+    // Mushroom Island — cold, wet, near coast/ocean (old continentalness check was almost
+    // always filtered out by the seaLevel height check since MUSHROOM continental = underwater)
+    if (ct == ClimateTemperature::COLD &&
+        ch == ClimateHumidity::WET &&
+        cc <= ClimateContinentalness::NEAR_INLAND)
+        return BiomeType::MUSHROOM_ISLAND;
 
-    // Cold lowlands
-    if (climate < 0.16f) return BiomeType::TUNDRA;
-    if (height > terrainParams.seaLevel + 30 && tempCoarse < 0.45f) return BiomeType::TUNDRA;
-    
-    if (tempCoarse > 0.6f && humidCoarse > 0.6f) return BiomeType::JUNGLE;
-
-    // SWAMP: wet, low-lying, mild temps
-    if (height <= terrainParams.seaLevel + 6 &&
-        humidCoarse > 0.60f &&
-        tempCoarse > 0.30f && tempCoarse < 0.80f) {
-        return BiomeType::SWAMP;
+    // VERY COLD
+    if (ct == ClimateTemperature::VERY_COLD) {
+        return (ch >= ClimateHumidity::NEUTRAL) ? BiomeType::ICE_PLAINS : BiomeType::TUNDRA;
     }
 
-    if (tempCoarse > 0.35f && tempCoarse < 0.55f && humidCoarse > 0.50f) return BiomeType::BIRCH_FOREST;
+    // Nether — hot, arid, elevated terrain (high or peak peaks)
+    if (ct == ClimateTemperature::HOT &&
+        ch == ClimateHumidity::ARID &&
+        cpv >= ClimatePeaksValleys::HIGH)
+        return BiomeType::NETHER;
 
-    // Forest: moist and not too hot
-    if (humidCoarse > terrainParams.forestMoistureThreshold * 0.9f && climate < 0.65f) return BiomeType::DARK_FOREST;
+    // Volcanic — hot, arid, flat-to-mid terrain (elevated Nether already claimed above)
+    if (ct == ClimateTemperature::HOT &&
+        ch == ClimateHumidity::ARID)
+        return BiomeType::VOLCANIC;
+
+    // Canyon terrain is now part of Mesa (same biome, erosion gives it canyons naturally)
+    // Mesa — hot, dry/arid-but-not-arid (ARID is claimed by VOLCANIC above), or
+    //        warm/hot + dry + heavily eroded (canyon-like mesa)
+    if ((ct == ClimateTemperature::WARM || ct == ClimateTemperature::HOT) &&
+        ch <= ClimateHumidity::DRY &&
+        ce >= ClimateErosion::E4 &&
+        cc >= ClimateContinentalness::NEAR_INLAND)
+        return BiomeType::MESA;
+
+    if (ct == ClimateTemperature::HOT && ch == ClimateHumidity::DRY)
+        return BiomeType::MESA;
+
+    // Red Desert — warm + arid flat lands (distinct from hot MESA)
+    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::ARID)
+        return BiomeType::RED_DESERT;
+
+    // Desert — warm/hot, arid/dry only (NEUTRAL excluded so Savanna can claim WARM+NEUTRAL)
+    if ((ct == ClimateTemperature::WARM || ct == ClimateTemperature::HOT) &&
+        ch <= ClimateHumidity::DRY && height < 110)
+        return BiomeType::DESERT;
+
+    // Savanna — warm, moderate (checked before Jungle/Swamp to avoid being swallowed)
+    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::NEUTRAL)
+        return BiomeType::SAVANNA;
+
+    // Jungle — hot and wet
+    if (ct == ClimateTemperature::HOT && ch >= ClimateHumidity::HUMID)
+        return BiomeType::JUNGLE;
+
+    // Swamp — warm, wet, flat/valley
+    if ((ct == ClimateTemperature::TEMPERATE || ct == ClimateTemperature::WARM) &&
+        ch >= ClimateHumidity::HUMID &&
+        cpv <= ClimatePeaksValleys::LOW)
+        return BiomeType::SWAMP;
+
+    // Dark Forest — cool/temperate, humid
+    if (ct <= ClimateTemperature::TEMPERATE && ch >= ClimateHumidity::HUMID)
+        return BiomeType::DARK_FOREST;
+
+    // Mountain — high peaks, inland (checked before Birch Forest so mountainous
+    // temperate+neutral terrain becomes mountains, not forest)
+    if (cpv >= ClimatePeaksValleys::HIGH && cc >= ClimateContinentalness::MID_INLAND)
+        return BiomeType::MOUNTAIN;
+
+    // Birch Forest — temperate, neutral humidity, low/mid terrain
+    if (ct == ClimateTemperature::TEMPERATE &&
+        (ch == ClimateHumidity::NEUTRAL || ch == ClimateHumidity::HUMID))
+        return BiomeType::BIRCH_FOREST;
 
 
-    if (tempCoarse > 0.55f && humidCoarse > 0.35f && humidCoarse < 0.55f) return BiomeType::SAVANNA;
+
+
+
+    // Small regional bias
+    // static Noise regionBias(terrainParams.seed + 4242);
+    // float bias = (regionBias.fractalBrownianMotion2D(worldX * freqCoarse * 0.6f, worldZ * freqCoarse * 0.6f, 3, 2.0f, 0.5f) + 1.0f) * 0.5f;
+
+    // float climate = glm::clamp(glm::mix(tempCoarse, 1.0f - humidCoarse, 0.35f) * 0.7f + bias * 0.3f, 0.0f, 1.0f);
+
+
+    // climate = glm::clamp((climate - 0.5f) * 1.2f + 0.5f, 0.0f, 1.0f);
+
+    // // High, cold overrides
+    // // if (height > terrainParams.seaLevel + 28) {
+    //     if (tempCoarse < terrainParams.snowTemperatureThreshold) return BiomeType::TUNDRA;
+    //     // return BiomeType::MOUNTAIN;
+    // // }
+    // float pv = getPV(terrainParams, worldX, worldZ);
+    // float aridity = (1.0f - humidCoarse) * tempCoarse;
+
+    // // MESA: hot + very dry — terracotta terrain
+    // if (tempCoarse > 0.60f && humidCoarse < 0.35f && aridity > 0.25f)
+    //     return BiomeType::MESA;
+
+    // // --- DESERT: hot + dry, inland, mid elevations ---
+    // if (aridity > 0.3f &&
+    //     tempCoarse > 0.40f &&
+    //     humidCoarse < 0.45f &&
+    //     height <= 90 && pv < 0.2f
+    //     ){
+    //     return BiomeType::DESERT;
+    //     }
+
+    // // Cold lowlands
+    // if (climate < 0.16f) return BiomeType::TUNDRA;
+    // if (height > terrainParams.seaLevel + 30 && tempCoarse < 0.45f) return BiomeType::TUNDRA;
+    
+    // if (tempCoarse > 0.6f && humidCoarse > 0.6f) return BiomeType::JUNGLE;
+
+    // // SWAMP: wet, low-lying, mild temps
+    // if (height <= terrainParams.seaLevel + 6 &&
+    //     humidCoarse > 0.60f &&
+    //     tempCoarse > 0.30f && tempCoarse < 0.80f) {
+    //     return BiomeType::SWAMP;
+    // }
+
+    // if (tempCoarse > 0.35f && tempCoarse < 0.55f && humidCoarse > 0.50f) return BiomeType::BIRCH_FOREST;
+
+    // // Forest: moist and not too hot
+    // if (humidCoarse > terrainParams.forestMoistureThreshold * 0.9f && climate < 0.65f) return BiomeType::DARK_FOREST;
+
+
+    // if (tempCoarse > 0.55f && humidCoarse > 0.35f && humidCoarse < 0.55f) return BiomeType::SAVANNA;
 
 
 

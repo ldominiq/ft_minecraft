@@ -25,6 +25,9 @@ enum class BiomeType {
 	CANYON,
 	ICE_PLAINS,
 	VOLCANIC,
+	RED_DESERT,
+	NETHER,
+	MUSHROOM_ISLAND,
 };
 
 enum class ClimateTemperature : uint8_t {
@@ -35,7 +38,7 @@ enum class ClimateTemperature : uint8_t {
 	HOT = 4
 };
 
-enum class ClimateMoisture : uint8_t {
+enum class ClimateHumidity : uint8_t {
 	ARID = 0,
 	DRY = 1,
 	NEUTRAL = 2,
@@ -141,6 +144,27 @@ enum class BlockType : ItemID {
 	JUNGLE_LOG,
 	SPRUCE_LOG,
 	DARK_OAK_LOG,
+	ICE,
+	PACKED_ICE,
+	BLUE_ICE,
+	BASALT,
+	BLACKSTONE,
+	CLAY,
+	COARSE_DIRT,
+	COBBLESTONE,
+	GRAVEL,
+	MOSSY_COBBLESTONE,
+	CRYING_OBSIDIAN,
+	NETHERRACK,
+	SOUL_SAND,
+	CRIMSON_NYLIUM,
+	RED_SAND,
+	RED_SANDSTONE,
+	ANDESITE,
+	GRANITE,
+	DIORITE,
+	RED_MUSHROOM_BLOCK,
+	SANDSTONE,
 	END
 };
 
@@ -240,6 +264,27 @@ public:
 		ItemDef{ makeBlock(BlockType::ORANGE_TERRACOTTA, 		"Orange Terracotta", 10) },
 		ItemDef{ makeBlock(BlockType::YELLOW_TERRACOTTA, 		"Yellow Terracotta", 10) },
 		ItemDef{ makeBlock(BlockType::LIGHT_GRAY_TERRACOTTA, 	"Light Gray Terracotta", 10) },
+		ItemDef{ makeBlock(BlockType::ICE,               		"Ice", 1) },
+		ItemDef{ makeBlock(BlockType::PACKED_ICE,        		"Packed Ice", 1) },
+		ItemDef{ makeBlock(BlockType::BLUE_ICE,          		"Blue Ice", 1) },
+		ItemDef{ makeBlock(BlockType::BASALT,          			"Basalt", 1) },
+		ItemDef{ makeBlock(BlockType::BLACKSTONE,          		"Blackstone", 1) },
+		ItemDef{ makeBlock(BlockType::CLAY,              		"Clay", 1) },
+		ItemDef{ makeBlock(BlockType::COARSE_DIRT,       		"Coarse Dirt", 1) },
+		ItemDef{ makeBlock(BlockType::COBBLESTONE,       		"Cobblestone", 1) },
+		ItemDef{ makeBlock(BlockType::GRAVEL,            		"Gravel", 1) },
+		ItemDef{ makeBlock(BlockType::MOSSY_COBBLESTONE, 		"Mossy Cobblestone", 1) },
+		ItemDef{ makeBlock(BlockType::CRYING_OBSIDIAN,   		"Crying Obsidian", 1) },
+		ItemDef{ makeBlock(BlockType::NETHERRACK,        		"Netherrack", 1) },
+		ItemDef{ makeBlock(BlockType::SOUL_SAND,         		"Soul Sand", 1) },
+		ItemDef{ makeBlock(BlockType::CRIMSON_NYLIUM,    		"Crimson Nylium", 1) },
+		ItemDef{ makeBlock(BlockType::RED_SAND,          		"Red Sand", 1) },
+		ItemDef{ makeBlock(BlockType::RED_SANDSTONE,          	"Red Sandstone", 1) },
+		ItemDef{ makeBlock(BlockType::ANDESITE,          		"Andesite", 1) },
+		ItemDef{ makeBlock(BlockType::GRANITE,           		"Granite", 1) },
+		ItemDef{ makeBlock(BlockType::DIORITE,           		"Diorite", 1) },
+		ItemDef{ makeBlock(BlockType::RED_MUSHROOM_BLOCK, 		"Red Mushroom Block", 1) },
+		ItemDef{ makeBlock(BlockType::SANDSTONE, 				"Sandstone", 1) },
 	};
 
 	// static inline std::vector<ItemDef> liquids = {

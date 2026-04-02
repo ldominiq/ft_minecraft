@@ -101,8 +101,8 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha);
 class App {
 public:
     struct TerrainDebugUIParams {
-        int genSize = 500;
-        int downsample = 8;
+        int genSize = 1000;
+        int downsample = 16;
     };
 
     App(const std::string& serverIp = "127.0.0.1");

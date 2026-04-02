@@ -82,8 +82,8 @@ struct TerrainGenerationParams {
 
 
     // heightmap dump settings / helpers (used by World::dumpHeightmap)
-    int genSize = 500;     // default size for quick dumps
-    int downsample = 8;    // output downsample factor for dumps
+    int genSize = 1000;     // default size for quick dumps
+    int downsample = 16;    // output downsample factor for dumps
 
     // Continentalness noise params
     float continentalnessFrequency = 0.001f;
@@ -128,10 +128,6 @@ struct TerrainGenerationParams {
     bool snapClimateToCells = true;
     float climateWarpFrequency = 0.0008f;
     float climateWarpStrength = 180.0f;
-
-    float desertMoistureThreshold = 0.30f;
-    float forestMoistureThreshold = 0.60f;
-    float snowTemperatureThreshold = 0.28f;
 
     bool debugOresOnly = false; // if true, strip all other solid blocks to AIR
 };

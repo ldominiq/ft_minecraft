@@ -977,6 +977,12 @@ void App::debugWindow() {
                         (static_cast<BiomeType>(currentBiome) == BiomeType::JUNGLE) ? "JUNGLE" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::SAVANNA) ? "SAVANNA" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::MESA) ? "MESA" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::CANYON) ? "CANYON" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::ICE_PLAINS) ? "ICE_PLAINS" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::VOLCANIC) ? "VOLCANIC" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::RED_DESERT) ? "RED_DESERT" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::NETHER) ? "NETHER" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::MUSHROOM_ISLAND) ? "MUSHROOM_ISLAND" :
                                                                                     "UNKNOWN";
                     ImGui::Text("BIOME: %s", biomeName);
 
