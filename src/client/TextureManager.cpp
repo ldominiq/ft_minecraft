@@ -390,8 +390,8 @@ void TextureManager::setupBlockTextureMapping() {
 
     blockTextureMap[BlockType::BASALT]     = BlockTextures::topBottomSides(
                                             layer("basalt_top"),
-                                            layer("basalt"),
-                                            layer("basalt"));
+                                            layer("basalt_side"),
+                                            layer("basalt_side"));
 
     blockTextureMap[BlockType::BLACKSTONE]  = BlockTextures::topBottomSides(
                                             layer("blackstone_top"),
