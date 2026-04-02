@@ -18,12 +18,15 @@ class ChunkGeneration : public Chunk {
 		ChunkGeneration(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
 
 		void generate(const TerrainGenerationParams& terrainParams);
+		void generateTerrain(BlockStorage& blocks, const TerrainGenerationParams& terrainParams);
 		void generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 		void placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ, int surfaceY, int treeHeight, BlockType logType, BlockType leafType, int canopyStyle, int maxTrunkWidth, std::mt19937 &rng) const;
 		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 		void generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+
+		void stripBlocks(BlockStorage& blocks, const TerrainGenerationParams& terrainParams);
 
 		static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
 

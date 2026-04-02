@@ -130,6 +130,27 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
     // local storage
     BlockStorage blocks;
 
+	generateTerrain(blocks, terrainParams);
+
+    generateCaves(blocks, terrainParams);
+
+    generateTrees(blocks, terrainParams);
+    generateCacti(blocks, terrainParams);
+
+    generateOres(blocks, terrainParams);
+    
+    #ifndef NDEBUG
+	    stripBlocks(blocks, terrainParams);
+    #endif
+
+    // encode palette and block data (must be done before vegetation generation)
+    blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
+
+    generateVegetation(blocks, terrainParams);
+}
+
+// Core terrain generation: heightmap, biome assignment and base block types.
+void ChunkGeneration::generateTerrain(BlockStorage& blocks, const TerrainGenerationParams& terrainParams) {
     for (int x = 0; x < WIDTH; ++x) {
         for (int z = 0; z < DEPTH; ++z) {
             const auto worldX = static_cast<float>(originX + x);
@@ -171,72 +192,72 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
             // Set blocks based on biome
             for (int y = std::max(terrainParams.bedrockLevel + 1, surfaceY - 3); y < surfaceY && y < HEIGHT; y++) {
                 switch (biome) {
-                    case BiomeType::DESERT:
-                        top = BlockType::SAND;
-                        fill = BlockType::SANDSTONE;
-                        break;
-                    case BiomeType::SWAMP:
-                        top = BlockType::CLAY;
-                        fill = BlockType::COARSE_DIRT;
-                        break;
-                    case BiomeType::TUNDRA:
-                        top = BlockType::SNOW;
-                        fill = BlockType::DIRT;
-                        break;
-                    case BiomeType::VOLCANIC:
-                        top = fill = BlockType::BASALT;
-                        break;
+                case BiomeType::DESERT:
+                    top = BlockType::SAND;
+                    fill = BlockType::SANDSTONE;
+                    break;
+                case BiomeType::SWAMP:
+                    top = BlockType::CLAY;
+                    fill = BlockType::COARSE_DIRT;
+                    break;
+                case BiomeType::TUNDRA:
+                    top = BlockType::SNOW;
+                    fill = BlockType::DIRT;
+                    break;
+                case BiomeType::VOLCANIC:
+                    top = fill = BlockType::BASALT;
+                    break;
 
-                    case BiomeType::ICE_PLAINS:
-                        top = BlockType::ICE;
-                        fill = BlockType::PACKED_ICE;
-                        break;
+                case BiomeType::ICE_PLAINS:
+                    top = BlockType::ICE;
+                    fill = BlockType::PACKED_ICE;
+                    break;
 
-                    case BiomeType::MOUNTAIN: {
-                        static constexpr BlockType mountainLayers[] = {
-                            BlockType::STONE, BlockType::GRANITE, BlockType::STONE,
-                            BlockType::DIORITE, BlockType::STONE, BlockType::ANDESITE,
-                            BlockType::STONE, BlockType::COBBLESTONE,
-                        };
-                        constexpr int N = static_cast<int>(std::size(mountainLayers));
-                        fill = mountainLayers[((y % N) + N) % N];
-                        top = BlockType::STONE;
-                        break;
-                    }
+                case BiomeType::MOUNTAIN: {
+                    static constexpr BlockType mountainLayers[] = {
+                        BlockType::STONE, BlockType::GRANITE, BlockType::STONE,
+                        BlockType::DIORITE, BlockType::STONE, BlockType::ANDESITE,
+                        BlockType::STONE, BlockType::COBBLESTONE,
+                    };
+                    constexpr int N = static_cast<int>(std::size(mountainLayers));
+                    fill = mountainLayers[((y % N) + N) % N];
+                    top = BlockType::STONE;
+                    break;
+                }
 
-                    case BiomeType::RED_DESERT:
-                        top = BlockType::RED_SAND;
-                        fill = BlockType::RED_SANDSTONE;
-                        break;
+                case BiomeType::RED_DESERT:
+                    top = BlockType::RED_SAND;
+                    fill = BlockType::RED_SANDSTONE;
+                    break;
 
-                    case BiomeType::NETHER:
-                        top = fill = BlockType::NETHERRACK;
-                        break;
+                case BiomeType::NETHER:
+                    top = fill = BlockType::NETHERRACK;
+                    break;
 
-                    case BiomeType::MUSHROOM_ISLAND:
-                        top = BlockType::RED_MUSHROOM_BLOCK;
-                        fill = BlockType::COARSE_DIRT;
-                        break;
-                    case BiomeType::MESA: {
-                        static constexpr BlockType mesaLayers[] = {
-                            BlockType::TERRACOTTA,
-                            BlockType::RED_TERRACOTTA,
-                            BlockType::ORANGE_TERRACOTTA,
-                            BlockType::YELLOW_TERRACOTTA,
-                            BlockType::BROWN_TERRACOTTA,
-                            BlockType::WHITE_TERRACOTTA,
-                            BlockType::RED_TERRACOTTA,
-                            BlockType::ORANGE_TERRACOTTA,
-                            BlockType::TERRACOTTA,
-                            BlockType::PINK_TERRACOTTA,
-                        };
-                        constexpr int N = static_cast<int>(std::size(mesaLayers));
-                        top = fill = mesaLayers[((y % N) + N) % N];
-                        break;
-                    }
-                    default:
-                        top = BlockType::GRASS;
-                        fill = BlockType::DIRT; // PLAINS
+                case BiomeType::MUSHROOM_ISLAND:
+                    top = BlockType::RED_MUSHROOM_BLOCK;
+                    fill = BlockType::COARSE_DIRT;
+                    break;
+                case BiomeType::MESA: {
+                    static constexpr BlockType mesaLayers[] = {
+                        BlockType::TERRACOTTA,
+                        BlockType::RED_TERRACOTTA,
+                        BlockType::ORANGE_TERRACOTTA,
+                        BlockType::YELLOW_TERRACOTTA,
+                        BlockType::BROWN_TERRACOTTA,
+                        BlockType::WHITE_TERRACOTTA,
+                        BlockType::RED_TERRACOTTA,
+                        BlockType::ORANGE_TERRACOTTA,
+                        BlockType::TERRACOTTA,
+                        BlockType::PINK_TERRACOTTA,
+                    };
+                    constexpr int N = static_cast<int>(std::size(mesaLayers));
+                    top = fill = mesaLayers[((y % N) + N) % N];
+                    break;
+                }
+                default:
+                    top = BlockType::GRASS;
+                    fill = BlockType::DIRT; // PLAINS
                 }
 
                 blocks.at(x, y, z) = fill;
@@ -244,9 +265,9 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
             // Water up to sea levels
             for (int y = surfaceY; y <= terrainParams.seaLevel && y < HEIGHT; ++y)
-			{
+            {
                 blocks.at(x, y, z) = BlockType::WATER;
-			}
+            }
 
             // Set top block only if above water
             if (surfaceY > terrainParams.seaLevel) {
@@ -257,15 +278,11 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
         }
     }
+}
 
-    generateCaves(blocks, terrainParams);
 
-    generateTrees(blocks, terrainParams);
-    generateCacti(blocks, terrainParams);
-
-    generateOres(blocks, terrainParams);
-    
-    // DEBUG: strip everything except ores so they're visible in isolation
+// DEBUG: strip everything except ores so they're visible in isolation
+void ChunkGeneration::stripBlocks(BlockStorage& blocks, const TerrainGenerationParams& terrainParams) {
     if (terrainParams.debugOresOnly) {
         // Build a set of ore block types for fast lookup
         std::unordered_set<BlockType> oreTypes;
@@ -280,12 +297,8 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
                         blocks.at(x, y, z) = BlockType::AIR;
                 }
     }
-
-    // encode palette and block data (must be done before vegetation generation)
-    blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
-
-    generateVegetation(blocks, terrainParams);
 }
+
 
 // Fast integer hash used to create organic leaf edges.
 // Returns true ~25% of the time for a given world position + tree anchor.
@@ -554,6 +567,7 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
     }
 }
 
+// Generate trees for this chunk based on biome and deterministic RNG.
 void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     // Tree leaves extend up to 2 blocks horizontally. To handle trees from
     // neighboring chunks whose canopy spills into this chunk, we iterate
@@ -654,6 +668,7 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
     }
 }
 
+// Generate cacti in desert biomes. Cacti are 3 blocks tall and can be placed next to each other, but not diagonally.
 void ChunkGeneration::generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     const int minWorldX = originX - 1;
     const int maxWorldX = originX + WIDTH + 1;
@@ -704,6 +719,7 @@ void ChunkGeneration::generateCacti(BlockStorage &blocks, const TerrainGeneratio
     }
 }
 
+// Carve caves using 3D Perlin noise. Caves are more likely and larger deeper underground, with small narrow entrances near the surface.
 void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     // Maybe check based on biome or something to skip cave generation for some biomes (e.g. ocean)
     const int yStart = terrainParams.bedrockLevel + 3;
@@ -767,6 +783,7 @@ void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGeneratio
     }
 }
 
+// Place ore veins based on deterministic RNG.
 void ChunkGeneration::generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     for (const auto &ore : oreTable) {
         // Deterministic RNG per ore type per chunk
@@ -1197,10 +1214,8 @@ int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrain
     return surfaceY;
 }
 
+// Place grass and flowers based on deterministic RNG and biome-specific spawn chances, weighted tables, and placement rules.
 void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
-    // Generate grass and flowers on suitable surface blocks
-    // Only place vegetation on solid blocks that are not water/sand/snow
-    // Vegetation should be above sea level
 
     vegetation.clear();
 
