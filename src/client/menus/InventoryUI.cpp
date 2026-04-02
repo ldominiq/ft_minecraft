@@ -246,6 +246,30 @@ void InventoryUI::drawHotbar()
     glEnable(GL_DEPTH_TEST);
 }
 
+InventoryType InventoryUI::getCurrentInventoryType(double mouseX, double mouseY) const
+{
+	if (mouseX >= inventoryLayout.x && mouseX <= inventoryLayout.x + inventoryLayout.width &&
+		mouseY >= inventoryLayout.y && mouseY <= inventoryLayout.y + inventoryLayout.height)
+		return InventoryType::PLAYER;
+	if (mouseX >= craftingStation.x && mouseX <= craftingStation.x + craftingStation.width &&
+		mouseY >= craftingStation.y && mouseY <= craftingStation.y + craftingStation.height)
+		return InventoryType::CRAFTING_TABLE;
+	return InventoryType::NONE;
+}
+
+int InventoryUI::getCraftingSlotAt(double mouseX, double mouseY) const
+{
+	mouseY = fullscreenHeight - mouseY;
+	for (int i = 0; i < MAX_CRAFTING_SLOTS * MAX_CRAFTING_SLOTS; ++i)
+	{
+		const auto& s = craftingStationSlots[i];
+		if (mouseX >= s.x && mouseX <= s.x + s.width &&
+			mouseY >= s.y && mouseY <= s.y + s.height)
+			return i;
+	}
+	return -1;
+}
+
 int InventoryUI::getSlotAt(double mouseX, double mouseY) const
 {
 	mouseY = fullscreenHeight - mouseY;
@@ -261,24 +285,37 @@ int InventoryUI::getSlotAt(double mouseX, double mouseY) const
 
 void InventoryUI::handleMouseClick(double mouseX, double mouseY, int button, int action)
 {
-	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+	InventoryType inventoryType = getCurrentInventoryType(mouseX, mouseY);
+	if (inventoryType == InventoryType::NONE)
+		return ;
+
+	this->mouseX = mouseX;
+	this->mouseY = mouseY;
+
+	NetInventoryAction pkt;
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) //left click
+		pkt.actionType = InventoryActionType::INV_LEFT_CLICK;
+	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) //right click
+		pkt.actionType = InventoryActionType::INV_RIGHT_CLICK;
+	pkt.inventoryTypeID = static_cast<uint8_t>(inventoryType);
+
+	if (inventoryType == InventoryType::PLAYER)
 	{
 		int slot = getSlotAt(mouseX, mouseY);
 		if (slot != -1)
 		{
-			this->mouseX = mouseX;
-			this->mouseY = mouseY;
-			lastAction = {slot, InventoryActionType::INV_LEFT_CLICK};
+			pkt.slot = slot;
+			lastAction.emplace(pkt);
 		}
 	}
-	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+
+	else if (inventoryType == InventoryType::CRAFTING_TABLE)
 	{
-		int slot = getSlotAt(mouseX, mouseY);
+		int slot = getCraftingSlotAt(mouseX, mouseY);
 		if (slot != -1)
 		{
-			this->mouseX = mouseX;
-			this->mouseY = mouseY;
-			lastAction = {slot, InventoryActionType::INV_RIGHT_CLICK};
+			pkt.slot = slot;
+			lastAction.emplace(pkt);
 		}
 	}
 }

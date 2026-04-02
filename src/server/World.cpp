@@ -913,6 +913,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					deletedEntitiesPkts.push_back(pkt);
 
 					NetInventory pickedUpItem;
+					pickedUpItem.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 					pickedUpItem.type = entityIt->get()->getItemID();
 					pickedUpItem.amount = player.movement->inventory.getSlot(slotUsed).second;
 					pickedUpItem.slot = slotUsed;

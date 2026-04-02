@@ -10,6 +10,13 @@
 
 #include "Item.hpp"
 
+enum class InventoryType : uint8_t {
+	NONE,
+	PLAYER,
+	CRAFTING_TABLE,
+	CHEST, //unused
+};
+
 //careaful, there might be a confusion with (uint)-1 used for when activeHotbarSlot isn't set
 constexpr int16_t INVALID_SLOT = -1;
 constexpr uint8_t HAND_ID = 36;
@@ -21,7 +28,6 @@ class Inventory {
 		static const int rows = 4;
 		static const int cols = 9;
 	
-	private:
 		static const itemStackSize_t MAX_STACK_SIZE = UINT8_MAX;
 
 		std::array<std::pair<ItemType, itemStackSize_t>, rows * cols + 1> grid{};	//inventory grid. should default initialize to every value {BlockType::Begin, 0}.

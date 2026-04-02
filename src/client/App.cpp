@@ -199,10 +199,7 @@ void App::init() {
 				manager->handleMouseClick(mouseX, mouseY, button, action);
 				if (app->inventoryUI->lastAction.has_value())
 				{
-					auto [slot, type] = *app->inventoryUI->lastAction;
-					NetInventoryAction pkt;
-					pkt.actionType = type;
-					pkt.slot = slot;
+					auto& pkt = *app->inventoryUI->lastAction;
 					app->udpClient->sendPacket(pkt);
 					app->inventoryUI->lastAction.reset();
 				}

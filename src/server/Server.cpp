@@ -268,6 +268,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 
 			NetInventory dropItem;
 			int slot = player->movement->inventory.activeHotbarSlot;
+			dropItem.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 			dropItem.type = std::visit([](auto& value) -> ItemID {
 				return static_cast<ItemID>(value);
 			}, type);
@@ -300,6 +301,7 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	{
 		NetInventory dropItem;
 		int slot = player->movement->inventory.activeHotbarSlot;
+		dropItem.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 		dropItem.type = player->movement->inventory.getActiveItemID();
 		dropItem.amount = player->movement->inventory.getSlot(slot).second;
 		dropItem.slot = slot;
@@ -344,6 +346,7 @@ void Server::sendInventorySlot(int slot, const sockaddr_in &cliaddr)
 	itemStackSize_t amountAtSlot = inv.getSlot(slot).second;
 
 	NetInventory pkt;
+	pkt.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 	pkt.type = itemIDAtSlot;
 	pkt.amount = amountAtSlot;
 	pkt.slot = slot;
@@ -684,16 +687,19 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		player->movement->inventory.insertItemsToSlot(BlockType::STONE, 1, twohundred2);
 
 		auto pkt1 = std::make_unique<NetInventory>();
+		pkt1->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 		pkt1->amount = 200;
 		pkt1->slot = 0;
 		pkt1->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::DIRT);
 
 		auto pkt2 = std::make_unique<NetInventory>();
+		pkt2->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 		pkt2->amount = 200;
 		pkt2->slot = 8;
 		pkt2->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::WATER);
 
 		auto pkt3 = std::make_unique<NetInventory>();
+		pkt3->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 		pkt3->amount = 200;
 		pkt3->slot = 1;
 		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);

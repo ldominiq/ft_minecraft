@@ -8,8 +8,9 @@
 #include "Network.hpp"
 #include <optional>
 #include <filesystem>
+#include "Protocol.hpp"
 
-#include "VideoPlayer.hpp"
+// #include "VideoPlayer.hpp"
 
 int constexpr MAX_SLOTS = 9;
 int constexpr MAX_CRAFTING_SLOTS = 3; //3x3 but whatever
@@ -119,6 +120,8 @@ class InventoryUI : public Inventory, public Menu
 	void build() override;
 	void drawEveryInventoryQuad();
 
+	InventoryType getCurrentInventoryType(double mouseX, double mouseY) const;
+	int getCraftingSlotAt(double mouseX, double mouseY) const;
 	int getSlotAt(double mouseX, double mouseY) const;
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
 	void handleMouseMove(double mouseX, double mouseY) override;
@@ -134,7 +137,7 @@ class InventoryUI : public Inventory, public Menu
 		void drawHotbar();
 		void drawInventory() const;
 
-		std::optional<std::pair<int, InventoryActionType>> lastAction; //awful solution
+		std::optional<NetInventoryAction> lastAction; //awful solution
 };
 
 #endif
