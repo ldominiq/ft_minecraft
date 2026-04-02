@@ -597,7 +597,8 @@ void World::updateRegionStreaming(std::vector<CPlayerInfo> &players)
 			}
 			else
 			{
-				unloadChunksInRegion(it->first, it->second);
+				if (SAVES_ACTIVE)
+					unloadChunksInRegion(it->first, it->second);
 			}
 
             it = loadedRegions.erase(it);
