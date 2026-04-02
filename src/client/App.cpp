@@ -833,6 +833,17 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 		firstFrame = false;
 	}
 
+	// Sync the local player's mesh position with the interpolated camera target
+	// so the character doesn't shake in third-person due to the prediction/
+	// reconciliation cycle updating the raw physics position mid-frame.
+	auto &localPlayer = *camera->getPlayer();
+	if (camera->isThirdPersonCameraActive()) {
+		localPlayer.renderPos = camera->getInterpolatedPlayerPos();
+		localPlayer.hasRenderPos = true;
+	} else {
+		localPlayer.hasRenderPos = false;
+	}
+
 	renderer->drawCharacters(projection, view, deltaTime);
 }
 

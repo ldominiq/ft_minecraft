@@ -84,6 +84,11 @@ public:
 	~Camera();
 
     glm::mat4 getViewMatrix() const;
+    glm::vec3 getInterpolatedPlayerPos() const {
+        if (!renderPositionInitialized)
+            return player->getPosition();
+        return glm::mix(renderPrevPosition, renderCurrPosition, renderTickAlpha) + visualOffset;
+    }
     void processMouseMovement(float xoffset, float yoffset);
 	void onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clientTick);
     void flushPendingSnapshot(const Renderer &world, int32_t clientTick);
