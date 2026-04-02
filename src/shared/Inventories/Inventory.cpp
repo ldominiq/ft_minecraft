@@ -1,24 +1,32 @@
 #include "Inventory.hpp"
 
 //MOST OF THESE FUNCTIONS WON'T WORK ONCE WE ADD OTHER TYPES OF ITEMS. FF
-Inventory::Inventory()
+template<int ROWS, int COLS>
+Inventory<ROWS, COLS>::Inventory(std::shared_ptr<std::pair<ItemType, itemStackSize_t>> handPtr)
 {
 	for (int i = 0; i < rows * cols; i++)
 		freeSlots.insert(i);
+
+	HAND_ID = grid.size() - 1; //the last slot of the grid is reserved for the hand.
+	if (handPtr)
+		hand = handPtr;
 }
 
-std::pair<ItemType, itemStackSize_t> Inventory::getSlot(int slot)
+template<int ROWS, int COLS>
+std::pair<ItemType, itemStackSize_t> Inventory<ROWS, COLS>::getSlot(int slot)
 {
-	return grid.at(slot); 
+	return grid.at(slot);
 }
 
-ItemType Inventory::getItemAtSlot(int slot)
+template<int ROWS, int COLS>
+ItemType Inventory<ROWS, COLS>::getItemAtSlot(int slot)
 {
 	if (slot >= grid.size() || slot < 0) return BlockType::BEGIN;
 	return grid[slot].first;
 }
 
-ItemID Inventory::getItemIDAtSlot(int slot)
+template<int ROWS, int COLS>
+ItemID Inventory<ROWS, COLS>::getItemIDAtSlot(int slot)
 {
 	if (slot >= grid.size() || slot < 0) return static_cast<std::underlying_type_t<BlockType>>(BlockType::BEGIN);
 	return std::visit([](auto v) -> ItemID {
@@ -26,19 +34,8 @@ ItemID Inventory::getItemIDAtSlot(int slot)
     }, grid[slot].first);
 }
 
-ItemType Inventory::getActiveItem()
-{
-	return grid[activeHotbarSlot].first;
-}
-
-ItemID Inventory::getActiveItemID()
-{
-	return std::visit([](auto v) -> ItemID {
-        return static_cast<ItemID>(v);
-    }, grid[activeHotbarSlot].first);
-}
-
-void Inventory::setSlot(int slot, itemStackSize_t amount, ItemType type)
+template<int ROWS, int COLS>
+void Inventory<ROWS, COLS>::setSlot(int slot, itemStackSize_t amount, ItemType type)
 {
 	if (slot >= grid.size() || slot < 0) return ;
 
@@ -58,6 +55,9 @@ void Inventory::setSlot(int slot, itemStackSize_t amount, ItemType type)
 		grid[slot] = {};
 		if (slot != HAND_ID)
 			freeSlots.insert(slot);
+
+		if (hand.lock())
+			*hand.lock() = getHand();
 		return;
 	}
 
@@ -80,18 +80,75 @@ void Inventory::setSlot(int slot, itemStackSize_t amount, ItemType type)
 		freeSlots.erase(slot);
 
 	grid[slot] = {type, amount};
+
+	if (hand.lock())
+		*hand.lock() = getHand();
 }
 
-void Inventory::setSlot(int slot, itemStackSize_t amount, ItemID t)
+template<int ROWS, int COLS>
+void Inventory<ROWS, COLS>::setSlot(int slot, itemStackSize_t amount, ItemID t)
 {
 	auto type = itemIDToItemType(t);
 
 	setSlot(slot, amount, type);
 }
 
+template<int ROWS, int COLS>
+void Inventory<ROWS, COLS>::handleInventoryAction(NetInventoryAction &pkt)
+{
+	int slot = pkt.slot;
+
+	//we syncronize the the hand with other inventories first.
+	auto h = hand.lock();
+	if (!h)
+		return;
+	setHand(*h);
+
+	std::cout << "handling inventory action " << (int)pkt.actionType << " on slot " << slot << std::endl;
+	std::cout << "hand has " << std::visit([](auto v) -> ItemID {
+		return static_cast<ItemID>(v);
+	}, getHand().first) << " x " << (int)getHand().second << std::endl;
+	std::cout << "slot has " << std::visit([](auto v) -> ItemID {
+		return static_cast<ItemID>(v);
+	}, getItemAtSlot(slot)) << " x " << (int)getSlot(slot).second << std::endl;
+	std::cout << "-----------------" << std::endl;
+
+	ItemType typeAtSlot = getItemAtSlot(slot);
+	ItemType typeAtHand = getHand().first;
+
+	int amountAtSlot = getSlot(slot).second;
+	int amountAtHand = getHand().second;
+
+	if (pkt.actionType == InventoryActionType::INV_LEFT_CLICK)
+	{
+		if (amountAtHand == 0 || typeAtSlot != typeAtHand)
+			swapSlots(slot, HAND_ID);
+		else
+		{
+			mergeSlot(HAND_ID, slot);
+		}
+	} else if (pkt.actionType == InventoryActionType::INV_RIGHT_CLICK)
+	{
+		if (amountAtHand == 0)
+			takeHalf(slot);
+		else
+		{
+			if (amountAtSlot == 0 || typeAtSlot == typeAtHand)
+				takeOneItemFromSlot(HAND_ID, std::optional<int>(slot));
+			else
+				swapSlots(slot, HAND_ID);
+		}
+	}
+
+	//we make sure hand gets updated so it stays in sync with other inventories.
+	if (hand.lock())
+		*hand.lock() = getHand();
+}
+
 //returns the slot which has been used to insert the item. -1 in case insertion was not successful.
 //if amount is still > 0, caller can just recall the function
-int Inventory::insertItems(ItemType item, int &amount)
+template<int ROWS, int COLS>
+int Inventory<ROWS, COLS>::insertItems(ItemType item, int &amount)
 {
 	auto itemSlots = itemsIndexes.equal_range(item);
 
@@ -123,7 +180,8 @@ int Inventory::insertItems(ItemType item, int &amount)
 	return slot;
 }
 
-bool Inventory::removeItemsFromSlot(int slotNumber, itemStackSize_t amount)
+template<int ROWS, int COLS>
+bool Inventory<ROWS, COLS>::removeItemsFromSlot(int slotNumber, itemStackSize_t amount)
 {
 	if (slotNumber >= grid.size() || slotNumber < 0) return false;
 	if (amount > grid[slotNumber].second) return false;
@@ -151,7 +209,8 @@ bool Inventory::removeItemsFromSlot(int slotNumber, itemStackSize_t amount)
 }
 
 //inserted items must have the same type as the item in the slot
-bool Inventory::insertItemsToSlot(ItemType item, int slotNumber, int &amount)
+template<int ROWS, int COLS>
+bool Inventory<ROWS, COLS>::insertItemsToSlot(ItemType item, int slotNumber, int &amount)
 {
 	if (slotNumber >= grid.size() || slotNumber < 0) return false;
 	if (grid[slotNumber].second > 0 && grid[slotNumber].first != item) return false; //not same type
@@ -183,13 +242,15 @@ bool Inventory::insertItemsToSlot(ItemType item, int slotNumber, int &amount)
 	return true;
 }
 
-bool Inventory::insertItemsToSlot(ItemID i, int slotNumber, int &amount)
+template<int ROWS, int COLS>
+bool Inventory<ROWS, COLS>::insertItemsToSlot(ItemID i, int slotNumber, int &amount)
 {
 	ItemType item = itemIDToItemType(i);
 	return insertItemsToSlot(item, slotNumber, amount);
 }
 
-void Inventory::mergeSlot(int slotSrc, int slotDest)
+template<int ROWS, int COLS>
+void Inventory<ROWS, COLS>::mergeSlot(int slotSrc, int slotDest)
 {
 	if (slotSrc >= grid.size() || slotSrc < 0) return ;
 	if (slotDest >= grid.size() || slotDest < 0) return ;
@@ -208,7 +269,8 @@ void Inventory::mergeSlot(int slotSrc, int slotDest)
 		setSlot(slotSrc, 0, 0);
 }
 
-void Inventory::takeOneItemFromSlot(int slotSrc, std::optional<int> slotDest)
+template<int ROWS, int COLS>
+void Inventory<ROWS, COLS>::takeOneItemFromSlot(int slotSrc, std::optional<int> slotDest)
 {
 	if (slotSrc >= grid.size() || slotSrc < 0) return ;
 	if (slotDest.has_value() && (*slotDest >= grid.size() || *slotDest < 0)) return ;
@@ -232,8 +294,8 @@ void Inventory::takeOneItemFromSlot(int slotSrc, std::optional<int> slotDest)
 
 }
 
-
-void Inventory::takeHalf(int slotSrc)
+template<int ROWS, int COLS>
+void Inventory<ROWS, COLS>::takeHalf(int slotSrc)
 {
 	if (slotSrc >= grid.size() || slotSrc < 0) return ;
 
@@ -255,7 +317,8 @@ void Inventory::takeHalf(int slotSrc)
 		setSlot(slotSrc, 0, 0);
 }
 
-void Inventory::swapSlots(int slot1, int slot2)
+template<int ROWS, int COLS>
+void Inventory<ROWS, COLS>::swapSlots(int slot1, int slot2)
 {
 	if (slot1 >= grid.size() || slot1 < 0) return ;
 	if (slot2 >= grid.size() || slot2 < 0) return ;
@@ -266,3 +329,6 @@ void Inventory::swapSlots(int slot1, int slot2)
 	setSlot(slot1, s.second, s.first);
 	setSlot(slot2, tempSlot.second, tempSlot.first);
 }
+
+template class Inventory<4, 9>; // PlayerInventory
+template class Inventory<3, 3>; // CraftingStation

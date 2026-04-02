@@ -255,24 +255,24 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return ;
 
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
-		player->movement->inventory.activeHotbarSlot = pkt.activeHotbarSlot;
+		player->movement->inventory->activeHotbarSlot = pkt.activeHotbarSlot;
 
 	if (pkt.keys & IN_DROP)
 	{
-		ItemType type = player->movement->inventory.getItemAtSlot(player->movement->inventory.activeHotbarSlot);
-		if (player->movement->inventory.removeItemsFromSlot(player->movement->inventory.activeHotbarSlot, 1))
+		ItemType type = player->movement->inventory->getItemAtSlot(player->movement->inventory->activeHotbarSlot);
+		if (player->movement->inventory->removeItemsFromSlot(player->movement->inventory->activeHotbarSlot, 1))
 		{
 			glm::vec3 itemPos = player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f);
 
 			world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), type, tick, true));
 
 			NetInventory dropItem;
-			int slot = player->movement->inventory.activeHotbarSlot;
+			int slot = player->movement->inventory->activeHotbarSlot;
 			dropItem.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 			dropItem.type = std::visit([](auto& value) -> ItemID {
 				return static_cast<ItemID>(value);
 			}, type);
-			dropItem.amount = player->movement->inventory.getSlot(slot).second;
+			dropItem.amount = player->movement->inventory->getSlot(slot).second;
 			dropItem.slot = slot;
 			sendPacketTo(dropItem, cliaddr);
 		}
@@ -300,10 +300,10 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	if (world->processPlayerMouseInputs(*player, pkt, tick))
 	{
 		NetInventory dropItem;
-		int slot = player->movement->inventory.activeHotbarSlot;
+		int slot = player->movement->inventory->activeHotbarSlot;
 		dropItem.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		dropItem.type = player->movement->inventory.getActiveItemID();
-		dropItem.amount = player->movement->inventory.getSlot(slot).second;
+		dropItem.type = player->movement->inventory->getActiveItemID();
+		dropItem.amount = player->movement->inventory->getSlot(slot).second;
 		dropItem.slot = slot;
 		sendPacketTo(dropItem, cliaddr);
 	}
@@ -335,18 +335,31 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 		messages.push_back(pkt.message);
 }
 
-void Server::sendInventorySlot(int slot, const sockaddr_in &cliaddr)
+void Server::sendInventorySlot(int slot, NetInventoryAction &Ipkt, const sockaddr_in &cliaddr)
 {
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 	if (player == players.end())
 		return;
 
-	Inventory inv = player->movement->inventory;
-	ItemID itemIDAtSlot = inv.getItemIDAtSlot(slot);
-	itemStackSize_t amountAtSlot = inv.getSlot(slot).second;
+    // choose correct inventory based on packet inventoryTypeID
+    ItemID itemIDAtSlot = 0;
+    itemStackSize_t amountAtSlot = 0;
+
+    if (static_cast<InventoryType>(Ipkt.inventoryTypeID) == InventoryType::PLAYER) {
+        auto inv = player->movement->inventory;
+        itemIDAtSlot = inv->getItemIDAtSlot(slot);
+        amountAtSlot = inv->getSlot(slot).second;
+    } else if (static_cast<InventoryType>(Ipkt.inventoryTypeID) == InventoryType::CRAFTING_STATION) {
+        auto inv = player->movement->craftingStation;
+        itemIDAtSlot = inv->getItemIDAtSlot(slot);
+        amountAtSlot = inv->getSlot(slot).second;
+    } else {
+        // unknown inventory type -> nothing to send
+        return;
+    }
 
 	NetInventory pkt;
-	pkt.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
+	pkt.inventoryTypeID = Ipkt.inventoryTypeID;
 	pkt.type = itemIDAtSlot;
 	pkt.amount = amountAtSlot;
 	pkt.slot = slot;
@@ -359,40 +372,18 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 	if (player == players.end())
 		return;
 
-	if (pkt.slot > HAND_ID) return;
-	int slot = pkt.slot;
+	int slot = pkt.slot; 
 
-	Inventory &inv = player->movement->inventory;
+	std::shared_ptr<IInventory> inv;
+	if (static_cast<InventoryType>(pkt.inventoryTypeID) == InventoryType::PLAYER)
+		inv = player->movement->inventory;
+	else if (static_cast<InventoryType>(pkt.inventoryTypeID) == InventoryType::CRAFTING_STATION)
+		inv = player->movement->craftingStation;
 
-	ItemType typeAtSlot = inv.getItemAtSlot(slot);
-	ItemType typeAtHand = inv.getHand().first;
+	inv->handleInventoryAction(pkt);
 
-	int amountAtSlot = inv.getSlot(slot).second;
-	int amountAtHand = inv.getHand().second;
-
-	if (pkt.actionType == InventoryActionType::INV_LEFT_CLICK)
-	{
-		if (amountAtHand == 0 || typeAtSlot != typeAtHand)
-			inv.swapSlots(slot, HAND_ID);
-		else
-		{
-			inv.mergeSlot(HAND_ID, slot);
-		}
-	} else if (pkt.actionType == InventoryActionType::INV_RIGHT_CLICK)
-	{
-		if (amountAtHand == 0)
-			inv.takeHalf(slot);
-		else
-		{
-			if (amountAtSlot == 0 || typeAtSlot == typeAtHand)
-				inv.takeOneItemFromSlot(HAND_ID, std::optional<int>(slot));
-			else
-				inv.swapSlots(slot, HAND_ID);
-		}
-	}
-
-	sendInventorySlot(slot, cliaddr);
-	sendInventorySlot(HAND_ID, cliaddr);
+	sendInventorySlot(slot, pkt, cliaddr);
+	sendInventorySlot(inv->getHandID(), pkt, cliaddr);
 }
 
 // TODO : Multithread
@@ -682,9 +673,9 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		int twohundred0 = 200;
 		int twohundred1 = 200;
 		int twohundred2 = 200;
-		player->movement->inventory.insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
-		player->movement->inventory.insertItemsToSlot(BlockType::WATER, 8, twohundred1);
-		player->movement->inventory.insertItemsToSlot(BlockType::STONE, 1, twohundred2);
+		player->movement->inventory->insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
+		player->movement->inventory->insertItemsToSlot(BlockType::WATER, 8, twohundred1);
+		player->movement->inventory->insertItemsToSlot(BlockType::STONE, 1, twohundred2);
 
 		auto pkt1 = std::make_unique<NetInventory>();
 		pkt1->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);

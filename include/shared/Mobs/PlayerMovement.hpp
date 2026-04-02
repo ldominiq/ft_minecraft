@@ -4,7 +4,8 @@
 
 #include "LivingEntity.hpp"
 #include "Protocol.hpp"
-#include "Inventory.hpp"
+#include "PlayerInventory.hpp"
+#include "CraftingStation.hpp"
 
 #define FLY_SPEED 50.0f
 #define DEFAULT_SPEED 5.0f
@@ -18,7 +19,9 @@ struct PlayerMovement : public virtual LivingEntity {
 
 	NetPlayerInputs lastInputsPktRecvd = {};
 
-	Inventory inventory;
+	std::shared_ptr<std::pair<ItemType, itemStackSize_t>> hand = std::make_shared<std::pair<ItemType, itemStackSize_t>>();
+	std::shared_ptr<PlayerInventory> inventory = std::make_shared<PlayerInventory>(hand);
+	std::shared_ptr<CraftingStation> craftingStation = std::make_shared<CraftingStation>(hand);
 
 	bool jumpBoostApplied = false;
 	uint8_t loadRadius = 16;

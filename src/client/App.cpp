@@ -74,7 +74,6 @@ void App::init() {
     lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
 
 	chat = std::make_shared<Chat>(windowedWidth, windowedHeight);
-	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight, &textureManager);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
@@ -93,6 +92,11 @@ void App::init() {
 
     // Mouse movement event handling
     camera = std::make_unique<Camera>(glm::vec3(0.0f, 128.0f, 0.0f));
+
+	std::shared_ptr<PlayerInventory> inv = camera->getPlayer()->inventory;
+	std::shared_ptr<CraftingStation> craft = camera->getPlayer()->craftingStation;
+	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight, &textureManager, inv, craft, camera->getPlayer()->hand);
+
     glfwSetCursorPosCallback(window, [](GLFWwindow* w, const double xpos, const double ypos) {
         static App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
         if (!app) return;
@@ -310,7 +314,10 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::NET_INVENTORY: {
 				auto& p = static_cast<NetInventory&>(*pkt);
-				inventoryUI->setSlot(p.slot, p.amount, p.type);
+				if (static_cast<InventoryType>(p.inventoryTypeID) == InventoryType::PLAYER)
+					camera->getPlayer()->inventory->setSlot(p.slot, p.amount, p.type);
+				else if (static_cast<InventoryType>(p.inventoryTypeID) == InventoryType::CRAFTING_STATION)
+					camera->getPlayer()->craftingStation->setSlot(p.slot, p.amount, p.type);
 				break;
 			}
 
@@ -1575,7 +1582,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	if (glfwGetKey(window, controlsArray[HOTBAR_8]) == GLFW_PRESS) activeHotbarSlot = 7;
 	if (glfwGetKey(window, controlsArray[HOTBAR_9]) == GLFW_PRESS) activeHotbarSlot = 8;
 
-	if (activeHotbarSlot != (uint8_t)-1) inventoryUI->activeHotbarSlot = activeHotbarSlot;
+	if (activeHotbarSlot != (uint8_t)-1) camera->getPlayer()->inventory->activeHotbarSlot = activeHotbarSlot;
 
 	inputs.keys = keys;
 	inputs.pitch = camera->getPlayer()->getPitch();
