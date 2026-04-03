@@ -14,15 +14,16 @@ float ChunkGeneration::getRiverNoise(const TerrainGenerationParams& terrainParam
     static Noise riverWarpX(terrainParams.seed + 7718);
     static Noise riverWarpZ(terrainParams.seed + 7719);
 
+    // Offset a little to move the rivers from [0, 0]
     const float warpX = riverWarpX.fractalBrownianMotion2D(
-        worldX * terrainParams.riverWarpFrequency,
-        worldZ * terrainParams.riverWarpFrequency,
+        worldX * terrainParams.riverWarpFrequency + 31.7f,
+        worldZ * terrainParams.riverWarpFrequency + 17.3f,
         3, 2.0f, 0.5f
     ) * terrainParams.riverWarpStrength;
 
     const float warpZ = riverWarpZ.fractalBrownianMotion2D(
-        worldX * terrainParams.riverWarpFrequency,
-        worldZ * terrainParams.riverWarpFrequency,
+        worldX * terrainParams.riverWarpFrequency + 53.1f,
+        worldZ * terrainParams.riverWarpFrequency + 79.4f,
         3, 2.0f, 0.5f
     ) * terrainParams.riverWarpStrength;
 
@@ -845,8 +846,9 @@ float ChunkGeneration::interpolateSpline(float noise, const std::vector<std::pai
 float ChunkGeneration::getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz) {
     static Noise baseNoise(terrainParams.seed);
 
+    // Little offset to vary spawn area
     float fbm = baseNoise.fractalBrownianMotion2D(
-        wx * terrainParams.continentalnessFrequency,
+        wx * terrainParams.continentalnessFrequency + 1.0f,
         wz * terrainParams.continentalnessFrequency,
         terrainParams.continentalnessOctaves,
         terrainParams.continentalnessLacunarity,
@@ -1021,10 +1023,13 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
         return BiomeType::MUSHROOM_ISLAND;
 
     // VERY COLD
-    if (ct == ClimateTemperature::VERY_COLD) {
+    if (ct == ClimateTemperature::VERY_COLD &&
+        ch >= ClimateHumidity::HUMID &&
+        cc == ClimateContinentalness::FAR_INLAND) {
         return BiomeType::ICE_PLAINS;
     }
 
+    // COLD
     if (ct == ClimateTemperature::COLD &&
         ch >= ClimateHumidity::HUMID &&
         cc == ClimateContinentalness::FAR_INLAND) {
@@ -1042,12 +1047,11 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
         ch == ClimateHumidity::ARID)
         return BiomeType::VOLCANIC;
 
-    // Canyon terrain is now part of Mesa (same biome, erosion gives it canyons naturally)
     // Mesa — hot, dry/arid-but-not-arid (ARID is claimed by VOLCANIC above), or
-    //        warm/hot + dry + heavily eroded (canyon-like mesa)
+    //        warm/hot + dry + not too eroded
     if ((ct == ClimateTemperature::WARM || ct == ClimateTemperature::HOT) &&
         ch <= ClimateHumidity::DRY &&
-        ce >= ClimateErosion::E4 &&
+        ce <= ClimateErosion::E3 &&
         cc >= ClimateContinentalness::NEAR_INLAND)
         return BiomeType::MESA;
 
@@ -1055,7 +1059,8 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
         return BiomeType::MESA;
 
     // Red Desert — warm + arid flat lands (distinct from hot MESA)
-    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::ARID)
+    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::ARID &&
+        ce >= ClimateErosion::E4)
         return BiomeType::RED_DESERT;
 
     // Desert — warm/hot, arid/dry only (NEUTRAL excluded so Savanna can claim WARM+NEUTRAL)
@@ -1064,7 +1069,9 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
         return BiomeType::DESERT;
 
     // Savanna — warm, moderate (checked before Jungle/Swamp to avoid being swallowed)
-    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::NEUTRAL && cc >= ClimateContinentalness::MID_INLAND)
+    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::NEUTRAL &&
+        cc >= ClimateContinentalness::MID_INLAND &&
+        cpv <= ClimatePeaksValleys::MID)
         return BiomeType::SAVANNA;
 
     // Jungle — hot and wet
@@ -1085,7 +1092,8 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
 
     // Mountain — high peaks, inland (checked before Birch Forest so mountainous
     // temperate+neutral terrain becomes mountains, not forest)
-    if (cpv >= ClimatePeaksValleys::HIGH && cc >= ClimateContinentalness::FAR_INLAND)
+    if (cpv >= ClimatePeaksValleys::HIGH && cc == ClimateContinentalness::FAR_INLAND &&
+        ch <= ClimateHumidity::NEUTRAL)
         return BiomeType::MOUNTAIN;
 
     // Birch Forest — temperate, neutral humidity, low/mid terrain
