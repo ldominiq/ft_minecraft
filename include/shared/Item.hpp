@@ -22,7 +22,6 @@ enum class BiomeType {
 	SWAMP,
 	OCEAN,
 	MOUNTAIN,
-	CANYON,
 	ICE_PLAINS,
 	VOLCANIC,
 	RED_DESERT,

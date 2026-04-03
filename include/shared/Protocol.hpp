@@ -361,6 +361,11 @@ struct NetImGui final : public Packet {
 	float peakValley = 0.0f;
 	float temperature = 0.0f;
 	float humidity = 0.0f;
+	uint8_t contBucket = 0;
+	uint8_t erosionBucket = 0;
+	uint8_t pvBucket = 0;
+	uint8_t tempBucket = 0;
+	uint8_t humidBucket = 0;
 
     NetImGui() : Packet(ID) {}
 
@@ -374,6 +379,11 @@ struct NetImGui final : public Packet {
         w.write_f32(peakValley);
         w.write_f32(temperature);
         w.write_f32(humidity);
+        w.write_u8(contBucket);
+        w.write_u8(erosionBucket);
+        w.write_u8(pvBucket);
+        w.write_u8(tempBucket);
+        w.write_u8(humidBucket);
     }
 
     void decode(BufferReader& r) override {
@@ -386,6 +396,11 @@ struct NetImGui final : public Packet {
         peakValley = r.read_f32();
         temperature = r.read_f32();
         humidity = r.read_f32();
+        contBucket = r.read_u8();
+        erosionBucket = r.read_u8();
+        pvBucket = r.read_u8();
+        tempBucket = r.read_u8();
+        humidBucket = r.read_u8();
     }
 };
 inline AutoRegister<NetImGui> _reg_NetImGui;

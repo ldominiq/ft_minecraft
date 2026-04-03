@@ -390,6 +390,11 @@ void App::setUdpClientPacketCallback()
                 currentPeakValley = p.peakValley;
                 currentTemperature = p.temperature;
                 currentHumidity = p.humidity;
+                currentContBucket    = p.contBucket;
+                currentErosionBucket = p.erosionBucket;
+                currentPVBucket      = p.pvBucket;
+                currentTempBucket    = p.tempBucket;
+                currentHumidBucket   = p.humidBucket;
                 break;
             }
 
@@ -959,11 +964,17 @@ void App::debugWindow() {
 
                     ImGui::Text("World SEED: %d", currentWorldSeed);
                     ImGui::Text("Terrain Height: %d (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
-                    ImGui::Text("Continentalness: %.3f", currentContinentalness);
-                    ImGui::Text("Erosion: %.3f", currentErosion);
-                    ImGui::Text("Peak/Valley: %.3f", currentPeakValley);
-                    ImGui::Text("Temperature: %.3f", currentTemperature);
-                    ImGui::Text("Humidity: %.3f", currentHumidity);
+                    static const char* contBucketNames[]   = { "MUSHROOM", "OCEAN", "COAST", "NEAR_INLAND", "MID_INLAND", "FAR_INLAND" };
+                    static const char* erosionBucketNames[] = { "E0", "E1", "E2", "E3", "E4", "E5", "E6" };
+                    static const char* pvBucketNames[]      = { "VALLEY", "LOW", "MID", "HIGH", "PEAK" };
+                    static const char* tempBucketNames[]    = { "VERY_COLD", "COLD", "TEMPERATE", "WARM", "HOT" };
+                    static const char* humidBucketNames[]   = { "ARID", "DRY", "NEUTRAL", "HUMID", "WET" };
+
+                    ImGui::Text("Continentalness: %.3f", currentContinentalness); ImGui::SameLine(); ImGui::Text("(%s)", contBucketNames[currentContBucket]);
+                    ImGui::Text("Erosion: %.3f", currentErosion);                 ImGui::SameLine(); ImGui::Text("(%s)", erosionBucketNames[currentErosionBucket]);
+                    ImGui::Text("Peak/Valley: %.3f", currentPeakValley);          ImGui::SameLine(); ImGui::Text("(%s)", pvBucketNames[currentPVBucket]);
+                    ImGui::Text("Temperature: %.3f", currentTemperature);         ImGui::SameLine(); ImGui::Text("(%s)", tempBucketNames[currentTempBucket]);
+                    ImGui::Text("Humidity: %.3f", currentHumidity);               ImGui::SameLine(); ImGui::Text("(%s)", humidBucketNames[currentHumidBucket]);
 
                     const char* biomeName =
                         (static_cast<BiomeType>(currentBiome) == BiomeType::PLAINS) ? "PLAINS" :
@@ -977,7 +988,6 @@ void App::debugWindow() {
                         (static_cast<BiomeType>(currentBiome) == BiomeType::JUNGLE) ? "JUNGLE" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::SAVANNA) ? "SAVANNA" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::MESA) ? "MESA" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::CANYON) ? "CANYON" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::ICE_PLAINS) ? "ICE_PLAINS" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::VOLCANIC) ? "VOLCANIC" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::RED_DESERT) ? "RED_DESERT" :

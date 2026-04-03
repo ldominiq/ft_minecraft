@@ -50,6 +50,15 @@ class ChunkGeneration : public Chunk {
 		static int computeTerrainHeight(const TerrainGenerationParams& terrainParams, float worldX, float worldZ);
 		static BiomeType computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height);
 
+		struct QuantizedClimate {
+			uint8_t continentalness;
+			uint8_t erosion;
+			uint8_t peakValley;
+			uint8_t temperature;
+			uint8_t humidity;
+		};
+		static QuantizedClimate computeQuantizedClimate(const TerrainGenerationParams& terrainParams, float wx, float wz);
+
 };
 
 class BlockStorage {

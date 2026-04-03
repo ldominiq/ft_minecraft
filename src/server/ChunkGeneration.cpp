@@ -853,7 +853,7 @@ float ChunkGeneration::getContinentalness(const TerrainGenerationParams& terrain
         terrainParams.continentalnessPersistence
         );
 
-    fbm *= terrainParams.continentalnessScalingFactor;
+    fbm *= 2.0f * terrainParams.continentalnessScalingFactor;
     
     float continentalness = glm::clamp(fbm, -3.8f, 3.8f);
 
@@ -933,19 +933,19 @@ float ChunkGeneration::surfaceNoiseTransformation(float noise, int splineIndex) 
 
 static ClimateTemperature quantizeTemp(float t) {
     // t in [0,1]
-    if (t < 0.2f) return ClimateTemperature::VERY_COLD;
-    if (t < 0.4f) return ClimateTemperature::COLD;
-    if (t < 0.6f) return ClimateTemperature::TEMPERATE;
-    if (t < 0.8f) return ClimateTemperature::WARM;
+    if (t < 0.25f) return ClimateTemperature::VERY_COLD;
+    if (t < 0.475f) return ClimateTemperature::COLD;
+    if (t < 0.55f)  return ClimateTemperature::TEMPERATE;
+    if (t < 0.75f)  return ClimateTemperature::WARM;
     return ClimateTemperature::HOT;
 }
 
 static ClimateHumidity quantizeHumidity(float h) {
-    // h in [0,1]
-    if (h < 0.2f) return ClimateHumidity::ARID;
-    if (h < 0.4f) return ClimateHumidity::DRY;
-    if (h < 0.6f) return ClimateHumidity::NEUTRAL;
-    if (h < 0.8f) return ClimateHumidity::HUMID;
+    // h in [-1,1]
+    if (h < -0.35f) return ClimateHumidity::ARID;
+    if (h < -0.1f) return ClimateHumidity::DRY;
+    if (h < 0.1f) return ClimateHumidity::NEUTRAL;
+    if (h < 0.3f) return ClimateHumidity::HUMID;
     return ClimateHumidity::WET;
 }
 
@@ -962,29 +962,26 @@ static ClimateErosion quantizeErosion(float e) {
 
 static ClimateContinentalness quantizeContinentalness(float c) {
     // c in [-3.8,3.8]
-    if (c < -1.05f) return ClimateContinentalness::MUSHROOM;
-    if (c < -0.455f) return ClimateContinentalness::OCEAN;
-    if (c < -0.15f) return ClimateContinentalness::COAST;
-    if (c < 0.165f) return ClimateContinentalness::NEAR_INLAND;
-    if (c < 0.73f) return ClimateContinentalness::MID_INLAND;
+    if (c < -1.3f) return ClimateContinentalness::MUSHROOM;
+    if (c < -0.35f) return ClimateContinentalness::OCEAN;
+    if (c < -0.2f) return ClimateContinentalness::COAST;
+    if (c < 0.1f) return ClimateContinentalness::NEAR_INLAND;
+    if (c < 0.3f) return ClimateContinentalness::MID_INLAND;
     return ClimateContinentalness::FAR_INLAND;
 }
 
 static ClimatePeaksValleys quantizePV(float pv) {
     // pv in [-1,1]
-    if (pv < -0.6f) return ClimatePeaksValleys::VALLEY;
-    if (pv < -0.2f) return ClimatePeaksValleys::LOW;
-    if (pv < 0.2f) return ClimatePeaksValleys::MID;
-    if (pv < 0.6f) return ClimatePeaksValleys::HIGH;
-    return ClimatePeaksValleys::PEAK;
+    if (pv > 0.7) return ClimatePeaksValleys::PEAK;
+    if (pv > 0.2f) return ClimatePeaksValleys::HIGH;
+    if (pv > -0.2f) return ClimatePeaksValleys::MID;
+    if (pv > -0.85f) return ClimatePeaksValleys::LOW;
+    return ClimatePeaksValleys::VALLEY;
 }
 
-BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height) {
+struct CoarseClimate { float temp; float humidity; };
 
-    // Build very low-frequency (coarse) climate fields so biomes form large contiguous regions.
-    // biomeScaleChunks controls how many chunks make up a biome patch; use an extra multiplier to ensure broad bands.
-    if (height <= terrainParams.seaLevel) return BiomeType::OCEAN;
-
+static CoarseClimate computeCoarseClimate(const TerrainGenerationParams& terrainParams, float wx, float wz) {
     static Noise tempNoise(terrainParams.seed + 45);
     static Noise humidNoise(terrainParams.seed + 964);
 
@@ -992,12 +989,18 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     const float worldUnitsPerPatch = chunks * Chunk::WIDTH * 8.0f;
     const float freqCoarse = 1.0f / glm::max(256.0f, worldUnitsPerPatch);
 
-    // Coarse climate fields in [0..1]
-    // Perlin's actual output range is ~[-0.5, 0.5] (unit gradient dot sub-cell distance),
-    // so multiply by 2 before normalizing to stretch the full [0,1] range and reach
-    // extreme buckets (VERY_COLD, HOT) that produce Tundra, Mesa, and Jungle.
-    float tempCoarse  = glm::clamp((tempNoise.fractalBrownianMotion2D(worldX * freqCoarse,         worldZ * freqCoarse,         4, 2.0f, 0.5f) * 2.0f + 1.0f) * 0.5f, 0.0f, 1.0f);
-    float humidCoarse = glm::clamp((humidNoise.fractalBrownianMotion2D(worldX * freqCoarse * 0.9f, worldZ * freqCoarse * 0.9f, 4, 2.0f, 0.5f) * 2.0f + 1.0f) * 0.5f, 0.0f, 1.0f);
+    // Temperature in [0,1]: shift FBM from ~[-0.5,0.5] to [0,1]
+    float t = glm::clamp((tempNoise.fractalBrownianMotion2D(wx * freqCoarse,         wz * freqCoarse,         4, 2.0f, 0.5f) + 0.5f), 0.0f, 1.0f);
+    // Humidity in [-1,1]: stretch FBM from ~[-0.5,0.5] to [-1,1]
+    float h = glm::clamp( humidNoise.fractalBrownianMotion2D(wx * freqCoarse * 0.9f, wz * freqCoarse * 0.9f, 4, 2.0f, 0.5f) * 2.0f,       -1.0f, 1.0f);
+    return {t, h};
+}
+
+BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height) {
+
+    if (height <= terrainParams.seaLevel) return BiomeType::OCEAN;
+
+    const auto [tempCoarse, humidCoarse] = computeCoarseClimate(terrainParams, worldX, worldZ);
 
 
     const float rawCont = getContinentalness(terrainParams, worldX, worldZ);
@@ -1013,16 +1016,19 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     // OCEAN
     // if (cc == ClimateContinentalness::OCEAN) return BiomeType::OCEAN;
 
-    // Mushroom Island — cold, wet, near coast/ocean (old continentalness check was almost
-    // always filtered out by the seaLevel height check since MUSHROOM continental = underwater)
-    if (ct == ClimateTemperature::COLD &&
-        ch == ClimateHumidity::WET &&
-        cc <= ClimateContinentalness::NEAR_INLAND)
+    // Mushroom Island
+    if (cc == ClimateContinentalness::MUSHROOM)
         return BiomeType::MUSHROOM_ISLAND;
 
     // VERY COLD
     if (ct == ClimateTemperature::VERY_COLD) {
-        return (ch >= ClimateHumidity::NEUTRAL) ? BiomeType::ICE_PLAINS : BiomeType::TUNDRA;
+        return BiomeType::ICE_PLAINS;
+    }
+
+    if (ct == ClimateTemperature::COLD &&
+        ch >= ClimateHumidity::HUMID &&
+        cc == ClimateContinentalness::FAR_INLAND) {
+        return BiomeType::TUNDRA;
     }
 
     // Nether — hot, arid, elevated terrain (high or peak peaks)
@@ -1058,17 +1064,19 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
         return BiomeType::DESERT;
 
     // Savanna — warm, moderate (checked before Jungle/Swamp to avoid being swallowed)
-    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::NEUTRAL)
+    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::NEUTRAL && cc >= ClimateContinentalness::MID_INLAND)
         return BiomeType::SAVANNA;
 
     // Jungle — hot and wet
-    if (ct == ClimateTemperature::HOT && ch >= ClimateHumidity::HUMID)
+    if ((ct == ClimateTemperature::HOT && ch >= ClimateHumidity::HUMID) || 
+        (ct == ClimateTemperature::WARM && ch == ClimateHumidity::WET))
         return BiomeType::JUNGLE;
 
-    // Swamp — warm, wet, flat/valley
+    // Swamp — temperate/warm, wet, flat/valley
     if ((ct == ClimateTemperature::TEMPERATE || ct == ClimateTemperature::WARM) &&
         ch >= ClimateHumidity::HUMID &&
-        cpv <= ClimatePeaksValleys::LOW)
+        cpv <= ClimatePeaksValleys::LOW &&
+        cc <= ClimateContinentalness::NEAR_INLAND)
         return BiomeType::SWAMP;
 
     // Dark Forest — cool/temperate, humid
@@ -1077,12 +1085,12 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
 
     // Mountain — high peaks, inland (checked before Birch Forest so mountainous
     // temperate+neutral terrain becomes mountains, not forest)
-    if (cpv >= ClimatePeaksValleys::HIGH && cc >= ClimateContinentalness::MID_INLAND)
+    if (cpv >= ClimatePeaksValleys::HIGH && cc >= ClimateContinentalness::FAR_INLAND)
         return BiomeType::MOUNTAIN;
 
     // Birch Forest — temperate, neutral humidity, low/mid terrain
     if (ct == ClimateTemperature::TEMPERATE &&
-        (ch == ClimateHumidity::NEUTRAL || ch == ClimateHumidity::HUMID))
+        (ch == ClimateHumidity::DRY))
         return BiomeType::BIRCH_FOREST;
 
 
@@ -1145,6 +1153,17 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     return BiomeType::PLAINS;
 
 
+}
+
+ChunkGeneration::QuantizedClimate ChunkGeneration::computeQuantizedClimate(const TerrainGenerationParams& terrainParams, float wx, float wz) {
+    const auto [t, h] = computeCoarseClimate(terrainParams, wx, wz);
+    return {
+        static_cast<uint8_t>(quantizeContinentalness(getContinentalness(terrainParams, wx, wz))),
+        static_cast<uint8_t>(quantizeErosion(getErosion(terrainParams, wx, wz))),
+        static_cast<uint8_t>(quantizePV(getPV(terrainParams, wx, wz))),
+        static_cast<uint8_t>(quantizeTemp(t)),
+        static_cast<uint8_t>(quantizeHumidity(h)),
+    };
 }
 
 int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrainParams, const float worldX, const float worldZ) {

@@ -206,6 +206,11 @@ private:
     float currentPeakValley = 0.0f;
     float currentTemperature = 0.0f;
     float currentHumidity = 0.0f;
+    uint8_t currentContBucket = 0;
+    uint8_t currentErosionBucket = 0;
+    uint8_t currentPVBucket = 0;
+    uint8_t currentTempBucket = 0;
+    uint8_t currentHumidBucket = 0;
 
     TerrainDebugUIParams debugTerrainParams;
 
