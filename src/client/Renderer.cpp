@@ -310,9 +310,14 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 				ent->snapshots.clear();
 				ent->snapshots.emplace_back(Snapshot{ent->getPosition(), glm::vec3(0.0f), serverTime - oneTick});
 			}
+			bool actuallyMoved = !ent->snapshots.empty() &&
+				glm::length(position - ent->snapshots.back().position) > 0.001f;
 			ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			ent->yaw = yaw;
-			ent->positionUpdated = true;
+			if (actuallyMoved)
+				ent->positionUpdated = true;
+			else
+				ent->rotationUpdated = true;
 			ent->lastNetUpdateTime = serverTime;
 
 			if (pkt.type == static_cast<uint16_t>(-1))

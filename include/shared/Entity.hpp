@@ -116,6 +116,8 @@ class Entity {
 
 		// position has been changed since last check.
 		bool positionUpdated = true;
+		// yaw/rotation has changed since last check (without a position change).
+		bool rotationUpdated = false;
 		// timestamp of the last network position update (glfwGetTime / serverTime scale)
 		double lastNetUpdateTime = -1.0;
 

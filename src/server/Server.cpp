@@ -284,7 +284,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		}
 	}
 
-	if (pkt.yaw != player->movement->yaw) player->movement->positionUpdated = true;
+	if (pkt.yaw != player->movement->yaw) player->movement->rotationUpdated = true;
 
 	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
@@ -586,7 +586,7 @@ void Server::sendEntitiesPositionDeltas()
 	{
 		for (CPlayerInfo &p : players)
 		{
-			if (entity == p.movement || !entity->positionUpdated) continue;
+			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated)) continue;
 
 			NetEntityMove pkt;
 
@@ -604,6 +604,7 @@ void Server::sendEntitiesPositionDeltas()
 		}
 
 		entity->positionUpdated = false;
+		entity->rotationUpdated = false;
 	}
 
 	for (auto &entity : world->itemEntities)
