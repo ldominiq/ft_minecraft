@@ -25,6 +25,7 @@ class ChunkGeneration : public Chunk {
 		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 		void generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+		void generateIceStructures(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 
 		void stripBlocks(BlockStorage& blocks, const TerrainGenerationParams& terrainParams);
 

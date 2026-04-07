@@ -137,6 +137,7 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
     generateTrees(blocks, terrainParams);
     generateCacti(blocks, terrainParams);
+    generateIceStructures(blocks, terrainParams);
 
     generateOres(blocks, terrainParams);
     
@@ -714,6 +715,104 @@ void ChunkGeneration::generateCacti(BlockStorage &blocks, const TerrainGeneratio
             for (int y = surfaceY + 1; y <= surfaceY + 3 && y < HEIGHT; ++y) {
                 if (localX >= 0 && localX < WIDTH && localZ >= 0 && localZ < DEPTH) {
                     blocks.at(localX, y, localZ) = BlockType::CACTUS;
+                }
+            }
+        }
+    }
+}
+
+// Generate ice spikes and boulders in ICE_PLAINS biome.
+void ChunkGeneration::generateIceStructures(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
+    constexpr int STRUCTURE_REACH = 3;
+
+    const int minWorldX = originX - STRUCTURE_REACH;
+    const int maxWorldX = originX + WIDTH + STRUCTURE_REACH;
+    const int minWorldZ = originZ - STRUCTURE_REACH;
+    const int maxWorldZ = originZ + DEPTH + STRUCTURE_REACH;
+
+    for (int worldX = minWorldX; worldX <= maxWorldX; ++worldX) {
+        for (int worldZ = minWorldZ; worldZ <= maxWorldZ; ++worldZ) {
+
+            std::seed_seq seedData{
+                static_cast<uint32_t>(terrainParams.seed + 5555),
+                static_cast<uint32_t>(worldX),
+                static_cast<uint32_t>(worldZ)
+            };
+            std::mt19937 rng(seedData);
+
+            const int surfaceY = computeTerrainHeight(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ));
+
+            if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 20) {
+                rng();
+                continue;
+            }
+
+            const BiomeType biome = computeBiome(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
+
+            if (biome != BiomeType::ICE_PLAINS) {
+                rng();
+                continue;
+            }
+
+            const int chanceRoll = static_cast<int>(rng() % 1000);
+
+            // Helper: place a block at world offset (dx, dz), dy above surface+1, bounds-checked.
+            auto place = [&](int dx, int dz, int dy, BlockType type) {
+                const int lx = worldX + dx - originX;
+                const int lz = worldZ + dz - originZ;
+                const int y  = surfaceY + 1 + dy;
+                if (lx < 0 || lx >= WIDTH || lz < 0 || lz >= DEPTH || y < 0 || y >= HEIGHT) return;
+                blocks.at(lx, y, lz) = type;
+            };
+
+            // 0.2% chance
+            if (chanceRoll < 2) {
+                // Large ice spike
+                const int h = 8 + static_cast<int>(rng() % 11);
+                for (int dy = 0; dy < h; ++dy) {
+                    const int r = std::max(0, 2 - dy);
+                    const BlockType t = (dy >= h - 2) ? BlockType::BLUE_ICE : BlockType::PACKED_ICE;
+                    for (int dx = -r; dx <= r; ++dx)
+                        for (int dz = -r; dz <= r; ++dz)
+                            place(dx, dz, dy, t);
+                }
+            
+            // 2% chance
+            } else if (chanceRoll < 12) {
+                // Small ice spike
+                const int h = 3 + static_cast<int>(rng() % 5);
+                for (int dy = 0; dy < h; ++dy) {
+                    const int r = (dy == 0) ? 1 : 0;
+                    const BlockType t = (dy == h - 1) ? BlockType::BLUE_ICE : BlockType::PACKED_ICE;
+                    for (int dx = -r; dx <= r; ++dx)
+                        for (int dz = -r; dz <= r; ++dz)
+                            place(dx, dz, dy, t);
+                }
+
+            // 3% chance
+            } else if (chanceRoll < 27) {
+                // Ice boulder
+                const int h = 3 + static_cast<int>(rng() % 3);
+                for (int dy = 0; dy < h; ++dy) {
+                    if (dy == 0) {
+                        for (int dx = -2; dx <= 2; ++dx)
+                            for (int dz = -2; dz <= 2; ++dz)
+                                if (std::abs(dx) + std::abs(dz) <= 2)
+                                    place(dx, dz, dy, BlockType::BLUE_ICE);
+                    } else if (dy == 1) {
+                        for (int dx = -1; dx <= 1; ++dx)
+                            for (int dz = -1; dz <= 1; ++dz)
+                                place(dx, dz, dy, BlockType::BLUE_ICE);
+                    } else if (dy == 2) {
+                        for (int dx = -1; dx <= 1; ++dx)
+                            for (int dz = -1; dz <= 1; ++dz)
+                                if (std::abs(dx) + std::abs(dz) <= 1)
+                                    place(dx, dz, dy, BlockType::BLUE_ICE);
+                    } else {
+                        place(0, 0, dy, BlockType::BLUE_ICE);
+                    }
                 }
             }
         }
