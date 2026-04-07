@@ -216,7 +216,8 @@ void Entity::calculateNewPosition(const ICommonWorld &world)
 }
 
 // Check if camera/player is underwater
-bool Entity::isUnderwater(const ICommonWorld &world) const {
+bool Entity::isUnderwater(const ICommonWorld &world) const
+{
 	// Check at camera/view level
 	glm::vec3 checkPos = this->getPosition() + glm::vec3(0.0f, 0.1f, 0.0f);
 	// Floor the position to get block coordinates
@@ -240,7 +241,8 @@ bool Entity::isUnderwater(const ICommonWorld &world) const {
 	return false;
 }
 
-float Entity::getDepthUnderwater() const {
+float Entity::getDepthUnderwater() const
+{
 	constexpr float seaLevel = 64.0f;
 	return std::max(0.0f, seaLevel - this->getPosition().y);
 }

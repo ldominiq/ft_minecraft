@@ -759,8 +759,10 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
     glEndQuery(GL_TIME_ELAPSED);
 
+    const bool cameraUnderwater = camera->getPlayer()->isUnderwater(*renderer);
+
     glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);
-    lighting->drawSky(view, projection, camera->getPlayer()->getPosition(), camera->getPlayer()->isUnderwater(*renderer));
+    lighting->drawSky(view, projection, camera->getPlayer()->getPosition(), cameraUnderwater);
     glEndQuery(GL_TIME_ELAPSED);
 
     // Now render terrain with depth testing enabled
@@ -774,9 +776,8 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
     lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
-	lighting->uploadUnderwaterUniforms(*activeShader);
-	activeShader->setBool("cameraUnderwater", camera->getPlayer()->isUnderwater(*renderer));
-	activeShader->setFloat("underwaterDepth", camera->getPlayer()->getDepthUnderwater());
+    lighting->uploadUnderwaterUniforms(*activeShader);
+    activeShader->setBool("cameraUnderwater", cameraUnderwater);
     lighting->uploadCSMUniforms(*activeShader, view);
 
     // Bind SSAO texture for the lighting shader (must be after activeShader->use())
@@ -818,7 +819,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setFloat("seaLevel", 64.0f);
 
         // Underwater fog for vegetation
-        vegShader->setBool("cameraUnderwater", camera->getPlayer()->isUnderwater(*renderer));
+        vegShader->setBool("cameraUnderwater", cameraUnderwater);
     	vegShader->setVec3("underwaterTintColor", lighting->getUnderwaterTintColor());
     	vegShader->setVec3("underwaterFogColor", lighting->getUnderwaterFogColor());
     	vegShader->setFloat("underwaterFogDensity", lighting->getUnderwaterFogDensity());
