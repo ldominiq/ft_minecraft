@@ -304,7 +304,7 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 		if (ent) {
 			const double oneTick = 1.0 / TPS;
 			bool stale = ent->snapshots.empty()
-			          || !ent->positionUpdated
+			          || ent->lastNetUpdateTime < 0.0
 			          || ent->snapshots.back().time < serverTime - 2.0 * oneTick;
 			if (stale) {
 				ent->snapshots.clear();
@@ -313,6 +313,7 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 			ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			ent->yaw = yaw;
 			ent->positionUpdated = true;
+			ent->lastNetUpdateTime = serverTime;
 
 			if (pkt.type == static_cast<uint16_t>(-1))
 			{

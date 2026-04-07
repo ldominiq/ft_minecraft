@@ -49,7 +49,11 @@ public:
 	std::function<void(const PacketPtr&)> onPacket;
 	void setCallback(std::function<void(const PacketPtr&)> cb) { onPacket = std::move(cb); }
 
-	void setSimulatedLatency(float ms) { m_simLatencyMs = ms; }
+	void setSimulatedLatency(float ms) {
+        if (ms <= 0.0f && m_simLatencyMs > 0.0f)
+            m_receiveDelayQueue.clear(); // discard stale delayed packets
+        m_simLatencyMs = ms;
+    }
 	float getSimulatedLatency() const  { return m_simLatencyMs; }
 
 	void sendPacket(const Packet &pkt);

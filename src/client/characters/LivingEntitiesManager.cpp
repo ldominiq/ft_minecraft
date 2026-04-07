@@ -35,7 +35,10 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			c->characterBodyParts.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));
 			glm::vec3 meshPos = c->hasRenderPos ? c->renderPos : c->getPosition();
 			c->characterBodyParts.character.translation = glm::translate(glm::mat4(1.0f), meshPos + c->YPositionOffset);
-			c->walkAnimation(deltaTime);
+			// Only advance the walk animation when the entity is actually moving;
+			// hasRenderPos alone (third-person camera) should not drive the animation.
+			if (c->positionUpdated || c->characterBodyParts.onWalkAnimation)
+				c->walkAnimation(deltaTime);
 			c->characterBodyParts.character.compute(identity, projection, view, characterShader);
 			c->positionUpdated = false;
 		}

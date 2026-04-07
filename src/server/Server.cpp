@@ -294,8 +294,9 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	// sends several inputs in rapid succession (low-FPS catch-up) the server
 	// runs the matching number of physics steps instead of just one.
 	constexpr int kMaxQueuedInputs = 20;
-	if (static_cast<int>(player->movement->pendingInputs.size()) < kMaxQueuedInputs)
-		player->movement->pendingInputs.push_back(pkt);
+	if (static_cast<int>(player->movement->pendingInputs.size()) >= kMaxQueuedInputs)
+		player->movement->pendingInputs.pop_front(); // drop oldest to keep ack/queue consistent
+	player->movement->pendingInputs.push_back(pkt);
 
 	if (pkt.loadRadius > 32)
 		pkt.loadRadius = 32;

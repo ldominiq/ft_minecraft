@@ -100,6 +100,9 @@ void UDPClient::receivePacket() {
         if (m_simLatencyMs > 0.0f) {
             auto dispatchAt = std::chrono::steady_clock::now()
                 + std::chrono::microseconds(static_cast<long long>(m_simLatencyMs * 1000.0f));
+            constexpr size_t kMaxDelayQueueSize = 512;
+            if (m_receiveDelayQueue.size() >= kMaxDelayQueueSize)
+                m_receiveDelayQueue.pop_front(); // drop oldest to bound memory
             m_receiveDelayQueue.push_back({dispatchAt,
                 std::vector<uint8_t>(buffer.data(), buffer.data() + n)});
         } else {
@@ -107,14 +110,18 @@ void UDPClient::receivePacket() {
         }
     }
 
-    // Flush any packets whose simulated delay has expired
+    // Flush any packets whose simulated delay has expired.
+    // Full scan (not just front) so out-of-order dispatchAt entries
+    // caused by mid-flight latency slider changes are not stuck indefinitely.
     auto now = std::chrono::steady_clock::now();
-    while (!m_receiveDelayQueue.empty() &&
-           m_receiveDelayQueue.front().dispatchAt <= now)
+    for (auto it = m_receiveDelayQueue.begin(); it != m_receiveDelayQueue.end(); )
     {
-        auto& pkt = m_receiveDelayQueue.front();
-        dispatch(pkt.data.data(), pkt.data.size());
-        m_receiveDelayQueue.pop_front();
+        if (it->dispatchAt <= now) {
+            dispatch(it->data.data(), it->data.size());
+            it = m_receiveDelayQueue.erase(it);
+        } else {
+            ++it;
+        }
     }
 }
 

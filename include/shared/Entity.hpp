@@ -2,6 +2,7 @@
 #define ENTITY_HPP
 
 #include <glm/glm.hpp>
+#include <algorithm>
 #include <cmath>
 #include <queue>
 #include <iostream>
@@ -115,6 +116,8 @@ class Entity {
 
 		// position has been changed since last check.
 		bool positionUpdated = true;
+		// timestamp of the last network position update (glfwGetTime / serverTime scale)
+		double lastNetUpdateTime = -1.0;
 
 		// unused. Supposed to be for prediction
 		inline float getSlipperinessPrev() const { return slipperiness_prev; }

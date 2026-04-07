@@ -23,7 +23,6 @@ int main(int argc, char* argv[]) {
 			exit(1);
 		}
 	}
-	seed = 42;
 	
 	std::signal(SIGINT, handle_sigint);
 	Server serv;
