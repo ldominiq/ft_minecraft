@@ -484,7 +484,8 @@ void ChunkRenderer::buildVegetationMesh() const {
                         static_cast<uint8_t>(lx),
                         static_cast<uint8_t>(ly),
                         static_cast<uint8_t>(lz),
-                        b
+                        b,
+                        static_cast<uint8_t>(getBiomeAt(lx, lz))
                     });
                 }
             }

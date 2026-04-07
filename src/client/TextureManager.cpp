@@ -247,7 +247,7 @@ void TextureManager::setupBlockTextureMapping() {
 
     // Short grass tints
     biomeShortGrassLayer[BiomeType::PLAINS] = addTintedLayer("grass", 0x91, 0xBD, 0x59);
-    biomeShortGrassLayer[BiomeType::SAVANNA] = addTintedLayer("grass", 0xB3, 0xBD, 0x59);
+    biomeShortGrassLayer[BiomeType::SAVANNA] = addTintedLayer("grass", 0xD1, 0xCC, 0x41);
     biomeShortGrassLayer[BiomeType::JUNGLE] = addTintedLayer("grass", 0x44, 0xB5, 0x33);
     biomeShortGrassLayer[BiomeType::DARK_FOREST] = addTintedLayer("grass", 0x26, 0x63, 0x1D);
     biomeShortGrassLayer[BiomeType::BIRCH_FOREST] = addTintedLayer("grass", 0x71, 0xBF,  0x4B);

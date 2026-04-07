@@ -359,7 +359,7 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
                 const int leafLocalZ = cwz + lz - originZ;
                 if (leafLocalX < 0 || leafLocalX >= WIDTH || leafLocalZ < 0 || leafLocalZ >= DEPTH)
                     continue;
-                if (blocks.at(leafLocalX, ly, leafLocalZ) != logType)
+                if (blocks.at(leafLocalX, ly, leafLocalZ) == BlockType::AIR)
                     blocks.at(leafLocalX, ly, leafLocalZ) = leafType;
             }
         }
@@ -634,7 +634,7 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
                     placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::JUNGLE_LOG, BlockType::JUNGLE_LEAVES, 3, 2, rng);
                     break;
                 case BiomeType::SAVANNA:
-                    if (chanceRoll >= 6) continue;   // 0.6%
+                    if (chanceRoll >= 1) continue;   // 0.1%
                     treeHeight = 4 + static_cast<int>(rng() % 4);
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
@@ -655,13 +655,13 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
                     placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::OAK_LOG, BlockType::OAK_LEAVES, 0, 1, rng);
                     break;
-                case BiomeType::TUNDRA:
-                    if (chanceRoll >= 5) continue;   // 0.5%
-                    treeHeight = 8 + static_cast<int>(rng() % 19); // 8..26, tip up to 27 blocks
-                    if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
-                        localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
-                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::SPRUCE_LOG, BlockType::SPRUCE_LEAVES, 2, 3, rng);
-                    break;
+                // case BiomeType::TUNDRA:
+                //     if (chanceRoll >= 5) continue;   // 0.5%
+                //     treeHeight = 8 + static_cast<int>(rng() % 19); // 8..26, tip up to 27 blocks
+                //     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
+                //         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
+                //     placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::SPRUCE_LOG, BlockType::SPRUCE_LEAVES, 2, 3, rng);
+                //     break;
                 default:
                     continue;
             }
@@ -1335,9 +1335,9 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             };
 
             static constexpr VegEntry forestVeg[] = {
-                { BlockType::SHORT_GRASS,           50 },
-                { BlockType::BROWN_MUSHROOM,        50 },
-                { BlockType::RED_MUSHROOM,          50 },
+                { BlockType::SHORT_GRASS,           80 },
+                { BlockType::BROWN_MUSHROOM,        10 },
+                { BlockType::RED_MUSHROOM,          10 },
             };
 
             static constexpr VegEntry desertVeg[] = {
@@ -1353,8 +1353,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             };
 
             static constexpr VegEntry savannaVeg[] = {
-                { BlockType::SHORT_GRASS, 60 },
-                { BlockType::DEAD_BUSH,   40 },
+                { BlockType::SHORT_GRASS, 100 },
             };
 
             static constexpr VegEntry birchVeg[] = {
@@ -1459,6 +1458,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     veg.y = static_cast<uint8_t>(surfaceY + 1);
                     veg.z = static_cast<uint8_t>(z);
                     veg.type = vegType;
+                    veg.biome = static_cast<uint8_t>(biome);
                     vegetation.push_back(veg);
                 } else {
                     // Kelp or tall seagrass: stack multiple instances
@@ -1482,6 +1482,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                             // Tall seagrass
                             veg.type = isTop ? BlockType::TALL_SEAGRASS_TOP : BlockType::TALL_SEAGRASS_BOTTOM;
                         }
+                        veg.biome = static_cast<uint8_t>(biome);
                         vegetation.push_back(veg);
                     }
                 }
