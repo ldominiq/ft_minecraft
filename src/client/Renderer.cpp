@@ -318,6 +318,8 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 				ent->positionUpdated = true;
 			else
 				ent->rotationUpdated = true;
+			ent->hasHorizontalInput = (pkt.flags & 0x01) != 0;
+			ent->setOnGround((pkt.flags & 0x02) != 0);
 			ent->lastNetUpdateTime = serverTime;
 
 			if (pkt.type == static_cast<uint16_t>(-1))

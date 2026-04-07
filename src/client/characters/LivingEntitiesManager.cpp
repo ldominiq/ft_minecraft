@@ -37,7 +37,7 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			c->characterBodyParts.character.translation = glm::translate(glm::mat4(1.0f), meshPos + c->YPositionOffset);
 			// Only advance the walk animation when the entity is actually moving;
 			// hasRenderPos alone (third-person camera) should not drive the animation.
-			if (c->positionUpdated || c->characterBodyParts.onWalkAnimation)
+			if ((c->positionUpdated && c->hasHorizontalInput) || c->characterBodyParts.onWalkAnimation)
 				c->walkAnimation(deltaTime);
 			c->characterBodyParts.character.compute(identity, projection, view, characterShader);
 			c->positionUpdated = false;

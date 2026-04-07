@@ -200,9 +200,14 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 			this->jump = false;
 			processed++;
 		}
+		this->hasHorizontalInput =
+			(lastInputsPktRecvd.keys & (IN_FORWARD | IN_BACKWARD | IN_LEFT | IN_RIGHT)) != 0;
 	} else {
 		// Client path: original single-step behavior used by prediction and replay.
 		lastAppliedServerClientReconciliationTick = lastInputsPktRecvd.serverClientReconciliationTick;
+
+		this->hasHorizontalInput =
+			(lastInputsPktRecvd.keys & (IN_FORWARD | IN_BACKWARD | IN_LEFT | IN_RIGHT)) != 0;
 
 		if (gamemode == GAMEMODES::SURVIVAL) {
 			doJump(world);

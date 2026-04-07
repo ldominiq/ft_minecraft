@@ -116,6 +116,8 @@ class Entity {
 
 		// position has been changed since last check.
 		bool positionUpdated = true;
+		// true when movement keys are actively pressed (set by PlayerMovement; defaults true for remote entities)
+		bool hasHorizontalInput = true;
 		// yaw/rotation has changed since last check (without a position change).
 		bool rotationUpdated = false;
 		// timestamp of the last network position update (glfwGetTime / serverTime scale)
