@@ -222,7 +222,7 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
 
             glm::u8vec3 color;
             switch (biome) {
-                case BiomeType::PLAINS:  color = { 0, 255, 0 }; break;
+                case BiomeType::PLAINS:  color = { 4, 130, 67 }; break;
                 case BiomeType::DESERT:  color = { 255, 255, 0 }; break;
                 case BiomeType::DARK_FOREST:  color = { 19, 77, 19 }; break;
                 case BiomeType::TUNDRA:  color = { 255, 255, 255 }; break;
@@ -230,7 +230,7 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
                 case BiomeType::OCEAN:   color = { 40, 60, 160 }; break;
             	case BiomeType::MOUNTAIN: color = { 100, 100, 100 }; break;
 				case BiomeType::BIRCH_FOREST: color = { 177, 240, 177 }; break;
-				case BiomeType::JUNGLE: color = { 4, 130, 67 }; break;
+				case BiomeType::JUNGLE: color = { 0, 255, 0 }; break;
 				case BiomeType::SAVANNA: color = { 175, 191, 0 }; break;
 				case BiomeType::MESA: color = { 255, 0, 0 }; break;
 				case BiomeType::ICE_PLAINS: color = { 87, 252, 255 }; break;

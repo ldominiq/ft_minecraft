@@ -1279,7 +1279,8 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
 
                 // Only place vegetation on grass, dirt, sand, or terracotta (mesa)
                 if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT &&
-                    surfaceBlock != BlockType::SAND && biome != BiomeType::MESA)
+                    surfaceBlock != BlockType::SAND && surfaceBlock != BlockType::RED_SAND &&
+                    biome != BiomeType::MESA)
                     continue;
 
                 // Don't place if there's already something above (like a tree)
@@ -1307,6 +1308,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 case BiomeType::OCEAN:        spawnChance = 20; break;
                 case BiomeType::DESERT:       spawnChance = 1;  break;
                 case BiomeType::MESA:         spawnChance = 1;  break;
+                case BiomeType::RED_DESERT:   spawnChance = 1;  break;
                 case BiomeType::TUNDRA:       spawnChance = 0;  break;
                 default:                      spawnChance = 0;  break;
             }
@@ -1370,6 +1372,10 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 { BlockType::DEAD_BUSH, 100 },
             };
 
+            static constexpr VegEntry redDesertVeg[] = {
+                { BlockType::DEAD_BUSH, 100 },
+            };
+
             static const VegEntry oceanVeg[] = {
                 { BlockType::KELP,                  100 },
                 { BlockType::SEAGRASS,              10 },
@@ -1426,6 +1432,10 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 case BiomeType::MESA:
                     vegTable = mesaVeg;
                     vegTableSize = std::size(mesaVeg);
+                    break;
+                case BiomeType::RED_DESERT:
+                    vegTable = redDesertVeg;
+                    vegTableSize = std::size(redDesertVeg);
                     break;
                 default:
                     continue; // No vegetation in tundra, mountain, swamp
