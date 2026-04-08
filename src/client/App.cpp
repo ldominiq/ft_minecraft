@@ -401,9 +401,8 @@ void App::render() {
 
         int simulatedTicksThisFrame = 0;
         constexpr int kMaxSimulatedTicksPerFrame = 6;
-        static NetPlayerInputs prevSentInputs{};
-        static int ticksSinceLastSend = 0;
-        constexpr int kKeepaliveTicks = 10;
+        std::vector<NetPlayerInputs> frameInputs;
+        frameInputs.reserve(kMaxSimulatedTicksPerFrame);
         while (accumulator >= tickDuration && simulatedTicksThisFrame < kMaxSimulatedTicksPerFrame)
         {
             NetPlayerInputs tickInputs = inputs;
@@ -413,19 +412,9 @@ void App::render() {
             tickInputs.serverClientReconciliationTick = clientTick;
             camera->queueInput(tickInputs, clientTick);
 
-            bool inputChanged = (tickInputs.keys  != prevSentInputs.keys
-                              || tickInputs.yaw   != prevSentInputs.yaw
-                              || tickInputs.pitch != prevSentInputs.pitch);
-            ++ticksSinceLastSend;
-            bool keepalive = (ticksSinceLastSend >= kKeepaliveTicks);
-            // Coalesce catch-up bursts: only send on the last tick of this frame
-            bool isLastTickThisFrame = (accumulator - tickDuration < tickDuration)
-                                    || (simulatedTicksThisFrame == kMaxSimulatedTicksPerFrame - 1);
-            if (inputChanged || keepalive || isLastTickThisFrame) {
-                udpClient->sendPacket(tickInputs);
-                prevSentInputs = tickInputs;
-                if (keepalive) ticksSinceLastSend = 0;
-            }
+            // Collect every tick's input; all will be sent as a batch so the
+            // server can run one physics step per entry during catch-up.
+            frameInputs.push_back(tickInputs);
 
             camera->predict(*renderer, clientTick);
 
@@ -434,6 +423,18 @@ void App::render() {
             clientTickChangedTime = glfwGetTime();
             clientTick++;
             simulatedTicksThisFrame++;
+        }
+
+        // Send all inputs for this frame in one datagram.
+        if (!frameInputs.empty()) {
+            if (frameInputs.size() == 1) {
+                udpClient->sendPacket(frameInputs[0]);
+            } else {
+                NetPacketGroup group;
+                for (auto& inp : frameInputs)
+                    group.add(inp);
+                udpClient->sendPacket(group);
+            }
         }
 
         if (simulatedTicksThisFrame == kMaxSimulatedTicksPerFrame && accumulator > tickDuration * 2.0f)

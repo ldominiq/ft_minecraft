@@ -22,7 +22,7 @@ struct PlayerMovement : public virtual LivingEntity {
 	Inventory inventory;
 
 	bool jumpBoostApplied = false;
-    int32_t lastAppliedServerClientReconciliationTick = -2; // -1 is the default "no input yet" client tick
+    int32_t lastAppliedServerClientReconciliationTick = -1; // -1 is the default "no input yet" client tick
 	bool skipDuplicateInputs = false; // set true on server to prevent re-applying stale inputs
 	std::deque<NetPlayerInputs> pendingInputs; // server-side queue: one physics step per entry
 	uint8_t loadRadius = 16;

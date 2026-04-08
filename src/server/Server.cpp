@@ -137,9 +137,8 @@ void Server::loop() {
 	}
 }
 
-void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
+void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 {
-    auto pkt = decodePacket(data, n); // now returns unique_ptr<Packet>
     switch (pkt->type) {
 		case PacketType::NET_CONNECT: {
 			auto& p = static_cast<NetConnect&>(*pkt);
@@ -177,10 +176,23 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::GROUP: {
+			auto& group = static_cast<NetPacketGroup&>(*pkt);
+			for (auto& inner : group.unpack())
+				dispatchPacket(inner, cliaddr);
+			break;
+		}
+
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
     }
+}
+
+void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
+{
+    auto pkt = decodePacket(data, n);
+    dispatchPacket(pkt, cliaddr);
 }
 
 void Server::gameTick()
@@ -547,7 +559,7 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 {
 	NetPlayerMove pkt;
 
- pkt.serverClientReconciliationTick = player.movement->getLastAppliedServerClientReconciliationTick();
+ 	pkt.serverClientReconciliationTick = player.movement->getLastAppliedServerClientReconciliationTick();
 
 	pkt.positionX = player.movement->getPosition().x;
 	pkt.positionY = player.movement->getPosition().y;
