@@ -5,6 +5,7 @@
 #include <cmath>
 #include <queue>
 #include <iostream>
+#include <algorithm>
 
 #include "Network.hpp" // For inputs. Maybe should do it in some other way
 #include "Item.hpp"
@@ -111,6 +112,9 @@ class Entity {
 		inline const float getEntityWidth() const { return entityWidth; }
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const entityID getID() const { return ID; }
+
+		bool isUnderwater(const ICommonWorld &world) const;
+		float getDepthUnderwater() const;
 
 		inline void setPosition(glm::vec3 position) {
 			if (this->position != position) positionUpdated = true;

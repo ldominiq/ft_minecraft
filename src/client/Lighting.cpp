@@ -149,7 +149,7 @@ void Lighting::updateSkyLUT(float cameraPosY) {
     }
 }
 
-void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos) const {
+void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater) const {
     // Choose shader: LUT-based (fast) or full ray-marching (reference)
     const bool useLUT = skyLUTEnabled && skyLUT && skyLUT->getLUTTexture();
     Shader* shader = useLUT ? skyLUTRenderShader.get() : skyShader.get();
@@ -162,6 +162,10 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     shader->setVec3("cameraPosWorld", cameraPos);
     shader->setFloat("exposure", skyExposure);
     shader->setVec3("sunDir", getDirectionalLightDirection());
+
+    // Underwater fog for sky
+    shader->setBool("cameraUnderwater", cameraUnderwater);
+    uploadUnderwaterUniforms(*shader);
 
     if (useLUT) {
         // Bind the precomputed scattering LUT
@@ -371,6 +375,12 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
         shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
         shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
     }
+}
+
+void Lighting::uploadUnderwaterUniforms(const Shader& shader) const {
+    shader.setVec3("underwaterTintColor", underwaterTintColor);
+    shader.setVec3("underwaterFogColor", underwaterFogColor);
+    shader.setFloat("underwaterFogDensity", underwaterFogDensity);
 }
 
 void Lighting::drawCSMShadowMapPreview(int cascadeLayer)

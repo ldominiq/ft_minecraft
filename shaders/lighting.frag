@@ -89,6 +89,12 @@ uniform sampler2D ssaoTexture;
 uniform int ssaoEnabled;
 uniform vec2 screenSize; // Full viewport resolution for correct SSAO UV mapping
 
+// Underwater params
+uniform bool cameraUnderwater;
+uniform vec3 underwaterTintColor;
+uniform vec3 underwaterFogColor;
+uniform float underwaterFogDensity;
+
 float near = 0.1;
 float far  = 100.0;
 
@@ -177,6 +183,17 @@ void main()
 
         // Mix: 80% original color + 20% cascade tint
         FragColor = vec4(mix(FragColor.rgb, cascadeColor, 0.2), FragColor.a);
+    }
+
+    if (cameraUnderwater) {
+        vec3 tintedColor = FragColor.rgb * underwaterTintColor;
+
+        // Distance based fog
+        float distance = length(viewPos - fs_in.FragPos);
+        float fogFactor = exp(-distance * underwaterFogDensity);
+        fogFactor = clamp(fogFactor, 0.0, 1.0);
+
+        FragColor.rgb = mix(underwaterFogColor, tintedColor, fogFactor);
     }
 
     //FragColor = vec4(lighting, texColor.a); // Lighting
