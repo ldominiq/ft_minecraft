@@ -48,6 +48,7 @@ private:
     void loop();
 
 	void dispatch(const uint8_t *data, int n, sockaddr_in &clidarr);
+	void dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr);
 	void receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr);
 	void receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr);
 	void receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &clieaddr);

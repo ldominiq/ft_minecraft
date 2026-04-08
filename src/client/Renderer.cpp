@@ -302,9 +302,25 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 	{
 		auto ent = entity->second.lock();
 		if (ent) {
+			const double oneTick = 1.0 / TPS;
+			bool stale = ent->snapshots.empty()
+			          || ent->lastNetUpdateTime < 0.0
+			          || ent->snapshots.back().time < serverTime - 2.0 * oneTick;
+			if (stale) {
+				ent->snapshots.clear();
+				ent->snapshots.emplace_back(Snapshot{ent->getPosition(), glm::vec3(0.0f), serverTime - oneTick});
+			}
+			bool actuallyMoved = !ent->snapshots.empty() &&
+				glm::length(position - ent->snapshots.back().position) > 0.001f;
 			ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			ent->yaw = yaw;
-			ent->positionUpdated = true;
+			if (actuallyMoved)
+				ent->positionUpdated = true;
+			else
+				ent->rotationUpdated = true;
+			ent->hasHorizontalInput = (pkt.positionFlags & 0x01) != 0;
+			ent->setOnGround((pkt.positionFlags & 0x02) != 0);
+			ent->lastNetUpdateTime = serverTime;
 
 			if (pkt.type == static_cast<uint16_t>(-1))
 			{

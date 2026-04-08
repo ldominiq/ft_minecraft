@@ -164,9 +164,10 @@ struct NetPlayerMove final : public Packet {
 	float pitch;
 
 	float health;
-
-	// float slipperinessPrev;
-	// bool onGround;
+	float slipperinessPrev;
+	float accumulatedFallDistance;
+	uint8_t onGround = 0;
+	uint8_t jumpBoostApplied = 0;
 
 	NetPlayerMove() : Packet(ID) {}
 
@@ -181,8 +182,10 @@ struct NetPlayerMove final : public Packet {
 		w.write_f32(yaw);
 		w.write_f32(pitch);
 		w.write_f32(health);
-		// w.write_f32(slipperinessPrev);
-		// w.write_u8(onGround ? 1 : 0);
+       w.write_f32(slipperinessPrev);
+		w.write_f32(accumulatedFallDistance);
+		w.write_u8(onGround);
+		w.write_u8(jumpBoostApplied);
     }
     void decode(BufferReader& r) override {
 		serverClientReconciliationTick = r.read_i32();
@@ -195,8 +198,10 @@ struct NetPlayerMove final : public Packet {
 		yaw = r.read_f32();
 		pitch = r.read_f32();
 		health = r.read_f32();
-		// slipperinessPrev = r.read_f32();
-		// onGround = r.read_u8() != 0;
+     slipperinessPrev = r.read_f32();
+		accumulatedFallDistance = r.read_f32();
+		onGround = r.read_u8();
+		jumpBoostApplied = r.read_u8();
     }
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;
@@ -248,6 +253,9 @@ struct NetEntityMove final : public Packet {
 
 	float yaw;
 
+	// bit 0 = hasHorizontalInput, bit 1 = onGround
+	uint8_t positionFlags = 0;
+
 	NetEntityMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
@@ -258,6 +266,7 @@ struct NetEntityMove final : public Packet {
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
 		w.write_f32(yaw);
+		w.write_u8(positionFlags);
     }
     void decode(BufferReader& r) override {
 		eEntityType = static_cast<EEntityTypes>(r.read_u8());
@@ -267,6 +276,7 @@ struct NetEntityMove final : public Packet {
 		positionY = r.read_f32();
 		positionZ = r.read_f32();
 		yaw = r.read_f32();
+		positionFlags = r.read_u8();
     }
 };
 inline AutoRegister<NetEntityMove> _reg_NetEntityMove;

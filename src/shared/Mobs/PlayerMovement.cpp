@@ -171,20 +171,52 @@ glm::vec3 PlayerMovement::getDesiredMove()
 
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 {
-	// TODO : return early if no new packet to read and velocities are 0 and there is no collision with block under. To avoid doing unnecessary calculations. Do the same with every other entity
+	if (skipDuplicateInputs) {
+		// Server path: drain the per-player input queue, running one physics step per
+		// queued input.  When the client sends N inputs in a single frame (low FPS
+		// catch-up), all N packets end up here and each gets its own step — keeping
+		// server and client tick counts in sync instead of the server skipping to the
+		// last input and being N-1 ticks behind.
+		if (pendingInputs.empty())
+			return;
 
-	if (gamemode == GAMEMODES::SURVIVAL)
-	{
-		doJump(world);
-		glm::vec3 desiredMove = getDesiredMove();
-		this->calculateNewXZPosition(world, desiredMove);
-		this->calculateNewYPosition(world);
-	}
-	else if (gamemode == GAMEMODES::SPECTATOR)
-	{
-		updatePosition();
-	}
+		constexpr int kMaxCatchup = 6;
+		int processed = 0;
+		while (!pendingInputs.empty() && processed < kMaxCatchup) {
+			lastInputsPktRecvd = pendingInputs.front();
+			pendingInputs.pop_front();
+			lastAppliedServerClientReconciliationTick = lastInputsPktRecvd.serverClientReconciliationTick;
+			setYawAndPitch(lastInputsPktRecvd.yaw, lastInputsPktRecvd.pitch);
+			updateCameraVectors();
 
-	lastInputsPktRecvd = {};
-	this->jump = false;
+			if (gamemode == GAMEMODES::SURVIVAL) {
+				doJump(world);
+				glm::vec3 desiredMove = getDesiredMove();
+				this->calculateNewXZPosition(world, desiredMove);
+				this->calculateNewYPosition(world);
+			} else if (gamemode == GAMEMODES::SPECTATOR) {
+				updatePosition();
+			}
+			this->jump = false;
+			processed++;
+		}
+		this->hasHorizontalInput =
+			(lastInputsPktRecvd.keys & (IN_FORWARD | IN_BACKWARD | IN_LEFT | IN_RIGHT)) != 0;
+	} else {
+		// Client path: original single-step behavior used by prediction and replay.
+		lastAppliedServerClientReconciliationTick = lastInputsPktRecvd.serverClientReconciliationTick;
+
+		this->hasHorizontalInput =
+			(lastInputsPktRecvd.keys & (IN_FORWARD | IN_BACKWARD | IN_LEFT | IN_RIGHT)) != 0;
+
+		if (gamemode == GAMEMODES::SURVIVAL) {
+			doJump(world);
+			glm::vec3 desiredMove = getDesiredMove();
+			this->calculateNewXZPosition(world, desiredMove);
+			this->calculateNewYPosition(world);
+		} else if (gamemode == GAMEMODES::SPECTATOR) {
+			updatePosition();
+		}
+		this->jump = false;
+	}
 }

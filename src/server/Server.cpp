@@ -137,9 +137,8 @@ void Server::loop() {
 	}
 }
 
-void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
+void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 {
-    auto pkt = decodePacket(data, n); // now returns unique_ptr<Packet>
     switch (pkt->type) {
 		case PacketType::NET_CONNECT: {
 			auto& p = static_cast<NetConnect&>(*pkt);
@@ -177,10 +176,23 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::GROUP: {
+			auto& group = static_cast<NetPacketGroup&>(*pkt);
+			for (auto& inner : group.unpack())
+				dispatchPacket(inner, cliaddr);
+			break;
+		}
+
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
     }
+}
+
+void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
+{
+    auto pkt = decodePacket(data, n);
+    dispatchPacket(pkt, cliaddr);
 }
 
 void Server::gameTick()
@@ -256,6 +268,10 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (player == players.end())
 		return ;
 
+ 	// Discard outdated or duplicate packets
+	if (pkt.serverClientReconciliationTick <= player->serverClientReconciliationTick)
+		return;
+
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
 		player->movement->inventory.activeHotbarSlot = pkt.activeHotbarSlot;
 
@@ -280,10 +296,19 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		}
 	}
 
-	if (pkt.yaw != player->movement->yaw) player->movement->positionUpdated = true;
+	if (pkt.yaw != player->movement->yaw) player->movement->rotationUpdated = true;
 
 	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
+
+	// Queue this input for physics processing.  The queue is drained in
+	// calculateNewPosition (one physics step per entry), so when the client
+	// sends several inputs in rapid succession (low-FPS catch-up) the server
+	// runs the matching number of physics steps instead of just one.
+	constexpr int kMaxQueuedInputs = 20;
+	if (static_cast<int>(player->movement->pendingInputs.size()) >= kMaxQueuedInputs)
+		player->movement->pendingInputs.pop_front(); // drop oldest to keep ack/queue consistent
+	player->movement->pendingInputs.push_back(pkt);
 
 	if (pkt.loadRadius > 32)
 		pkt.loadRadius = 32;
@@ -534,7 +559,7 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 {
 	NetPlayerMove pkt;
 
-	pkt.serverClientReconciliationTick = player.serverClientReconciliationTick;
+ 	pkt.serverClientReconciliationTick = player.movement->getLastAppliedServerClientReconciliationTick();
 
 	pkt.positionX = player.movement->getPosition().x;
 	pkt.positionY = player.movement->getPosition().y;
@@ -548,15 +573,19 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.pitch = player.movement->pitch;
 
 	pkt.health = player.movement->health;
+	pkt.slipperinessPrev = player.movement->getSlipperinessPrev();
+	pkt.accumulatedFallDistance = player.movement->getAccumulatedFallDistance();
+	pkt.onGround = player.movement->isOnGround() ? 1 : 0;
+	pkt.jumpBoostApplied = player.movement->getJumpBoostApplied() ? 1 : 0;
 
-	std::cout << "tick: " << pkt.serverClientReconciliationTick << "\n" <<
-	"pos: (" << pkt.positionX << ", " << pkt.positionY << ", " << pkt.positionZ << ")\n" <<
-	"vel: (" << pkt.velocityX << ", " << pkt.velocityY << ", " << pkt.velocityZ << ")\n" <<
-	"splitPrev: (" << player.movement->getSlipperinessPrev() << ")\n" <<
-	"onGround: (" << player.movement->isOnGround() << ")\n" <<
-	"fallDistance: (" << player.movement->getAccumulatedFallDistance() << ")\n" <<
-	"jumpBoost: (" << player.movement->getJumpBoostApplied() << ")\n";
-	std::cout << "------------------\n\n";
+	//std::cout << "tick: " << pkt.serverClientReconciliationTick << "\n" <<
+	//"pos: (" << pkt.positionX << ", " << pkt.positionY << ", " << pkt.positionZ << ")\n" <<
+	//"vel: (" << pkt.velocityX << ", " << pkt.velocityY << ", " << pkt.velocityZ << ")\n" <<
+	//"splitPrev: (" << player.movement->getSlipperinessPrev() << ")\n" <<
+	//"onGround: (" << player.movement->isOnGround() << ")\n" <<
+	//"fallDistance: (" << player.movement->getAccumulatedFallDistance() << ")\n" <<
+	//"jumpBoost: (" << player.movement->getJumpBoostApplied() << ")\n";
+	//std::cout << "------------------\n\n";
 
 	sendPacketTo(pkt, player.addr);
 }
@@ -569,7 +598,7 @@ void Server::sendEntitiesPositionDeltas()
 	{
 		for (CPlayerInfo &p : players)
 		{
-			if (entity == p.movement || !entity->positionUpdated) continue;
+			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated)) continue;
 
 			NetEntityMove pkt;
 
@@ -582,11 +611,13 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.positionZ = entity->getPosition().z;
 
 			pkt.yaw = entity->yaw;
+			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u) | (entity->isOnGround() ? 0x02u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}
 
 		entity->positionUpdated = false;
+		entity->rotationUpdated = false;
 	}
 
 	for (auto &entity : world->itemEntities)

@@ -2,6 +2,7 @@
 #define ENTITY_HPP
 
 #include <glm/glm.hpp>
+#include <algorithm>
 #include <cmath>
 #include <queue>
 #include <iostream>
@@ -115,6 +116,12 @@ class Entity {
 
 		// position has been changed since last check.
 		bool positionUpdated = true;
+		// true when movement keys are actively pressed (set by PlayerMovement; defaults true for remote entities)
+		bool hasHorizontalInput = true;
+		// yaw/rotation has changed since last check (without a position change).
+		bool rotationUpdated = false;
+		// timestamp of the last network position update (glfwGetTime / serverTime scale)
+		double lastNetUpdateTime = -1.0;
 
 		// unused. Supposed to be for prediction
 		inline float getSlipperinessPrev() const { return slipperiness_prev; }
@@ -129,6 +136,7 @@ class Entity {
 		inline const entityID getID() const { return ID; }
 
 		inline void setSlipperinessPrev(float slipperiness) { this->slipperiness_prev = slipperiness; }
+       inline void setOnGround(bool value) { this->onGround = value; }
 		inline void setPosition(glm::vec3 position) {
 			if (this->position != position) positionUpdated = true;
 			this->position = position;
@@ -158,7 +166,13 @@ class Entity {
 			auto& start = snapshots[0];
 			auto& end   = snapshots[1];
 
-			double t = (glfwTime - start.time) / (end.time - start.time);
+			double duration = end.time - start.time;
+			if (duration <= 0.0) {
+				setPosition(end.position);
+				snapshots.pop_front();
+				return;
+			}
+			double t = (glfwTime - start.time) / duration;
 			t = std::clamp(t, 0.0, 1.0);
 
 			glm::vec3 interpolatedPosition = glm::mix(start.position, end.position, t);
