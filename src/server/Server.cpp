@@ -268,7 +268,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (player == players.end())
 		return ;
 
- // Discard outdated or duplicate packets
+ 	// Discard outdated or duplicate packets
 	if (pkt.serverClientReconciliationTick <= player->serverClientReconciliationTick)
 		return;
 
@@ -611,7 +611,7 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.positionZ = entity->getPosition().z;
 
 			pkt.yaw = entity->yaw;
-			pkt.flags = (entity->hasHorizontalInput ? 0x01u : 0u) | (entity->isOnGround() ? 0x02u : 0u);
+			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u) | (entity->isOnGround() ? 0x02u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}
