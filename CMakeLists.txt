@@ -56,6 +56,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(imgui)
 
 # ZSTD
+set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
   zstd
   GIT_REPOSITORY https://github.com/facebook/zstd.git

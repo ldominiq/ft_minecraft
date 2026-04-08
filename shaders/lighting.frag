@@ -91,7 +91,6 @@ uniform vec2 screenSize; // Full viewport resolution for correct SSAO UV mapping
 
 // Underwater params
 uniform bool cameraUnderwater;
-uniform float underwaterDepth;
 uniform vec3 underwaterTintColor;
 uniform vec3 underwaterFogColor;
 uniform float underwaterFogDensity;

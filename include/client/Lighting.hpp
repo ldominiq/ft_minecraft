@@ -320,7 +320,7 @@ private:
 
     // Underwater params
     glm::vec3 underwaterTintColor = glm::vec3(0.4, 0.85, 0.542);
-    glm::vec3 underwaterFogColor = glm::vec3(0.0, 0.091, 0.181);;
+    glm::vec3 underwaterFogColor = glm::vec3(0.0, 0.091, 0.181);
     float underwaterFogDensity = 0.1f;
     
 

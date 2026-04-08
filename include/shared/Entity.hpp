@@ -5,6 +5,7 @@
 #include <cmath>
 #include <queue>
 #include <iostream>
+#include <algorithm>
 
 #include "Network.hpp" // For inputs. Maybe should do it in some other way
 #include "Item.hpp"
