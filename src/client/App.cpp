@@ -601,15 +601,18 @@ void App::render() {
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
-        if (waterVisible)
+        if (waterVisible) {
+            const float chunkDist = renderer->getMaxRenderedChunkDist();
+            waterRenderer->setFogParams(fogEnabled, chunkDist * fogStartFraction, chunkDist, fogStrength);
     	    waterRenderer->renderWaterSurface(projection);
+        }
         glEndQuery(GL_TIME_ELAPSED);
 
 		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
 		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
-		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius());
+		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         // Draw chunk boundary overlay (if enabled)
@@ -791,6 +794,23 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         activeShader->setInt("ssaoEnabled", 0);
     }
 
+    // Fog
+    GLuint skyLUTTex = lighting->getSkyLUTTexture();
+    bool fogActive = fogEnabled && skyLUTTex != 0;
+    const float maxChunkDist = renderer->getMaxRenderedChunkDist();
+    const float fogEnd   = maxChunkDist;
+    const float fogStart = maxChunkDist * fogStartFraction;
+    activeShader->setInt("fogEnabled", fogActive ? 1 : 0);
+    if (fogActive) {
+        glActiveTexture(GL_TEXTURE9);
+        glBindTexture(GL_TEXTURE_2D, skyLUTTex);
+        activeShader->setInt("skyLUT", 9);
+        activeShader->setFloat("skyExposure", lighting->getSkyExposure());
+        activeShader->setFloat("fogStart", fogStart);
+        activeShader->setFloat("fogEnd", fogEnd);
+        activeShader->setFloat("fogStrength", fogStrength);
+    }
+
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
 
@@ -827,6 +847,18 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         // Upload CSM shadow uniforms to vegetation shader
         lighting->uploadCSMUniforms(*vegShader, view);
         vegShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
+
+        // Fog for vegetation
+        vegShader->setInt("fogEnabled", fogActive ? 1 : 0);
+        if (fogActive) {
+            glActiveTexture(GL_TEXTURE9);
+            glBindTexture(GL_TEXTURE_2D, skyLUTTex);
+            vegShader->setInt("skyLUT", 9);
+            vegShader->setFloat("skyExposure", lighting->getSkyExposure());
+            vegShader->setFloat("fogStart", fogStart);
+            vegShader->setFloat("fogEnd", fogEnd);
+            vegShader->setFloat("fogStrength", fogStrength);
+        }
 
         activeShader->use(); // Switch back to main shader
     }
@@ -1318,6 +1350,17 @@ void App::debugWindow() {
                                 bool skyLUTEnabled = lighting->isSkyLUTEnabled();
                                 if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
                                     lighting->setSkyLUTEnabled(skyLUTEnabled);
+
+                                ImGui::Separator();
+                                ImGui::Text("Distance Fog");
+                                ImGui::Checkbox("Fog Enabled", &fogEnabled);
+                                if (fogEnabled) {
+                                    ImGui::SliderFloat("Fog Start (fraction of chunk radius)", &fogStartFraction, 0.0f, 0.95f, "%.2f");
+                                    ImGui::SliderFloat("Fog Strength", &fogStrength, 0.1f, 10.0f, "%.1f");
+                                    ImGui::Text("Fog range: %.0f - %.0f blocks", renderer->getMaxRenderedChunkDist() * fogStartFraction, renderer->getMaxRenderedChunkDist());
+                                }
+
+                                ImGui::Separator();
                                 if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                                     lighting->setSkyTimePaused(skyTimePaused);
                                 if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f"))

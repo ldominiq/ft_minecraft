@@ -215,6 +215,11 @@ private:
 
     float renderDistance = 1000.0f; // Distance of the far clipping plane
 
+    // Distance fog
+    float fogStartFraction = 0.5f;  // fog begins at this fraction of renderDistance (0=camera, 1=edge)
+    float fogStrength = 1.4f;       // exponent on fog ramp: 1=linear, 10=at the edge
+    bool  fogEnabled = true;
+
     // Variables for smoothing the FPS shown in the debug UI.  We maintain a
     // moving average of frame times over a sample buffer to reduce jitter.
     std::vector<float> fpsSamples;

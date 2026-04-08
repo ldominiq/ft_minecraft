@@ -106,12 +106,13 @@ void Renderer::buildChunks()
 }
 
 //sets rendered chunks and unloads far away chunks
-void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
+void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius, float deltaTime)
 {
     // Clear renderedChunks first
     renderedChunks.clear();
 
 	int unloadRadius = loadRadius * 4;
+    const int radiusSq = loadRadius * loadRadius;
 
     for (auto it = chunks.begin(); it != chunks.end(); )
     {
@@ -123,7 +124,7 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
         int dz = chunkPos.second - pos.second;
         int distSq = dx * dx + dz * dz;
 
-        if (distSq <= loadRadius * loadRadius)
+        if (distSq <= radiusSq)
         {
             // Inside load radius -> render
             renderedChunks.push_back(chunkPtr);
@@ -140,6 +141,29 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
             ++it;
         }
     }
+
+    // Find the nearest chunk position within the load radius that has NOT yet
+    // been received from the server.  Fog is placed at that boundary so any
+    // unloaded area is always hidden while the world generates.
+    int minMissingDistSq = radiusSq; // default: assume fully loaded
+    for (int dx = -loadRadius; dx <= loadRadius; ++dx) {
+        for (int dz = -loadRadius; dz <= loadRadius; ++dz) {
+            int dSq = dx * dx + dz * dz;
+            if (dSq > radiusSq) continue;
+            ChunkPos testPos = {pos.first + dx, pos.second + dz};
+            if (chunks.find(testPos) == chunks.end()) {
+                if (dSq < minMissingDistSq)
+                    minMissingDistSq = dSq;
+            }
+        }
+    }
+    float rawDist = std::sqrt(static_cast<float>(minMissingDistSq)) * Chunk::WIDTH;
+    // Use different speeds for inward vs outward movement but always smooth
+    // Inward: ~0.5s time constant, fast enough to cover a gap before the player walks into it.
+    // Outward: ~3s time constant, slow enough that loading chunks don't flicker.
+    float speed = (rawDist < maxRenderedChunkDist) ? 3.0f : 0.5f;
+    float alpha = 1.0f - std::exp(-deltaTime * speed);
+    maxRenderedChunkDist += (rawDist - maxRenderedChunkDist) * alpha;
 }
 
 void Renderer::prepareChunk(const NetChunkHeader& pkt) {

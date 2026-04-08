@@ -150,6 +150,22 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     waterShader->setFloat("nearPlane", 0.1f);
     waterShader->setFloat("farPlane", 1000.0f);
 
+    // Fog uniforms
+    waterShader->setInt("fogEnabled", fogEnabled ? 1 : 0);
+    if (fogEnabled) {
+        waterShader->setFloat("fogStart", fogStart);
+        waterShader->setFloat("fogEnd", fogEnd);
+        waterShader->setFloat("fogStrength", fogStrength);
+        waterShader->setFloat("skyExposure", lighting->getSkyExposure());
+        waterShader->setVec3("sunDir", lighting->getDirectionalLightDirection());
+        GLuint skyLUTTex = lighting->getSkyLUTTexture();
+        if (skyLUTTex != 0) {
+            glActiveTexture(GL_TEXTURE9);
+            glBindTexture(GL_TEXTURE_2D, skyLUTTex);
+            waterShader->setInt("skyLUT", 9);
+        }
+    }
+
     // Bind water textures
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, fbos->getReflectionTexture());

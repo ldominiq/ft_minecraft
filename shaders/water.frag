@@ -26,6 +26,45 @@ uniform float waveStrength;        // Distortion intensity
 const float shineDamper = 20.0;
 const float reflectivity = 0.5;
 
+// Distance fog (sky LUT blending)
+uniform sampler2D skyLUT;
+uniform float skyExposure;
+uniform float fogStart;
+uniform float fogEnd;
+uniform float fogStrength;
+uniform bool fogEnabled;
+uniform vec3 sunDir;
+
+#define M_PI 3.1415926535897932384626433832795
+const float FOG_G = 0.76;
+
+float fogRayleighPhase(float mu) {
+    return (3.0 / (16.0 * M_PI)) * (1.0 + mu * mu);
+}
+
+float fogMiePhase(float mu) {
+    float g2 = FOG_G * FOG_G;
+    float denom = pow(1.0 + g2 - 2.0 * FOG_G * mu, 1.5);
+    return (3.0 / (8.0 * M_PI)) * (1.0 - g2) * (1.0 + mu * mu) / ((2.0 + g2) * denom);
+}
+
+vec3 fogUncharted2(vec3 color) {
+    float A=0.15, B=0.50, C=0.10, D=0.20, E=0.02, F=0.30, W=11.2, gamma=2.2;
+    color *= skyExposure;
+    color = ((color*(A*color+C*B)+D*E)/(color*(A*color+B)+D*F)) - E/F;
+    float white = ((W*(A*W+C*B)+D*E)/(W*(A*W+B)+D*F)) - E/F;
+    color /= white;
+    return pow(max(color, vec3(0.0)), vec3(1.0/gamma));
+}
+
+vec3 getWaterFogColor(vec3 viewDir) {
+    vec2 lutUV  = vec2(viewDir.y * 0.5 + 0.5, sunDir.y * 0.5 + 0.5);
+    vec4 scatter = texture(skyLUT, lutUV);
+    float mu = dot(viewDir, sunDir);
+    vec3 col = scatter.rgb * fogRayleighPhase(mu) + vec3(scatter.a) * fogMiePhase(mu);
+    return fogUncharted2(col);
+}
+
 void main() {
     vec2 ndc = (clipSpace.xy/clipSpace.w) * 0.5 + 0.5;
     vec2 refractTexCoords = vec2(ndc.x, ndc.y);
@@ -87,4 +126,14 @@ void main() {
 		// draw the inside with transparency
 		FragColor.a *= 0.8;
 	}
+
+    if (fogEnabled) {
+        float dist = length(toCameraVector);
+        float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
+        vec3 viewDir = normalize(-toCameraVector); // direction from camera toward water
+        vec3 fogColor = getWaterFogColor(viewDir);
+        FragColor.rgb = mix(fogColor, FragColor.rgb, fogFactor);
+        // Also fade alpha so water edge softens into fog
+        FragColor.a *= fogFactor;
+    }
 }
