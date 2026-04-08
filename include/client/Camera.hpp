@@ -90,7 +90,7 @@ public:
         return glm::mix(renderPrevPosition, renderCurrPosition, renderTickAlpha) + visualOffset;
     }
     void processMouseMovement(float xoffset, float yoffset);
-	void onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clientTick);
+	void onSnapshot(NetPlayerMove &pkt);
     void flushPendingSnapshot(const Renderer &world, int32_t clientTick);
 	Snapshot getLatestSnapshot() { return getPlayer()->snapshots.empty() ? Snapshot{} : getPlayer()->snapshots.back(); }
 

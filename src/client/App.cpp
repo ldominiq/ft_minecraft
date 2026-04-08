@@ -301,7 +301,7 @@ void App::setUdpClientPacketCallback()
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
 				// snapshotReceivedTime = glfwGetTime();
-				camera->onSnapshot(p, *renderer, clientTick);
+				camera->onSnapshot(p);
 				break;
 			}
 

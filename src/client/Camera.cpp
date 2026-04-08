@@ -360,7 +360,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 	renderPositionInitialized = true;
 }
 
-void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clientTick)
+void Camera::onSnapshot(NetPlayerMove &pkt)
 {
 	if (!startPrediction)
 		startPrediction = true;
@@ -399,8 +399,6 @@ void Camera::onSnapshot(NetPlayerMove &pkt, const Renderer &world, int32_t clien
 		pendingCorrectionTick = correction.serverClientReconciliationTick;
 	}
 
-	(void)world;
-	(void)clientTick;
 }
 
 void Camera::flushPendingSnapshot(const Renderer &world, int32_t clientTick)
