@@ -95,7 +95,7 @@ void App::init() {
 
 	std::shared_ptr<PlayerInventory> inv = camera->getPlayer()->inventory;
 	std::shared_ptr<CraftingStation> craft = camera->getPlayer()->craftingStation;
-	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight, &textureManager, inv, craft, camera->getPlayer()->hand);
+	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight, &textureManager, inv, craft, camera->getPlayer()->inventoryExternalVarsRefs);
 
     glfwSetCursorPosCallback(window, [](GLFWwindow* w, const double xpos, const double ypos) {
         static App* app = static_cast<App*>(glfwGetWindowUserPointer(w));

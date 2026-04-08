@@ -4,10 +4,10 @@
 
 #include "Inventory.hpp"
 
-class PlayerInventory : public Inventory<4, 9> {
+class PlayerInventory : public Inventory<4, 9, 1> {
 
 	public:
-		PlayerInventory(std::shared_ptr<std::pair<ItemType, itemStackSize_t>> handPtr = nullptr);
+		PlayerInventory(std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs = nullptr);
 		~PlayerInventory() override = default;
 
 		ItemType getActiveItem();

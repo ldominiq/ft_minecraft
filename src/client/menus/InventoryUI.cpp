@@ -7,15 +7,17 @@ InventoryUI::InventoryUI(int width,
 						const TextureManager* texMgr,
 						std::shared_ptr<PlayerInventory> playerInv,
 						std::shared_ptr<CraftingStation> craftingStation,
-						std::shared_ptr<std::pair<ItemType, itemStackSize_t>> handPtr) :
+						std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs) :
 
 						Menu(width, height),
 						textureManager(texMgr),
 						playerInventory(playerInv),
-						craftingStationInv(craftingStation),
-						handPtr(handPtr)
+						craftingStationInv(craftingStation)
 {
 	shader = std::make_unique<Shader>("shaders/InventoryCube.vert", "shaders/InventoryCube.frag"); //should probably reuse cubePropShader.frag
+
+	if (inventoryExternalVarsRefs)
+		handPtr = inventoryExternalVarsRefs->hand;
 
 	inventoryRows = playerInv ? playerInv->getRows() : 9;
 	inventoryCols = playerInv ? playerInv->getCols() : 4;
@@ -279,6 +281,11 @@ InventoryType InventoryUI::getCurrentInventoryType(double mouseX, double mouseY)
 	if (mouseX >= craftingStation.x && mouseX <= craftingStation.x + craftingStation.width &&
 		mouseY >= craftingStation.y && mouseY <= craftingStation.y + craftingStation.height)
 		return InventoryType::CRAFTING_STATION;
+	//Result slot is outside of the station layout but it's still part of it
+	if (mouseX >= craftingResultSlot.x && mouseX <= craftingResultSlot.x + craftingResultSlot.width &&
+		mouseY >= craftingResultSlot.y && mouseY <= craftingResultSlot.y + craftingResultSlot.height)
+		return InventoryType::CRAFTING_STATION;
+
 	if (mouseX >= inventoryLayout.x && mouseX <= inventoryLayout.x + inventoryLayout.width &&
 		mouseY >= inventoryLayout.y && mouseY <= inventoryLayout.y + inventoryLayout.height)
 		return InventoryType::PLAYER;
@@ -295,6 +302,10 @@ int InventoryUI::getCraftingSlotAt(double mouseX, double mouseY) const
 			mouseY >= s.y && mouseY <= s.y + s.height)
 			return i;
 	}
+	if (mouseX >= craftingResultSlot.x && mouseX <= craftingResultSlot.x + craftingResultSlot.width &&
+		mouseY >= craftingResultSlot.y && mouseY <= craftingResultSlot.y + craftingResultSlot.height)
+		return craftingStationInv.lock() ? craftingStationInv.lock()->getResultSlotID() : -1;
+
 	return -1;
 }
 
@@ -308,7 +319,60 @@ int InventoryUI::getSlotAt(double mouseX, double mouseY) const
             mouseY >= s.y && mouseY <= s.y + s.height)
             return i;
     }
-    return -1;
+	return -1;
+}
+
+void InventoryUI::handleInventoryModifiers(NetInventoryAction &pkt, int action, int button)
+{
+	static bool dragging = false;
+	static int dragButton = -1;
+	static float lastClickTime = -1.0f;
+
+	auto setDragToFalse = []()
+	{
+		dragging = false;
+		dragButton = -1;
+	};
+
+	if (action == GLFW_PRESS && button == GLFW_MOUSE_BUTTON_LEFT) //if we double clicked in less than 0.5 seconds
+	{
+		float prevLastClickTime = lastClickTime;
+		lastClickTime = glfwGetTime();
+
+		if (lastClickTime - prevLastClickTime <= 0.5)
+		{
+			pkt.modifier = InventoryModifiers::INV_DOUBLE_CLICK;
+			setDragToFalse();
+			return ;
+		}
+	}
+
+	if (dragging && action == GLFW_PRESS && button != dragButton)
+	{
+		pkt.modifier = InventoryModifiers::INV_DRAG_CANCEL;
+		setDragToFalse();
+		return ;
+	}
+
+	// we start dragging
+	if (handPtr.lock() && handPtr.lock()->second != 0 && action == GLFW_PRESS && !dragging)
+	{
+		std::cout << "starting drag" << std::endl;
+		pkt.modifier = InventoryModifiers::INV_DRAG_BEGIN;
+		dragging = true;
+		dragButton = button;
+	}
+	// we add to the drag selection
+	else if (handPtr.lock() && handPtr.lock()->second == 0 && action == GLFW_PRESS && dragging)
+	{
+		pkt.modifier = InventoryModifiers::INV_DRAG_ADD;
+	}
+	// we end dragging
+	else if (button == dragButton && dragging && action == GLFW_RELEASE)
+	{
+		pkt.modifier = InventoryModifiers::INV_DRAG_END;
+		setDragToFalse();
+	}
 }
 
 void InventoryUI::handleMouseClick(double mouseX, double mouseY, int button, int action)
@@ -322,11 +386,14 @@ void InventoryUI::handleMouseClick(double mouseX, double mouseY, int button, int
 	this->mouseY = mouseY;
 
 	NetInventoryAction pkt;
+
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) //left click
 		pkt.actionType = InventoryActionType::INV_LEFT_CLICK;
 	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) //right click
 		pkt.actionType = InventoryActionType::INV_RIGHT_CLICK;
 	pkt.inventoryTypeID = static_cast<uint8_t>(inventoryType);
+
+	handleInventoryModifiers(pkt, action, button);
 
 	if (inventoryType == InventoryType::PLAYER)
 	{
@@ -437,6 +504,7 @@ void InventoryUI::onRender()
 	drawEveryInventoryQuad();
 	std::vector<float> meshVertices;
 
+	//inventory cubes/text
 	for (int i = 0; i < inventoryRows * inventoryCols; i++)
 	{
 		std::shared_ptr<PlayerInventory> inv = playerInventory.lock();
@@ -459,6 +527,7 @@ void InventoryUI::onRender()
 			}, inv->getItemAtSlot(i));
 	}
 
+	//crafting station cubes/text
 	for (int i = 0; i < craftingStationRows * craftingStationCols; i++)
 	{
 		std::shared_ptr<CraftingStation> inv = craftingStationInv.lock();
@@ -481,6 +550,26 @@ void InventoryUI::onRender()
 			}, inv->getItemAtSlot(i));
 	}
 
+	if (craftingStationInv.lock())
+	{
+		std::shared_ptr<CraftingStation> inv = craftingStationInv.lock();
+		if (!inv)
+			return ;
+
+		std::visit([&](const auto& value) {
+			using T = std::decay_t<decltype(value)>;
+				if constexpr (std::is_same_v<T, BlockType>) {
+					if (value != BlockType::BEGIN)
+						build2DInventoryCube(meshVertices, glm::vec2(craftingResultSlot.x + 18 * menuScale, craftingResultSlot.y + 5 * menuScale), 40 * menuScale, value, textureManager);
+				} else if constexpr (std::is_same_v<T, WeaponType>) {
+					// handle WeaponType
+				} else {
+					// handle MiscType
+				}
+			}, craftingStationInv.lock()->getSlot(craftingStationInv.lock()->getResultSlotID()).first);
+	}
+
+	//cube in hand
 	if (handPtr.lock() && handPtr.lock()->second != 0)
 	{
 		std::visit([&](const auto& value) {
@@ -498,6 +587,7 @@ void InventoryUI::onRender()
 
 	setupCubes(meshVertices);
 
+	//text in hand
 	//Text needs to go after setupCubes so it renders in front of the cube in hand.
 	if (handPtr.lock() && handPtr.lock()->second != 0)
 		textRenderer.renderText(std::to_string(handPtr.lock()->second), mouseX, fullscreenHeight - mouseY, glm::vec3(1.0f));

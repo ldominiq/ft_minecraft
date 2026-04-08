@@ -335,36 +335,36 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 		messages.push_back(pkt.message);
 }
 
-void Server::sendInventorySlot(int slot, NetInventoryAction &Ipkt, const sockaddr_in &cliaddr)
-{
-	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
-	if (player == players.end())
-		return;
+// void Server::sendInventorySlot(int slot, NetInventoryAction &Ipkt, const sockaddr_in &cliaddr)
+// {
+// 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+// 	if (player == players.end())
+// 		return;
 
-    // choose correct inventory based on packet inventoryTypeID
-    ItemID itemIDAtSlot = 0;
-    itemStackSize_t amountAtSlot = 0;
+//     // choose correct inventory based on packet inventoryTypeID
+//     ItemID itemIDAtSlot = 0;
+//     itemStackSize_t amountAtSlot = 0;
 
-    if (static_cast<InventoryType>(Ipkt.inventoryTypeID) == InventoryType::PLAYER) {
-        auto inv = player->movement->inventory;
-        itemIDAtSlot = inv->getItemIDAtSlot(slot);
-        amountAtSlot = inv->getSlot(slot).second;
-    } else if (static_cast<InventoryType>(Ipkt.inventoryTypeID) == InventoryType::CRAFTING_STATION) {
-        auto inv = player->movement->craftingStation;
-        itemIDAtSlot = inv->getItemIDAtSlot(slot);
-        amountAtSlot = inv->getSlot(slot).second;
-    } else {
-        // unknown inventory type -> nothing to send
-        return;
-    }
+//     if (static_cast<InventoryType>(Ipkt.inventoryTypeID) == InventoryType::PLAYER) {
+//         auto inv = player->movement->inventory;
+//         itemIDAtSlot = inv->getItemIDAtSlot(slot);
+//         amountAtSlot = inv->getSlot(slot).second;
+//     } else if (static_cast<InventoryType>(Ipkt.inventoryTypeID) == InventoryType::CRAFTING_STATION) {
+//         auto inv = player->movement->craftingStation;
+//         itemIDAtSlot = inv->getItemIDAtSlot(slot);
+//         amountAtSlot = inv->getSlot(slot).second;
+//     } else {
+//         // unknown inventory type -> nothing to send
+//         return;
+//     }
 
-	NetInventory pkt;
-	pkt.inventoryTypeID = Ipkt.inventoryTypeID;
-	pkt.type = itemIDAtSlot;
-	pkt.amount = amountAtSlot;
-	pkt.slot = slot;
-	sendPacketTo(pkt, cliaddr);
-}
+// 	NetInventory pkt;
+// 	pkt.inventoryTypeID = Ipkt.inventoryTypeID;
+// 	pkt.type = itemIDAtSlot;
+// 	pkt.amount = amountAtSlot;
+// 	pkt.slot = slot;
+// 	sendPacketTo(pkt, cliaddr);
+// }
 
 void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &cliaddr)
 {
@@ -380,10 +380,10 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 	else if (static_cast<InventoryType>(pkt.inventoryTypeID) == InventoryType::CRAFTING_STATION)
 		inv = player->movement->craftingStation;
 
-	inv->handleInventoryAction(pkt);
-
-	sendInventorySlot(slot, pkt, cliaddr);
-	sendInventorySlot(inv->getHandID(), pkt, cliaddr);
+	
+	std::vector<PacketPtr> pktsToSend;
+	if (inv->handleInventoryAction(pkt, pktsToSend))
+		sendNewGroupPacketTo(pktsToSend, cliaddr);
 }
 
 // TODO : Multithread
@@ -593,32 +593,32 @@ void Server::sendMessage(CPlayerInfo &player)
 
 void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_in& cliaddr)
 {
-    NetPacketGroup group;
-    int currSize = 6; // 6 bytes because technically it's 2 bytes of group packet u16 "count" + 4bytes of outer layer header (u8+u16+u8). probably.
+	NetPacketGroup group;
+	int currSize = 6; // 6 bytes because technically it's 2 bytes of group packet u16 "count" + 4bytes of outer layer header (u8+u16+u8). probably.
 
-    auto it = pkts.begin();
-    while (it != pkts.end()) {
-        auto buf = encodePacket(**it);
-        int nextSize = currSize + 4 + buf.size(); // 4 bytes for per-packet size header
+	auto it = pkts.begin();
+	while (it != pkts.end()) {
+		auto buf = encodePacket(**it);
+		int nextSize = currSize + 4 + buf.size(); // 4 bytes for per-packet size header
 
-        // if next packet would exceed max size -> send current group first
-        if (nextSize > MAXLINE) {
-            if (!group.rawPackets.empty()) {
-                sendPacketTo(group, cliaddr);
-                group = NetPacketGroup();
-                currSize = 6; // reset
-            }
-            continue; // retry current packet
-        }
+		// if next packet would exceed max size -> send current group first
+		if (nextSize > MAXLINE) {
+			if (!group.rawPackets.empty()) {
+				sendPacketTo(group, cliaddr);
+				group = NetPacketGroup();
+				currSize = 6; // reset
+			}
+			continue; // retry current packet
+		}
 
-        group.rawPackets.push_back(std::move(buf)); // use rawPackets directly
-        currSize = nextSize;
-        it = pkts.erase(it);
-    }
+		group.rawPackets.push_back(std::move(buf)); // use rawPackets directly
+		currSize = nextSize;
+		it = pkts.erase(it);
+	}
 
-    if (!group.rawPackets.empty()) {
-        sendPacketTo(group, cliaddr);
-    }
+	if (!group.rawPackets.empty()) {
+		sendPacketTo(group, cliaddr);
+	}
 }
 
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {

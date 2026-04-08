@@ -249,20 +249,23 @@ struct NetInventoryAction final : public Packet {
 
 	uint8_t inventoryTypeID = 0;
 
-	uint8_t actionType = 0;
-	uint8_t slot = 0;
+	uint8_t actionType = -1; // right click, left click
+	uint8_t modifier = -1;	// shift, ctrl, alt, drag, drop, etc...
+	uint8_t slot = -1;
 
     NetInventoryAction() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
 		w.write_u8(inventoryTypeID);
         w.write_u8(actionType);
+        w.write_u8(modifier);
         w.write_u8(slot);
     }
 
     void decode(BufferReader& r) override {
         inventoryTypeID = r.read_u8();
         actionType = r.read_u8();
+        modifier = r.read_u8();
         slot = r.read_u8();
     }
 };

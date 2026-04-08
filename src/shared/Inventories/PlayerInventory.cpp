@@ -1,8 +1,9 @@
 
 #include "PlayerInventory.hpp"
 
-PlayerInventory::PlayerInventory(std::shared_ptr<std::pair<ItemType, itemStackSize_t>> handPtr) : Inventory<4, 9>(handPtr)
+PlayerInventory::PlayerInventory(std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs) : Inventory<4, 9, 1>(inventoryExternalVarsRefs)
 {
+	type = InventoryType::PLAYER;
 }
 
 ItemType PlayerInventory::getActiveItem()

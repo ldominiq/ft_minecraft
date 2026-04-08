@@ -14,7 +14,7 @@
 
 class InventoryUI : public Menu
 {
-	int MAX_BUFFER_SIZE = 0;
+int MAX_BUFFER_SIZE = 0;
 	std::unique_ptr<Shader> shader;
 	const TextureManager* textureManager = nullptr;
 	uint texture;
@@ -131,6 +131,7 @@ class InventoryUI : public Menu
 	int getSlotAt(double mouseX, double mouseY) const;
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
 	void handleMouseMove(double mouseX, double mouseY) override;
+	void handleInventoryModifiers(NetInventoryAction &pkt, int button, int action);
 
 	double mouseX = 0;
 	double mouseY = 0;
@@ -142,7 +143,7 @@ class InventoryUI : public Menu
 					const TextureManager* texMgr = nullptr,
 					std::shared_ptr<PlayerInventory> playerInv = nullptr,
 					std::shared_ptr<CraftingStation> craftingStation = nullptr,
-					std::shared_ptr<std::pair<ItemType, itemStackSize_t>> handPtr = nullptr);
+					std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs = nullptr);
 		~InventoryUI();
 
 		void drawHotbar();

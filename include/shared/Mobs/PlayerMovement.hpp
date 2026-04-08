@@ -19,9 +19,9 @@ struct PlayerMovement : public virtual LivingEntity {
 
 	NetPlayerInputs lastInputsPktRecvd = {};
 
-	std::shared_ptr<std::pair<ItemType, itemStackSize_t>> hand = std::make_shared<std::pair<ItemType, itemStackSize_t>>();
-	std::shared_ptr<PlayerInventory> inventory = std::make_shared<PlayerInventory>(hand);
-	std::shared_ptr<CraftingStation> craftingStation = std::make_shared<CraftingStation>(hand);
+	std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs = std::make_shared<InventoryExternalVariablesRefs>();
+	std::shared_ptr<PlayerInventory> inventory = std::make_shared<PlayerInventory>(inventoryExternalVarsRefs);
+	std::shared_ptr<CraftingStation> craftingStation = std::make_shared<CraftingStation>(inventoryExternalVarsRefs);
 
 	bool jumpBoostApplied = false;
 	uint8_t loadRadius = 16;
