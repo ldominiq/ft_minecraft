@@ -75,6 +75,8 @@ class World final : public CommonWorld<ChunkGeneration>
     std::size_t maxConcurrentGeneration = 20;
 	std::size_t maxConcurrentGenerationPerPlayer = 4;
 
+	static constexpr size_t MAX_DUMP_PIXELS = 4096ULL * 4096ULL; // ~64MB/channel
+
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneration> &chunk); // TODO : consider moving to shared?
 
 	std::unordered_set<ChunkPos> loadedRegions;

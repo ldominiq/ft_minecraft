@@ -79,16 +79,27 @@ void World::dumpHeightmap(const TerrainGenerationParams& params, int centerChunk
     // output resolution after downsampling
     const int outW = static_cast<int>((worldW + downsample - 1) / downsample);
     const int outH = static_cast<int>((worldD + downsample - 1) / downsample);
-    std::vector<float> img(outW * outH);
-    std::vector<float> imgCont(outW * outH);
-    std::vector<float> imgEro(outW * outH);
-    std::vector<float> imgPV(outW * outH);
-    std::vector<float> imgHumidity(outW * outH);
-    std::vector<float> imgTemperature(outW * outH);
-    std::vector<float> imgRiverNoise(outW * outH);
-    std::vector<float> imgRiverMask(outW * outH);
-    std::vector<float> imgLakeNoise(outW * outH);
-    std::vector<float> imgLakeMask(outW * outH);
+
+	if (outW <= 0 || outH <= 0 || static_cast<size_t>(outW) * static_cast<size_t>(outH) > MAX_DUMP_PIXELS) {
+        std::cerr << "[World] dumpHeightmap: " << outW << "x" << outH << " exceeds limit. Aborting.\n";
+        return;
+    }
+
+    const size_t npixels = static_cast<size_t>(outW) * outH;
+	std::vector<float> img, imgCont, imgEro, imgPV, imgHumidity, imgTemperature;
+	std::vector<float> imgRiverNoise, imgRiverMask, imgLakeNoise, imgLakeMask;
+
+	if (image == 0) {
+		img.resize(npixels);
+	} else if (image == 1) {
+		imgCont.resize(npixels); imgEro.resize(npixels); imgPV.resize(npixels);
+		imgHumidity.resize(npixels); imgTemperature.resize(npixels);
+		imgRiverNoise.resize(npixels); imgRiverMask.resize(npixels);
+		imgLakeNoise.resize(npixels); imgLakeMask.resize(npixels);
+	} else if (image == 2) {
+		imgRiverNoise.resize(npixels); imgRiverMask.resize(npixels);
+		imgLakeNoise.resize(npixels); imgLakeMask.resize(npixels);
+	}
 
     // Precompute erosion spline range once — used in every pixel
     float eroMin = std::numeric_limits<float>::infinity();
@@ -191,7 +202,13 @@ void World::dumpBiomeMap(const TerrainGenerationParams& params, int centerChunkX
     const int imgH = (worldH + downsample - 1) / downsample;
 
     // Guard against absurd sizes
-    if (imgW <= 0 || imgH <= 0) return;
+    if (imgW <= 0 || imgH <= 0 ||
+		static_cast<size_t>(imgW) * static_cast<size_t>(imgH) > MAX_DUMP_PIXELS) {
+		std::cerr << "[World] dumpHeightmap: " << imgW << "x" << imgH << " exceeds limit. Aborting.\n";
+		return;
+	}
+
+	
 
     // Pre-size output and only index inside [0, size)
     std::vector<glm::u8vec3> pixels;
