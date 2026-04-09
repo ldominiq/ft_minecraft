@@ -9,6 +9,7 @@
 #include <ranges>
 #include <algorithm>
 #include <limits>
+#include <span>
 
 class ChunkGeneration : public Chunk {
 
@@ -26,7 +27,7 @@ class ChunkGeneration : public Chunk {
 		void generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 
-		static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
+		static float interpolateSpline(float noise, std::span<const std::pair<float, float>> spline);
 
 		static float getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz);
 		static float getErosion(const TerrainGenerationParams& terrainParams, float wx, float wz);

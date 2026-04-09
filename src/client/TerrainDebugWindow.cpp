@@ -60,7 +60,7 @@ void TerrainDebugWindow::reseedNoise(int32_t seed) {
     cachedSeed = seed;
 }
 
-float TerrainDebugWindow::interpolateSpline(float noise, const std::vector<std::pair<float,float>>& spline) {
+float TerrainDebugWindow::interpolateSpline(float noise, std::span<const std::pair<float,float>> spline) {
     if (noise <= spline.front().first) return spline.front().second;
     if (noise >= spline.back().first)  return spline.back().second;
     for (size_t i = 1; i < spline.size(); ++i) {

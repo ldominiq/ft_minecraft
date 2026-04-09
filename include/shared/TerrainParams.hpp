@@ -6,12 +6,12 @@
 #ifndef TERRAIN_PARAMS_HPP
 #define TERRAIN_PARAMS_HPP
 
-#include <vector>
+#include <array>
 #include <utility>
 #include <cstdint>
 
 // Spline control points: {continentalness, height}
-static const std::vector<std::pair<float, float>> continentalnessSpline = {
+inline constexpr std::array<std::pair<float, float>, 9> continentalnessSpline = {{
 
     // VALUES REQUIRING TINKERING
     {-3.8f, 256.0f }, // Mushroom land
@@ -24,9 +24,9 @@ static const std::vector<std::pair<float, float>> continentalnessSpline = {
     { 0.9f, 170.0f }, // 
     { 3.8f, 256.0f }  // Mountains / plateau
 
-};
+}};
 
-static const std::vector<std::pair<float, float>> erosionSpline = {
+inline constexpr std::array<std::pair<float, float>, 8> erosionSpline = {{
     // VALUES REQUIRING TINKERING
     { -1.00f, 256.0f },
     { -0.78f, 210.0f },
@@ -37,16 +37,16 @@ static const std::vector<std::pair<float, float>> erosionSpline = {
     {  0.55f,  89.0f },
     {  1.00f,  62.0f }
 
-};
+}};
 
-static const std::vector<std::pair<float, float>> peakValleySpline = {
+inline constexpr std::array<std::pair<float, float>, 5> peakValleySpline = {{
     // VALUES REQUIRING TINKERING
     { -1.00f, -120.0f }, // Valleys
     { -0.6f, -90.0f },
     { 0.0f, 0.0f }, // Middle
     {  0.7f, 120.0f }, // High
     {  1.0f, 190.0f } // Peaks
-};
+}};
 
 // Terrain / generation tunables exposed to code / UI
 struct TerrainGenerationParams {

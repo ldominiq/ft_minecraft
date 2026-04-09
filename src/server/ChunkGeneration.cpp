@@ -526,7 +526,7 @@ void ChunkGeneration::generateOres(BlockStorage &blocks, const TerrainGeneration
 
 
 // Linear interpolation between spline points
-float ChunkGeneration::interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline) {
+float ChunkGeneration::interpolateSpline(float noise, std::span<const std::pair<float, float>> spline) {
     const auto& pts = spline;
     if (noise <= pts.front().first) return pts.front().second;
     if (noise >= pts.back().first) return pts.back().second;
