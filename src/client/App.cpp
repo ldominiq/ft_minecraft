@@ -1006,8 +1006,8 @@ void App::debugWindow() {
 
                     if (ImGui::CollapsingHeader("Heightmap")) {
                         ImGui::Text("Heightmap Generation (server-side)");
-                        ImGui::InputInt("Size (ex. 100)", &debugTerrainParams.genSize);
-                        ImGui::InputInt("Downsample (ex. 8)", &debugTerrainParams.downsample);
+                        ImGui::InputInt("Size ([1-1024])", &debugTerrainParams.genSize);
+                        ImGui::InputInt("Downsample ([1-256])", &debugTerrainParams.downsample);
 
                         debugTerrainParams.genSize = std::max(1, debugTerrainParams.genSize);
                         debugTerrainParams.downsample = std::max(1, debugTerrainParams.downsample);

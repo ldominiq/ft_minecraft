@@ -355,7 +355,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
             if (!(iss >> size)) size = 500;
             if (!(iss >> downsample)) downsample = 16;
 
-            size = std::clamp(size, 1, 4096);
+            size = std::clamp(size, 1, 1024);
             downsample = std::clamp(downsample, 1, 256);
 
             const glm::vec3 pos = player->movement->getPosition();
