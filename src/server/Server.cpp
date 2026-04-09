@@ -349,10 +349,10 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 
             std::istringstream iss(pkt.message.substr(strlen("dump ")));
             std::string mode;
-            int size = 1000;
+            int size = 500;
             int downsample = 16;
             iss >> mode;
-            if (!(iss >> size)) size = 1000;
+            if (!(iss >> size)) size = 500;
             if (!(iss >> downsample)) downsample = 16;
 
             size = std::clamp(size, 1, 4096);
@@ -362,18 +362,28 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
             const int centerChunkX = static_cast<int>(std::floor(pos.x / Chunk::WIDTH));
             const int centerChunkZ = static_cast<int>(std::floor(pos.z / Chunk::DEPTH));
 
+            const TerrainGenerationParams paramsCopy = world->getTerrainParams();
+
             if (mode == "noises") {
-                world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 1);
-                messages.push_back("[server] Generated noise maps (continentalness/erosion/pv/humidity/temperature)");
+                messages.push_back("[server] Generating noise maps...");
+                std::thread([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 1);
+                }).detach();
             } else if (mode == "hydro") {
-                world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 2);
-                messages.push_back("[server] Generated hydro maps (river/lake noise + masks)");
+                messages.push_back("[server] Generating hydro maps...");
+                std::thread([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 2);
+                }).detach();
             } else if (mode == "heightmap") {
-                world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 0);
-                messages.push_back("[server] Generated terrain heightmap");
+                messages.push_back("[server] Generating terrain heightmap...");
+                std::thread([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 0);
+                }).detach();
             } else if (mode == "biome") {
-                world->dumpBiomeMap(centerChunkX, centerChunkZ, size, size, downsample);
-                messages.push_back("[server] Generated biome map");
+                messages.push_back("[server] Generating biome map...");
+                std::thread([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpBiomeMap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample);
+                }).detach();
             } else {
                 messages.push_back("[server] Unknown dump mode. Use: noises | hydro | heightmap | biome");
             }
@@ -385,27 +395,10 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 
 void Server::receiveTerrainParams(NetTerrainParams &pkt, const sockaddr_in &cliaddr)
 {
-	// Update world's terrain params from client packet
-	world->setTerrainParams(pkt.seed, pkt.seaLevel, pkt.bedrockLevel,
-		pkt.riverFrequency, pkt.riverOctaves, pkt.riverPersistence, pkt.riverLacunarity,
-		pkt.riverWidth, pkt.riverBankFeather, pkt.riverDepth, 
-		pkt.riverWarpFrequency, pkt.riverWarpStrength, pkt.riverMinContinentalness, pkt.riverMaxContinentalness,
-		pkt.lakeFrequency, pkt.lakeOctaves, pkt.lakePersistence, pkt.lakeLacunarity,
-		pkt.lakeThreshold, pkt.lakeFeather, pkt.lakeDepth, pkt.lakeMinContinentalness, pkt.lakeMaxContinentalness,
-		pkt.genSize, pkt.downsample,
-		pkt.continentalnessFrequency, pkt.continentalnessOctaves, pkt.continentalnessPersistence,
-		pkt.continentalnessLacunarity, pkt.continentalnessScalingFactor,
-		pkt.erosionFrequency, pkt.erosionOctaves, pkt.erosionPersistence,
-		pkt.erosionLacunarity, pkt.erosionScalingFactor,
-		pkt.peakValleyFrequency, pkt.peakValleyOctaves, pkt.peakValleyPersistence,
-		pkt.peakValleyLacunarity, pkt.peakValleyScalingFactor,
-		pkt.temperatureFrequency, pkt.temperatureOctaves, pkt.temperaturePersistence,
-		pkt.temperatureLacunarity, pkt.temperatureScalingFactor,
-		pkt.humidityFrequency, pkt.humidityOctaves, pkt.humidityPersistence,
-		pkt.humidityLacunarity, pkt.humidityScalingFactor,
-		pkt.biomeScaleChunks, pkt.snapClimateToCells, pkt.climateWarpFrequency, pkt.climateWarpStrength,
-		pkt.desertMoistureThreshold, pkt.forestMoistureThreshold, pkt.snowTemperatureThreshold,
-		pkt.debugOresOnly);
+	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (player == players.end()) return;
+
+	world->setTerrainParams(pkt.toParams());
 
 	// Broadcast the updated params to all connected clients
 	for (auto& player : players) {
