@@ -11,14 +11,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 TerrainDebugWindow::TerrainDebugWindow()
-    : texSize(256), dirty(true), regenerateCallback(nullptr), regenerateUserData(nullptr)
-    , noiseBase(1337)
-    , noiseErosion(1337 + 237)
-    , noisePV(1337 + 98789)
-    , noiseRiver(1337 + 7717)
-    , noiseRiverWarpX(1337 + 7718)
-    , noiseRiverWarpZ(1337 + 7719)
-    , noiseLake(1337 + 9901)
+    : texSize(256), dirty(true), regenerateCallback(nullptr), regenerateUserData(nullptr),
+    noiseBase(1337),
+    noiseErosion(1337 + 237),
+    noisePV(1337 + 98789),
+    noiseRiver(1337 + 7717),
+    noiseRiverWarpX(1337 + 7718),
+    noiseRiverWarpZ(1337 + 7719),
+    noiseLake(1337 + 9901)
 {
     glGenTextures(1, &previewTextureID);
     glBindTexture(GL_TEXTURE_2D, previewTextureID);

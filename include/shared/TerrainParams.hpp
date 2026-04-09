@@ -7,6 +7,7 @@
 #define TERRAIN_PARAMS_HPP
 
 #include <vector>
+#include <utility>
 #include <cstdint>
 
 // Spline control points: {continentalness, height}

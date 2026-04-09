@@ -1013,6 +1013,7 @@ void App::debugWindow() {
                         debugTerrainParams.downsample = std::max(1, debugTerrainParams.downsample);
 
                         auto sendDumpCommand = [&](const char* mode) {
+                            if (!udpClient) return;
                             NetMessage cmd;
                             cmd.message = std::string("/dump ") + mode + " " +
                                           std::to_string(debugTerrainParams.genSize) + " " +
