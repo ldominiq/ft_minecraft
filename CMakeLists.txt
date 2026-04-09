@@ -192,7 +192,7 @@ file(GLOB_RECURSE SERVER_SRC
 
 
 # Client executable
-add_executable(ft_minecraft ${CLIENT_SRC} ${CMAKE_SOURCE_DIR}/src/server/Noise.cpp)
+add_executable(ft_minecraft ${CLIENT_SRC})
 target_include_directories(ft_minecraft PRIVATE
     ${CMAKE_SOURCE_DIR}/include/client
 	${CMAKE_SOURCE_DIR}/include/client/characters
@@ -200,7 +200,6 @@ target_include_directories(ft_minecraft PRIVATE
 	${CMAKE_SOURCE_DIR}/include/client/menus
     ${CMAKE_SOURCE_DIR}/include/shared
 	${CMAKE_SOURCE_DIR}/include/shared/Mobs
-    ${CMAKE_SOURCE_DIR}/include/server
     ${glm_SOURCE_DIR}
     ${fastnoise_SOURCE_DIR}/Cpp
     ${glad_SOURCE_DIR}/include
