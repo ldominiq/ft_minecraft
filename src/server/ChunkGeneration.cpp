@@ -10,9 +10,16 @@ ChunkGeneration::ChunkGeneration(const int chunkX, const int chunkZ, const Terra
 
 // Returns the warped river noise field in [-1, 1].
 float ChunkGeneration::getRiverNoise(const TerrainGenerationParams& terrainParams, float worldX, float worldZ) {
-    static Noise riverNoise(terrainParams.seed + 7717);
-    static Noise riverWarpX(terrainParams.seed + 7718);
-    static Noise riverWarpZ(terrainParams.seed + 7719);
+    thread_local int32_t lastSeedRiver = std::numeric_limits<int32_t>::min();
+    thread_local Noise riverNoise(terrainParams.seed + 7717);
+    thread_local Noise riverWarpX(terrainParams.seed + 7718);
+    thread_local Noise riverWarpZ(terrainParams.seed + 7719);
+    if (terrainParams.seed != lastSeedRiver) {
+        riverNoise.setSeed(terrainParams.seed + 7717);
+        riverWarpX.setSeed(terrainParams.seed + 7718);
+        riverWarpZ.setSeed(terrainParams.seed + 7719);
+        lastSeedRiver = terrainParams.seed;
+    }
 
     const float warpX = riverWarpX.fractalBrownianMotion2D(
         worldX * terrainParams.riverWarpFrequency,
@@ -81,7 +88,12 @@ float ChunkGeneration::getRiverMask(const TerrainGenerationParams& terrainParams
 
 // Returns lake base noise mapped to [0,1] for debugging and thresholding.
 float ChunkGeneration::getLakeNoise(const TerrainGenerationParams& terrainParams, float worldX, float worldZ) {
-    static Noise lakeNoise(terrainParams.seed + 9901);
+    thread_local int32_t lastSeedLake = std::numeric_limits<int32_t>::min();
+    thread_local Noise lakeNoise(terrainParams.seed + 9901);
+    if (terrainParams.seed != lastSeedLake) {
+        lakeNoise.setSeed(terrainParams.seed + 9901);
+        lastSeedLake = terrainParams.seed;
+    }
     const float raw = lakeNoise.fractalBrownianMotion2D(
         worldX * terrainParams.lakeFrequency,
         worldZ * terrainParams.lakeFrequency,
@@ -416,8 +428,14 @@ void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGeneratio
         }
     }
 
-    static Noise noiseA(terrainParams.seed + 7890);
-    static Noise noiseB(terrainParams.seed + 4561);
+    thread_local int32_t lastSeedCaves = std::numeric_limits<int32_t>::min();
+    thread_local Noise noiseA(terrainParams.seed + 7890);
+    thread_local Noise noiseB(terrainParams.seed + 4561);
+    if (terrainParams.seed != lastSeedCaves) {
+        noiseA.setSeed(terrainParams.seed + 7890);
+        noiseB.setSeed(terrainParams.seed + 4561);
+        lastSeedCaves = terrainParams.seed;
+    }
 
     // Tuning – Perlin3D output is ~[-0.7, 0.7], so thresholds must be tight
     constexpr float spagScaleH    = 0.01f;       // horizontal frequency
@@ -524,7 +542,12 @@ float ChunkGeneration::interpolateSpline(float noise, const std::vector<std::pai
 }
 
 float ChunkGeneration::getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    static Noise baseNoise(terrainParams.seed);
+    thread_local int32_t lastSeedCont = std::numeric_limits<int32_t>::min();
+    thread_local Noise baseNoise(terrainParams.seed);
+    if (terrainParams.seed != lastSeedCont) {
+        baseNoise.setSeed(terrainParams.seed);
+        lastSeedCont = terrainParams.seed;
+    }
 
     float fbm = baseNoise.fractalBrownianMotion2D(
         wx * terrainParams.continentalnessFrequency,
@@ -542,7 +565,12 @@ float ChunkGeneration::getContinentalness(const TerrainGenerationParams& terrain
 }
 
 float ChunkGeneration::getErosion(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    static Noise erosionNoise(terrainParams.seed + 237);
+    thread_local int32_t lastSeedEro = std::numeric_limits<int32_t>::min();
+    thread_local Noise erosionNoise(terrainParams.seed + 237);
+    if (terrainParams.seed != lastSeedEro) {
+        erosionNoise.setSeed(terrainParams.seed + 237);
+        lastSeedEro = terrainParams.seed;
+    }
 
     float erosion = erosionNoise.fractalBrownianMotion2D(
         wx * terrainParams.erosionFrequency,
@@ -557,7 +585,12 @@ float ChunkGeneration::getErosion(const TerrainGenerationParams& terrainParams, 
 }
 
 float ChunkGeneration::getPV(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    static Noise peakValleyNoise(terrainParams.seed + 98789);
+    thread_local int32_t lastSeedPV = std::numeric_limits<int32_t>::min();
+    thread_local Noise peakValleyNoise(terrainParams.seed + 98789);
+    if (terrainParams.seed != lastSeedPV) {
+        peakValleyNoise.setSeed(terrainParams.seed + 98789);
+        lastSeedPV = terrainParams.seed;
+    }
 
     float peakValley = peakValleyNoise.fractalBrownianMotion2D(
         wx * terrainParams.peakValleyFrequency,
@@ -573,7 +606,12 @@ float ChunkGeneration::getPV(const TerrainGenerationParams& terrainParams, float
 }
 
 float ChunkGeneration::getTemperature(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    static Noise tempNoise(terrainParams.seed + 123);
+    thread_local int32_t lastSeedTemp = std::numeric_limits<int32_t>::min();
+    thread_local Noise tempNoise(terrainParams.seed + 123);
+    if (terrainParams.seed != lastSeedTemp) {
+        tempNoise.setSeed(terrainParams.seed + 123);
+        lastSeedTemp = terrainParams.seed;
+    }
 
     float temperature = tempNoise.fractalBrownianMotion2D(
         wx * terrainParams.temperatureFrequency,
@@ -587,7 +625,12 @@ float ChunkGeneration::getTemperature(const TerrainGenerationParams& terrainPara
 }
 
 float ChunkGeneration::getHumidity(const TerrainGenerationParams& terrainParams, float wx, float wz) {
-    static Noise humidNoise(terrainParams.seed + 456);
+    thread_local int32_t lastSeedHumid = std::numeric_limits<int32_t>::min();
+    thread_local Noise humidNoise(terrainParams.seed + 456);
+    if (terrainParams.seed != lastSeedHumid) {
+        humidNoise.setSeed(terrainParams.seed + 456);
+        lastSeedHumid = terrainParams.seed;
+    }
 
     float humidity = humidNoise.fractalBrownianMotion2D(
         wx * terrainParams.humidityFrequency,
@@ -618,8 +661,16 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     // biomeScaleChunks controls how many chunks make up a biome patch; use an extra multiplier to ensure broad bands.
     if (height <= terrainParams.seaLevel) return BiomeType::OCEAN;
 
-    static Noise tempNoise(terrainParams.seed + 45);
-    static Noise humidNoise(terrainParams.seed + 964);
+    thread_local int32_t lastSeedBiome = std::numeric_limits<int32_t>::min();
+    thread_local Noise tempNoise(terrainParams.seed + 45);
+    thread_local Noise humidNoise(terrainParams.seed + 964);
+    thread_local Noise regionBiasNoise(terrainParams.seed + 4242);
+    if (terrainParams.seed != lastSeedBiome) {
+        tempNoise.setSeed(terrainParams.seed + 45);
+        humidNoise.setSeed(terrainParams.seed + 964);
+        regionBiasNoise.setSeed(terrainParams.seed + 4242);
+        lastSeedBiome = terrainParams.seed;
+    }
 
     const float chunks = glm::max(1, terrainParams.biomeScaleChunks);
     const float worldUnitsPerPatch = chunks * Chunk::WIDTH * 8.0f;
@@ -630,8 +681,7 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     float humidCoarse = (humidNoise.fractalBrownianMotion2D(worldX * freqCoarse * 0.9f,    worldZ * freqCoarse * 0.9f,    4, 2.0f, 0.5f) + 1.0f) * 0.5f;
 
     // Small regional bias
-    static Noise regionBias(terrainParams.seed + 4242);
-    float bias = (regionBias.fractalBrownianMotion2D(worldX * freqCoarse * 0.6f, worldZ * freqCoarse * 0.6f, 3, 2.0f, 0.5f) + 1.0f) * 0.5f;
+    float bias = (regionBiasNoise.fractalBrownianMotion2D(worldX * freqCoarse * 0.6f, worldZ * freqCoarse * 0.6f, 3, 2.0f, 0.5f) + 1.0f) * 0.5f;
 
     float climate = glm::clamp(glm::mix(tempCoarse, 1.0f - humidCoarse, 0.35f) * 0.7f + bias * 0.3f, 0.0f, 1.0f);
 

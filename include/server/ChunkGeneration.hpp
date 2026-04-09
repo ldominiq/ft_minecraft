@@ -8,6 +8,7 @@
 
 #include <ranges>
 #include <algorithm>
+#include <limits>
 
 class ChunkGeneration : public Chunk {
 
