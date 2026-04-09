@@ -18,6 +18,14 @@ Server::Server() {
 }
 
 Server::~Server() {
+	{
+		std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+		for (auto& thread : dumpThreads) {
+			if (thread.joinable()) {
+				thread.join();
+			}
+		}
+	}
     close(sockfd);
 #ifdef _WIN32
     WSACleanup();
@@ -366,24 +374,28 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 
             if (mode == "noises") {
                 messages.push_back("[server] Generating noise maps...");
-                std::thread([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
                     world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 1);
-                }).detach();
+                });
             } else if (mode == "hydro") {
                 messages.push_back("[server] Generating hydro maps...");
-                std::thread([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
                     world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 2);
-                }).detach();
+                });
             } else if (mode == "heightmap") {
                 messages.push_back("[server] Generating terrain heightmap...");
-                std::thread([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
                     world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 0);
-                }).detach();
+                });
             } else if (mode == "biome") {
                 messages.push_back("[server] Generating biome map...");
-                std::thread([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
                     world->dumpBiomeMap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample);
-                }).detach();
+                });
             } else {
                 messages.push_back("[server] Unknown dump mode. Use: noises | hydro | heightmap | biome");
             }
