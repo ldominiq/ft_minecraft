@@ -43,39 +43,7 @@ uniform float farPlane;
 uniform mat4 view;
 uniform bool shadowsEnabled;
 
-// ── Distance fog helpers ───────────────────────────────────────────────────
-#define M_PI 3.1415926535897932384626433832795
-const float FOG_G = 0.76;
-
-float fogRayleighPhase(float mu) {
-    return (3.0 / (16.0 * M_PI)) * (1.0 + mu * mu);
-}
-
-float fogMiePhase(float mu) {
-    float g2 = FOG_G * FOG_G;
-    float denom = pow(1.0 + g2 - 2.0 * FOG_G * mu, 1.5);
-    return (3.0 / (8.0 * M_PI)) * (1.0 - g2) * (1.0 + mu * mu) / ((2.0 + g2) * denom);
-}
-
-vec3 fogUncharted2(vec3 color) {
-    float A=0.15, B=0.50, C=0.10, D=0.20, E=0.02, F=0.30, W=11.2, gamma=2.2;
-    color *= skyExposure;
-    color = ((color*(A*color+C*B)+D*E)/(color*(A*color+B)+D*F)) - E/F;
-    float white = ((W*(A*W+C*B)+D*E)/(W*(A*W+B)+D*F)) - E/F;
-    color /= white;
-    return pow(max(color, vec3(0.0)), vec3(1.0/gamma));
-}
-
-vec3 getFogColor() {
-    vec3 fogDir = normalize(fs_in.FragPos - viewPos);
-    vec3 sunDir = normalize(-lightDir); // lightDir = -sunDir in this shader (set as -sunDir in App.cpp)
-    vec2 lutUV  = vec2(fogDir.y * 0.5 + 0.5, sunDir.y * 0.5 + 0.5);
-    vec4 scatter = texture(skyLUT, lutUV);
-    float mu = dot(fogDir, sunDir);
-    vec3 col = scatter.rgb * fogRayleighPhase(mu) + vec3(scatter.a) * fogMiePhase(mu);
-    return fogUncharted2(col);
-}
-// ──────────────────────────────────────────────────────────────────────────
+#include "sky_common.glsl"
 
 // Forward declarations
 float computeVegetationShadow(vec3 fragPosWorldSpace);
@@ -142,7 +110,8 @@ void main() {
     if (fogEnabled && !cameraUnderwater) {
         float dist = length(fs_in.FragPos - viewPos);
         float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
-        result = mix(getFogColor(), result, fogFactor);
+        vec3 fogDir = normalize(fs_in.FragPos - viewPos);
+        result = mix(sampleSkyColor(skyLUT, fogDir, -lightDir, skyExposure), result, fogFactor);
     }
 
     FragColor = vec4(result, texColor.a);

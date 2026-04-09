@@ -103,6 +103,8 @@ uniform float fogEnd;      // world-space distance where fog is fully opaque
 uniform float fogStrength; // exponent: 1=linear ramp, >1=fog concentrated at edge
 uniform bool fogEnabled;
 
+#include "sky_common.glsl"
+
 float near = 0.1;
 float far  = 100.0;
 
@@ -111,43 +113,6 @@ float LinearizeDepth(float depth)
     float z = depth * 2.0 - 1.0; // back to NDC
     return (2.0 * near * far) / (far + near - z * (far - near));
 }
-
-//TODO: maybe we can do it a better way than having the helper in lighting, vegetation and water.frag ....
-// ── Distance fog helpers ───────────────────────────────────────────────────
-#define M_PI 3.1415926535897932384626433832795
-const float FOG_G = 0.76;
-
-float fogRayleighPhase(float mu) {
-    return (3.0 / (16.0 * M_PI)) * (1.0 + mu * mu);
-}
-
-float fogMiePhase(float mu) {
-    float g2 = FOG_G * FOG_G;
-    float denom = pow(1.0 + g2 - 2.0 * FOG_G * mu, 1.5);
-    return (3.0 / (8.0 * M_PI)) * (1.0 - g2) * (1.0 + mu * mu) / ((2.0 + g2) * denom);
-}
-
-vec3 fogUncharted2(vec3 color) {
-    float A=0.15, B=0.50, C=0.10, D=0.20, E=0.02, F=0.30, W=11.2, gamma=2.2;
-    color *= skyExposure;
-    color = ((color*(A*color+C*B)+D*E)/(color*(A*color+B)+D*F)) - E/F;
-    float white = ((W*(A*W+C*B)+D*E)/(W*(A*W+B)+D*F)) - E/F;
-    color /= white;
-    return pow(max(color, vec3(0.0)), vec3(1.0/gamma));
-}
-
-// Returns the sky-atmosphere color in the direction from camera to fragment.
-// Matches the tone mapping of skyLUT_render.frag so fog blends seamlessly.
-vec3 getFogColor() {
-    vec3 fogDir = normalize(fs_in.FragPos - viewPos);
-    vec3 sunDir = normalize(-dirLight.direction);
-    vec2 lutUV  = vec2(fogDir.y * 0.5 + 0.5, sunDir.y * 0.5 + 0.5);
-    vec4 scatter = texture(skyLUT, lutUV);
-    float mu = dot(fogDir, sunDir);
-    vec3 col = scatter.rgb * fogRayleighPhase(mu) + vec3(scatter.a) * fogMiePhase(mu);
-    return fogUncharted2(col);
-}
-// ──────────────────────────────────────────────────────────────────────────
 
 // function prototypes
 vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao, vec3 texCol);
@@ -211,7 +176,9 @@ void main()
         if (fogEnabled && !cameraUnderwater) {
             float dist = length(fs_in.FragPos - viewPos);
             float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
-            finalColor = mix(getFogColor(), finalColor, fogFactor);
+            vec3 fogDir = normalize(fs_in.FragPos - viewPos);
+            finalColor = mix(sampleSkyColor(skyLUT, fogDir, normalize(-dirLight.direction), skyExposure),
+                            finalColor, fogFactor);
         }
         FragColor = vec4(finalColor, 1.0);
     }
