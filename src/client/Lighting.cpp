@@ -1,5 +1,6 @@
 #include "Lighting.hpp"
 #include "TextureManager.hpp"
+#include "TextureUnits.hpp"
 
 Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screenWidth), height(screenHeight) {
     // VAO for fullscreen triangle (no attributes needed)
@@ -169,9 +170,9 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
 
     if (useLUT) {
         // Bind the precomputed scattering LUT
-        glActiveTexture(GL_TEXTURE9);
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::SKY_LUT);
         glBindTexture(GL_TEXTURE_2D, skyLUT->getLUTTexture());
-        shader->setInt("skyLUT", 9);
+        shader->setInt("skyLUT", TextureUnits::SKY_LUT);
     } else {
         // Full ray-marching path needs these extra uniforms
         shader->setFloat("seaLevel", seaLevel);
@@ -186,9 +187,9 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     shader->setInt("cloudsCompositeEnabled", composite ? 1 : 0);
 
     if (composite) {
-        glActiveTexture(GL_TEXTURE8);
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::CLOUDS);
         glBindTexture(GL_TEXTURE_2D, getCloudTexture());
-        shader->setInt("cloudTex", 8);
+        shader->setInt("cloudTex", TextureUnits::CLOUDS);
     }
 
     // Render sky with depth = far plane, terrain will render in front
@@ -1048,9 +1049,9 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
     shader.setFloat("farPlane", cameraFarPlane);
 
     // Bind the CSM depth texture array to texture unit 7.
-    glActiveTexture(GL_TEXTURE7);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::CSM_SHADOW);
     glBindTexture(GL_TEXTURE_2D_ARRAY, csmDepthMaps);
-    shader.setInt("shadowMapArray", 7);
+    shader.setInt("shadowMapArray", TextureUnits::CSM_SHADOW);
 
     shader.setInt("debugCascades", debugCascades);
 }

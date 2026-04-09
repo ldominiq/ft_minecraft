@@ -3,6 +3,7 @@
 //
 
 #include "App.hpp"
+#include "FogUniforms.hpp"
 
 App::App(const std::string& serverIp):
 			camera(nullptr),
@@ -785,9 +786,9 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 
     // Bind SSAO texture for the lighting shader (must be after activeShader->use())
     if (ssao && ssao->isEnabled()) {
-        glActiveTexture(GL_TEXTURE5);
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::SSAO);
         glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
-        activeShader->setInt("ssaoTexture", 5);
+        activeShader->setInt("ssaoTexture", TextureUnits::SSAO);
         activeShader->setInt("ssaoEnabled", 1);
         activeShader->setVec2("screenSize", glm::vec2(screenWidth, screenHeight));
     } else {
@@ -796,20 +797,11 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 
     // Fog
     GLuint skyLUTTex = lighting->getSkyLUTTexture();
-    bool fogActive = fogEnabled && skyLUTTex != 0;
     const float maxChunkDist = renderer->getMaxRenderedChunkDist();
     const float fogEnd   = maxChunkDist;
     const float fogStart = maxChunkDist * fogStartFraction;
-    activeShader->setInt("fogEnabled", fogActive ? 1 : 0);
-    if (fogActive) {
-        glActiveTexture(GL_TEXTURE9);
-        glBindTexture(GL_TEXTURE_2D, skyLUTTex);
-        activeShader->setInt("skyLUT", 9);
-        activeShader->setFloat("skyExposure", lighting->getSkyExposure());
-        activeShader->setFloat("fogStart", fogStart);
-        activeShader->setFloat("fogEnd", fogEnd);
-        activeShader->setFloat("fogStrength", fogStrength);
-    }
+    uploadFogUniforms(*activeShader, fogEnabled, skyLUTTex,
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
 
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
@@ -849,16 +841,8 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
 
         // Fog for vegetation
-        vegShader->setInt("fogEnabled", fogActive ? 1 : 0);
-        if (fogActive) {
-            glActiveTexture(GL_TEXTURE9);
-            glBindTexture(GL_TEXTURE_2D, skyLUTTex);
-            vegShader->setInt("skyLUT", 9);
-            vegShader->setFloat("skyExposure", lighting->getSkyExposure());
-            vegShader->setFloat("fogStart", fogStart);
-            vegShader->setFloat("fogEnd", fogEnd);
-            vegShader->setFloat("fogStrength", fogStrength);
-        }
+        uploadFogUniforms(*vegShader, fogEnabled, skyLUTTex,
+                          lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
 
         activeShader->use(); // Switch back to main shader
     }
