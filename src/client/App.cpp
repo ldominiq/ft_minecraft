@@ -357,6 +357,19 @@ void App::setUdpClientPacketCallback()
                 break;
             }
 
+            case PacketType::NET_SKY_TIME: {
+                auto& p = static_cast<NetSkyTime&>(*pkt);
+                lighting->setSkyTimeOffset(p.skyTimeOffset);
+                lighting->setSunYawDeg(p.sunYawDeg);
+                lighting->setSkyTimePaused(p.skyTimePaused);
+                lighting->setSunStepping(p.sunStepping);
+                lighting->setSunPauseTimer(p.sunPauseTimer);
+                lighting->setSunStepTimer(p.sunStepTimer);
+                lighting->setSkyMode(p.skyMode);
+                lighting->setSkyTimeSpeed(p.skyTimeSpeed);
+                break;
+            }
+
 			default:
 				std::cout << "Unknown packet type: " << static_cast<int>(pkt->type) << "\n";
 				break;
@@ -1295,6 +1308,8 @@ void App::debugWindow() {
                     ImGui::Separator();
                     if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
                         bool skyTimePaused = lighting->isSkyTimePaused();
+                        int skyMode = static_cast<int>(lighting->getSkyMode());
+                        float skyTimeSpeed = lighting->getSkyTimeSpeed();
                     	float skyTimeOffset = lighting->getSkyTimeOffset();
                     	float sunYawDeg = lighting->getSunYawDeg();
                     	float skyExposure = lighting->getSkyExposure();
@@ -1318,12 +1333,65 @@ void App::debugWindow() {
                                 bool skyLUTEnabled = lighting->isSkyLUTEnabled();
                                 if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
                                     lighting->setSkyLUTEnabled(skyLUTEnabled);
-                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
+                                // Mode selector
+                                {
+                                    bool modeChanged = ImGui::RadioButton("Skyrim (pause/step)", &skyMode, 0);
+                                    ImGui::SameLine();
+                                    modeChanged |= ImGui::RadioButton("Smooth (linear)", &skyMode, 1);
+                                    if (modeChanged) {
+                                        lighting->setSkyMode(static_cast<uint8_t>(skyMode));
+                                        NetSkyTime pkt;
+                                        pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                        pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                        pkt.skyTimeSpeed  = skyTimeSpeed;
+                                        pkt.sunStepping   = lighting->getSunStepping();
+                                        pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                        pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                        udpClient->sendPacket(pkt);
+                                    }
+                                }
+                                if (ImGui::SliderFloat("Time Speed", &skyTimeSpeed, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
+                                    lighting->setSkyTimeSpeed(skyTimeSpeed);
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused)) {
                                     lighting->setSkyTimePaused(skyTimePaused);
-                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f"))
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f")) {
                                     lighting->setSkyTimeOffset(skyTimeOffset);
-                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping = false; pkt.sunPauseTimer = 0.0f; pkt.sunStepTimer = 0.0f;
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f")) {
                                     lighting->setSunYawDeg(sunYawDeg);
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
                                 if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
                                     lighting->setSkyExposure(skyExposure);
                                 if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))

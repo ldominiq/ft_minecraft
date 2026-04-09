@@ -179,6 +179,21 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::NET_SKY_TIME: {
+			auto& p   = static_cast<NetSkyTime&>(*pkt);
+			skyTimeOffset = p.skyTimeOffset;
+			sunYawDeg     = p.sunYawDeg;
+			skyTimePaused = p.skyTimePaused;
+			skyMode       = p.skyMode;
+			skyTimeSpeed  = p.skyTimeSpeed;
+			// Reset step state so server continues cleanly from new position
+			sunStepping   = false;
+			sunPauseTimer = 0.0f;
+			sunStepTimer  = 0.0f;
+			broadcastSkyTime();
+			break;
+		}
+
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
@@ -196,7 +211,61 @@ void Server::gameTick()
 
 	if (tick % (static_cast<int>(TPS) * 3) == 0)
 		world->updateRegionStreaming(players);
+
+	// Advance sky time
+	constexpr float tickDt        = 1.0f / TPS;
+	constexpr float pauseDuration = 20.0f;
+	constexpr float stepDuration  = 2.0f;
+
+	if (!skyTimePaused) {
+		if (skyMode == 1) {
+			// Smooth: continuous linear advancement
+			skyTimeOffset += skyTimeSpeed * tickDt;
+		} else {
+			// Skyrim: hold then step
+			if (!sunStepping) {
+				sunPauseTimer += tickDt;
+				if (sunPauseTimer >= pauseDuration) {
+					sunPauseTimer = 0.0f;
+					sunStepping   = true;
+					sunStepTimer  = 0.0f;
+				}
+			} else {
+				sunStepTimer += tickDt;
+				float t_step  = std::min(sunStepTimer / stepDuration, 1.0f);
+				float smoothT = t_step * t_step * (3.0f - 2.0f * t_step);
+				float totalStepOffset = (pauseDuration + stepDuration) * skyTimeSpeed;
+				if (sunStepTimer <= tickDt)
+					sunPauseTimer = skyTimeOffset;  // first tick: store stepBase
+				skyTimeOffset = sunPauseTimer + smoothT * totalStepOffset;
+				if (t_step >= 1.0f) {
+					sunStepping   = false;
+					sunPauseTimer = 0.0f;
+					sunStepTimer  = 0.0f;
+				}
+			}
+		}
+	}
+
+	// Broadcast every 20 ticks (~1s)
+	if (tick % 20 == 0) {
+		broadcastSkyTime();
+	}
 	sendAll();
+}
+
+void Server::broadcastSkyTime() {
+    NetSkyTime pkt;
+    pkt.skyTimeOffset  = skyTimeOffset;
+    pkt.sunYawDeg      = sunYawDeg;
+    pkt.skyTimePaused  = skyTimePaused;
+    pkt.sunStepping    = sunStepping;
+    pkt.sunPauseTimer  = sunPauseTimer;
+    pkt.sunStepTimer   = sunStepTimer;
+    pkt.skyMode        = skyMode;
+    pkt.skyTimeSpeed   = skyTimeSpeed;
+    for (CPlayerInfo& p : players)
+        sendPacketTo(pkt, p.addr);
 }
 
 void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
@@ -729,6 +798,17 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	}
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);
+
+	NetSkyTime skyPkt;
+	skyPkt.skyTimeOffset = skyTimeOffset;
+	skyPkt.sunYawDeg     = sunYawDeg;
+	skyPkt.skyTimePaused = skyTimePaused;
+	skyPkt.sunStepping   = sunStepping;
+	skyPkt.sunPauseTimer = sunPauseTimer;
+	skyPkt.sunStepTimer  = sunStepTimer;
+	skyPkt.skyMode       = skyMode;
+	skyPkt.skyTimeSpeed  = skyTimeSpeed;
+	sendPacketTo(skyPkt, cliaddr);
 
 	NetAccept acceptPkt;
 	sendPacketTo(acceptPkt, cliaddr);

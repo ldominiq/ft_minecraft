@@ -40,6 +40,19 @@ private:
 	int32_t tick = 0;
 	float deltaTime;
 
+	// Sky time (server-authoritative)
+	float   skyTimeOffset  = 0.5f;
+	float   sunYawDeg      = 45.0f;
+	float   sunPauseTimer  = 0.0f;
+	float   sunStepTimer   = 0.0f;
+	bool    sunStepping    = false;
+	bool    skyTimePaused  = false;
+	uint8_t skyMode        = 0;     // 0 = Skyrim, 1 = Smooth
+	float   skyTimeSpeed   = 0.05f;
+
+	void updateSkyTime(float dt);
+	void broadcastSkyTime();
+
 	void gameTick();
 
     void createSocket();

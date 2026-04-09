@@ -143,6 +143,11 @@ public:
     float getSkyTimeOffset() const { return skyTimeOffset; };
     float getPlanetScale() const { return planetScale; };
     float getSunYawDeg() const { return sunYawDeg; };
+    float getSkyTimeSpeed() const { return skyTimeSpeed; };
+    float getSunPauseTimer() const { return sunPauseTimer; };
+    float getSunStepTimer() const { return sunStepTimer; };
+    bool getSunStepping() const { return sunStepping; };
+    uint8_t getSkyMode() const { return skyMode; };
 
     float getCloudDensity() const { return cloudDensity; };
     float getCloudSigmaT() const { return cloudSigmaT; };
@@ -210,6 +215,11 @@ public:
     void setSkyTimeOffset(const float offset) { skyTimeOffset = offset; };
     void setSkyTimePaused(const bool paused) { skyTimePaused = paused; };
     void setSunYawDeg(const float yawDeg) { sunYawDeg = yawDeg; };
+    void setSkyMode(const uint8_t mode) { skyMode = mode; };
+    void setSkyTimeSpeed(const float speed) { skyTimeSpeed = speed; };
+    void setSunStepping(const bool stepping) { sunStepping = stepping; };
+    void setSunPauseTimer(const float t) { sunPauseTimer = t; };
+    void setSunStepTimer(const float t) { sunStepTimer = t; };
     void setPlanetScale(const float scale) { planetScale = scale; };
     void setSkyLUTEnabled(bool enabled) { skyLUTEnabled = enabled; if (skyLUT) skyLUT->invalidate(); }
     bool isSkyLUTEnabled() const { return skyLUTEnabled; }
@@ -285,6 +295,9 @@ private:
     float skyTimeOffset = 0.5f;
     bool skyTimePaused = false;
 
+    // Sky mode: 0 = Skyrim (pause/step), 1 = Smooth (linear)
+    uint8_t skyMode = 0;
+    float skyTimeSpeed = 0.05f;  // sun advancement speed multiplier
     // "Skyrim approach": sun holds still, then jumps forward
     float sunPauseTimer    = 0.0f;   // accumulator (seconds)
     float sunPauseDuration = 20.0f;  // how long the sun stays still
