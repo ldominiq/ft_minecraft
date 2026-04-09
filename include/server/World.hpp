@@ -101,8 +101,8 @@ class World final : public CommonWorld<ChunkGeneration>
 		std::vector<ChunkPos> rdyChunks;
 		std::unordered_map<int, std::unordered_set<ChunkPos>> PlayerKnownChunks;
 
-		void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
-		void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
+		void dumpHeightmap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
+		void dumpBiomeMap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
 
 		std::vector<s_waterPath> findShortestWaterPath(const glm::ivec3 &initialBlockPos);
 		std::vector<std::shared_ptr<s_liquid>> waterFlowTowardsShortestPath(const glm::ivec3 &initialBlockPos, const std::shared_ptr<s_liquid> &liquid, const std::vector<s_waterPath> &paths);
@@ -123,28 +123,9 @@ class World final : public CommonWorld<ChunkGeneration>
 		void saveRegionsOnExit();
 		// Terrain params for ImGui
 		TerrainGenerationParams& getTerrainParams() { return terrainParams;}
-		
+
 		// Set all terrain parameters at once (used for syncing from client)
-		void setTerrainParams(int32_t seed, int32_t seaLevel, int32_t bedrockLevel,
-			float riverFrequency, int32_t riverOctaves, float riverPersistence, float riverLacunarity,
-			float riverWidth, float riverBankFeather, float riverDepth,
-			float riverWarpFrequency, float riverWarpStrength, float riverMinContinentalness, float riverMaxContinentalness,
-			float lakeFrequency, int32_t lakeOctaves, float lakePersistence, float lakeLacunarity,
-			float lakeThreshold, float lakeFeather, float lakeDepth, float lakeMinContinentalness, float lakeMaxContinentalness,
-			int32_t genSize, int32_t downsample,
-			float continentalnessFrequency, int32_t continentalnessOctaves, float continentalnessPersistence,
-			float continentalnessLacunarity, float continentalnessScalingFactor,
-			float erosionFrequency, int32_t erosionOctaves, float erosionPersistence,
-			float erosionLacunarity, float erosionScalingFactor,
-			float peakValleyFrequency, int32_t peakValleyOctaves, float peakValleyPersistence,
-			float peakValleyLacunarity, float peakValleyScalingFactor,
-			float temperatureFrequency, int32_t temperatureOctaves, float temperaturePersistence,
-			float temperatureLacunarity, float temperatureScalingFactor,
-			float humidityFrequency, int32_t humidityOctaves, float humidityPersistence,
-			float humidityLacunarity, float humidityScalingFactor,
-			int32_t biomeScaleChunks, bool snapClimateToCells, float climateWarpFrequency, float climateWarpStrength,
-			float desertMoistureThreshold, float forestMoistureThreshold, float snowTemperatureThreshold,
-			bool debugOresOnly);
+		void setTerrainParams(const TerrainGenerationParams& p) { terrainParams = p; }
 
 		// void setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates, const CPlayerInfo &player);
 		// void updatePlannedChunks(CPlayerInfo &player);
