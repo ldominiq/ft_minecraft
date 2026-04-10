@@ -112,6 +112,7 @@ template<int ROWS, int COLS, int N>
 void Inventory<ROWS, COLS, N>::addDraggedSlot(NetInventoryAction &pkt)
 {
 	uint8_t slot = pkt.slot;
+	if (slot >= rows * cols) return; //patch solution to exclude result crafting slot & possibly hand too
 
 	ItemType typeAtSlot = getItemAtSlot(slot);
 	ItemType typeAtHand = getHand().first;

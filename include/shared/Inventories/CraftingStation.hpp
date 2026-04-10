@@ -23,6 +23,8 @@ class CraftingStation : public Inventory<3, 3, 2>
 
 		int getResultSlotID() const { return RESULT_SLOT_ID; }
 
+		void checkResult(std::vector<PacketPtr> &pktsToSend);
+
 		//returns whether it successfully crafted or not.
 		bool craft(std::vector<PacketPtr> &pktsToSend, itemStackSize_t amountToCraft = 1);
 };

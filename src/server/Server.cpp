@@ -451,7 +451,10 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 		if (pkt.inventoryTypeID == static_cast<uint8_t>(InventoryType::PLAYER) || player->movement->inventory->hasDraggedSlots == true)
 			player->movement->inventory->handleDragModifier(pkt, pktsToSend);
 		if (pkt.inventoryTypeID == static_cast<uint8_t>(InventoryType::CRAFTING_STATION) || player->movement->craftingStation->hasDraggedSlots == true)
+		{
 			player->movement->craftingStation->handleDragModifier(pkt, pktsToSend);
+			player->movement->craftingStation->checkResult(pktsToSend);
+		}
 
 		sendHand();
 

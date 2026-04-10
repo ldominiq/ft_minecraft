@@ -7,6 +7,13 @@ CraftingStation::CraftingStation(std::shared_ptr<InventoryExternalVariablesRefs>
 	type = InventoryType::CRAFTING_STATION;
 }
 
+void CraftingStation::checkResult(std::vector<PacketPtr> &pktsToSend)
+{
+	checkRecipe();
+	if (grid[RESULT_SLOT_ID].first != ItemType{})
+		pktsToSend.push_back(createNetInventoryPkt(RESULT_SLOT_ID));
+}
+
 bool CraftingStation::handleInventoryAction(NetInventoryAction &pkt, std::vector<PacketPtr> &pktsToSend)
 {
 	// ensure our local hand state is synchronized with the player's hand
@@ -27,11 +34,7 @@ bool CraftingStation::handleInventoryAction(NetInventoryAction &pkt, std::vector
 	else
 		Inventory::handleInventoryAction(pkt, pktsToSend);
 
-	ItemType prevResultSlot = grid[RESULT_SLOT_ID].first;
-	checkRecipe();
-
-	if (grid[RESULT_SLOT_ID].first != ItemType{})
-		pktsToSend.push_back(createNetInventoryPkt(RESULT_SLOT_ID));
+	checkResult(pktsToSend);
 
 	return true;
 }
@@ -41,8 +44,6 @@ void CraftingStation::setSlot(int slot, itemStackSize_t amount, ItemType type)
 	grid[RESULT_SLOT_ID] = {};
 
 	Inventory::setSlot(slot, amount, type);
-
-	// craftingResultPtr = grid[RESULT_SLOT_ID].first != ItemType{} ? std::make_shared<ItemType>(grid[RESULT_SLOT_ID].first) : nullptr;
 }
 
 void CraftingStation::setSlot(int slot, itemStackSize_t amount, ItemID t)
