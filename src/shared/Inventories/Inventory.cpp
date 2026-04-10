@@ -122,9 +122,6 @@ void Inventory<ROWS, COLS, N>::addDraggedSlot(NetInventoryAction &pkt)
 	auto btn = dragButton.lock();
 	auto slots = draggedSlots.lock();
 
-	if (slots->empty() || slots->size() <= 1)
-        return ; // nothing to distribute to
-
 	if (static_cast<InventoryType>(pkt.inventoryTypeID) == this->type)
 	{
 		bool alreadyInList = false;
