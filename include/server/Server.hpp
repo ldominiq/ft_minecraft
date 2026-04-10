@@ -50,7 +50,7 @@ private:
 	uint8_t skyMode        = 0;     // 0 = Skyrim, 1 = Smooth
 	float   skyTimeSpeed   = 0.05f;
 
-	void updateSkyTime(float dt);
+	void updateSkyTime(NetSkyTime &pkt);
 	void broadcastSkyTime();
 
 	void gameTick();

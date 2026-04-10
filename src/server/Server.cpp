@@ -180,16 +180,14 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 		}
 
 		case PacketType::NET_SKY_TIME: {
+			// Only allow if player is connected
+			if (NetUtils::findPlayerByAddr(players, cliaddr) == players.end())
+				break;
 			auto& p   = static_cast<NetSkyTime&>(*pkt);
-			skyTimeOffset = p.skyTimeOffset;
-			sunYawDeg     = p.sunYawDeg;
-			skyTimePaused = p.skyTimePaused;
-			skyMode       = p.skyMode;
-			skyTimeSpeed  = p.skyTimeSpeed;
-			// Reset step state so server continues cleanly from new position
-			sunStepping   = false;
-			sunPauseTimer = 0.0f;
-			sunStepTimer  = 0.0f;
+			if (p.skyMode > 1) // validate mode
+				break;
+			p.skyTimeSpeed = std::clamp(p.skyTimeSpeed, 0.001f, 10.0f); // validate speed
+			updateSkyTime(p);
 			broadcastSkyTime();
 			break;
 		}
@@ -248,10 +246,22 @@ void Server::gameTick()
 	}
 
 	// Broadcast every 20 ticks (~1s)
-	if (tick % 20 == 0) {
+	if (tick % static_cast<int>(TPS) == 0) {
 		broadcastSkyTime();
 	}
 	sendAll();
+}
+
+void Server::updateSkyTime(NetSkyTime &pkt) {
+	skyTimeOffset = pkt.skyTimeOffset;
+	sunYawDeg     = pkt.sunYawDeg;
+	skyTimePaused = pkt.skyTimePaused;
+	skyMode       = pkt.skyMode;
+	skyTimeSpeed  = pkt.skyTimeSpeed;
+	// Reset step state so server continues cleanly from new position
+	sunStepping   = false;
+	sunPauseTimer = 0.0f;
+	sunStepTimer  = 0.0f;
 }
 
 void Server::broadcastSkyTime() {

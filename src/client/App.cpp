@@ -1350,7 +1350,7 @@ void App::debugWindow() {
                                         udpClient->sendPacket(pkt);
                                     }
                                 }
-                                if (ImGui::SliderFloat("Time Speed", &skyTimeSpeed, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
+                                if (ImGui::SliderFloat("Time Speed", &skyTimeSpeed, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
                                     lighting->setSkyTimeSpeed(skyTimeSpeed);
                                     NetSkyTime pkt;
                                     pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
