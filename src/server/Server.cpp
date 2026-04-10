@@ -372,11 +372,7 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 	if (player == players.end())
 		return;
 
-	int slot = pkt.slot; 
-
-	std::cout << "actionType modifier slot: " << std::endl;
-	std::cout << (int)pkt.actionType << " " << (int)pkt.modifier << " " << slot << std::endl;
-	std::cout << "----------------" << std::endl;
+	int slot = pkt.slot;
 
 	std::shared_ptr<IInventory> inv;
 	if (static_cast<InventoryType>(pkt.inventoryTypeID) == InventoryType::PLAYER)
@@ -393,6 +389,22 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 		player->movement->craftingStation->hasDraggedSlots = false;
 	}
 
+	auto sendHand = [&player, &pktsToSend]()
+	{
+		auto pkt = std::make_unique<NetInventory>();
+		
+		int handId = player->movement->inventory->getHandID();
+		auto hand = player->movement->inventory->getHandPtr();
+		if (!hand)
+			return ;
+			
+		pkt->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
+		pkt->type = itemTypeToItemID(hand->first);
+		pkt->amount = hand->second;
+		pkt->slot = handId;
+		pktsToSend.push_back(std::move(pkt));
+	};
+
 	if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL || pkt.modifier == InventoryModifiers::INV_DRAG_ADD)
 	{
 		auto slots = player->movement->getDraggedSlots();
@@ -402,6 +414,7 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 		for (auto &slot : *slots)
 		{
 			auto slotInv = slot.slotIndex.inventoryType;
+
 			//reset the inventories to their original values
 			if (slotInv == InventoryType::PLAYER)
 				player->movement->inventory->setSlot(slot.slotIndex.slotIndex, slot.originalValue.second, slot.originalValue.first);
@@ -419,8 +432,10 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 			}
 		}
 
+		player->movement->inventory->setHandPtr(player->movement->getDraggedSlots()->front().originalValue);
 		if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL)
 		{
+			sendHand();
 			sendNewGroupPacketTo(pktsToSend, cliaddr);
 			slots->clear();
 			return ;
@@ -429,7 +444,7 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 
 	if (pkt.modifier == InventoryModifiers::INV_DRAG_ADD)
 	{
-		player->movement->inventory->setHandPtr(player->movement->getDraggedSlots()->front().originalValue);
+		//try to add the new drag slot in both inventories;
 		player->movement->inventory->addDraggedSlot(pkt);
 		player->movement->craftingStation->addDraggedSlot(pkt);
 
@@ -438,17 +453,7 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 		if (pkt.inventoryTypeID == static_cast<uint8_t>(InventoryType::CRAFTING_STATION) || player->movement->craftingStation->hasDraggedSlots == true)
 			player->movement->craftingStation->handleDragModifier(pkt, pktsToSend);
 
-		int handId = player->movement->inventory->getHandID();
-		auto hand = player->movement->inventory->getHandPtr();
-		if (!hand)
-			return ;
-		//catastrophique
-		auto pkt = std::make_unique<NetInventory>();
-		pkt->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt->type = itemTypeToItemID(hand->first);
-		pkt->amount = hand->second;
-		pkt->slot = handId;
-		pktsToSend.push_back(std::move(pkt));
+		sendHand();
 
 		sendNewGroupPacketTo(pktsToSend, cliaddr);
 		return ;

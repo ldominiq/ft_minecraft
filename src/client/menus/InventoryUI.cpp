@@ -373,7 +373,7 @@ void InventoryUI::handleInventoryModifiers(NetInventoryAction &pkt, int action, 
 		float prevLastClickTime = lastClickTime;
 		lastClickTime = glfwGetTime();
 
-		if (lastClickTime - prevLastClickTime <= 0.3)
+		if (lastClickTime - prevLastClickTime <= 0.15) //double click triggers with 2 clicks in less than 0.15 seconds
 		{
 			pkt.modifier = InventoryModifiers::INV_DOUBLE_CLICK;
 			setDragToFalse();
