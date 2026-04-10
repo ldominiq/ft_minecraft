@@ -9,7 +9,6 @@
 #include <iostream>
 #include <string>
 #include <filesystem>
-#include <sstream>
 
 #include "stb_image.h"
 

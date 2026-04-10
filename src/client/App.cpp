@@ -596,7 +596,11 @@ void App::render() {
             // render refraction texture
             waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
         }
-
+        
+        const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
+        const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
+        renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
+        
     	// render to screen
     	renderScene(view, projection, clipPlane);
     	
@@ -609,11 +613,8 @@ void App::render() {
         }
         glEndQuery(GL_TIME_ELAPSED);
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
-		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         // Draw chunk boundary overlay (if enabled)
