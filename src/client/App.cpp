@@ -108,6 +108,8 @@ void App::init() {
 		if (menuManagerPtr)
 		{
 			menuManagerPtr->handleMouseMove(xpos, ypos);
+            app->lastX = xpos;
+            app->lastY = ypos;
 			return ;
 		}
 

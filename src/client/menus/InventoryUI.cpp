@@ -373,7 +373,7 @@ void InventoryUI::handleInventoryModifiers(NetInventoryAction &pkt, int action, 
 		float prevLastClickTime = lastClickTime;
 		lastClickTime = glfwGetTime();
 
-		if (lastClickTime - prevLastClickTime <= 0.15) //double click triggers with 2 clicks in less than 0.15 seconds
+		if (lastClickTime - prevLastClickTime <= 0.2) //double click triggers with 2 clicks in less than 0.2 seconds
 		{
 			pkt.modifier = InventoryModifiers::INV_DOUBLE_CLICK;
 			setDragToFalse();
@@ -443,6 +443,9 @@ void InventoryUI::handleMouseClick(double mouseX, double mouseY, int button, int
 	else if (inventoryType == InventoryType::CRAFTING_STATION)
 	{
 		int slot = getCraftingSlotAt(mouseX, mouseY);
+		if (!craftingStationInv.lock()) return ;
+		if (slot == craftingStationInv.lock()->getResultSlotID() && action == GLFW_RELEASE) return ;
+
 		if (slot != -1)
 		{
 			pkt.slot = slot;
@@ -547,7 +550,8 @@ void InventoryUI::onRender()
 		if (!inv)
 			return ;
 
-		textRenderer.renderText(std::to_string(inv->getSlot(i).second), inventorySlots[i].x, inventorySlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
+		if (inv->getSlot(i).second)
+			textRenderer.renderText(std::to_string(inv->getSlot(i).second), inventorySlots[i].x, inventorySlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
 		std::visit([&](const auto& value) {
@@ -570,14 +574,15 @@ void InventoryUI::onRender()
 		if (!inv)
 			return ;
 
-		textRenderer.renderText(std::to_string(inv->getSlot(i).second), craftingStationSlots[i].x, craftingStationSlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
+		if (inv->getSlot(i).second)
+			textRenderer.renderText(std::to_string(inv->getSlot(i).second), craftingStationSlots[i].x, craftingStationSlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
 		std::visit([&](const auto& value) {
 			using T = std::decay_t<decltype(value)>;
 				if constexpr (std::is_same_v<T, BlockType>) {
 					if (value != BlockType::BEGIN)
-						build2DInventoryCube(meshVertices, glm::vec2(craftingStationSlots[i].x + 18 * menuScale, craftingStationSlots[i].y + 5 * menuScale), 40 * menuScale, value, textureManager);
+						build2DInventoryCube(meshVertices, glm::vec2(craftingStationSlots[i].x + 11 * menuScale, craftingStationSlots[i].y + 5 * menuScale), 40 * menuScale, value, textureManager);
 				} else if constexpr (std::is_same_v<T, WeaponType>) {
 					// handle WeaponType
 				} else {

@@ -161,6 +161,8 @@ bool Inventory<ROWS, COLS, N>::handleDragModifier(NetInventoryAction &pkt, std::
 	auto btn = dragButton.lock();
 	auto slots = draggedSlots.lock();
 
+	if (slots->size() < 2) return false;
+
 	// GLFW_MOUSE_BUTTON_LEFT = 0, GLFW_MOUSE_BUTTON_RIGHT = 1
 	if (*btn == 0)
 	{

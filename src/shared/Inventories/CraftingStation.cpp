@@ -14,7 +14,13 @@ bool CraftingStation::handleInventoryAction(NetInventoryAction &pkt, std::vector
     if (h)
         setHand(*h);
 
-	if (pkt.slot == RESULT_SLOT_ID && pkt.actionType == InventoryActionType::INV_LEFT_CLICK)
+	ItemType typeAtSlot = getItemAtSlot(pkt.slot);
+	ItemType typeAtHand = getHand().first;
+
+	int amountAtHand = getHand().second;
+
+	if (pkt.slot == RESULT_SLOT_ID && typeAtHand != typeAtSlot && amountAtHand != 0) return false;
+	if (pkt.slot == RESULT_SLOT_ID && (pkt.actionType == InventoryActionType::INV_LEFT_CLICK || pkt.actionType == InventoryActionType::INV_RIGHT_CLICK))
 	{
 		craft(pktsToSend, 1);
 	}
@@ -75,11 +81,8 @@ bool CraftingStation::craft(std::vector<PacketPtr> &pktsToSend, itemStackSize_t 
 	if (grid[RESULT_SLOT_ID].second == 0 || (grid[HAND_ID].first != grid[RESULT_SLOT_ID].first && grid[HAND_ID].second != 0))
 		return false;
 
-	std::cout << itemTypeToItemID(grid[HAND_ID].first) << " " << itemTypeToItemID(grid[RESULT_SLOT_ID].first) << "\n";
-	std::cout << "??\n";
 	// should we check the recipe to make sure it is correct ?
 	// checkRecipe();
- 
 
 	// check if the amount of items we need to craft can fit in the hand.
 	itemStackSize_t H = getHand().second;
