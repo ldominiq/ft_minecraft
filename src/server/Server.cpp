@@ -421,6 +421,7 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 
 		if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL)
 		{
+			sendNewGroupPacketTo(pktsToSend, cliaddr);
 			slots->clear();
 			return ;
 		}
