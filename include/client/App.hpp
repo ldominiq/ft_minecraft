@@ -216,7 +216,7 @@ private:
     float renderDistance = 1000.0f; // Distance of the far clipping plane
 
     // Distance fog
-    float fogStartFraction = 0.5f;  // fog begins at this fraction of renderDistance (0=camera, 1=edge)
+    float fogStartFraction = 0.5f;  // fog begins at this fraction of maxRenderedChunkDist (0=camera, 1=edge) (the nearest unloaded chunk boundary)
     float fogStrength = 1.4f;       // exponent on fog ramp: 1=linear, 10=at the edge
     bool  fogEnabled = true;
 

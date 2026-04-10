@@ -158,12 +158,20 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius, flo
         }
     }
     float rawDist = std::sqrt(static_cast<float>(minMissingDistSq)) * Chunk::WIDTH;
-    // Use different speeds for inward vs outward movement but always smooth
-    // Inward: ~0.33s time constant, fast enough to cover a gap before the player walks into it.
-    // Outward: ~2s time constant, slow enough that loading chunks don't flicker.
-    float speed = (rawDist < maxRenderedChunkDist) ? 3.0f : 0.5f;
-    float alpha = 1.0f - std::exp(-deltaTime * speed);
-    maxRenderedChunkDist += (rawDist - maxRenderedChunkDist) * alpha;
+    
+    // we could initialize immediately to avoid a long fade-in on startup but i think i like it
+    // if (maxRenderedChunkDist <= 0.0f) {
+        //     maxRenderedChunkDist = rawDist;
+    // } else {
+
+        // Use different speeds for inward vs outward movement but always smooth
+        // Inward: ~0.33s time constant, fast enough to cover a gap before the player walks into it.
+        // Outward: ~2s time constant, slow enough that loading chunks don't flicker.
+        float speed = (rawDist < maxRenderedChunkDist) ? 3.0f : 0.5f;
+        float alpha = 1.0f - std::exp(-deltaTime * speed);
+        maxRenderedChunkDist += (rawDist - maxRenderedChunkDist) * alpha;
+
+    // }
 }
 
 void Renderer::prepareChunk(const NetChunkHeader& pkt) {
