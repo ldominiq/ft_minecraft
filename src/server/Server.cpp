@@ -374,16 +374,88 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 
 	int slot = pkt.slot; 
 
+	std::cout << "actionType modifier slot: " << std::endl;
+	std::cout << (int)pkt.actionType << " " << (int)pkt.modifier << " " << slot << std::endl;
+	std::cout << "----------------" << std::endl;
+
 	std::shared_ptr<IInventory> inv;
 	if (static_cast<InventoryType>(pkt.inventoryTypeID) == InventoryType::PLAYER)
 		inv = player->movement->inventory;
 	else if (static_cast<InventoryType>(pkt.inventoryTypeID) == InventoryType::CRAFTING_STATION)
 		inv = player->movement->craftingStation;
 
-	
 	std::vector<PacketPtr> pktsToSend;
+
+	//xd?
+	if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL || pkt.modifier == InventoryModifiers::INV_DRAG_END)
+	{
+		player->movement->inventory->hasDraggedSlots = false;
+		player->movement->craftingStation->hasDraggedSlots = false;
+	}
+
+	if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL || pkt.modifier == InventoryModifiers::INV_DRAG_ADD)
+	{
+		auto slots = player->movement->getDraggedSlots();
+		if (slots->empty()) //would be bug
+			return ;
+
+		for (auto &slot : *slots)
+		{
+			auto slotInv = slot.slotIndex.inventoryType;
+			//reset the inventories to their original values
+			if (slotInv == InventoryType::PLAYER)
+				player->movement->inventory->setSlot(slot.slotIndex.slotIndex, slot.originalValue.second, slot.originalValue.first);
+			else if (slotInv == InventoryType::CRAFTING_STATION)
+				player->movement->craftingStation->setSlot(slot.slotIndex.slotIndex, slot.originalValue.second, slot.originalValue.first);
+
+			if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL)
+			{
+				auto pkt = std::make_unique<NetInventory>();
+				pkt->inventoryTypeID = static_cast<uint8_t>(slot.slotIndex.inventoryType);
+				pkt->type = itemTypeToItemID(slot.originalValue.first);
+				pkt->amount = slot.originalValue.second;
+				pkt->slot = slot.slotIndex.slotIndex;
+				pktsToSend.push_back(std::move(pkt));
+			}
+		}
+
+		if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL)
+		{
+			slots->clear();
+			return ;
+		}
+	}
+
+	if (pkt.modifier == InventoryModifiers::INV_DRAG_ADD)
+	{
+		player->movement->inventory->setHandPtr(player->movement->getDraggedSlots()->front().originalValue);
+		player->movement->inventory->addDraggedSlot(pkt);
+		player->movement->craftingStation->addDraggedSlot(pkt);
+
+		if (pkt.inventoryTypeID == static_cast<uint8_t>(InventoryType::PLAYER) || player->movement->inventory->hasDraggedSlots == true)
+			player->movement->inventory->handleDragModifier(pkt, pktsToSend);
+		if (pkt.inventoryTypeID == static_cast<uint8_t>(InventoryType::CRAFTING_STATION) || player->movement->craftingStation->hasDraggedSlots == true)
+			player->movement->craftingStation->handleDragModifier(pkt, pktsToSend);
+
+		int handId = player->movement->inventory->getHandID();
+		auto hand = player->movement->inventory->getHandPtr();
+		if (!hand)
+			return ;
+		//catastrophique
+		auto pkt = std::make_unique<NetInventory>();
+		pkt->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
+		pkt->type = itemTypeToItemID(hand->first);
+		pkt->amount = hand->second;
+		pkt->slot = handId;
+		pktsToSend.push_back(std::move(pkt));
+
+		sendNewGroupPacketTo(pktsToSend, cliaddr);
+		return ;
+	}
+
 	if (inv->handleInventoryAction(pkt, pktsToSend))
 		sendNewGroupPacketTo(pktsToSend, cliaddr);
+
 }
 
 // TODO : Multithread

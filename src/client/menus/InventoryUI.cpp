@@ -322,13 +322,47 @@ int InventoryUI::getSlotAt(double mouseX, double mouseY) const
 	return -1;
 }
 
+//add a slot to the drag if mouse is on a different slot
+bool InventoryUI::checkInventoryDrag(NetInventoryAction &pkt)
+{
+	if (!dragging)
+		return false;
+
+	int currHoveredSlot = -1;
+	InventoryType inventoryType = getCurrentInventoryType(mouseX, mouseY);
+
+	if (inventoryType == InventoryType::PLAYER)
+	{
+		int slot = getSlotAt(mouseX, mouseY);
+		if (slot != -1)
+			currHoveredSlot = slot;
+	}
+	else if (inventoryType == InventoryType::CRAFTING_STATION)
+	{
+		int slot = getCraftingSlotAt(mouseX, mouseY);
+		if (slot != -1)
+			currHoveredSlot = slot;
+	}
+
+	if (currHoveredSlot != -1 && currHoveredSlot != lastHoveredSlot)
+	{
+		pkt.actionType = dragButton;
+		pkt.inventoryTypeID = static_cast<uint8_t>(inventoryType);
+		pkt.modifier = InventoryModifiers::INV_DRAG_ADD;
+		pkt.slot = currHoveredSlot;
+
+		lastHoveredSlot = currHoveredSlot;
+		return true;
+	}
+
+	return false;
+}
+
 void InventoryUI::handleInventoryModifiers(NetInventoryAction &pkt, int action, int button)
 {
-	static bool dragging = false;
-	static int dragButton = -1;
 	static float lastClickTime = -1.0f;
 
-	auto setDragToFalse = []()
+	auto setDragToFalse = [this]()
 	{
 		dragging = false;
 		dragButton = -1;
@@ -339,7 +373,7 @@ void InventoryUI::handleInventoryModifiers(NetInventoryAction &pkt, int action, 
 		float prevLastClickTime = lastClickTime;
 		lastClickTime = glfwGetTime();
 
-		if (lastClickTime - prevLastClickTime <= 0.5)
+		if (lastClickTime - prevLastClickTime <= 0.3)
 		{
 			pkt.modifier = InventoryModifiers::INV_DOUBLE_CLICK;
 			setDragToFalse();
@@ -357,7 +391,6 @@ void InventoryUI::handleInventoryModifiers(NetInventoryAction &pkt, int action, 
 	// we start dragging
 	if (handPtr.lock() && handPtr.lock()->second != 0 && action == GLFW_PRESS && !dragging)
 	{
-		std::cout << "starting drag" << std::endl;
 		pkt.modifier = InventoryModifiers::INV_DRAG_BEGIN;
 		dragging = true;
 		dragButton = button;
@@ -371,6 +404,7 @@ void InventoryUI::handleInventoryModifiers(NetInventoryAction &pkt, int action, 
 	else if (button == dragButton && dragging && action == GLFW_RELEASE)
 	{
 		pkt.modifier = InventoryModifiers::INV_DRAG_END;
+		pkt.actionType = button == GLFW_MOUSE_BUTTON_LEFT ? InventoryActionType::INV_LEFT_CLICK : InventoryActionType::INV_RIGHT_CLICK;
 		setDragToFalse();
 	}
 }
@@ -380,7 +414,7 @@ void InventoryUI::handleMouseClick(double mouseX, double mouseY, int button, int
 	InventoryType inventoryType = getCurrentInventoryType(mouseX, mouseY);
 	if (inventoryType == InventoryType::NONE)
 		return ;
-	if (action != GLFW_PRESS) return ;
+    if (action != GLFW_PRESS && action != GLFW_RELEASE) return ;
 
 	this->mouseX = mouseX;
 	this->mouseY = mouseY;
@@ -402,6 +436,7 @@ void InventoryUI::handleMouseClick(double mouseX, double mouseY, int button, int
 		{
 			pkt.slot = slot;
 			lastAction.emplace(pkt);
+			lastHoveredSlot = slot;
 		}
 	}
 
@@ -412,6 +447,7 @@ void InventoryUI::handleMouseClick(double mouseX, double mouseY, int button, int
 		{
 			pkt.slot = slot;
 			lastAction.emplace(pkt);
+			lastHoveredSlot = slot;
 		}
 	}
 }

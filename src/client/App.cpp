@@ -318,6 +318,7 @@ void App::setUdpClientPacketCallback()
 					camera->getPlayer()->inventory->setSlot(p.slot, p.amount, p.type);
 				else if (static_cast<InventoryType>(p.inventoryTypeID) == InventoryType::CRAFTING_STATION)
 					camera->getPlayer()->craftingStation->setSlot(p.slot, p.amount, p.type);
+
 				break;
 			}
 
@@ -457,6 +458,13 @@ void App::render() {
 		auto manager = menuManager.lock();
 		if (manager != chat)
         	processInput();
+
+		if (manager == inventoryUI)
+		{
+			NetInventoryAction pkt;
+			if (inventoryUI->checkInventoryDrag(pkt))
+				udpClient->sendPacket(pkt);
+		}
 
         // window aspect / uniforms
         const float aspect = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);

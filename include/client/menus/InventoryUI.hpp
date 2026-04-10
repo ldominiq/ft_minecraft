@@ -25,6 +25,10 @@ int MAX_BUFFER_SIZE = 0;
 	std::weak_ptr<CraftingStation> craftingStationInv;
 	std::weak_ptr<std::pair<ItemType, itemStackSize_t>> handPtr;
 
+	bool dragging = false;
+	int dragButton = -1;
+	int lastHoveredSlot = -1;
+
 	int inventoryRows = 0;
 	int inventoryCols = 0;
 	int craftingStationRows = 0;
@@ -146,6 +150,8 @@ int MAX_BUFFER_SIZE = 0;
 					std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs = nullptr);
 		~InventoryUI();
 
+		//return value corresponds to where we dragged over a new slot or not.
+		bool checkInventoryDrag(NetInventoryAction &pkt);
 		void drawHotbar();
 
 		std::optional<NetInventoryAction> lastAction; //awful solution

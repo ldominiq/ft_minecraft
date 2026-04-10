@@ -19,6 +19,7 @@ Inventory<ROWS, COLS, N>::Inventory(std::shared_ptr<InventoryExternalVariablesRe
 template<int ROWS, int COLS, int N>
 std::pair<ItemType, itemStackSize_t> Inventory<ROWS, COLS, N>::getSlot(int slot)
 {
+	if (slot >= grid.size() || slot < 0) return {BlockType::BEGIN, 0};
 	return grid.at(slot);
 }
 
@@ -108,7 +109,110 @@ std::unique_ptr<NetInventory> Inventory<ROWS, COLS, N>::createNetInventoryPkt(in
 }
 
 template<int ROWS, int COLS, int N>
-bool Inventory<ROWS, COLS, N>::handleInventoryDrag(NetInventoryAction &pkt, std::vector<PacketPtr>& pktsToSend)
+void Inventory<ROWS, COLS, N>::addDraggedSlot(NetInventoryAction &pkt)
+{
+	uint8_t slot = pkt.slot;
+
+	ItemType typeAtSlot = getItemAtSlot(slot);
+	ItemType typeAtHand = getHand().first;
+
+	int amountAtSlot = getSlot(slot).second;
+	int amountAtHand = getHand().second;
+
+	auto btn = dragButton.lock();
+	auto slots = draggedSlots.lock();
+
+	if (slots->empty() || slots->size() <= 1)
+        return ; // nothing to distribute to
+
+	if (static_cast<InventoryType>(pkt.inventoryTypeID) == this->type)
+	{
+		bool alreadyInList = false;
+		for(auto & s : *slots)
+		{
+			if (s.slotIndex.slotIndex == slot && s.slotIndex.inventoryType == this->type)
+				alreadyInList = true;
+		}
+
+		if (!alreadyInList && canInsertItemsToSlot(typeAtHand, slot, amountAtHand))
+		{
+			slots->push_back({{this->type, slot}, getSlot(slot)});
+			hasDraggedSlots = true;
+		}
+	}
+}
+
+template<int ROWS, int COLS, int N>
+bool Inventory<ROWS, COLS, N>::handleDragModifier(NetInventoryAction &pkt, std::vector<PacketPtr>& pktsToSend)
+{
+	auto h = hand.lock();
+	if (!h)
+		return false;
+	setHand(*h);
+
+	std::cout << "HAND HAS " << (int)getHand().second << "AMOUNT OF ITEMS\n";
+
+	uint8_t slot = pkt.slot;
+
+	ItemType typeAtSlot = getItemAtSlot(slot);
+	ItemType typeAtHand = getHand().first;
+
+	int amountAtSlot = getSlot(slot).second;
+	int amountAtHand = getHand().second;
+
+	auto btn = dragButton.lock();
+	auto slots = draggedSlots.lock();
+
+	// GLFW_MOUSE_BUTTON_LEFT = 0, GLFW_MOUSE_BUTTON_RIGHT = 1
+	if (*btn == 0)
+	{
+
+		std::cout << slots->size() << "\n";
+		int amountBeforeDrag = slots->front().originalValue.second;
+		int amountPerSlot = amountBeforeDrag / (slots->size() - 1);
+		int amountAfterDrag = getHand().second;
+
+		for (auto& s : *slots)
+		{
+			if (s.slotIndex.slotIndex == HAND_ID || s.slotIndex.inventoryType != this->type) continue;
+			int amountToMove = amountPerSlot;
+			if (takeFromSlotToSlot(typeAtHand, HAND_ID, s.slotIndex.slotIndex, amountToMove))
+				pktsToSend.push_back(createNetInventoryPkt(s.slotIndex.slotIndex));
+			amountAfterDrag -= amountPerSlot + amountToMove;
+			std::cout << "hand is :" << amountAfterDrag << "\n";
+		}
+
+		setSlot(HAND_ID, amountAfterDrag, typeAtHand);
+		// pktsToSend.push_back(createNetInventoryPkt(HAND_ID));
+	}
+	else if (*btn == 1)
+	{
+		int amountBeforeDrag = slots->front().originalValue.second;
+		int amountAfterDrag = getHand().second;
+		for (auto& s : *slots)
+		{
+			if (amountAfterDrag == 0) break;
+			if (s.slotIndex.slotIndex == HAND_ID || s.slotIndex.inventoryType != this->type) continue;
+			if (takeOneItemFromSlot(HAND_ID, s.slotIndex.slotIndex))
+			{
+				pktsToSend.push_back(createNetInventoryPkt(s.slotIndex.slotIndex));
+				amountAfterDrag--;
+			}
+		}
+		setSlot(HAND_ID, amountAfterDrag, typeAtHand);
+		// pktsToSend.push_back(createNetInventoryPkt(HAND_ID));
+	}
+
+	std::cout << "HAND HAS " << (int)getHand().second << "AMOUNT OF ITEMS\n";
+	if (hand.lock())
+		*hand.lock() = getHand();
+
+	return true;
+
+}
+
+template<int ROWS, int COLS, int N>
+bool Inventory<ROWS, COLS, N>::handleInventoryModifiers(NetInventoryAction &pkt, std::vector<PacketPtr>& pktsToSend)
 {
 	if (!dragButton.lock() || !draggedSlots.lock())
 		return false;
@@ -124,9 +228,33 @@ bool Inventory<ROWS, COLS, N>::handleInventoryDrag(NetInventoryAction &pkt, std:
 	auto btn = dragButton.lock();
 	auto slots = draggedSlots.lock();
 
+	if (pkt.modifier == InventoryModifiers::INV_DOUBLE_CLICK)
+	{
+		ItemType typeToStack = amountAtHand > 0 ? typeAtHand : typeAtSlot;
+		auto itemSlots = itemsIndexes.equal_range(typeToStack);
+
+		// snapshot indices first because mergeSlot() mutates itemsIndexes
+		std::vector<int> indices;
+		for (auto it = itemSlots.first; it != itemSlots.second; ++it)
+		{
+			// skip the slot that was clicked and the hand slot
+			if (it->second == HAND_ID) continue;
+			indices.push_back(it->second);
+		}
+
+		for (int idx : indices)
+		{
+			if (grid[HAND_ID].second == MAX_STACK_SIZE) break;
+			mergeSlot(idx, HAND_ID);
+			pktsToSend.push_back(createNetInventoryPkt(idx));
+		}
+
+		pktsToSend.push_back(createNetInventoryPkt(HAND_ID));
+        return true;
+	}
+
 	if (pkt.modifier == InventoryModifiers::INV_DRAG_BEGIN)
 	{
-		std::cout << "starting drag\n";
 		*btn = pkt.actionType;
 
 		//hand takes the first slot
@@ -135,59 +263,44 @@ bool Inventory<ROWS, COLS, N>::handleInventoryDrag(NetInventoryAction &pkt, std:
 		//ONLY EMPLACE IF CAN INSERT
 		if (canInsertItemsToSlot(typeAtHand, slot, amountAtHand))
 			slots->push_back({{this->type, slot}, getSlot(slot)});
+		
+		hasDraggedSlots = true;
 
 		return true;
 	}
-	else if (pkt.modifier  == InventoryModifiers::INV_DRAG_ADD)
-	{
-		if (canInsertItemsToSlot(typeAtHand, slot, amountAtHand))
-			slots->push_back({{this->type, slot}, getSlot(slot)});
-
-		// GLFW_MOUSE_BUTTON_LEFT = 0, GLFW_MOUSE_BUTTON_RIGHT = 1
-		if (*btn == 0)
-		{
-			int AmountBeforeDrag = slots->front().originalValue.second;
-			int amountToMove = AmountBeforeDrag / slots->size();
-
-			for (auto& s : *slots)
-			{
-				if (takeFromSlotToSlot(typeAtHand, HAND_ID, s.slotIndex.slotIndex, amountToMove))
-					pktsToSend.push_back(createNetInventoryPkt(s.slotIndex.slotIndex));
-			}
-
-		}
-		else if (*btn == 1)
-		{
-			takeOneItemFromSlot(HAND_ID, slot);
-			pktsToSend.push_back(createNetInventoryPkt(slot));
-			pktsToSend.push_back(createNetInventoryPkt(HAND_ID));
-		}
-		return true;
-	}
-
-	else if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL)
-	{
-		for (auto& slot : *slots)
-		{
-			auto pkt = std::make_unique<NetInventory>();
-			pkt->inventoryTypeID = static_cast<uint8_t>(slot.slotIndex.inventoryType);
-			pkt->type = itemTypeToItemID(slot.originalValue.first);
-			pkt->amount = slot.originalValue.second;
-			pkt->slot = slot.slotIndex.slotIndex;
-			pktsToSend.push_back(std::move(pkt));
-
-			setSlot(slot.slotIndex.slotIndex, slot.originalValue.second, slot.originalValue.first);
-		}
-		slots->clear();
-
-		*btn = -1;
-		return true;
-	}
-
-	//This one gotta go on Server and be applied externally
 	else if (pkt.modifier  == InventoryModifiers::INV_DRAG_END)
 	{
+		if (slots->size() == 1 || slots->size() == 2)
+		{
+			if (pkt.actionType == InventoryActionType::INV_LEFT_CLICK)
+			{
+				if (amountAtHand == 0 || typeAtSlot != typeAtHand)
+					;
+				else
+				{
+					mergeSlot(HAND_ID, slot);
+				}
+			} else if (pkt.actionType == InventoryActionType::INV_RIGHT_CLICK)
+			{
+				if (amountAtHand == 0)
+					;
+				else
+				{
+					if (amountAtSlot == 0 || typeAtSlot == typeAtHand)
+						takeOneItemFromSlot(HAND_ID, std::optional<int>(slot));
+					else
+						swapSlots(slot, HAND_ID);
+				}
+			}
+		}
+
+		pktsToSend.push_back(createNetInventoryPkt(slot));
+		pktsToSend.push_back(createNetInventoryPkt(HAND_ID));
+
+		slots->clear();
+		hasDraggedSlots = false;
 		*btn = -1;
+		return true;
 	}
 
 	return false;
@@ -204,11 +317,12 @@ bool Inventory<ROWS, COLS, N>::handleInventoryAction(NetInventoryAction &pkt, st
 		return false;
 	setHand(*h);
 
-	std::cout << (int)pkt.actionType << " " << (int)pkt.modifier << " " << slot << std::endl;
-	std::cout << "----------------" << std::endl;
-
-	if (handleInventoryDrag(pkt, pktsToSend)) return true;
-	std::cout << "why\n";
+	if (handleInventoryModifiers(pkt, pktsToSend))
+	{
+		if (hand.lock())
+			*hand.lock() = getHand();
+		return true;
+	}
 
 	ItemType typeAtSlot = getItemAtSlot(slot);
 	ItemType typeAtHand = getHand().first;
@@ -220,10 +334,10 @@ bool Inventory<ROWS, COLS, N>::handleInventoryAction(NetInventoryAction &pkt, st
 	{
 		if (amountAtHand == 0 || typeAtSlot != typeAtHand)
 			swapSlots(slot, HAND_ID);
-		// else
-		// {
-		// 	mergeSlot(HAND_ID, slot);
-		// }
+		else
+		{
+			mergeSlot(HAND_ID, slot);
+		}
 	} else if (pkt.actionType == InventoryActionType::INV_RIGHT_CLICK)
 	{
 		if (amountAtHand == 0)
@@ -409,10 +523,9 @@ bool Inventory<ROWS, COLS, N>::takeOneItemFromSlot(int slotSrc, std::optional<in
 }
 
 template<int ROWS, int COLS, int N>
-bool Inventory<ROWS, COLS, N>::takeFromSlotToSlot(ItemType itemType, int slotSrc, int slotDest, itemStackSize_t amount)
+bool Inventory<ROWS, COLS, N>::takeFromSlotToSlot(ItemType itemType, int slotSrc, int slotDest, int &amount)
 {
-	int lamount = amount;
-	if (insertItemsToSlot(itemType, slotDest, lamount))
+	if (insertItemsToSlot(itemType, slotDest, amount))
 	{
 		if (removeItemsFromSlot(slotSrc, amount))
 			return true;

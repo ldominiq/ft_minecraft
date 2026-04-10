@@ -24,7 +24,7 @@ bool CraftingStation::handleInventoryAction(NetInventoryAction &pkt, std::vector
 	ItemType prevResultSlot = grid[RESULT_SLOT_ID].first;
 	checkRecipe();
 
-	if (grid[RESULT_SLOT_ID].first != prevResultSlot)
+	if (grid[RESULT_SLOT_ID].first != ItemType{})
 		pktsToSend.push_back(createNetInventoryPkt(RESULT_SLOT_ID));
 
 	return true;

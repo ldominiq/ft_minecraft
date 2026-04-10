@@ -8,7 +8,6 @@
 #include <iostream>
 #include <optional>
 
-#include "Item.hpp"
 #include "IInventory.hpp"
 
 enum class InventoryType : uint8_t {
@@ -20,7 +19,6 @@ enum class InventoryType : uint8_t {
 
 //careaful, there might be a confusion with (uint)-1 used for when activeHotbarSlot isn't set
 constexpr int16_t INVALID_SLOT = -1;
-using itemStackSize_t = uint8_t;
 
 struct SlotIndexInfo {
 	InventoryType inventoryType;
@@ -66,8 +64,10 @@ class Inventory : public IInventory{
 		Inventory(std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs);
 		virtual ~Inventory() = default;
 
-		std::pair<ItemType, itemStackSize_t> getHand() {return grid[HAND_ID];}
-		void setHand(std::pair<ItemType, itemStackSize_t> handItem) {grid[HAND_ID] = handItem;}
+		inline std::pair<ItemType, itemStackSize_t> getHand() {return grid[HAND_ID];}
+		inline std::shared_ptr<std::pair<ItemType, itemStackSize_t>> getHandPtr() { return hand.lock(); }
+		inline void setHand(std::pair<ItemType, itemStackSize_t> handItem) {grid[HAND_ID] = handItem;}
+		inline void setHandPtr(std::pair<ItemType, itemStackSize_t> handItem) { if (hand.lock()) *hand.lock() = handItem; }
 
 		std::pair<ItemType, itemStackSize_t> getSlot(int slot);
 		ItemType getItemAtSlot(int slot);
@@ -78,7 +78,9 @@ class Inventory : public IInventory{
 
 		std::unique_ptr<NetInventory> createNetInventoryPkt(int slot);
 		//return wether there's any packet to send or not.
-		bool handleInventoryDrag(NetInventoryAction &pkt, std::vector<PacketPtr>& pktsToSend);
+		void addDraggedSlot(NetInventoryAction &pkt);
+		bool handleDragModifier(NetInventoryAction &pkt, std::vector<PacketPtr>& pktsToSend);
+		bool handleInventoryModifiers(NetInventoryAction &pkt, std::vector<PacketPtr>& pktsToSend);
 		virtual bool handleInventoryAction(NetInventoryAction &pkt, std::vector<PacketPtr>& pkts);
 
 		int insertItems(ItemType type, int &amount);
@@ -92,7 +94,7 @@ class Inventory : public IInventory{
 		//Src - Dst
 		void mergeSlot(int slotSrc, int slotDest);
 		bool takeOneItemFromSlot(int slotSrc, std::optional<int> slotDest = std::nullopt);
-		bool takeFromSlotToSlot(ItemType itemType, int slotSrc, int slotDest, itemStackSize_t amount);
+		bool takeFromSlotToSlot(ItemType itemType, int slotSrc, int slotDest, int &amount);
 		//will always takes TO hand
 		void takeHalf(int slotSrc);
 		void swapSlots(int slot1, int slot2);
