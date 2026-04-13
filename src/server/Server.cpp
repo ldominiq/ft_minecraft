@@ -210,40 +210,7 @@ void Server::gameTick()
 	if (tick % (static_cast<int>(TPS) * 3) == 0)
 		world->updateRegionStreaming(players);
 
-	// Advance sky time
-	constexpr float tickDt        = 1.0f / TPS;
-	constexpr float pauseDuration = 20.0f;
-	constexpr float stepDuration  = 2.0f;
-
-	if (!skyTimePaused) {
-		if (skyMode == 1) {
-			// Smooth: continuous linear advancement
-			skyTimeOffset += skyTimeSpeed * tickDt;
-		} else {
-			// Skyrim: hold then step
-			if (!sunStepping) {
-				sunPauseTimer += tickDt;
-				if (sunPauseTimer >= pauseDuration) {
-					sunPauseTimer = 0.0f;
-					sunStepping   = true;
-					sunStepTimer  = 0.0f;
-				}
-			} else {
-				sunStepTimer += tickDt;
-				float t_step  = std::min(sunStepTimer / stepDuration, 1.0f);
-				float smoothT = t_step * t_step * (3.0f - 2.0f * t_step);
-				float totalStepOffset = (pauseDuration + stepDuration) * skyTimeSpeed;
-				if (sunStepTimer <= tickDt)
-					sunPauseTimer = skyTimeOffset;  // first tick: store stepBase
-				skyTimeOffset = sunPauseTimer + smoothT * totalStepOffset;
-				if (t_step >= 1.0f) {
-					sunStepping   = false;
-					sunPauseTimer = 0.0f;
-					sunStepTimer  = 0.0f;
-				}
-			}
-		}
-	}
+	world->advanceSkyTime();
 
 	// Broadcast every 20 ticks (~1s)
 	if (tick % static_cast<int>(TPS) == 0) {
@@ -253,27 +220,30 @@ void Server::gameTick()
 }
 
 void Server::updateSkyTime(NetSkyTime &pkt) {
-	skyTimeOffset = pkt.skyTimeOffset;
-	sunYawDeg     = pkt.sunYawDeg;
-	skyTimePaused = pkt.skyTimePaused;
-	skyMode       = pkt.skyMode;
-	skyTimeSpeed  = pkt.skyTimeSpeed;
-	// Reset step state so server continues cleanly from new position
-	sunStepping   = false;
-	sunPauseTimer = 0.0f;
-	sunStepTimer  = 0.0f;
+
+	world->setSkyTime({
+		.skyTimeOffset 	= pkt.skyTimeOffset,
+		.sunYawDeg 		= pkt.sunYawDeg,
+		.skyTimePaused 	= pkt.skyTimePaused,
+		.sunStepping 	= pkt.sunStepping,
+		.sunPauseTimer 	= pkt.sunPauseTimer,
+		.sunStepTimer 	= pkt.sunStepTimer,
+		.skyMode 		= pkt.skyMode,
+		.skyTimeSpeed 	= pkt.skyTimeSpeed
+	});
 }
 
 void Server::broadcastSkyTime() {
+	const auto& s = world->getSkyTimeState();
     NetSkyTime pkt;
-    pkt.skyTimeOffset  = skyTimeOffset;
-    pkt.sunYawDeg      = sunYawDeg;
-    pkt.skyTimePaused  = skyTimePaused;
-    pkt.sunStepping    = sunStepping;
-    pkt.sunPauseTimer  = sunPauseTimer;
-    pkt.sunStepTimer   = sunStepTimer;
-    pkt.skyMode        = skyMode;
-    pkt.skyTimeSpeed   = skyTimeSpeed;
+    pkt.skyTimeOffset  = s.skyTimeOffset;
+    pkt.sunYawDeg      = s.sunYawDeg;
+    pkt.skyTimePaused  = s.skyTimePaused;
+    pkt.sunStepping    = s.sunStepping;
+    pkt.sunPauseTimer  = s.sunPauseTimer;
+    pkt.sunStepTimer   = s.sunStepTimer;
+    pkt.skyMode        = s.skyMode;
+    pkt.skyTimeSpeed   = s.skyTimeSpeed;
     for (CPlayerInfo& p : players)
         sendPacketTo(pkt, p.addr);
 }
@@ -809,15 +779,16 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);
 
+	const auto& s = world->getSkyTimeState();
 	NetSkyTime skyPkt;
-	skyPkt.skyTimeOffset = skyTimeOffset;
-	skyPkt.sunYawDeg     = sunYawDeg;
-	skyPkt.skyTimePaused = skyTimePaused;
-	skyPkt.sunStepping   = sunStepping;
-	skyPkt.sunPauseTimer = sunPauseTimer;
-	skyPkt.sunStepTimer  = sunStepTimer;
-	skyPkt.skyMode       = skyMode;
-	skyPkt.skyTimeSpeed  = skyTimeSpeed;
+	skyPkt.skyTimeOffset = s.skyTimeOffset;
+	skyPkt.sunYawDeg     = s.sunYawDeg;
+	skyPkt.skyTimePaused = s.skyTimePaused;
+	skyPkt.sunStepping   = s.sunStepping;
+	skyPkt.sunPauseTimer = s.sunPauseTimer;
+	skyPkt.sunStepTimer  = s.sunStepTimer;
+	skyPkt.skyMode       = s.skyMode;
+	skyPkt.skyTimeSpeed  = s.skyTimeSpeed;
 	sendPacketTo(skyPkt, cliaddr);
 
 	NetAccept acceptPkt;
