@@ -3,6 +3,7 @@
 //
 
 #include "WaterRenderer.hpp"
+#include "FogUniforms.hpp"
 
 #include "WaterFramebuffer.hpp"
 #include "Camera.hpp"
@@ -150,26 +151,31 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     waterShader->setFloat("nearPlane", 0.1f);
     waterShader->setFloat("farPlane", 1000.0f);
 
+    // Fog uniforms
+    uploadFogUniforms(*waterShader, fogEnabled, lighting->getSkyLUTTexture(),
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
+                      lighting->getDirectionalLightDirection());
+
     // Bind water textures
-    glActiveTexture(GL_TEXTURE0);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_REFLECT);
     glBindTexture(GL_TEXTURE_2D, fbos->getReflectionTexture());
-    waterShader->setInt("reflectionTexture", 0);
+    waterShader->setInt("reflectionTexture", TextureUnits::WATER_REFLECT);
 
-    glActiveTexture(GL_TEXTURE1);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_REFRACT);
     glBindTexture(GL_TEXTURE_2D, fbos->getRefractionTexture());
-    waterShader->setInt("refractionTexture", 1);
+    waterShader->setInt("refractionTexture", TextureUnits::WATER_REFRACT);
 
-    glActiveTexture(GL_TEXTURE2);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_DUDV);
     glBindTexture(GL_TEXTURE_2D, dudvTexture);
-    waterShader->setInt("dudvMap", 2);
+    waterShader->setInt("dudvMap", TextureUnits::WATER_DUDV);
 
-    glActiveTexture(GL_TEXTURE3);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_NORMAL);
     glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
-    waterShader->setInt("normalMap", 3);
+    waterShader->setInt("normalMap", TextureUnits::WATER_NORMAL);
 
-    glActiveTexture(GL_TEXTURE4);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_DEPTH);
     glBindTexture(GL_TEXTURE_2D, fbos->getRefractionDepthTexture());
-    waterShader->setInt("refractionDepthTexture", 4);
+    waterShader->setInt("refractionDepthTexture", TextureUnits::WATER_DEPTH);
 
     // Enable alpha blending
     glEnable(GL_BLEND);

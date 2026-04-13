@@ -101,7 +101,7 @@ float Noise::fractalBrownianMotion2D(float x, float y, int octaves, float lacuna
     float frequency = 1.0f;
     float amplitude = 1.0f;
     float maxValue = 0.0f; // Used for normalization
-    
+
     for (int i = 0; i < octaves; ++i) {
         total += perlin2D(x * frequency, y * frequency) * amplitude;
         maxValue += amplitude;
