@@ -224,10 +224,10 @@ void Server::updateSkyTime(NetSkyTime &pkt) {
 	world->setSkyTime({
 		.skyTimeOffset 	= pkt.skyTimeOffset,
 		.sunYawDeg 		= pkt.sunYawDeg,
-		.skyTimePaused 	= pkt.skyTimePaused,
-		.sunStepping 	= pkt.sunStepping,
 		.sunPauseTimer 	= pkt.sunPauseTimer,
 		.sunStepTimer 	= pkt.sunStepTimer,
+		.sunStepping 	= pkt.sunStepping,
+		.skyTimePaused 	= pkt.skyTimePaused,
 		.skyMode 		= pkt.skyMode,
 		.skyTimeSpeed 	= pkt.skyTimeSpeed
 	});
@@ -238,10 +238,10 @@ void Server::broadcastSkyTime() {
     NetSkyTime pkt;
     pkt.skyTimeOffset  = s.skyTimeOffset;
     pkt.sunYawDeg      = s.sunYawDeg;
-    pkt.skyTimePaused  = s.skyTimePaused;
-    pkt.sunStepping    = s.sunStepping;
     pkt.sunPauseTimer  = s.sunPauseTimer;
     pkt.sunStepTimer   = s.sunStepTimer;
+    pkt.sunStepping    = s.sunStepping;
+    pkt.skyTimePaused  = s.skyTimePaused;
     pkt.skyMode        = s.skyMode;
     pkt.skyTimeSpeed   = s.skyTimeSpeed;
     for (CPlayerInfo& p : players)
