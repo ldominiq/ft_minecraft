@@ -64,6 +64,7 @@ void App::init(const std::string& serverIp) {
 			app->inventoryUI->resize(width, height);
 		if (manager != app->chat)
 			app->chat->resize(width, height);
+		app->debugHUD->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -96,6 +97,7 @@ void App::init(const std::string& serverIp) {
 
 	chat = std::make_shared<Chat>(screenWidth, screenHeight);
 	inventoryUI = std::make_shared<InventoryUI>(screenWidth, screenHeight, &textureManager);
+	debugHUD = std::make_unique<DebugHUD>(screenWidth, screenHeight);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
@@ -638,6 +640,8 @@ void App::render() {
     		guiRenderer->render(guis, 0.1f, renderDistance);
         }
 
+        computeDebugStats();
+
         if (showDebugWindow) {
             debugWindow();
         }
@@ -688,6 +692,11 @@ void App::render() {
 		{
 			inventoryUI->drawHotbar();
 			chat->renderRecentMessages();
+		}
+
+		if (showHUD) {
+			debugHUD->update(cachedDebugStats);
+			debugHUD->render();
 		}
 
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
@@ -863,6 +872,28 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 	renderer->drawCharacters(projection, view, deltaTime);
 }
 
+void App::computeDebugStats()
+{
+    cachedDebugStats.fps = uiDisplayFPS;
+
+    if (renderer) {
+        cachedDebugStats.visibleChunks = renderer->getVisibleChunkCount();
+        cachedDebugStats.totalChunks   = renderer->getTotalChunkCount();
+
+        size_t solidVerts = 0;
+        size_t waterVerts = 0;
+        for (auto& weakChunk : renderer->getRenderedChunks()) {
+            if (auto chunk = weakChunk.lock()) {
+                solidVerts += chunk->getMeshVerticesSize() / 10;
+                waterVerts += chunk->getWaterMeshVerticesSize() / 10;
+            }
+        }
+        const size_t totalVerts      = solidVerts + waterVerts;
+        cachedDebugStats.triangles   = totalVerts / 3;
+        cachedDebugStats.cubes       = cachedDebugStats.triangles / 12;
+    }
+}
+
 void App::debugWindow() {
         // Build the ImGui UI.  We always draw the debug overlay.  When
         // uiInteractive is false we disable input on the window, allowing
@@ -926,27 +957,11 @@ void App::debugWindow() {
 
             // Additional metrics: number of loaded chunks and approximate memory usage
             if (renderer) {
-                const size_t visibleChunks = renderer->getVisibleChunkCount();
-                const size_t totalChunks   = renderer->getTotalChunkCount();
-                ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
-
-                size_t solidVertices = 0;
-                size_t waterVertices = 0;
-                for (auto& weakChunk : renderer->getRenderedChunks()) {
-                    if (auto chunk = weakChunk.lock()) {
-                        solidVertices += chunk->getMeshVerticesSize() / 10;
-                        waterVertices += chunk->getWaterMeshVerticesSize() / 10;
-                    }
-                }
-                
-                size_t totalVertices = solidVertices + waterVertices;
-                size_t totalTriangles = totalVertices / 3;
-                size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
-                
+                ImGui::Text("Chunks: %zu visible / %zu total",
+                            cachedDebugStats.visibleChunks, cachedDebugStats.totalChunks);
                 // TODO: fix real count based on frustum culling
-                ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
-                ImGui::Text("Triangles: %zu", totalTriangles);
-                ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
+                ImGui::Text("Triangles: %zu", cachedDebugStats.triangles);
+                ImGui::Text("Approx. Visible Blocks: %zu", cachedDebugStats.cubes);
             }
 
             // Display memory usage in megabytes.  We call a static helper to
@@ -1728,6 +1743,7 @@ void App::processInput() {
     static bool f11Held = false;
     static bool f1Held  = false;
     static bool f2Held  = false;
+    static bool f3Held  = false;
     static bool f4Held  = false;
 	static bool ThirdPersonCameraKeyActive = false;
     static bool tabHeld = false;
@@ -1742,6 +1758,16 @@ void App::processInput() {
 		}
 		return;
 	}
+
+    // Toggle debug HUD (F3)
+    if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS && !f3Held &&
+        glfwGetKey(window, GLFW_KEY_A) != GLFW_PRESS) {
+        showHUD = !showHUD;
+        f3Held = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_RELEASE) {
+        f3Held = false;
+    }
 
     // Show/Hide debug window
     if (glfwGetKey(window, controlsArray[TOGGLE_DEBUG]) == GLFW_PRESS && !tabHeld) {

@@ -59,6 +59,7 @@
 
 #include "GuiRenderer.hpp"
 #include "ChunkBoundaryRenderer.hpp"
+#include "DebugHUD.hpp"
 
 #define CONTROL_LIST 		\
     X(FORWARD)       		\
@@ -124,6 +125,7 @@ private:
 	void loadControlsFromFile(const char* filename = "controls.cfg");
 
     void debugWindow();
+    void computeDebugStats();
 
 
 
@@ -166,6 +168,9 @@ private:
 	std::weak_ptr<Menu> menuManager;
 	std::shared_ptr<Chat> chat;
 	std::shared_ptr<InventoryUI> inventoryUI;
+	std::unique_ptr<DebugHUD> debugHUD;
+	bool showHUD = false;
+	DebugStats cachedDebugStats{};
 
 	std::shared_ptr<Loader> loader;
 	// GUI
