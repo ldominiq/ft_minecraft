@@ -992,3 +992,53 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 		entityIt++;
 	}
 }
+
+void World::advanceSkyTime() {
+	// Advance sky time
+	constexpr float tickDt        = 1.0f / TPS;
+	constexpr float pauseDuration = 20.0f;
+	constexpr float stepDuration  = 2.0f;
+
+	if (!skyTimeState.skyTimePaused) {
+		if (skyTimeState.skyMode == 1) {
+			// Smooth: continuous linear advancement
+			skyTimeState.skyTimeOffset += skyTimeState.skyTimeSpeed * tickDt;
+		} else {
+			// Skyrim: hold then step
+			if (!skyTimeState.sunStepping) {
+				skyTimeState.sunPauseTimer += tickDt;
+				if (skyTimeState.sunPauseTimer >= pauseDuration) {
+					skyTimeState.sunPauseTimer = 0.0f;
+					skyTimeState.sunStepping   = true;
+					skyTimeState.sunStepTimer  = 0.0f;
+				}
+			} else {
+				skyTimeState.sunStepTimer += tickDt;
+				float t_step  = std::min(skyTimeState.sunStepTimer / stepDuration, 1.0f);
+				float smoothT = t_step * t_step * (3.0f - 2.0f * t_step);
+				float totalStepOffset = (pauseDuration + stepDuration) * skyTimeState.skyTimeSpeed;
+				if (skyTimeState.sunStepTimer <= tickDt)
+					skyTimeState.sunPauseTimer = skyTimeState.skyTimeOffset;  // first tick: store stepBase
+				skyTimeState.skyTimeOffset = skyTimeState.sunPauseTimer + smoothT * totalStepOffset;
+				if (t_step >= 1.0f) {
+					skyTimeState.sunStepping   = false;
+					skyTimeState.sunPauseTimer = 0.0f;
+					skyTimeState.sunStepTimer  = 0.0f;
+				}
+			}
+		}
+	}
+}
+
+void World::setSkyTime(const SkyTimeState &newState) {
+    skyTimeState.skyTimeOffset = newState.skyTimeOffset;
+    skyTimeState.sunYawDeg     = newState.sunYawDeg;
+    skyTimeState.skyTimePaused = newState.skyTimePaused;
+    skyTimeState.skyMode       = newState.skyMode;
+    skyTimeState.skyTimeSpeed  = newState.skyTimeSpeed;
+
+    // reset step state after external set
+    skyTimeState.sunStepping   = false;
+    skyTimeState.sunPauseTimer = 0.0f;
+    skyTimeState.sunStepTimer  = 0.0f;
+}

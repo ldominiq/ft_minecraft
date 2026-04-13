@@ -41,6 +41,9 @@ private:
 
 	int32_t tick = 0;
 	float deltaTime;
+	
+	void updateSkyTime(NetSkyTime &pkt);
+	void broadcastSkyTime();
 
 	std::vector<std::thread> dumpThreads;
 	std::mutex dumpThreadsMutex;

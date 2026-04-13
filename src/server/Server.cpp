@@ -190,6 +190,19 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::NET_SKY_TIME: {
+			// Only allow if player is connected
+			if (NetUtils::findPlayerByAddr(players, cliaddr) == players.end())
+				break;
+			auto& p   = static_cast<NetSkyTime&>(*pkt);
+			if (p.skyMode > 1) // validate mode
+				break;
+			p.skyTimeSpeed = std::clamp(p.skyTimeSpeed, 0.001f, 10.0f); // validate speed
+			updateSkyTime(p);
+			broadcastSkyTime();
+			break;
+		}
+
 		case PacketType::NET_TERRAIN_PARAMS: {
 			auto& p = static_cast<NetTerrainParams&>(*pkt);
 			receiveTerrainParams(p, cliaddr);
@@ -213,7 +226,43 @@ void Server::gameTick()
 
 	if (tick % (static_cast<int>(TPS) * 3) == 0)
 		world->updateRegionStreaming(players);
+
+	world->advanceSkyTime();
+
+	// Broadcast every 20 ticks (~1s)
+	if (tick % static_cast<int>(TPS) == 0) {
+		broadcastSkyTime();
+	}
 	sendAll();
+}
+
+void Server::updateSkyTime(NetSkyTime &pkt) {
+
+	world->setSkyTime({
+		.skyTimeOffset 	= pkt.skyTimeOffset,
+		.sunYawDeg 		= pkt.sunYawDeg,
+		.sunPauseTimer 	= pkt.sunPauseTimer,
+		.sunStepTimer 	= pkt.sunStepTimer,
+		.sunStepping 	= pkt.sunStepping,
+		.skyTimePaused 	= pkt.skyTimePaused,
+		.skyMode 		= pkt.skyMode,
+		.skyTimeSpeed 	= pkt.skyTimeSpeed
+	});
+}
+
+void Server::broadcastSkyTime() {
+	const auto& s = world->getSkyTimeState();
+    NetSkyTime pkt;
+    pkt.skyTimeOffset  = s.skyTimeOffset;
+    pkt.sunYawDeg      = s.sunYawDeg;
+    pkt.sunPauseTimer  = s.sunPauseTimer;
+    pkt.sunStepTimer   = s.sunStepTimer;
+    pkt.sunStepping    = s.sunStepping;
+    pkt.skyTimePaused  = s.skyTimePaused;
+    pkt.skyMode        = s.skyMode;
+    pkt.skyTimeSpeed   = s.skyTimeSpeed;
+    for (CPlayerInfo& p : players)
+        sendPacketTo(pkt, p.addr);
 }
 
 void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
@@ -823,6 +872,18 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	}
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);
+
+	const auto& s = world->getSkyTimeState();
+	NetSkyTime skyPkt;
+	skyPkt.skyTimeOffset = s.skyTimeOffset;
+	skyPkt.sunYawDeg     = s.sunYawDeg;
+	skyPkt.skyTimePaused = s.skyTimePaused;
+	skyPkt.sunStepping   = s.sunStepping;
+	skyPkt.sunPauseTimer = s.sunPauseTimer;
+	skyPkt.sunStepTimer  = s.sunStepTimer;
+	skyPkt.skyMode       = s.skyMode;
+	skyPkt.skyTimeSpeed  = s.skyTimeSpeed;
+	sendPacketTo(skyPkt, cliaddr);
 
 	NetAccept acceptPkt;
 	sendPacketTo(acceptPkt, cliaddr);
