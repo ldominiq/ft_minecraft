@@ -63,8 +63,11 @@ void App::init(const std::string& serverIp) {
     // Set the window icon
     GLFWimage image;
     image = load_icon("assets/textures/icon.png");
-    if (image.pixels)
+    if (image.pixels) {
         glfwSetWindowIcon(window, 1, &image);
+        stbi_image_free(image.pixels); // <- free stb allocation
+        image.pixels = nullptr;
+    }
     
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
