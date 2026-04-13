@@ -1,8 +1,8 @@
-
 #ifndef PROTOCOL_HPP
 #define PROTOCOL_HPP
 
 #include "Network.hpp"
+#include "TerrainParams.hpp"
 
 // NET_CONNECT = 1,  // C2S
 // NET_ACCEPT,       // S2C
@@ -352,18 +352,342 @@ inline AutoRegister<NetMessage> _reg_NetServerMessage;
 struct NetImGui final : public Packet {
     static constexpr PacketType ID = PacketType::NET_IMGUI;
 
-	uint8_t currentBiome;
+	uint8_t currentBiome = 0;
+	int32_t terrainHeight = 0;
+	int32_t seaLevel = 64;
+	int32_t worldSeed = 0;
+	float continentalness = 0.0f;
+	float erosion = 0.0f;
+	float peakValley = 0.0f;
+	float temperature = 0.0f;
+	float humidity = 0.0f;
 
     NetImGui() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
         w.write_u8(currentBiome);
+        w.write_i32(terrainHeight);
+        w.write_i32(seaLevel);
+        w.write_i32(worldSeed);
+        w.write_f32(continentalness);
+        w.write_f32(erosion);
+        w.write_f32(peakValley);
+        w.write_f32(temperature);
+        w.write_f32(humidity);
     }
 
     void decode(BufferReader& r) override {
         currentBiome = r.read_u8();
+        terrainHeight = r.read_i32();
+        seaLevel = r.read_i32();
+        worldSeed = r.read_i32();
+        continentalness = r.read_f32();
+        erosion = r.read_f32();
+        peakValley = r.read_f32();
+        temperature = r.read_f32();
+        humidity = r.read_f32();
     }
 };
 inline AutoRegister<NetImGui> _reg_NetImGui;
+
+// Terrain generation parameters sync packet (C2S && S2C)
+struct NetTerrainParams final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_TERRAIN_PARAMS;
+
+    // All defaults are derived from TerrainGenerationParams to stay in sync.
+    // If a field is added, also update toParams() and fromParams() below...
+    int32_t seed;
+    int32_t seaLevel;
+    int32_t bedrockLevel;
+
+    // River carving params
+    float riverFrequency;
+    int32_t riverOctaves;
+    float riverPersistence;
+    float riverLacunarity;
+    float riverWidth;
+    float riverBankFeather;
+    float riverDepth;
+    float riverWarpFrequency;
+    float riverWarpStrength;
+    float riverMinContinentalness;
+    float riverMaxContinentalness;
+
+    // Lake carving params
+    float lakeFrequency;
+    int32_t lakeOctaves;
+    float lakePersistence;
+    float lakeLacunarity;
+    float lakeThreshold;
+    float lakeFeather;
+    float lakeDepth;
+    float lakeMinContinentalness;
+    float lakeMaxContinentalness;
+
+    // Heightmap dump settings
+    int32_t genSize;
+    int32_t downsample;
+
+    // Continentalness noise params
+    float continentalnessFrequency;
+    int32_t continentalnessOctaves;
+    float continentalnessPersistence;
+    float continentalnessLacunarity;
+    float continentalnessScalingFactor;
+
+    // Erosion noise params
+    float erosionFrequency;
+    int32_t erosionOctaves;
+    float erosionPersistence;
+    float erosionLacunarity;
+    float erosionScalingFactor;
+
+    // Peak / valley noise params
+    float peakValleyFrequency;
+    int32_t peakValleyOctaves;
+    float peakValleyPersistence;
+    float peakValleyLacunarity;
+    float peakValleyScalingFactor;
+
+    // Temperature noise params
+    float temperatureFrequency;
+    int32_t temperatureOctaves;
+    float temperaturePersistence;
+    float temperatureLacunarity;
+    float temperatureScalingFactor;
+
+    // Humidity noise params
+    float humidityFrequency;
+    int32_t humidityOctaves;
+    float humidityPersistence;
+    float humidityLacunarity;
+    float humidityScalingFactor;
+
+    // Biome params
+    int32_t biomeScaleChunks;
+    bool snapClimateToCells;
+    float climateWarpFrequency;
+    float climateWarpStrength;
+
+    float desertMoistureThreshold;
+    float forestMoistureThreshold;
+    float snowTemperatureThreshold;
+
+    bool debugOresOnly;
+
+    TerrainGenerationParams toParams() const {
+        TerrainGenerationParams p;
+        p.seed = seed; p.seaLevel = seaLevel; p.bedrockLevel = bedrockLevel;
+        p.riverFrequency = riverFrequency; p.riverOctaves = riverOctaves;
+        p.riverPersistence = riverPersistence; p.riverLacunarity = riverLacunarity;
+        p.riverWidth = riverWidth; p.riverBankFeather = riverBankFeather;
+        p.riverDepth = riverDepth; p.riverWarpFrequency = riverWarpFrequency;
+        p.riverWarpStrength = riverWarpStrength;
+        p.riverMinContinentalness = riverMinContinentalness;
+        p.riverMaxContinentalness = riverMaxContinentalness;
+        p.lakeFrequency = lakeFrequency; p.lakeOctaves = lakeOctaves;
+        p.lakePersistence = lakePersistence; p.lakeLacunarity = lakeLacunarity;
+        p.lakeThreshold = lakeThreshold; p.lakeFeather = lakeFeather;
+        p.lakeDepth = lakeDepth;
+        p.lakeMinContinentalness = lakeMinContinentalness;
+        p.lakeMaxContinentalness = lakeMaxContinentalness;
+        p.genSize = genSize; p.downsample = downsample;
+        p.continentalnessFrequency = continentalnessFrequency;
+        p.continentalnessOctaves = continentalnessOctaves;
+        p.continentalnessPersistence = continentalnessPersistence;
+        p.continentalnessLacunarity = continentalnessLacunarity;
+        p.continentalnessScalingFactor = continentalnessScalingFactor;
+        p.erosionFrequency = erosionFrequency; p.erosionOctaves = erosionOctaves;
+        p.erosionPersistence = erosionPersistence; p.erosionLacunarity = erosionLacunarity;
+        p.erosionScalingFactor = erosionScalingFactor;
+        p.peakValleyFrequency = peakValleyFrequency; p.peakValleyOctaves = peakValleyOctaves;
+        p.peakValleyPersistence = peakValleyPersistence; p.peakValleyLacunarity = peakValleyLacunarity;
+        p.peakValleyScalingFactor = peakValleyScalingFactor;
+        p.temperatureFrequency = temperatureFrequency; p.temperatureOctaves = temperatureOctaves;
+        p.temperaturePersistence = temperaturePersistence; p.temperatureLacunarity = temperatureLacunarity;
+        p.temperatureScalingFactor = temperatureScalingFactor;
+        p.humidityFrequency = humidityFrequency; p.humidityOctaves = humidityOctaves;
+        p.humidityPersistence = humidityPersistence; p.humidityLacunarity = humidityLacunarity;
+        p.humidityScalingFactor = humidityScalingFactor;
+        p.biomeScaleChunks = biomeScaleChunks; p.snapClimateToCells = snapClimateToCells;
+        p.climateWarpFrequency = climateWarpFrequency; p.climateWarpStrength = climateWarpStrength;
+        p.desertMoistureThreshold = desertMoistureThreshold;
+        p.forestMoistureThreshold = forestMoistureThreshold;
+        p.snowTemperatureThreshold = snowTemperatureThreshold;
+        p.debugOresOnly = debugOresOnly;
+        return p;
+    }
+
+    static NetTerrainParams fromParams(const TerrainGenerationParams& p) {
+        NetTerrainParams pkt(p);
+        return pkt;
+    }
+
+    explicit NetTerrainParams(const TerrainGenerationParams& p) : Packet(ID) {
+        seed = p.seed; seaLevel = p.seaLevel; bedrockLevel = p.bedrockLevel;
+        riverFrequency = p.riverFrequency; riverOctaves = p.riverOctaves;
+        riverPersistence = p.riverPersistence; riverLacunarity = p.riverLacunarity;
+        riverWidth = p.riverWidth; riverBankFeather = p.riverBankFeather;
+        riverDepth = p.riverDepth; riverWarpFrequency = p.riverWarpFrequency;
+        riverWarpStrength = p.riverWarpStrength;
+        riverMinContinentalness = p.riverMinContinentalness;
+        riverMaxContinentalness = p.riverMaxContinentalness;
+        lakeFrequency = p.lakeFrequency; lakeOctaves = p.lakeOctaves;
+        lakePersistence = p.lakePersistence; lakeLacunarity = p.lakeLacunarity;
+        lakeThreshold = p.lakeThreshold; lakeFeather = p.lakeFeather;
+        lakeDepth = p.lakeDepth;
+        lakeMinContinentalness = p.lakeMinContinentalness;
+        lakeMaxContinentalness = p.lakeMaxContinentalness;
+        genSize = p.genSize; downsample = p.downsample;
+        continentalnessFrequency = p.continentalnessFrequency;
+        continentalnessOctaves = p.continentalnessOctaves;
+        continentalnessPersistence = p.continentalnessPersistence;
+        continentalnessLacunarity = p.continentalnessLacunarity;
+        continentalnessScalingFactor = p.continentalnessScalingFactor;
+        erosionFrequency = p.erosionFrequency; erosionOctaves = p.erosionOctaves;
+        erosionPersistence = p.erosionPersistence; erosionLacunarity = p.erosionLacunarity;
+        erosionScalingFactor = p.erosionScalingFactor;
+        peakValleyFrequency = p.peakValleyFrequency; peakValleyOctaves = p.peakValleyOctaves;
+        peakValleyPersistence = p.peakValleyPersistence; peakValleyLacunarity = p.peakValleyLacunarity;
+        peakValleyScalingFactor = p.peakValleyScalingFactor;
+        temperatureFrequency = p.temperatureFrequency; temperatureOctaves = p.temperatureOctaves;
+        temperaturePersistence = p.temperaturePersistence; temperatureLacunarity = p.temperatureLacunarity;
+        temperatureScalingFactor = p.temperatureScalingFactor;
+        humidityFrequency = p.humidityFrequency; humidityOctaves = p.humidityOctaves;
+        humidityPersistence = p.humidityPersistence; humidityLacunarity = p.humidityLacunarity;
+        humidityScalingFactor = p.humidityScalingFactor;
+        biomeScaleChunks = p.biomeScaleChunks; snapClimateToCells = p.snapClimateToCells;
+        climateWarpFrequency = p.climateWarpFrequency; climateWarpStrength = p.climateWarpStrength;
+        desertMoistureThreshold = p.desertMoistureThreshold;
+        forestMoistureThreshold = p.forestMoistureThreshold;
+        snowTemperatureThreshold = p.snowTemperatureThreshold;
+        debugOresOnly = p.debugOresOnly;
+    }
+
+    NetTerrainParams() : NetTerrainParams(TerrainGenerationParams{}) {}
+
+    void encode(BufferWriter& w) const override {
+        w.write_i32(seed);
+        w.write_i32(seaLevel);
+        w.write_i32(bedrockLevel);
+        w.write_f32(riverFrequency);
+        w.write_i32(riverOctaves);
+        w.write_f32(riverPersistence);
+        w.write_f32(riverLacunarity);
+        w.write_f32(riverWidth);
+        w.write_f32(riverBankFeather);
+        w.write_f32(riverDepth);
+        w.write_f32(riverWarpFrequency);
+        w.write_f32(riverWarpStrength);
+        w.write_f32(riverMinContinentalness);
+        w.write_f32(riverMaxContinentalness);
+        w.write_f32(lakeFrequency);
+        w.write_i32(lakeOctaves);
+        w.write_f32(lakePersistence);
+        w.write_f32(lakeLacunarity);
+        w.write_f32(lakeThreshold);
+        w.write_f32(lakeFeather);
+        w.write_f32(lakeDepth);
+        w.write_f32(lakeMinContinentalness);
+        w.write_f32(lakeMaxContinentalness);
+        w.write_i32(genSize);
+        w.write_i32(downsample);
+        w.write_f32(continentalnessFrequency);
+        w.write_i32(continentalnessOctaves);
+        w.write_f32(continentalnessPersistence);
+        w.write_f32(continentalnessLacunarity);
+        w.write_f32(continentalnessScalingFactor);
+        w.write_f32(erosionFrequency);
+        w.write_i32(erosionOctaves);
+        w.write_f32(erosionPersistence);
+        w.write_f32(erosionLacunarity);
+        w.write_f32(erosionScalingFactor);
+        w.write_f32(peakValleyFrequency);
+        w.write_i32(peakValleyOctaves);
+        w.write_f32(peakValleyPersistence);
+        w.write_f32(peakValleyLacunarity);
+        w.write_f32(peakValleyScalingFactor);
+        w.write_f32(temperatureFrequency);
+        w.write_i32(temperatureOctaves);
+        w.write_f32(temperaturePersistence);
+        w.write_f32(temperatureLacunarity);
+        w.write_f32(temperatureScalingFactor);
+        w.write_f32(humidityFrequency);
+        w.write_i32(humidityOctaves);
+        w.write_f32(humidityPersistence);
+        w.write_f32(humidityLacunarity);
+        w.write_f32(humidityScalingFactor);
+        w.write_i32(biomeScaleChunks);
+        w.write_u8(snapClimateToCells ? 1 : 0);
+        w.write_f32(climateWarpFrequency);
+        w.write_f32(climateWarpStrength);
+        w.write_f32(desertMoistureThreshold);
+        w.write_f32(forestMoistureThreshold);
+        w.write_f32(snowTemperatureThreshold);
+        w.write_u8(debugOresOnly ? 1 : 0);
+    }
+
+    void decode(BufferReader& r) override {
+        seed = r.read_i32();
+        seaLevel = r.read_i32();
+        bedrockLevel = r.read_i32();
+        riverFrequency = r.read_f32();
+        riverOctaves = r.read_i32();
+        riverPersistence = r.read_f32();
+        riverLacunarity = r.read_f32();
+        riverWidth = r.read_f32();
+        riverBankFeather = r.read_f32();
+        riverDepth = r.read_f32();
+        riverWarpFrequency = r.read_f32();
+        riverWarpStrength = r.read_f32();
+        riverMinContinentalness = r.read_f32();
+        riverMaxContinentalness = r.read_f32();
+        lakeFrequency = r.read_f32();
+        lakeOctaves = r.read_i32();
+        lakePersistence = r.read_f32();
+        lakeLacunarity = r.read_f32();
+        lakeThreshold = r.read_f32();
+        lakeFeather = r.read_f32();
+        lakeDepth = r.read_f32();
+        lakeMinContinentalness = r.read_f32();
+        lakeMaxContinentalness = r.read_f32();
+        genSize = r.read_i32();
+        downsample = r.read_i32();
+        continentalnessFrequency = r.read_f32();
+        continentalnessOctaves = r.read_i32();
+        continentalnessPersistence = r.read_f32();
+        continentalnessLacunarity = r.read_f32();
+        continentalnessScalingFactor = r.read_f32();
+        erosionFrequency = r.read_f32();
+        erosionOctaves = r.read_i32();
+        erosionPersistence = r.read_f32();
+        erosionLacunarity = r.read_f32();
+        erosionScalingFactor = r.read_f32();
+        peakValleyFrequency = r.read_f32();
+        peakValleyOctaves = r.read_i32();
+        peakValleyPersistence = r.read_f32();
+        peakValleyLacunarity = r.read_f32();
+        peakValleyScalingFactor = r.read_f32();
+        temperatureFrequency = r.read_f32();
+        temperatureOctaves = r.read_i32();
+        temperaturePersistence = r.read_f32();
+        temperatureLacunarity = r.read_f32();
+        temperatureScalingFactor = r.read_f32();
+        humidityFrequency = r.read_f32();
+        humidityOctaves = r.read_i32();
+        humidityPersistence = r.read_f32();
+        humidityLacunarity = r.read_f32();
+        humidityScalingFactor = r.read_f32();
+        biomeScaleChunks = r.read_i32();
+        snapClimateToCells = r.read_u8() != 0;
+        climateWarpFrequency = r.read_f32();
+        climateWarpStrength = r.read_f32();
+        desertMoistureThreshold = r.read_f32();
+        forestMoistureThreshold = r.read_f32();
+        snowTemperatureThreshold = r.read_f32();
+        debugOresOnly = r.read_u8() != 0;
+    }
+};
+inline AutoRegister<NetTerrainParams> _reg_NetTerrainParams;
 
 #endif

@@ -3,6 +3,7 @@
 //
 
 #include "App.hpp"
+#include <algorithm>
 
 App::App(const std::string& serverIp):
 			camera(nullptr),
@@ -98,6 +99,15 @@ void App::init(const std::string& serverIp) {
 	inventoryUI = std::make_shared<InventoryUI>(screenWidth, screenHeight, &textureManager);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
+
+    // Initialize terrain debug window for parameter tweaking
+    terrainDebugWindow = std::make_unique<TerrainDebugWindow>();
+    // Set callback to send terrain params to server when changed
+    terrainDebugWindow->setSendParamsCallback([this](const NetTerrainParams& pkt) {
+        if (udpClient) {
+            udpClient->sendPacket(pkt);
+        }
+    });
 
     gBuffer = std::make_shared<GBuffer>(screenWidth, screenHeight);
     ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
@@ -352,8 +362,23 @@ void App::setUdpClientPacketCallback()
 
             case PacketType::NET_IMGUI: {
                 auto& p = static_cast<NetImGui&>(*pkt);
-                // handle ImGui data (e.g., update UI state)
                 currentBiome = p.currentBiome;
+                currentTerrainHeight = p.terrainHeight;
+                currentSeaLevel = p.seaLevel;
+                currentWorldSeed = p.worldSeed;
+                currentContinentalness = p.continentalness;
+                currentErosion = p.erosion;
+                currentPeakValley = p.peakValley;
+                currentTemperature = p.temperature;
+                currentHumidity = p.humidity;
+                break;
+            }
+
+            case PacketType::NET_TERRAIN_PARAMS: {
+                auto& p = static_cast<NetTerrainParams&>(*pkt);
+                // Log receipt of terrain params update
+                std::cout << "[Client] Received terrain parameters update from server (seed: " << p.seed << ")\n";
+                // Could optionally cache these for UI display, but server will handle actual generation
                 break;
             }
 
@@ -903,59 +928,57 @@ void App::debugWindow() {
                     // Display camera coordinates
                     ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
 
-                    // ImGui::Text("World SEED: %i", params.seed);
+                    ImGui::Text("World SEED: %d", currentWorldSeed);
+                    ImGui::Text("Terrain Height: %d (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
+                    ImGui::Text("Continentalness: %.3f", currentContinentalness);
+                    ImGui::Text("Erosion: %.3f", currentErosion);
+                    ImGui::Text("Peak/Valley: %.3f", currentPeakValley);
+                    ImGui::Text("Temperature: %.3f", currentTemperature);
+                    ImGui::Text("Humidity: %.3f", currentHumidity);
 
-                    // ImGui::Text("Continentalness: %.3f", Chunk::getContinentalness(params, wx, wz));
-                    // ImGui::Text("Erosion: %.3f", Chunk::getErosion(params, wx, wz));
-                    // ImGui::Text("Peak/Valley: %.3f", Chunk::getPV(params, wx, wz));
-                    // ImGui::Text("Temperature: %.3f", Chunk::getTemperature(params, wx, wz));
-                    // ImGui::Text("Humidity: %.3f", Chunk::getHumidity(params, wx, wz));
-
-                    uint8_t biome = currentBiome;
                     const char* biomeName =
-                        (static_cast<BiomeType>(biome) == BiomeType::PLAINS) ? "PLAINS" :
-                        (static_cast<BiomeType>(biome) == BiomeType::DESERT) ? "DESERT" :
-                        (static_cast<BiomeType>(biome) == BiomeType::FOREST) ? "FOREST" :
-                        (static_cast<BiomeType>(biome) == BiomeType::TUNDRA) ? "TUNDRA" :
-                        (static_cast<BiomeType>(biome) == BiomeType::SWAMP)  ? "SWAMP"  :
-                        (static_cast<BiomeType>(biome) == BiomeType::OCEAN)  ? "OCEAN"  :
-                        (static_cast<BiomeType>(biome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
-                                                    "UNKNOWN";
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::PLAINS) ? "PLAINS" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::DESERT) ? "DESERT" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::FOREST) ? "FOREST" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::TUNDRA) ? "TUNDRA" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::SWAMP)  ? "SWAMP"  :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::OCEAN)  ? "OCEAN"  :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
+                                                                                    "UNKNOWN";
                     ImGui::Text("BIOME: %s", biomeName);
 
+                    // Additional metrics: number of loaded chunks and approximate memory usage
+                    if (renderer) {
+                        const size_t visibleChunks = renderer->getVisibleChunkCount();
+                        const size_t totalChunks   = renderer->getTotalChunkCount();
+                        ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
 
-            // Additional metrics: number of loaded chunks and approximate memory usage
-            if (renderer) {
-                const size_t visibleChunks = renderer->getVisibleChunkCount();
-                const size_t totalChunks   = renderer->getTotalChunkCount();
-                ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
-
-                size_t solidVertices = 0;
-                size_t waterVertices = 0;
-                for (auto& weakChunk : renderer->getRenderedChunks()) {
-                    if (auto chunk = weakChunk.lock()) {
-                        solidVertices += chunk->getMeshVerticesSize() / 10;
-                        waterVertices += chunk->getWaterMeshVerticesSize() / 10;
+                        size_t solidVertices = 0;
+                        size_t waterVertices = 0;
+                        for (auto& weakChunk : renderer->getRenderedChunks()) {
+                            if (auto chunk = weakChunk.lock()) {
+                                solidVertices += chunk->getMeshVerticesSize() / 10;
+                                waterVertices += chunk->getWaterMeshVerticesSize() / 10;
+                            }
+                        }
+                        
+                        size_t totalVertices = solidVertices + waterVertices;
+                        size_t totalTriangles = totalVertices / 3;
+                        size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
+                        
+                        // TODO: fix real count based on frustum culling
+                        ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
+                        ImGui::Text("Triangles: %zu", totalTriangles);
+                        ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
                     }
-                }
-                
-                size_t totalVertices = solidVertices + waterVertices;
-                size_t totalTriangles = totalVertices / 3;
-                size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
-                
-                // TODO: fix real count based on frustum culling
-                ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
-                ImGui::Text("Triangles: %zu", totalTriangles);
-                ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
-            }
 
-            // Display memory usage in megabytes.  We call a static helper to
-            // obtain the current resident set size (RSS).
-            {
-                const size_t memBytes = getCurrentRSS();
-                const double memMB = memBytes / (1024.0 * 1024.0);
-                ImGui::Text("Memory: %.2f MB", memMB);
-            }
+                    // Display memory usage in megabytes.  We call a static helper to
+                    // obtain the current resident set size (RSS).
+                    {
+                        const size_t memBytes = getCurrentRSS();
+                        const double memMB = memBytes / (1024.0 * 1024.0);
+                        ImGui::Text("Memory: %.2f MB", memMB);
+                    }
 
 
                     ImGui::Separator();
@@ -979,74 +1002,41 @@ void App::debugWindow() {
                     // Need to expose terrainParams from the server to the client..
                     // ImGui::Checkbox("Debug: Ores Only", &terrainParams.debugOresOnly);
 
-                    // if (ImGui::CollapsingHeader("Noise Generation")) {
-                    //     if (ImGui::CollapsingHeader("Continentalness Parameters")) {
-                    //         ImGui::SliderFloat("frequency", &params.continentalnessFrequency, 0.001f, 0.01f);
-                    //         ImGui::SliderInt("octaves", &params.continentalnessOctaves, 1, 10);
-                    //         ImGui::SliderFloat("persistence", &params.continentalnessPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("lacunarity", &params.continentalnessLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("scaling factor", &params.continentalnessScalingFactor, 1.0f, 5.0f);
-                    //     }
+                    ImGui::Separator();
 
-                    //     if (ImGui::CollapsingHeader("Erosion Parameters")) {
-                    //         ImGui::SliderFloat("#frequency", &params.erosionFrequency, 0.001f, 0.02f);
-                    //         ImGui::SliderInt("#octaves", &params.erosionOctaves, 1, 10);
-                    //         ImGui::SliderFloat("#persistence", &params.erosionPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("#lacunarity", &params.erosionLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("#scaling factor", &params.erosionScalingFactor, 1.0f, 5.0f);
-                    //     }
+                    if (ImGui::CollapsingHeader("Heightmap")) {
+                        ImGui::Text("Heightmap Generation (server-side)");
+                        ImGui::InputInt("Size ([1-1024])", &debugTerrainParams.genSize);
+                        ImGui::InputInt("Downsample ([1-256])", &debugTerrainParams.downsample);
 
-                    //     if (ImGui::CollapsingHeader("Peak/Valley Parameters")) {
-                    //         ImGui::SliderFloat("-frequency", &params.peakValleyFrequency, 0.001f, 0.09f);
-                    //         ImGui::SliderInt("-octaves", &params.peakValleyOctaves, 1, 10);
-                    //         ImGui::SliderFloat("-persistence", &params.peakValleyPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("-lacunarity", &params.peakValleyLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("-scaling factor", &params.peakValleyScalingFactor, 1.0f, 5.0f);
-                    //     }
+                        debugTerrainParams.genSize = std::max(1, debugTerrainParams.genSize);
+                        debugTerrainParams.downsample = std::max(1, debugTerrainParams.downsample);
 
-                    //     if (ImGui::CollapsingHeader("Temperature Parameters")) {
-                    //         ImGui::SliderFloat("--frequency", &params.temperatureFrequency, 0.0001f, 0.0012f);
-                    //         ImGui::SliderInt("--octaves", &params.temperatureOctaves, 1, 10);
-                    //         ImGui::SliderFloat("--persistence", &params.temperaturePersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("--lacunarity", &params.temperatureLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("--scaling factor", &params.temperatureScalingFactor, 1.0f, 5.0f);
-                    //     }
+                        auto sendDumpCommand = [&](const char* mode) {
+                            if (!udpClient) return;
+                            NetMessage cmd;
+                            cmd.message = std::string("/dump ") + mode + " " +
+                                          std::to_string(debugTerrainParams.genSize) + " " +
+                                          std::to_string(debugTerrainParams.downsample);
+                            udpClient->sendPacket(cmd);
+                        };
 
-                    //     if (ImGui::CollapsingHeader("Humidity Parameters")) {
-                    //         ImGui::SliderFloat("---frequency", &params.humidityFrequency, 0.0005f, 0.0015f);
-                    //         ImGui::SliderInt("---octaves", &params.humidityOctaves, 1, 10);
-                    //         ImGui::SliderFloat("---persistence", &params.humidityPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("---lacunarity", &params.humidityLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("---scaling factor", &params.humidityScalingFactor, 1.0f, 5.0f);
-                    //     }
-                    // }
+                        if (ImGui::Button("Generate Hydros")) {
+                            sendDumpCommand("hydro");
+                        }
 
+                        if (ImGui::Button("Generate Noises")) {
+                            sendDumpCommand("noises");
+                        }
+                        if (ImGui::Button("Generate Heightmaps")) {
+                            sendDumpCommand("heightmap");
+                        }
+                        if (ImGui::Button("Generate Biome Map")) {
+                            sendDumpCommand("biome");
+                        }
+                    }
 
-                    // ImGui::Separator();
-
-                    // if (ImGui::CollapsingHeader("Heightmap")) {
-                    //     // Create heightmap image
-                    //     ImGui::Text("Heightmap Generation");
-                    //     ImGui::InputInt("Size (ex. 100)", &params.genSize);
-                    //     ImGui::InputInt("Downsample (ex. 8)", &params.downsample);
-                    //     if (ImGui::Button("Generate Noises")) {
-                    //         if (world) {
-                    //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 1);
-                    //         }
-                    //     }
-                    //     if (ImGui::Button("Generate Heightmaps")) {
-                    //         if (world) {
-                    //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 0);
-                    //         }
-                    //     }
-                    //     if (ImGui::Button("Generate Biome Map")) {
-                    //         if (world) {
-                    //             world->dumpBiomeMap(0, 0, params.genSize, params.genSize, params.downsample);
-                    //         }
-                    //     }
-                    // }
-
-                    // ImGui::Separator();
+                    ImGui::Separator();
 
                     if (ImGui::CollapsingHeader("Rendering")) {
                         if (ImGui::BeginTabBar("Rendering", tab_bar_flags))
@@ -1168,6 +1158,7 @@ void App::debugWindow() {
                                 ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
                                 ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
                                 
+
                                 ImGui::Separator();
                                 ImGui::Text("Render Type");
                                 ImGui::Checkbox("Show Normals View", &showNormalsTexture);
@@ -1397,7 +1388,6 @@ void App::debugWindow() {
                 			lighting->setUnderwaterFogColor(underwaterFogColor);
 
                 		float underwaterFogDensity = lighting->getUnderwaterFogDensity();
-
                 		if (ImGui::SliderFloat("Underwater Fog Density", &underwaterFogDensity, 0.00f, 0.5f, "%.2f"))
                 			lighting->setUnderwaterFogDensity(underwaterFogDensity);
                 	}
@@ -1443,6 +1433,16 @@ void App::debugWindow() {
             if (!uiInteractive) {
                 ImGui::PopStyleVar();
             }
+        }
+
+        // ── Terrain Debug Window ──
+        if (terrainDebugWindow && showDebugWindow) {
+            // Get the actual terrain params from the world (server side)
+            // For now, use default params but they should persist across frames
+            if (!terrainDebugWindowParams) {
+                terrainDebugWindowParams = std::make_unique<TerrainGenerationParams>();
+            }
+            terrainDebugWindow->render(*terrainDebugWindowParams);
         }
 
         // ── Detachable Profiler Window ──

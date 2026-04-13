@@ -30,6 +30,7 @@
 #include "GBuffer.hpp"
 #include "SSAO.hpp"
 #include "TextureManager.hpp"
+#include "ui/TerrainDebugWindow.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -99,6 +100,11 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha);
 
 class App {
 public:
+    struct TerrainDebugUIParams {
+        int genSize = 500;
+        int downsample = 8;
+    };
+
     App(const std::string& serverIp = "127.0.0.1");
     ~App();
 
@@ -181,6 +187,9 @@ private:
 	// Render type debug framebuffers
 	std::unique_ptr<RenderTypeFramebuffer> renderTypeFramebuffer;
 
+    // Terrain parameter debugging and tweaking
+    std::unique_ptr<TerrainDebugWindow> terrainDebugWindow;
+    std::unique_ptr<TerrainGenerationParams> terrainDebugWindowParams;
     // SSAO
     std::shared_ptr<GBuffer> gBuffer;
     std::shared_ptr<SSAO> ssao;
@@ -188,7 +197,17 @@ private:
 
 	std::optional<int> seed;
 
-    uint8_t currentBiome;
+    uint8_t currentBiome = 0;
+    int currentTerrainHeight = 0;
+    int currentSeaLevel = 64;
+    int currentWorldSeed = 0;
+    float currentContinentalness = 0.0f;
+    float currentErosion = 0.0f;
+    float currentPeakValley = 0.0f;
+    float currentTemperature = 0.0f;
+    float currentHumidity = 0.0f;
+
+    TerrainDebugUIParams debugTerrainParams;
 
     float lastX = 400, lastY = 300;
     bool firstMouse = true;

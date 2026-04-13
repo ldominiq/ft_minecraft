@@ -1,13 +1,15 @@
-
 #ifndef CHUNK_GENERATION_HPP
 #define CHUNK_GENERATION_HPP
 
-#include "TerrainParams.hpp"
+#include "../shared/TerrainParams.hpp"
+#include "TerrainParams.hpp"  // Includes oreTable and Item.hpp for server builds
 #include "Noise.hpp"
 #include "Chunk.hpp"
 
 #include <ranges>
 #include <algorithm>
+#include <limits>
+#include <span>
 
 class ChunkGeneration : public Chunk {
 
@@ -25,7 +27,7 @@ class ChunkGeneration : public Chunk {
 		void generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 
-		static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
+		static float interpolateSpline(float noise, std::span<const std::pair<float, float>> spline);
 
 		static float getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz);
 		static float getErosion(const TerrainGenerationParams& terrainParams, float wx, float wz);
@@ -33,6 +35,14 @@ class ChunkGeneration : public Chunk {
 
 		static float getTemperature(const TerrainGenerationParams& terrainParams, float wx, float wz);
 		static float getHumidity(const TerrainGenerationParams& terrainParams, float wx, float wz);
+
+		// Raw hydrology noise fields (for debug/image dumps)
+		static float getRiverNoise(const TerrainGenerationParams& terrainParams, float wx, float wz);
+		static float getLakeNoise(const TerrainGenerationParams& terrainParams, float wx, float wz);
+
+		// Final masks used by terrain carving (0..1)
+		static float getRiverMask(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, float continentalness, float baseHeight, float pv);
+		static float getLakeMask(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, float continentalness, float baseHeight, float pv);
 
 		static float surfaceNoiseTransformation(float noise, int splineIndex);
 

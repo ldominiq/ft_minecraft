@@ -75,6 +75,8 @@ class World final : public CommonWorld<ChunkGeneration>
     std::size_t maxConcurrentGeneration = 20;
 	std::size_t maxConcurrentGenerationPerPlayer = 4;
 
+	static constexpr size_t MAX_DUMP_PIXELS = 4096ULL * 4096ULL; // ~64MB/channel
+
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneration> &chunk); // TODO : consider moving to shared?
 
 	std::unordered_set<ChunkPos> loadedRegions;
@@ -101,8 +103,8 @@ class World final : public CommonWorld<ChunkGeneration>
 		std::vector<ChunkPos> rdyChunks;
 		std::unordered_map<int, std::unordered_set<ChunkPos>> PlayerKnownChunks;
 
-		void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
-		void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
+		void dumpHeightmap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
+		void dumpBiomeMap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
 
 		std::vector<s_waterPath> findShortestWaterPath(const glm::ivec3 &initialBlockPos);
 		std::vector<std::shared_ptr<s_liquid>> waterFlowTowardsShortestPath(const glm::ivec3 &initialBlockPos, const std::shared_ptr<s_liquid> &liquid, const std::vector<s_waterPath> &paths);
@@ -123,6 +125,9 @@ class World final : public CommonWorld<ChunkGeneration>
 		void saveRegionsOnExit();
 		// Terrain params for ImGui
 		TerrainGenerationParams& getTerrainParams() { return terrainParams;}
+
+		// Set all terrain parameters at once (used for syncing from client)
+		void setTerrainParams(const TerrainGenerationParams& p) { terrainParams = p; }
 
 		// void setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates, const CPlayerInfo &player);
 		// void updatePlannedChunks(CPlayerInfo &player);
