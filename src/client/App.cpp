@@ -1420,19 +1420,9 @@ void App::debugWindow() {
                                     pkt.sunStepTimer  = lighting->getSunStepTimer();
                                     udpClient->sendPacket(pkt);
                                 }
+
+                                ImGui::Separator();
                                 if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused)) {
-
-                                ImGui::Separator();
-                                ImGui::Text("Distance Fog");
-                                ImGui::Checkbox("Fog Enabled", &fogEnabled);
-                                if (fogEnabled) {
-                                    ImGui::SliderFloat("Fog Start (fraction of chunk radius)", &fogStartFraction, 0.0f, 0.95f, "%.2f");
-                                    ImGui::SliderFloat("Fog Strength", &fogStrength, 0.1f, 10.0f, "%.1f");
-                                    ImGui::Text("Fog range: %.0f - %.0f blocks", renderer->getMaxRenderedChunkDist() * fogStartFraction, renderer->getMaxRenderedChunkDist());
-                                }
-
-                                ImGui::Separator();
-                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                                     lighting->setSkyTimePaused(skyTimePaused);
                                     NetSkyTime pkt;
                                     pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
@@ -1472,6 +1462,17 @@ void App::debugWindow() {
                                 if (ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f"))
                                     lighting->setPlanetScale(planetScale);
                                 ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
+                                ImGui::EndTabItem();
+                            }
+
+                            if (ImGui::BeginTabItem("Fog")) {
+                                ImGui::Text("Distance Fog");
+                                ImGui::Checkbox("Fog Enabled", &fogEnabled);
+                                if (fogEnabled) {
+                                    ImGui::SliderFloat("Fog Start (fraction of chunk radius)", &fogStartFraction, 0.0f, 0.95f, "%.2f");
+                                    ImGui::SliderFloat("Fog Strength", &fogStrength, 0.1f, 10.0f, "%.1f");
+                                    ImGui::Text("Fog range: %.0f - %.0f blocks", renderer->getMaxRenderedChunkDist() * fogStartFraction, renderer->getMaxRenderedChunkDist());
+                                }
                                 ImGui::EndTabItem();
                             }
 
