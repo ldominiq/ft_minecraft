@@ -237,7 +237,6 @@ void TextureManager::setupBlockTextureMapping() {
     // Minecraft grass/leaves textures are grayscale — the game multiplies
     // them by a biome color at runtime.  We do it once at load time.
 
-    unsigned char r = 0xff, g = 0x00, b = 0x00; // red tint debug
     // Biome grass tints
     biomeGrassTopLayer[BiomeType::PLAINS] = addTintedLayer("grass_block_top", 0x91, 0xBD, 0x59);
     biomeGrassTopLayer[BiomeType::SAVANNA] = addTintedLayer("grass_block_top", 0xB3, 0xBD, 0x59);
