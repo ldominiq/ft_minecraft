@@ -3,10 +3,9 @@
 
 #include <vector>
 #include <functional>
+#include <span>
 #include <glad/glad.h>
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
 #include "Protocol.hpp"
 #include "Noise.hpp"
 
@@ -35,7 +34,7 @@ private:
     float sampleContinentalness(const TerrainGenerationParams& p, float wx, float wz);
     float sampleErosion(const TerrainGenerationParams& p, float wx, float wz);
     float samplePV(const TerrainGenerationParams& p, float wx, float wz);
-    float interpolateSpline(float t, const std::vector<std::pair<float,float>>& spline);
+    float interpolateSpline(float t, std::span<const std::pair<float,float>> spline);
     // Returns terrain surface height; writes continentalness, riverMask, lakeMask into out params
     float computeHeight(const TerrainGenerationParams& p, float wx, float wz,
                         float& outCont, float& outRiver, float& outLake);

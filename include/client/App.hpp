@@ -31,6 +31,7 @@
 #include "SSAO.hpp"
 #include "TextureManager.hpp"
 #include "ui/TerrainDebugWindow.hpp"
+#include "FogUniforms.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -39,6 +40,7 @@
 #include <glm/vec3.hpp>
 #include <cstdint>
 #include <memory>
+#include <algorithm>
 
 #include <optional>
 
@@ -238,6 +240,11 @@ private:
     bool useGradientShader = false;
 
     float renderDistance = 1000.0f; // Distance of the far clipping plane
+
+    // Distance fog
+    float fogStartFraction = 0.5f;  // fog begins at this fraction of maxRenderedChunkDist (0=camera, 1=edge) (the nearest unloaded chunk boundary)
+    float fogStrength = 1.4f;       // exponent on fog ramp: 1=linear, 10=at the edge
+    bool  fogEnabled = true;
 
     // Variables for smoothing the FPS shown in the debug UI.  We maintain a
     // moving average of frame times over a sample buffer to reduce jitter.

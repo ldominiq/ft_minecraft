@@ -3,7 +3,6 @@
 //
 
 #include "App.hpp"
-#include <algorithm>
 
 App::App(const std::string& serverIp):
 			camera(nullptr),
@@ -406,6 +405,19 @@ void App::setUdpClientPacketCallback()
                 break;
             }
 
+            case PacketType::NET_SKY_TIME: {
+                auto& p = static_cast<NetSkyTime&>(*pkt);
+                lighting->setSkyTimeOffset(p.skyTimeOffset);
+                lighting->setSunYawDeg(p.sunYawDeg);
+                lighting->setSkyTimePaused(p.skyTimePaused);
+                lighting->setSunStepping(p.sunStepping);
+                lighting->setSunPauseTimer(p.sunPauseTimer);
+                lighting->setSunStepTimer(p.sunStepTimer);
+                lighting->setSkyMode(p.skyMode);
+                lighting->setSkyTimeSpeed(p.skyTimeSpeed);
+                break;
+            }
+
 			default:
 				std::cout << "Unknown packet type: " << static_cast<int>(pkt->type) << "\n";
 				break;
@@ -651,22 +663,26 @@ void App::render() {
             // render refraction texture
             waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
         }
-        glEndQuery(GL_TIME_ELAPSED);
-
+        glEndQuery(GL_TIME_ELAPSED);    	
+        
+        const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
+        const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
+        renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
+        
     	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
     	renderScene(view, projection, clipPlane, !waterVisible);
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
-        if (waterVisible)
+        if (waterVisible) {
+            const float chunkDist = renderer->getMaxRenderedChunkDist();
+            waterRenderer->setFogParams(fogEnabled, chunkDist * fogStartFraction, chunkDist, fogStrength);
     	    waterRenderer->renderWaterSurface(projection);
+        }
         glEndQuery(GL_TIME_ELAPSED);
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
-		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius());
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         // Draw chunk boundary overlay (if enabled)
@@ -818,8 +834,10 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
     glEndQuery(GL_TIME_ELAPSED);
 
+    const bool cameraUnderwater = camera->getPlayer()->isUnderwater(*renderer);
+
     glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);
-    lighting->drawSky(view, projection, camera->getPlayer()->getPosition(), camera->getPlayer()->isUnderwater(*renderer));
+    lighting->drawSky(view, projection, camera->getPlayer()->getPosition(), cameraUnderwater);
     glEndQuery(GL_TIME_ELAPSED);
 
     // Now render terrain with depth testing enabled
@@ -833,22 +851,29 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
     lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
-	lighting->uploadUnderwaterUniforms(*activeShader);
-	activeShader->setBool("cameraUnderwater", camera->getPlayer()->isUnderwater(*renderer));
-	activeShader->setFloat("underwaterDepth", camera->getPlayer()->getDepthUnderwater());
+    lighting->uploadUnderwaterUniforms(*activeShader);
+    activeShader->setBool("cameraUnderwater", cameraUnderwater);
     lighting->uploadCSMUniforms(*activeShader, view);
 
     // Bind SSAO texture for the lighting shader (must be after activeShader->use())
     // useSSAO is false when the GBuffer pass was skipped (e.g. water visible this frame).
     if (ssao && ssao->isEnabled() && useSSAO) {
-        glActiveTexture(GL_TEXTURE5);
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::SSAO);
         glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
-        activeShader->setInt("ssaoTexture", 5);
+        activeShader->setInt("ssaoTexture", TextureUnits::SSAO);
         activeShader->setInt("ssaoEnabled", 1);
         activeShader->setVec2("screenSize", glm::vec2(screenWidth, screenHeight));
     } else {
         activeShader->setInt("ssaoEnabled", 0);
     }
+
+    // Fog
+    GLuint skyLUTTex = lighting->getSkyLUTTexture();
+    const float maxChunkDist = renderer->getMaxRenderedChunkDist();
+    const float fogEnd   = maxChunkDist;
+    const float fogStart = maxChunkDist * fogStartFraction;
+    uploadFogUniforms(*activeShader, fogEnabled, skyLUTTex,
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
 
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
@@ -878,7 +903,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setFloat("seaLevel", 64.0f);
 
         // Underwater fog for vegetation
-        vegShader->setBool("cameraUnderwater", camera->getPlayer()->isUnderwater(*renderer));
+        vegShader->setBool("cameraUnderwater", cameraUnderwater);
     	vegShader->setVec3("underwaterTintColor", lighting->getUnderwaterTintColor());
     	vegShader->setVec3("underwaterFogColor", lighting->getUnderwaterFogColor());
     	vegShader->setFloat("underwaterFogDensity", lighting->getUnderwaterFogDensity());
@@ -886,6 +911,10 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         // Upload CSM shadow uniforms to vegetation shader
         lighting->uploadCSMUniforms(*vegShader, view);
         vegShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
+
+        // Fog for vegetation
+        uploadFogUniforms(*vegShader, fogEnabled, skyLUTTex,
+                          lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
 
         activeShader->use(); // Switch back to main shader
     }
@@ -1055,13 +1084,14 @@ void App::debugWindow() {
 
                     if (ImGui::CollapsingHeader("Heightmap")) {
                         ImGui::Text("Heightmap Generation (server-side)");
-                        ImGui::InputInt("Size (ex. 100)", &debugTerrainParams.genSize);
-                        ImGui::InputInt("Downsample (ex. 8)", &debugTerrainParams.downsample);
+                        ImGui::InputInt("Size ([1-1024])", &debugTerrainParams.genSize);
+                        ImGui::InputInt("Downsample ([1-256])", &debugTerrainParams.downsample);
 
                         debugTerrainParams.genSize = std::max(1, debugTerrainParams.genSize);
                         debugTerrainParams.downsample = std::max(1, debugTerrainParams.downsample);
 
                         auto sendDumpCommand = [&](const char* mode) {
+                            if (!udpClient) return;
                             NetMessage cmd;
                             cmd.message = std::string("/dump ") + mode + " " +
                                           std::to_string(debugTerrainParams.genSize) + " " +
@@ -1334,6 +1364,8 @@ void App::debugWindow() {
                     ImGui::Separator();
                     if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
                         bool skyTimePaused = lighting->isSkyTimePaused();
+                        int skyMode = static_cast<int>(lighting->getSkyMode());
+                        float skyTimeSpeed = lighting->getSkyTimeSpeed();
                     	float skyTimeOffset = lighting->getSkyTimeOffset();
                     	float sunYawDeg = lighting->getSunYawDeg();
                     	float skyExposure = lighting->getSkyExposure();
@@ -1357,12 +1389,77 @@ void App::debugWindow() {
                                 bool skyLUTEnabled = lighting->isSkyLUTEnabled();
                                 if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
                                     lighting->setSkyLUTEnabled(skyLUTEnabled);
+                                // Mode selector
+                                {
+                                    bool modeChanged = ImGui::RadioButton("Skyrim (pause/step)", &skyMode, 0);
+                                    ImGui::SameLine();
+                                    modeChanged |= ImGui::RadioButton("Smooth (linear)", &skyMode, 1);
+                                    if (modeChanged) {
+                                        lighting->setSkyMode(static_cast<uint8_t>(skyMode));
+                                        NetSkyTime pkt;
+                                        pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                        pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                        pkt.skyTimeSpeed  = skyTimeSpeed;
+                                        pkt.sunStepping   = lighting->getSunStepping();
+                                        pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                        pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                        udpClient->sendPacket(pkt);
+                                    }
+                                }
+                                if (ImGui::SliderFloat("Time Speed", &skyTimeSpeed, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
+                                    lighting->setSkyTimeSpeed(skyTimeSpeed);
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused)) {
+
+                                ImGui::Separator();
+                                ImGui::Text("Distance Fog");
+                                ImGui::Checkbox("Fog Enabled", &fogEnabled);
+                                if (fogEnabled) {
+                                    ImGui::SliderFloat("Fog Start (fraction of chunk radius)", &fogStartFraction, 0.0f, 0.95f, "%.2f");
+                                    ImGui::SliderFloat("Fog Strength", &fogStrength, 0.1f, 10.0f, "%.1f");
+                                    ImGui::Text("Fog range: %.0f - %.0f blocks", renderer->getMaxRenderedChunkDist() * fogStartFraction, renderer->getMaxRenderedChunkDist());
+                                }
+
+                                ImGui::Separator();
                                 if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
                                     lighting->setSkyTimePaused(skyTimePaused);
-                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f"))
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f")) {
                                     lighting->setSkyTimeOffset(skyTimeOffset);
-                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping = false; pkt.sunPauseTimer = 0.0f; pkt.sunStepTimer = 0.0f;
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f")) {
                                     lighting->setSunYawDeg(sunYawDeg);
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
                                 if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
                                     lighting->setSkyExposure(skyExposure);
                                 if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))

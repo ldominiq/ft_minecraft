@@ -56,6 +56,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(imgui)
 
 # ZSTD
+set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
   zstd
   GIT_REPOSITORY https://github.com/facebook/zstd.git
@@ -123,6 +124,7 @@ target_link_libraries(imgui PUBLIC glfw ${CMAKE_DL_LIBS})
 file(GLOB_RECURSE SHADER_FILES
         "${CMAKE_SOURCE_DIR}/shaders/*.vert"
         "${CMAKE_SOURCE_DIR}/shaders/*.frag"
+        "${CMAKE_SOURCE_DIR}/shaders/*.glsl"
 )
 
 add_custom_target(update_shaders DEPENDS ${SHADER_FILES})
@@ -191,7 +193,7 @@ file(GLOB_RECURSE SERVER_SRC
 
 
 # Client executable
-add_executable(ft_minecraft ${CLIENT_SRC} ${CMAKE_SOURCE_DIR}/src/server/Noise.cpp)
+add_executable(ft_minecraft ${CLIENT_SRC})
 target_include_directories(ft_minecraft PRIVATE
     ${CMAKE_SOURCE_DIR}/include/client
 	${CMAKE_SOURCE_DIR}/include/client/characters
@@ -199,7 +201,6 @@ target_include_directories(ft_minecraft PRIVATE
 	${CMAKE_SOURCE_DIR}/include/client/menus
     ${CMAKE_SOURCE_DIR}/include/shared
 	${CMAKE_SOURCE_DIR}/include/shared/Mobs
-    ${CMAKE_SOURCE_DIR}/include/server
     ${glm_SOURCE_DIR}
     ${fastnoise_SOURCE_DIR}/Cpp
     ${glad_SOURCE_DIR}/include

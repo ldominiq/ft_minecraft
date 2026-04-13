@@ -26,6 +26,17 @@ uniform float waveStrength;        // Distortion intensity
 const float shineDamper = 20.0;
 const float reflectivity = 0.5;
 
+// Distance fog (sky LUT blending)
+uniform sampler2D skyLUT;
+uniform float skyExposure;
+uniform float fogStart;
+uniform float fogEnd;
+uniform float fogStrength;
+uniform bool fogEnabled;
+uniform vec3 sunDir;
+
+#include "sky_common.glsl"
+
 void main() {
     vec2 ndc = (clipSpace.xy/clipSpace.w) * 0.5 + 0.5;
     vec2 refractTexCoords = vec2(ndc.x, ndc.y);
@@ -87,4 +98,14 @@ void main() {
 		// draw the inside with transparency
 		FragColor.a *= 0.8;
 	}
+
+    if (fogEnabled) {
+        float dist = length(toCameraVector);
+        float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
+        vec3 viewDir = normalize(-toCameraVector); // direction from camera toward water
+        vec3 fogColor = sampleSkyColor(skyLUT, viewDir, sunDir, skyExposure);
+        FragColor.rgb = mix(fogColor, FragColor.rgb, fogFactor);
+        // Also fade alpha so water edge softens into fog
+        FragColor.a *= fogFactor;
+    }
 }

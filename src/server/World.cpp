@@ -63,7 +63,7 @@ static void saveHeightmapPPM(const std::string &path, const std::vector<float> &
 // centerChunkX/Z: center of the dump in chunk coordinates
 // chunksX/chunksZ: number of chunks across and down (total image = chunksX*Chunk::WIDTH)
 // downsample: sample every N world-voxels to reduce output resolution and cost
-void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const {
+void World::dumpHeightmap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const {
     if (downsample < 1) downsample = 1;
 
     // compute world bounds in world-block coordinates
@@ -79,36 +79,48 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
     // output resolution after downsampling
     const int outW = static_cast<int>((worldW + downsample - 1) / downsample);
     const int outH = static_cast<int>((worldD + downsample - 1) / downsample);
-    std::vector<float> img(outW * outH);
-    std::vector<float> imgCont(outW * outH);
-    std::vector<float> imgEro(outW * outH);
-    std::vector<float> imgPV(outW * outH);
-    std::vector<float> imgHumidity(outW * outH);
-    std::vector<float> imgTemperature(outW * outH);
-    std::vector<float> imgRiverNoise(outW * outH);
-    std::vector<float> imgRiverMask(outW * outH);
-    std::vector<float> imgLakeNoise(outW * outH);
-    std::vector<float> imgLakeMask(outW * outH);
+
+	if (outW <= 0 || outH <= 0 || static_cast<size_t>(outW) * static_cast<size_t>(outH) > MAX_DUMP_PIXELS) {
+        std::cerr << "[World] dumpHeightmap: " << outW << "x" << outH << " exceeds limit. Aborting.\n";
+        return;
+    }
+
+    const size_t npixels = static_cast<size_t>(outW) * outH;
+	std::vector<float> img, imgCont, imgEro, imgPV, imgHumidity, imgTemperature;
+	std::vector<float> imgRiverNoise, imgRiverMask, imgLakeNoise, imgLakeMask;
+
+	if (image == 0) {
+		img.resize(npixels);
+	} else if (image == 1) {
+		imgCont.resize(npixels); imgEro.resize(npixels); imgPV.resize(npixels);
+		imgHumidity.resize(npixels); imgTemperature.resize(npixels);
+		imgRiverNoise.resize(npixels); imgRiverMask.resize(npixels);
+		imgLakeNoise.resize(npixels); imgLakeMask.resize(npixels);
+	} else if (image == 2) {
+		imgRiverNoise.resize(npixels); imgRiverMask.resize(npixels);
+		imgLakeNoise.resize(npixels); imgLakeMask.resize(npixels);
+	}
+
+    // Precompute erosion spline range once — used in every pixel
+    float eroMin = std::numeric_limits<float>::infinity();
+    float eroMax = -std::numeric_limits<float>::infinity();
+    for (const auto& sp : erosionSpline) {
+        eroMin = glm::min(eroMin, sp.second);
+        eroMax = glm::max(eroMax, sp.second);
+    }
 
     for (int oz = 0, wz = 0; wz < outH; ++wz, oz += downsample) {
         for (int ox = 0, wx = 0; wx < outW; ++wx, ox += downsample) {
             const auto worldX = static_cast<float>(startX + ox);
             const auto worldZ = static_cast<float>(startZ + oz);
 
-        	const float continentalness = ChunkGeneration::getContinentalness(terrainParams, worldX, worldZ);
-        	const float erosion = ChunkGeneration::getErosion(terrainParams, worldX, worldZ);
-        	const float pv = ChunkGeneration::getPV(terrainParams, worldX, worldZ);
+        	const float continentalness = ChunkGeneration::getContinentalness(params, worldX, worldZ);
+        	const float erosion = ChunkGeneration::getErosion(params, worldX, worldZ);
+        	const float pv = ChunkGeneration::getPV(params, worldX, worldZ);
             const float baseHeight = ChunkGeneration::surfaceNoiseTransformation(continentalness, 1);
             const float erosionSplineValue = ChunkGeneration::surfaceNoiseTransformation(erosion, 2);
             const float pvSplineValue = ChunkGeneration::surfaceNoiseTransformation(pv, 3);
 
-            float eroMin = std::numeric_limits<float>::infinity();
-            float eroMax = -std::numeric_limits<float>::infinity();
-            for (const auto &p : erosionSpline) {
-				const float val = p.second;
-                eroMin = glm::min(eroMin, val);
-                eroMax = glm::max(eroMax, val);
-            }
             float erosionNorm = 0.0f;
             if (eroMax > eroMin)
                 erosionNorm = glm::clamp((erosionSplineValue - eroMin) / (eroMax - eroMin), 0.0f, 1.0f);
@@ -124,8 +136,8 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
 
             if (image == 0) {
 
-                const int surfaceY = ChunkGeneration::computeTerrainHeight(terrainParams, worldX, worldZ);
-                
+                const int surfaceY = ChunkGeneration::computeTerrainHeight(params, worldX, worldZ);
+
                 img[wx + wz * outW] = surfaceY;
                 // imgCont[wx + wz * outW] = baseHeight;
                 // imgEro[wx + wz * outW] = erosionDelta;
@@ -134,20 +146,20 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
                 imgCont[wx + wz * outW] = continentalness;
                 imgEro[wx + wz * outW] = erosion;
                 imgPV[wx + wz * outW] = pv;
-            	imgHumidity[wx + wz * outW] = ChunkGeneration::getHumidity(terrainParams, worldX, worldZ);
-            	imgTemperature[wx + wz * outW] = ChunkGeneration::getTemperature(terrainParams, worldX, worldZ);
-                imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(terrainParams, worldX, worldZ);
-                const float riverMask = ChunkGeneration::getRiverMask(terrainParams, worldX, worldZ, continentalness, preHydroHeight, pv);
+            	imgHumidity[wx + wz * outW] = ChunkGeneration::getHumidity(params, worldX, worldZ);
+            	imgTemperature[wx + wz * outW] = ChunkGeneration::getTemperature(params, worldX, worldZ);
+                imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(params, worldX, worldZ);
+                const float riverMask = ChunkGeneration::getRiverMask(params, worldX, worldZ, continentalness, preHydroHeight, pv);
                 imgRiverMask[wx + wz * outW] = std::pow(glm::clamp(riverMask, 0.0f, 1.0f), 0.45f);
-                imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(terrainParams, worldX, worldZ);
-                const float lakeMask = ChunkGeneration::getLakeMask(terrainParams, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(params, worldX, worldZ);
+                const float lakeMask = ChunkGeneration::getLakeMask(params, worldX, worldZ, continentalness, preHydroHeight, pv);
                 imgLakeMask[wx + wz * outW] = std::pow(glm::clamp(lakeMask, 0.0f, 1.0f), 0.35f);
             } else if (image == 2) {
-                imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(terrainParams, worldX, worldZ);
-                const float riverMask = ChunkGeneration::getRiverMask(terrainParams, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(params, worldX, worldZ);
+                const float riverMask = ChunkGeneration::getRiverMask(params, worldX, worldZ, continentalness, preHydroHeight, pv);
                 imgRiverMask[wx + wz * outW] = std::pow(glm::clamp(riverMask, 0.0f, 1.0f), 0.45f);
-                imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(terrainParams, worldX, worldZ);
-                const float lakeMask = ChunkGeneration::getLakeMask(terrainParams, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(params, worldX, worldZ);
+                const float lakeMask = ChunkGeneration::getLakeMask(params, worldX, worldZ, continentalness, preHydroHeight, pv);
                 imgLakeMask[wx + wz * outW] = std::pow(glm::clamp(lakeMask, 0.0f, 1.0f), 0.35f);
             }
         }
@@ -176,7 +188,7 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
 }
 
 // Dump a color-coded biome map as a PPM. Each column maps to a pixel.
-void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample) {
+void World::dumpBiomeMap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample) {
     // Validate inputs
     if (downsample <= 0) downsample = 1;
     if (chunksX <= 0 || chunksZ <= 0) return;
@@ -190,7 +202,13 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
     const int imgH = (worldH + downsample - 1) / downsample;
 
     // Guard against absurd sizes
-    if (imgW <= 0 || imgH <= 0) return;
+    if (imgW <= 0 || imgH <= 0 ||
+		static_cast<size_t>(imgW) * static_cast<size_t>(imgH) > MAX_DUMP_PIXELS) {
+		std::cerr << "[World] dumpHeightmap: " << imgW << "x" << imgH << " exceeds limit. Aborting.\n";
+		return;
+	}
+
+	
 
     // Pre-size output and only index inside [0, size)
     std::vector<glm::u8vec3> pixels;
@@ -217,8 +235,8 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
             const float wz = static_cast<float>(startWorldZ + z);
 
             // Sample your biome function (replace with your logic)
-            const int height = ChunkGeneration::computeTerrainHeight(terrainParams, wx, wz);
-            const BiomeType biome = ChunkGeneration::computeBiome(terrainParams, wx, wz, height);
+            const int height = ChunkGeneration::computeTerrainHeight(params, wx, wz);
+            const BiomeType biome = ChunkGeneration::computeBiome(params, wx, wz, height);
 
             glm::u8vec3 color;
             switch (biome) {
@@ -365,8 +383,9 @@ void World::updateVisibleChunks(CPlayerInfo &player)
 		else
 		{	
 			plannedChunks.insert(bestChunk);
-			chunkJobs[bestChunk] = std::async(std::launch::async, [this, bestChunk]() {
-				return std::make_shared<ChunkGeneration>(bestChunk.first, bestChunk.second, terrainParams);
+			const TerrainGenerationParams paramsCopy = terrainParams;
+			chunkJobs[bestChunk] = std::async(std::launch::async, [bestChunk, paramsCopy]() {
+				return std::make_shared<ChunkGeneration>(bestChunk.first, bestChunk.second, paramsCopy);
 			});
 		}
 	}
@@ -653,7 +672,8 @@ void World::updateRegionStreaming(std::vector<CPlayerInfo> &players)
 			}
 			else
 			{
-				unloadChunksInRegion(it->first, it->second);
+				if (SAVES_ACTIVE)
+					unloadChunksInRegion(it->first, it->second);
 			}
 
             it = loadedRegions.erase(it);
@@ -981,90 +1001,53 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 		entityIt++;
 	}
 }
-void World::setTerrainParams(int32_t seed, int32_t seaLevel, int32_t bedrockLevel,
-float riverFrequency, int32_t riverOctaves, float riverPersistence, float riverLacunarity,
-float riverWidth, float riverBankFeather, float riverDepth,
-float riverWarpFrequency, float riverWarpStrength, float riverMinContinentalness, float riverMaxContinentalness,
-float lakeFrequency, int32_t lakeOctaves, float lakePersistence, float lakeLacunarity,
-float lakeThreshold, float lakeFeather, float lakeDepth, float lakeMinContinentalness, float lakeMaxContinentalness,
-int32_t genSize, int32_t downsample,
-float continentalnessFrequency, int32_t continentalnessOctaves, float continentalnessPersistence,
-float continentalnessLacunarity, float continentalnessScalingFactor,
-float erosionFrequency, int32_t erosionOctaves, float erosionPersistence,
-float erosionLacunarity, float erosionScalingFactor,
-float peakValleyFrequency, int32_t peakValleyOctaves, float peakValleyPersistence,
-float peakValleyLacunarity, float peakValleyScalingFactor,
-float temperatureFrequency, int32_t temperatureOctaves, float temperaturePersistence,
-float temperatureLacunarity, float temperatureScalingFactor,
-float humidityFrequency, int32_t humidityOctaves, float humidityPersistence,
-float humidityLacunarity, float humidityScalingFactor,
-int32_t biomeScaleChunks, bool snapClimateToCells, float climateWarpFrequency, float climateWarpStrength,
-float desertMoistureThreshold, float forestMoistureThreshold, float snowTemperatureThreshold,
-bool debugOresOnly)
-{
-	terrainParams.seed = seed;
-	terrainParams.seaLevel = seaLevel;
-	terrainParams.bedrockLevel = bedrockLevel;
-	
-	terrainParams.riverFrequency = riverFrequency;
-	terrainParams.riverOctaves = riverOctaves;
-	terrainParams.riverPersistence = riverPersistence;
-	terrainParams.riverLacunarity = riverLacunarity;
-	terrainParams.riverWidth = riverWidth;
-	terrainParams.riverBankFeather = riverBankFeather;
-	terrainParams.riverDepth = riverDepth;
-	terrainParams.riverWarpFrequency = riverWarpFrequency;
-	terrainParams.riverWarpStrength = riverWarpStrength;
-	terrainParams.riverMinContinentalness = riverMinContinentalness;
-	terrainParams.riverMaxContinentalness = riverMaxContinentalness;
 
-	terrainParams.lakeFrequency = lakeFrequency;
-	terrainParams.lakeOctaves = lakeOctaves;
-	terrainParams.lakePersistence = lakePersistence;
-	terrainParams.lakeLacunarity = lakeLacunarity;
-	terrainParams.lakeThreshold = lakeThreshold;
-	terrainParams.lakeFeather = lakeFeather;
-	terrainParams.lakeDepth = lakeDepth;
-	terrainParams.lakeMinContinentalness = lakeMinContinentalness;
-	terrainParams.lakeMaxContinentalness = lakeMaxContinentalness;
+void World::advanceSkyTime() {
+	// Advance sky time
+	constexpr float tickDt        = 1.0f / TPS;
+	constexpr float pauseDuration = 20.0f;
+	constexpr float stepDuration  = 2.0f;
 
-	terrainParams.genSize = genSize;
-	terrainParams.downsample = downsample;
-	
-	terrainParams.continentalnessFrequency = continentalnessFrequency;
-	terrainParams.continentalnessOctaves = continentalnessOctaves;
-	terrainParams.continentalnessPersistence = continentalnessPersistence;
-	terrainParams.continentalnessLacunarity = continentalnessLacunarity;
-	terrainParams.continentalnessScalingFactor = continentalnessScalingFactor;
-	
-	terrainParams.erosionFrequency = erosionFrequency;
-	terrainParams.erosionOctaves = erosionOctaves;
-	terrainParams.erosionPersistence = erosionPersistence;
-	terrainParams.erosionLacunarity = erosionLacunarity;
-	terrainParams.erosionScalingFactor = erosionScalingFactor;
-	
-	terrainParams.peakValleyFrequency = peakValleyFrequency;
-	terrainParams.peakValleyOctaves = peakValleyOctaves;
-	terrainParams.peakValleyPersistence = peakValleyPersistence;
-	terrainParams.peakValleyLacunarity = peakValleyLacunarity;
-	terrainParams.peakValleyScalingFactor = peakValleyScalingFactor;
-	
-	terrainParams.temperatureFrequency = temperatureFrequency;
-	terrainParams.temperatureOctaves = temperatureOctaves;
-	terrainParams.temperaturePersistence = temperaturePersistence;
-	terrainParams.temperatureLacunarity = temperatureLacunarity;
-	terrainParams.temperatureScalingFactor = temperatureScalingFactor;
-	
-	terrainParams.humidityFrequency = humidityFrequency;
-	terrainParams.humidityOctaves = humidityOctaves;
-	terrainParams.humidityPersistence = humidityPersistence;
-	terrainParams.humidityLacunarity = humidityLacunarity;
-	terrainParams.humidityScalingFactor = humidityScalingFactor;
-	
-	terrainParams.biomeScaleChunks = biomeScaleChunks;
-	terrainParams.snapClimateToCells = snapClimateToCells;
-	terrainParams.climateWarpFrequency = climateWarpFrequency;
-	terrainParams.climateWarpStrength = climateWarpStrength;
-	
-	terrainParams.debugOresOnly = debugOresOnly;
+	if (!skyTimeState.skyTimePaused) {
+		if (skyTimeState.skyMode == 1) {
+			// Smooth: continuous linear advancement
+			skyTimeState.skyTimeOffset += skyTimeState.skyTimeSpeed * tickDt;
+		} else {
+			// Skyrim: hold then step
+			if (!skyTimeState.sunStepping) {
+				skyTimeState.sunPauseTimer += tickDt;
+				if (skyTimeState.sunPauseTimer >= pauseDuration) {
+					skyTimeState.sunPauseTimer = 0.0f;
+					skyTimeState.sunStepping   = true;
+					skyTimeState.sunStepTimer  = 0.0f;
+				}
+			} else {
+				skyTimeState.sunStepTimer += tickDt;
+				float t_step  = std::min(skyTimeState.sunStepTimer / stepDuration, 1.0f);
+				float smoothT = t_step * t_step * (3.0f - 2.0f * t_step);
+				float totalStepOffset = (pauseDuration + stepDuration) * skyTimeState.skyTimeSpeed;
+				if (skyTimeState.sunStepTimer <= tickDt)
+					skyTimeState.sunPauseTimer = skyTimeState.skyTimeOffset;  // first tick: store stepBase
+				skyTimeState.skyTimeOffset = skyTimeState.sunPauseTimer + smoothT * totalStepOffset;
+				if (t_step >= 1.0f) {
+					skyTimeState.sunStepping   = false;
+					skyTimeState.sunPauseTimer = 0.0f;
+					skyTimeState.sunStepTimer  = 0.0f;
+				}
+			}
+		}
+	}
+}
+
+void World::setSkyTime(const SkyTimeState &newState) {
+    skyTimeState.skyTimeOffset = newState.skyTimeOffset;
+    skyTimeState.sunYawDeg     = newState.sunYawDeg;
+    skyTimeState.skyTimePaused = newState.skyTimePaused;
+    skyTimeState.skyMode       = newState.skyMode;
+    skyTimeState.skyTimeSpeed  = newState.skyTimeSpeed;
+
+    // reset step state after external set
+    skyTimeState.sunStepping   = false;
+    skyTimeState.sunPauseTimer = 0.0f;
+    skyTimeState.sunStepTimer  = 0.0f;
 }

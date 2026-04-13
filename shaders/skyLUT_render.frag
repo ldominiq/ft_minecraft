@@ -1,7 +1,5 @@
 #version 460 core
 
-#define M_PI 3.1415926535897932384626433832795
-
 /*
  * Sky shader using precomputed scattering LUT.
  *
@@ -37,38 +35,11 @@ uniform sampler2D skyLUT;
 uniform int cloudsCompositeEnabled;
 uniform sampler2D cloudTex;
 
+#include "sky_common.glsl"
+
 // Constants (must match LUT generator)
 const float innerRadius = 1.0;
 const float outerRadius = 1.025;
-const float G = 0.76;
-
-// Phase functions
-float rayleighPhase(float mu) {
-    return (3.0 / (16.0 * M_PI)) * (1.0 + mu * mu);
-}
-
-float miePhase(float mu) {
-    float g2 = G * G;
-    float denom = pow(1.0 + g2 - 2.0 * G * mu, 1.5);
-    return (3.0 / (8.0 * M_PI)) * (1.0 - g2) * (1.0 + mu * mu) / ((2.0 + g2) * denom);
-}
-
-vec3 Uncharted2ToneMapping(vec3 color) {
-    float gamma = 2.2;
-    float A = 0.15;
-    float B = 0.50;
-    float C = 0.10;
-    float D = 0.20;
-    float E = 0.02;
-    float F = 0.30;
-    float W = 11.2;
-    color *= exposure;
-    color = ((color * (A * color + C * B) + D * E) / (color * (A * color + B) + D * F)) - E / F;
-    float white = ((W * (A * W + C * B) + D * E) / (W * (A * W + B) + D * F)) - E / F;
-    color /= white;
-    color = pow(color, vec3(1.0 / gamma));
-    return color;
-}
 
 void main() {
     // Reconstruct world-space ray direction
@@ -98,8 +69,8 @@ void main() {
 
     // Apply phase functions (view-sun angle dependent)
     float mu = clamp(dot(r, sunDir), -1.0, 1.0);
-    vec3 col = rayleighScatter * rayleighPhase(mu)
-             + vec3(mieScatter) * miePhase(mu);
+    vec3 col = rayleighScatter * skyRayleighPhase(mu)
+             + vec3(scatter.a) * skyMiePhase(mu);
 
     // Sun disk + soft halo
     float sunAng = acos(mu);
@@ -135,8 +106,7 @@ void main() {
     }
 
     // Tone mapping
-    vec3 mapped = vec3(1.0) - exp(-exposure * col);
-    vec3 tone = Uncharted2ToneMapping(col);
+    vec3 tone = skyUncharted2(col, exposure);
 
     // Apply underwater fog to sky
     if (cameraUnderwater) {

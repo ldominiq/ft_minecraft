@@ -18,6 +18,14 @@ Server::Server() {
 }
 
 Server::~Server() {
+	{
+		std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+		for (auto& thread : dumpThreads) {
+			if (thread.joinable()) {
+				thread.join();
+			}
+		}
+	}
     close(sockfd);
 #ifdef _WIN32
     WSACleanup();
@@ -182,6 +190,19 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::NET_SKY_TIME: {
+			// Only allow if player is connected
+			if (NetUtils::findPlayerByAddr(players, cliaddr) == players.end())
+				break;
+			auto& p   = static_cast<NetSkyTime&>(*pkt);
+			if (p.skyMode > 1) // validate mode
+				break;
+			p.skyTimeSpeed = std::clamp(p.skyTimeSpeed, 0.001f, 10.0f); // validate speed
+			updateSkyTime(p);
+			broadcastSkyTime();
+			break;
+		}
+
 		case PacketType::NET_TERRAIN_PARAMS: {
 			auto& p = static_cast<NetTerrainParams&>(*pkt);
 			receiveTerrainParams(p, cliaddr);
@@ -205,7 +226,43 @@ void Server::gameTick()
 
 	if (tick % (static_cast<int>(TPS) * 3) == 0)
 		world->updateRegionStreaming(players);
+
+	world->advanceSkyTime();
+
+	// Broadcast every 20 ticks (~1s)
+	if (tick % static_cast<int>(TPS) == 0) {
+		broadcastSkyTime();
+	}
 	sendAll();
+}
+
+void Server::updateSkyTime(NetSkyTime &pkt) {
+
+	world->setSkyTime({
+		.skyTimeOffset 	= pkt.skyTimeOffset,
+		.sunYawDeg 		= pkt.sunYawDeg,
+		.sunPauseTimer 	= pkt.sunPauseTimer,
+		.sunStepTimer 	= pkt.sunStepTimer,
+		.sunStepping 	= pkt.sunStepping,
+		.skyTimePaused 	= pkt.skyTimePaused,
+		.skyMode 		= pkt.skyMode,
+		.skyTimeSpeed 	= pkt.skyTimeSpeed
+	});
+}
+
+void Server::broadcastSkyTime() {
+	const auto& s = world->getSkyTimeState();
+    NetSkyTime pkt;
+    pkt.skyTimeOffset  = s.skyTimeOffset;
+    pkt.sunYawDeg      = s.sunYawDeg;
+    pkt.sunPauseTimer  = s.sunPauseTimer;
+    pkt.sunStepTimer   = s.sunStepTimer;
+    pkt.sunStepping    = s.sunStepping;
+    pkt.skyTimePaused  = s.skyTimePaused;
+    pkt.skyMode        = s.skyMode;
+    pkt.skyTimeSpeed   = s.skyTimeSpeed;
+    for (CPlayerInfo& p : players)
+        sendPacketTo(pkt, p.addr);
 }
 
 void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
@@ -349,31 +406,45 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 
             std::istringstream iss(pkt.message.substr(strlen("dump ")));
             std::string mode;
-            int size = 1000;
+            int size = 500;
             int downsample = 16;
             iss >> mode;
-            if (!(iss >> size)) size = 1000;
+            if (!(iss >> size)) size = 500;
             if (!(iss >> downsample)) downsample = 16;
 
-            size = std::clamp(size, 1, 4096);
+            size = std::clamp(size, 1, 1024);
             downsample = std::clamp(downsample, 1, 256);
 
             const glm::vec3 pos = player->movement->getPosition();
             const int centerChunkX = static_cast<int>(std::floor(pos.x / Chunk::WIDTH));
             const int centerChunkZ = static_cast<int>(std::floor(pos.z / Chunk::DEPTH));
 
+            const TerrainGenerationParams paramsCopy = world->getTerrainParams();
+
             if (mode == "noises") {
-                world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 1);
-                messages.push_back("[server] Generated noise maps (continentalness/erosion/pv/humidity/temperature)");
+                messages.push_back("[server] Generating noise maps...");
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 1);
+                });
             } else if (mode == "hydro") {
-                world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 2);
-                messages.push_back("[server] Generated hydro maps (river/lake noise + masks)");
+                messages.push_back("[server] Generating hydro maps...");
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 2);
+                });
             } else if (mode == "heightmap") {
-                world->dumpHeightmap(centerChunkX, centerChunkZ, size, size, downsample, 0);
-                messages.push_back("[server] Generated terrain heightmap");
+                messages.push_back("[server] Generating terrain heightmap...");
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 0);
+                });
             } else if (mode == "biome") {
-                world->dumpBiomeMap(centerChunkX, centerChunkZ, size, size, downsample);
-                messages.push_back("[server] Generated biome map");
+                messages.push_back("[server] Generating biome map...");
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpBiomeMap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample);
+                });
             } else {
                 messages.push_back("[server] Unknown dump mode. Use: noises | hydro | heightmap | biome");
             }
@@ -385,27 +456,10 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 
 void Server::receiveTerrainParams(NetTerrainParams &pkt, const sockaddr_in &cliaddr)
 {
-	// Update world's terrain params from client packet
-	world->setTerrainParams(pkt.seed, pkt.seaLevel, pkt.bedrockLevel,
-		pkt.riverFrequency, pkt.riverOctaves, pkt.riverPersistence, pkt.riverLacunarity,
-		pkt.riverWidth, pkt.riverBankFeather, pkt.riverDepth, 
-		pkt.riverWarpFrequency, pkt.riverWarpStrength, pkt.riverMinContinentalness, pkt.riverMaxContinentalness,
-		pkt.lakeFrequency, pkt.lakeOctaves, pkt.lakePersistence, pkt.lakeLacunarity,
-		pkt.lakeThreshold, pkt.lakeFeather, pkt.lakeDepth, pkt.lakeMinContinentalness, pkt.lakeMaxContinentalness,
-		pkt.genSize, pkt.downsample,
-		pkt.continentalnessFrequency, pkt.continentalnessOctaves, pkt.continentalnessPersistence,
-		pkt.continentalnessLacunarity, pkt.continentalnessScalingFactor,
-		pkt.erosionFrequency, pkt.erosionOctaves, pkt.erosionPersistence,
-		pkt.erosionLacunarity, pkt.erosionScalingFactor,
-		pkt.peakValleyFrequency, pkt.peakValleyOctaves, pkt.peakValleyPersistence,
-		pkt.peakValleyLacunarity, pkt.peakValleyScalingFactor,
-		pkt.temperatureFrequency, pkt.temperatureOctaves, pkt.temperaturePersistence,
-		pkt.temperatureLacunarity, pkt.temperatureScalingFactor,
-		pkt.humidityFrequency, pkt.humidityOctaves, pkt.humidityPersistence,
-		pkt.humidityLacunarity, pkt.humidityScalingFactor,
-		pkt.biomeScaleChunks, pkt.snapClimateToCells, pkt.climateWarpFrequency, pkt.climateWarpStrength,
-		pkt.desertMoistureThreshold, pkt.forestMoistureThreshold, pkt.snowTemperatureThreshold,
-		pkt.debugOresOnly);
+	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (player == players.end()) return;
+
+	world->setTerrainParams(pkt.toParams());
 
 	// Broadcast the updated params to all connected clients
 	for (auto& player : players) {
@@ -825,6 +879,18 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	}
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);
+
+	const auto& s = world->getSkyTimeState();
+	NetSkyTime skyPkt;
+	skyPkt.skyTimeOffset = s.skyTimeOffset;
+	skyPkt.sunYawDeg     = s.sunYawDeg;
+	skyPkt.skyTimePaused = s.skyTimePaused;
+	skyPkt.sunStepping   = s.sunStepping;
+	skyPkt.sunPauseTimer = s.sunPauseTimer;
+	skyPkt.sunStepTimer  = s.sunStepTimer;
+	skyPkt.skyMode       = s.skyMode;
+	skyPkt.skyTimeSpeed  = s.skyTimeSpeed;
+	sendPacketTo(skyPkt, cliaddr);
 
 	NetAccept acceptPkt;
 	sendPacketTo(acceptPkt, cliaddr);

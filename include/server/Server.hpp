@@ -18,6 +18,8 @@
 #include <chrono>
 #include <zstd.h>
 
+#include <mutex>
+
 #include "Protocol.hpp"
 #include "World.hpp"
 #include "PlayerInfo.hpp"
@@ -39,6 +41,12 @@ private:
 
 	int32_t tick = 0;
 	float deltaTime;
+	
+	void updateSkyTime(NetSkyTime &pkt);
+	void broadcastSkyTime();
+
+	std::vector<std::thread> dumpThreads;
+	std::mutex dumpThreadsMutex;
 
 	void gameTick();
 

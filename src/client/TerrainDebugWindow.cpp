@@ -11,14 +11,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 TerrainDebugWindow::TerrainDebugWindow()
-    : texSize(256), dirty(true), regenerateCallback(nullptr), regenerateUserData(nullptr)
-    , noiseBase(1337)
-    , noiseErosion(1337 + 237)
-    , noisePV(1337 + 98789)
-    , noiseRiver(1337 + 7717)
-    , noiseRiverWarpX(1337 + 7718)
-    , noiseRiverWarpZ(1337 + 7719)
-    , noiseLake(1337 + 9901)
+    : texSize(256), dirty(true), regenerateCallback(nullptr), regenerateUserData(nullptr),
+    noiseBase(1337),
+    noiseErosion(1337 + 237),
+    noisePV(1337 + 98789),
+    noiseRiver(1337 + 7717),
+    noiseRiverWarpX(1337 + 7718),
+    noiseRiverWarpZ(1337 + 7719),
+    noiseLake(1337 + 9901)
 {
     glGenTextures(1, &previewTextureID);
     glBindTexture(GL_TEXTURE_2D, previewTextureID);
@@ -60,7 +60,7 @@ void TerrainDebugWindow::reseedNoise(int32_t seed) {
     cachedSeed = seed;
 }
 
-float TerrainDebugWindow::interpolateSpline(float noise, const std::vector<std::pair<float,float>>& spline) {
+float TerrainDebugWindow::interpolateSpline(float noise, std::span<const std::pair<float,float>> spline) {
     if (noise <= spline.front().first) return spline.front().second;
     if (noise >= spline.back().first)  return spline.back().second;
     for (size_t i = 1; i < spline.size(); ++i) {
