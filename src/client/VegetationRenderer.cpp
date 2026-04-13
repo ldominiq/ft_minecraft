@@ -1,7 +1,6 @@
 #include "VegetationRenderer.hpp"
 #include "Item.hpp"
 #include <cmath>
-#include <random>
 #include <unordered_map>
 
 VegetationRenderer::VegetationRenderer() {}
@@ -86,11 +85,21 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
             texLayer = textureManager->getShortGrassTintLayer(static_cast<BiomeType>(veg.biome));
         }
 
-        // Random rotation for variety (seeded by position for determinism)
-        std::seed_seq seed{static_cast<uint32_t>(static_cast<int>(worldX)),
-                           static_cast<uint32_t>(static_cast<int>(worldZ))};
-        std::mt19937 posRng(seed);
-        float rotation = std::uniform_real_distribution<float>(0.0f, 2.0f * 3.14159265f)(posRng);
+        // Random rotation for variety (seeded by position for determinism).
+        // Uses a cheap integer hash instead of mt19937 to avoid per-instance state init overhead.
+        // The whole thing is ~5 CPU instructions vs. 624 array writes for mt19937..
+        // Mix X and Z together using two different large primes
+        uint32_t h = static_cast<uint32_t>(static_cast<int>(worldX) * 73856093)
+                   ^ static_cast<uint32_t>(static_cast<int>(worldZ) * 19349663);
+
+        // Three-step finalizer: each step breaks up linear patterns left by the multiply
+        h ^= h >> 16; // fold high bits onto low bits
+        h *= 0x45d9f3bu; // scramble with another prime
+        h ^= h >> 16; // fold again
+
+        // Take the bottom 16 bits, scale to [0, 2π]
+        // h & 0xFFFF extracts the bottom 16 bits (values 0–65535), dividing by 65536 gives a float in [0, 1), multiplying by 2π gives an angle in [0, 2π).
+        float rotation = static_cast<float>(h & 0xFFFFu) / 65536.0f * 2.0f * 3.14159265f;
 
         // Get sky-light from chunk data
         float skyLightVal = 1.0f;
@@ -103,7 +112,10 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
         float columnBaseY = worldY;
         if (isSeaVegetation(veg.type)) {
             uint32_t key = (static_cast<uint32_t>(veg.x) << 16) | static_cast<uint32_t>(veg.z);
-            columnBaseY = static_cast<float>(columnBaseMap[key]);
+            // map[key] does two things if the key doesn't exist: it inserts a default value (0) and then returns it
+            // we want to avoid inserting a default value for missing keys, so now we use find() instead
+            auto baseIt = columnBaseMap.find(key);
+            columnBaseY = static_cast<float>(baseIt != columnBaseMap.end() ? baseIt->second : veg.y);
         }
 
         // Compute ambient occlusion factor with vertical sky visibility check
