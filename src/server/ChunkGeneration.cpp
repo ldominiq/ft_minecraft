@@ -619,16 +619,16 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
                 continue;
             }
 
-            const BiomeType biome = computeBiome(terrainParams,
-                static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
+            // Reuse the biome already stored during terrain generation instead of recomputing it.
+            int localTrunkX = worldX - originX;
+            int localTrunkZ = worldZ - originZ;
+            const BiomeType biome = getBiomeAt(localTrunkX, localTrunkZ);
 
             // One chance roll per column — all biomes consume the same number of RNG calls
             // so world generation stays deterministic regardless of which biome a column is in.
             int chanceRoll = static_cast<int>(rng() % 1000);
 
             // Quick check: can any part of this tree reach into our chunk?
-            int localTrunkX = worldX - originX;
-            int localTrunkZ = worldZ - originZ;
 
             int treeHeight;
             switch (biome) {
@@ -1623,8 +1623,8 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                 } else {
                     // Kelp or tall seagrass: stack multiple instances
                     const int waterDepth = terrainParams.seaLevel - surfaceY;
-                    constexpr int maxHeight = std::max(2, 10);
-                    int height = 2 + static_cast<int>(rng() % std::max(1, maxHeight - 1));
+                    constexpr int kMaxSeaVegHeight = 10;
+                    int height = 2 + static_cast<int>(rng() % (kMaxSeaVegHeight - 1));
                     height = std::min(height, waterDepth - 1); // don't poke above water
 
                     const bool isKelp = (vegType == BlockType::KELP);
