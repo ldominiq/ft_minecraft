@@ -18,6 +18,8 @@
 #include <chrono>
 #include <zstd.h>
 
+#include <mutex>
+
 #include "Protocol.hpp"
 #include "World.hpp"
 #include "PlayerInfo.hpp"
@@ -40,6 +42,9 @@ private:
 	int32_t tick = 0;
 	float deltaTime;
 
+	std::vector<std::thread> dumpThreads;
+	std::mutex dumpThreadsMutex;
+
 	void gameTick();
 
     void createSocket();
@@ -53,6 +58,7 @@ private:
 	void receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &clieaddr);
 	void receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &clieddr);
 	void receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr);
+	void receiveTerrainParams(NetTerrainParams &pkt, const sockaddr_in &cliaddr);
 	void receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &cliaddr);
 	void sendInventorySlot(int slot, const sockaddr_in &cliaddr);
 
