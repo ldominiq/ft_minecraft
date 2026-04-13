@@ -390,6 +390,42 @@ struct NetImGui final : public Packet {
 };
 inline AutoRegister<NetImGui> _reg_NetImGui;
 
+struct NetSkyTime : public Packet {
+	static constexpr PacketType ID = PacketType::NET_SKY_TIME;
+	float   skyTimeOffset  = 0.0f;
+	float   sunYawDeg      = 0.0f;
+	bool    skyTimePaused  = false;
+	bool    sunStepping    = false;
+	float   sunPauseTimer  = 0.0f;
+	float   sunStepTimer   = 0.0f;
+	uint8_t skyMode        = 0;     // 0 = Skyrim (pause/step), 1 = Smooth (linear)
+	float   skyTimeSpeed   = 0.05f; // sun advancement speed multiplier
+
+	NetSkyTime() : Packet(ID) {}
+
+	void encode(BufferWriter& w) const override {
+		w.write_f32(skyTimeOffset);
+		w.write_f32(sunYawDeg);
+		w.write_u8(skyTimePaused ? 1 : 0);
+		w.write_u8(sunStepping  ? 1 : 0);
+		w.write_f32(sunPauseTimer);
+		w.write_f32(sunStepTimer);
+		w.write_u8(skyMode);
+		w.write_f32(skyTimeSpeed);
+	}
+
+	void decode(BufferReader& r) override {
+		skyTimeOffset = r.read_f32();
+		sunYawDeg     = r.read_f32();
+		skyTimePaused = r.read_u8() != 0;
+		sunStepping   = r.read_u8() != 0;
+		sunPauseTimer = r.read_f32();
+		sunStepTimer  = r.read_f32();
+		skyMode       = r.read_u8();
+		skyTimeSpeed  = r.read_f32();
+	}
+};
+inline AutoRegister<NetSkyTime> _reg_NetSkyTime;
 // Terrain generation parameters sync packet (C2S && S2C)
 struct NetTerrainParams final : public Packet {
     static constexpr PacketType ID = PacketType::NET_TERRAIN_PARAMS;

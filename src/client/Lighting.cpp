@@ -223,48 +223,41 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
 }
 
 void Lighting::updateSunDirection(const float deltaTime) {
-    // ── "Skyrim approach" ──────────────────────────────────────────────
-    // The sun holds perfectly still for sunPauseDuration seconds, then
-    // smoothly advances over sunStepDuration seconds.
-    constexpr float sunSpeed = 0.05f;
-
     if (!skyTimePaused) {
-        if (!sunStepping) {
-            // ── HOLD phase ──
-            sunPauseTimer += deltaTime;
-            if (sunPauseTimer >= sunPauseDuration) {
-                // Switch to stepping
-                sunStepping  = true;
-                sunStepTimer = 0.0f;
-            }
+        if (skyMode == 1) {
+            // ── Smooth mode: continuous linear advancement ──
+            skyTimeOffset += skyTimeSpeed * deltaTime;
         } else {
-            // ── STEP phase: advance skyTimeOffset smoothly ──
-            sunStepTimer += deltaTime;
-            float t_step = glm::clamp(sunStepTimer / sunStepDuration, 0.0f, 1.0f);
-            // Use smoothstep to ease in/out so the jump isn't jarring
-            float smoothT = glm::smoothstep(0.0f, 1.0f, t_step);
+            // ── Skyrim mode ──────────────────────────────────────────
+            // The sun holds still for sunPauseDuration seconds, then
+            // smoothly advances over sunStepDuration seconds.
+            if (!sunStepping) {
+                // HOLD phase
+                sunPauseTimer += deltaTime;
+                if (sunPauseTimer >= sunPauseDuration) {
+                    sunStepping  = true;
+                    sunStepTimer = 0.0f;
+                }
+            } else {
+                // STEP phase
+                sunStepTimer += deltaTime;
+                float t_step = glm::clamp(sunStepTimer / sunStepDuration, 0.0f, 1.0f);
+                float smoothT = glm::smoothstep(0.0f, 1.0f, t_step);
 
-            // Total offset this step must cover = what would've accumulated
-            // during the whole pause+step cycle at the original speed.
-            float totalCycleDuration = sunPauseDuration + sunStepDuration;
-            float totalStepOffset    = totalCycleDuration * sunSpeed;
+                float totalCycleDuration = sunPauseDuration + sunStepDuration;
+                float totalStepOffset    = totalCycleDuration * skyTimeSpeed;
 
-            // Derivative of smoothstep gives the per-frame advance
-            // We compute the current position as base + smoothT * totalStepOffset
-            // and store the base at the start of the step.
-            // Simpler: just set skyTimeOffset = stepBase + smoothT * totalStepOffset
-            // We store the base in sunPauseTimer (repurposed during step).
-            if (sunStepTimer <= deltaTime) {
-                // First frame of the step: store the base offset
-                sunPauseTimer = skyTimeOffset; // repurpose as stepBase
-            }
-            skyTimeOffset = sunPauseTimer + smoothT * totalStepOffset;
+                if (sunStepTimer <= deltaTime) {
+                    // First frame of step: store base offset in sunPauseTimer
+                    sunPauseTimer = skyTimeOffset;
+                }
+                skyTimeOffset = sunPauseTimer + smoothT * totalStepOffset;
 
-            if (t_step >= 1.0f) {
-                // Step complete — back to hold
-                sunStepping   = false;
-                sunPauseTimer = 0.0f;
-                sunStepTimer  = 0.0f;
+                if (t_step >= 1.0f) {
+                    sunStepping   = false;
+                    sunPauseTimer = 0.0f;
+                    sunStepTimer  = 0.0f;
+                }
             }
         }
     }
@@ -1027,8 +1020,8 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
 
     shader.setMat4("view", cameraView);
 
-    // Upload all light-space matrices
-    for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i)
+    // Upload all light-space matrices (guard: may be empty if sun is below horizon on first frame)
+    for (size_t i = 0; i < shadowCascadeLevels.size() + 1 && i < csmLightSpaceMatrices.size(); ++i)
     {
         shader.setMat4(
             "lightSpaceMatrices[" + std::to_string(i) + "]",

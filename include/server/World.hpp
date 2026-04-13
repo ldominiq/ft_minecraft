@@ -46,6 +46,18 @@ struct ChunkEntry {
     std::uint32_t size;
 };
 
+struct SkyTimeState {
+	// Sky time (server-authoritative)
+	float   skyTimeOffset  = 0.5f;
+	float   sunYawDeg      = 45.0f;
+	float   sunPauseTimer  = 0.0f;
+	float   sunStepTimer   = 0.0f;
+	bool    sunStepping    = false;
+	bool    skyTimePaused  = false;
+	uint8_t skyMode        = 1;     // 0 = Skyrim, 1 = Smooth
+	float   skyTimeSpeed   = 0.05f;
+};
+
 class World final : public CommonWorld<ChunkGeneration>
 {
     TerrainGenerationParams terrainParams;
@@ -89,6 +101,8 @@ class World final : public CommonWorld<ChunkGeneration>
 	ChunkPos findNextChunk(CPlayerInfo& player);
 	void unloadPlayerKnownChunks(CPlayerInfo &player);
 	std::vector<ChunkPos> buildCircularOffsets(int radius);
+
+	SkyTimeState skyTimeState;
 
 	public:
 		World();
@@ -140,6 +154,12 @@ class World final : public CommonWorld<ChunkGeneration>
 
 		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 		void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
+
+		void advanceSkyTime();
+
+		void setSkyTime(const SkyTimeState &newState);
+
+		const SkyTimeState& getSkyTimeState() const { return skyTimeState; };
 };
 
 #endif //WORLD_HPP
