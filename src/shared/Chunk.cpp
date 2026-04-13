@@ -259,8 +259,11 @@ void Chunk::saveToStream(std::ostream& out) const {
 	// Save block data
     blockIndices.saveToStream(out);
 
-    // Biome map
-    out.write(reinterpret_cast<const char*>(biomeMap.data()), biomeMap.size() * sizeof(BiomeType));
+    // Biome map — serialised as fixed-width uint8_t, independent of BiomeType's in-memory size
+    for (const auto& b : biomeMap) {
+        uint8_t v = static_cast<uint8_t>(b);
+        out.write(reinterpret_cast<const char*>(&v), sizeof(v));
+    }
 
 	// --- Save vegetation ---
 	uint32_t vegetationCount = static_cast<uint32_t>(vegetation.size());
@@ -296,7 +299,11 @@ void Chunk::loadFromStream(std::istream& in) {
     blockIndices.loadFromStream(in);
 
     // --- Load biome map ---
-    in.read(reinterpret_cast<char*>(biomeMap.data()), biomeMap.size() * sizeof(BiomeType));
+    for (auto& b : biomeMap) {
+        uint8_t v = 0;
+        in.read(reinterpret_cast<char*>(&v), sizeof(v));
+        b = static_cast<BiomeType>(v);
+    }
 
 	// --- Load vegetation ---
 	uint32_t vegetationCount = 0;
@@ -307,8 +314,8 @@ void Chunk::loadFromStream(std::istream& in) {
         in.clear(); // clear eof/fail so caller can continue using stream
         vegetationCount = 0;
     } else {
-        // Safety cap: one chunk can't reasonably hold infinite vegetation.
-        constexpr uint32_t kMaxVegetationPerChunk = WIDTH * HEIGHT * DEPTH;
+        // Safety cap: one chunk can't reasonably hold more than ~8 vegetation per column.
+        constexpr uint32_t kMaxVegetationPerChunk = 2048;
         if (vegetationCount > kMaxVegetationPerChunk) {
             vegetationCount = kMaxVegetationPerChunk;
         }
@@ -342,10 +349,14 @@ void Chunk::loadFromStream(std::istream& in) {
 }
 
 BiomeType Chunk::getBiomeAt(int localX, int localZ) const {
+    if (localX < 0 || localX >= WIDTH || localZ < 0 || localZ >= DEPTH)
+        return BiomeType::PLAINS;
     return biomeMap[localX + WIDTH * localZ];
 }
 
 
 void Chunk::setBiomeAt(int localX, int localZ, BiomeType biome) {
+    if (localX < 0 || localX >= WIDTH || localZ < 0 || localZ >= DEPTH)
+        return;
     biomeMap[localX + WIDTH * localZ] = biome;
 }
