@@ -126,6 +126,7 @@ public:
     bool isSunAboveHorizon() const { return directionalLightDir.y > 0.1f; }
     
     GLuint getCloudTexture() const;
+    GLuint getSkyLUTTexture() const { return (skyLUT ? skyLUT->getLUTTexture() : 0); }
 
     glm::vec3 getDirectionalLightDirection() const { return directionalLightDir; };
     glm::vec3 getLightPos() const { return lightPos; };

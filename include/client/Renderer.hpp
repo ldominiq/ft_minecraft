@@ -41,6 +41,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::unordered_map<ChunkPos, chunkData> chunksData; //building chunk
 	std::unordered_set<ChunkPos> chunksToBuild; // chunk to build and upload mesh
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
+	float maxRenderedChunkDist = 0.0f; // world-space distance to edge of farthest rendered chunk
 	Frustum cameraFrustum;
 	bool frustumCullingEnabled = true;
 	const TextureManager* textureManager = nullptr;
@@ -84,7 +85,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		void buildChunks();
 		void updateChunk(const NetModifiedBlockData &pkt);
-		void organizeChunks(const std::pair<int, int> pos, int loadRadius);
+		void organizeChunks(const std::pair<int, int> pos, int loadRadius, float deltaTime = 0.016f);
     	void draw(const std::shared_ptr<Shader> &shaderProgram, const GLuint &VAO, const uint &meshVerticesSize) const; // Draw the chunk using the given shader program
 
 		void prepareChunk(const NetChunkHeader& pkt);
@@ -95,6 +96,10 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		inline size_t getVisibleChunkCount() const {
 			return renderedChunks.size();
 		}
+
+		/// Returns the world-space distance from the camera to the edge of the
+		/// farthest currently-rendered chunk.
+		float getMaxRenderedChunkDist() const { return maxRenderedChunkDist; }
 
 		LivingEntitiesManager livingEntitiesManager;
 		void onEntity(NetEntityMove &pkt, const float &glfwTickTime);	// handles NetEntityMove packet
