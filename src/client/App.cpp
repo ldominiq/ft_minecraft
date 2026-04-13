@@ -673,7 +673,7 @@ void App::render() {
         renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
         
     	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
-    	renderScene(view, projection, clipPlane, !waterVisible);
+    	renderScene(view, projection, clipPlane);
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
@@ -827,7 +827,7 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
     return true;
 }
 
-void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4 clipPlane, bool useSSAO) const {
+void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4 clipPlane) const {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Render sky/clouds first with proper depth
@@ -859,8 +859,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     lighting->uploadCSMUniforms(*activeShader, view);
 
     // Bind SSAO texture for the lighting shader (must be after activeShader->use())
-    // useSSAO is false when the GBuffer pass was skipped (e.g. water visible this frame).
-    if (ssao && ssao->isEnabled() && useSSAO) {
+    if (ssao && ssao->isEnabled()) {
         glActiveTexture(GL_TEXTURE0 + TextureUnits::SSAO);
         glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
         activeShader->setInt("ssaoTexture", TextureUnits::SSAO);

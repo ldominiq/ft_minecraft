@@ -116,7 +116,7 @@ private:
     void init(const std::string& serverIp);
     void loadResources();
     void render();
-	void renderScene(const glm::mat4 &view, const glm::mat4 &projection, glm::vec4 clipPlane, bool useSSAO = true) const;
+	void renderScene(const glm::mat4 &view, const glm::mat4 &projection, glm::vec4 clipPlane) const;
 	void gameTick();
 
     void cleanup();
