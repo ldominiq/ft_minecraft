@@ -10,7 +10,7 @@
 
 using ItemID  = uint16_t;  // for inventory/items
 
-enum class BiomeType {
+enum class BiomeType : uint8_t {
     PLAINS,
     DESERT,
     DARK_FOREST,
