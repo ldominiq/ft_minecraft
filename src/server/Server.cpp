@@ -209,6 +209,16 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::NET_PING: {
+			if (NetUtils::findPlayerByAddr(players, cliaddr) == players.end())
+				break;
+			auto& p = static_cast<NetPing&>(*pkt);
+			NetPong pong;
+			pong.timestamp = p.timestamp;
+			sendPacketTo(pong, cliaddr);  // unicast back to this client only
+			break;
+		}
+
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
