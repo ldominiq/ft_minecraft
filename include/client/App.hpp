@@ -328,6 +328,12 @@ private:
     double measuredAverageMsDrawEntities = 0.0;
     double measuredAverageMsSSAO = 0.0;
     double measuredAverageMsGBuffer = 0.0;
+
+	// Ping measurement
+    float pingMs = -1.0f;
+    float pingEMASmoothing = 0.1f;
+    float lastPingSentTime = -999.0f;
+	uint64_t lastPingTimestamp = 0;
 };
 
 #endif //APP_HPP

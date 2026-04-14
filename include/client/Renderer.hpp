@@ -50,6 +50,8 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
 	std::unordered_map<ItemID, std::weak_ptr<Entity>> entitiesMap; //fast lookup
 
+	mutable size_t m_drawCallCount = 0; // for debug stats
+
 	public:
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
 
@@ -105,6 +107,9 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		LivingEntitiesManager livingEntitiesManager;
 		void onEntity(NetEntityMove &pkt, const float &glfwTickTime);	// handles NetEntityMove packet
 		void drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime);
+
+		size_t getDrawCallCount() const { return m_drawCallCount; }
+		void resetDrawCallCount() { m_drawCallCount = 0; }
 };
 
 #endif

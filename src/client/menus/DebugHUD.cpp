@@ -29,7 +29,7 @@ void DebugHUD::onRender()
 {
     constexpr float pad     = 8.0f;
     constexpr float lineH   = 18.0f;
-    constexpr int   nLines  = 4;
+    constexpr int   nLines  = 7;
     constexpr float panelW  = 230.0f;
     constexpr float panelH  = nLines * lineH + pad * 2.0f;
 
@@ -51,6 +51,10 @@ void DebugHUD::onRender()
     textRenderer.renderText(buf, textX, textY, white);
     textY -= lineH;
 
+    snprintf(buf, sizeof(buf), "CPU Frame: %.2f ms", m_stats.cpuFrameMs);
+    textRenderer.renderText(buf, textX, textY, white);
+    textY -= lineH;
+
     snprintf(buf, sizeof(buf), "Triangles: %zu", m_stats.triangles);
     textRenderer.renderText(buf, textX, textY, white);
     textY -= lineH;
@@ -61,4 +65,14 @@ void DebugHUD::onRender()
 
     snprintf(buf, sizeof(buf), "Chunks: %zu / %zu", m_stats.visibleChunks, m_stats.totalChunks);
     textRenderer.renderText(buf, textX, textY, white);
+	textY -= lineH;
+
+    snprintf(buf, sizeof(buf), "Terrain Draw Calls: %zu", m_stats.terrainDrawCalls);
+    textRenderer.renderText(buf, textX, textY, white);
+    textY -= lineH;
+
+    snprintf(buf, sizeof(buf), "Ping: %.1f ms", m_stats.pingMs);
+    textRenderer.renderText(buf, textX, textY, white);
+    textY -= lineH;
+
 }

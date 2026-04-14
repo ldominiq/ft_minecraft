@@ -230,6 +230,7 @@ void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, co
     shader->use();
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 11); // 11 floats per vertex
+	m_drawCallCount++;
 }
 
 void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,

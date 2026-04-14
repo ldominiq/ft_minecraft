@@ -423,6 +423,17 @@ void App::setUdpClientPacketCallback()
                 break;
             }
 
+            case PacketType::NET_PONG: {
+				auto& p = static_cast<NetPong&>(*pkt);
+                if (p.timestamp != lastPingTimestamp) break; // discard stale pongs
+                auto nowUs = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+						std::chrono::steady_clock::now().time_since_epoch()).count());
+				float rttMs = static_cast<float>(nowUs - p.timestamp) / 1000.0f;
+				pingMs = (pingMs < 0.0f) ? rttMs : pingMs + pingEMASmoothing * (rttMs - pingMs);
+                break;
+            }
+
 			default:
 				std::cout << "Unknown packet type: " << static_cast<int>(pkt->type) << "\n";
 				break;
@@ -464,6 +475,21 @@ void App::gameTick() {
 	// sending/receiving packets and stuff
 
 	udpClient->receivePacket();
+
+    if (clientConnected && udpClient) {
+		float now = static_cast<float>(glfwGetTime());
+        if (now - lastPingSentTime >= 2.0f) {
+            lastPingSentTime = now;
+            auto ts = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count());
+			lastPingTimestamp = ts;
+            NetPing ping;
+			ping.timestamp = ts;
+			udpClient->sendPacket(ping);
+        }
+    }
+
 	auto manager = menuManager.lock();
 	if ((keyPressedRecently || mouseMovedRecently) && !manager)
 	{
@@ -490,6 +516,8 @@ void App::render() {
 
         // Rotate query index each frame
         currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
+
+        if (renderer) renderer->resetDrawCallCount();
     
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
@@ -966,6 +994,10 @@ void App::computeDebugStats()
 {
     cachedDebugStats.fps = uiDisplayFPS;
 
+	cachedDebugStats.cpuFrameMs = deltaTime * 1000.0f;
+
+	cachedDebugStats.pingMs = clientConnected ? pingMs : -1.0f;
+
     if (renderer) {
         cachedDebugStats.visibleChunks = renderer->getVisibleChunkCount();
         cachedDebugStats.totalChunks   = renderer->getTotalChunkCount();
@@ -981,6 +1013,8 @@ void App::computeDebugStats()
         const size_t totalVerts      = solidVerts + waterVerts;
         cachedDebugStats.triangles   = totalVerts / 3;
         cachedDebugStats.cubes       = cachedDebugStats.triangles / 12;
+
+		cachedDebugStats.terrainDrawCalls = renderer->getDrawCallCount();
     }
 }
 

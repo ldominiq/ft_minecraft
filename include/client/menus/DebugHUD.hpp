@@ -7,11 +7,14 @@
 
 
 struct DebugStats {
-    float  fps           = 0.0f;
-    size_t triangles     = 0;
-    size_t cubes         = 0;
-    size_t visibleChunks = 0;
-    size_t totalChunks   = 0;
+    float  fps              = 0.0f;
+	float  cpuFrameMs       = 0.0f;
+    size_t triangles        = 0;
+    size_t cubes            = 0;
+    size_t visibleChunks    = 0;
+    size_t totalChunks      = 0;
+    size_t terrainDrawCalls = 0;
+	float  pingMs           = -1.0f;
 };
 
 class DebugHUD : public Menu {
