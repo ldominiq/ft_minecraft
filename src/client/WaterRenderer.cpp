@@ -86,19 +86,25 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     const glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
 
     lighting->uploadLightingUniforms(*sceneShader, reflectCamPos, reflectedDir);
-    lighting->uploadCSMUniforms(*sceneShader, reflectView);
-    // Disable SSAO for water reflection (SSAO is computed for main camera only)
+    // Skip uploadCSMUniforms: it binds csmDepthMaps which was just written by the shadow pass
+    // milliseconds ago — binding it for reading here causes an implicit driver sync stall.
     sceneShader->setInt("ssaoEnabled", 0);
+    sceneShader->setFloat("shadows.enabled", 0.0f);
     // Render reflection scene
     texMgr.bind(GL_TEXTURE0);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
     lighting->drawSky(skyView, projection, reflectCamPos, false);
     // Update vegetation shader with reflected view/clip before rendering
     renderer->updateVegetationUniforms(reflectView, projection, clipPlane, reflectCamPos);
-    renderer->render(sceneShader);
+    // Use the reflected view-projection for frustum culling so only chunks
+    // actually visible in the reflection are submitted, not all main-camera chunks.
+    renderer->updateFrustum(projection * reflectView);
+    renderer->render(sceneShader, false); // skip vegetation
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();
+    // Restore main-camera frustum for all subsequent passes this frame.
+    renderer->updateFrustum(projection * camera->getViewMatrix());
 }
 
 void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, const TextureManager& texMgr) {
@@ -117,9 +123,10 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
 
     // Render refraction scene
     lighting->uploadLightingUniforms(*sceneShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
-    lighting->uploadCSMUniforms(*sceneShader, view);
-    // Disable SSAO for water refraction (SSAO is computed for main camera only)
+    // Skip uploadCSMUniforms: same shadow texture hazard as reflection — and underwater
+    // fragments don't need shadow computation at all.
     sceneShader->setInt("ssaoEnabled", 0);
+    sceneShader->setFloat("shadows.enabled", 0.0f);
     texMgr.bind(GL_TEXTURE0);
     // Render with vegetation so sea vegetation is visible in the refraction texture
     renderer->updateVegetationUniforms(view, projection, clipPlane, camera->getPlayer()->getPosition());

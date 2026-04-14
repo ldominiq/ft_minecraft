@@ -104,8 +104,8 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha);
 class App {
 public:
     struct TerrainDebugUIParams {
-        int genSize = 500;
-        int downsample = 8;
+        int genSize = 1000;
+        int downsample = 16;
     };
 
     App(const std::string& serverIp = "127.0.0.1");
@@ -213,6 +213,11 @@ private:
     float currentPeakValley = 0.0f;
     float currentTemperature = 0.0f;
     float currentHumidity = 0.0f;
+    uint8_t currentContBucket = 0;
+    uint8_t currentErosionBucket = 0;
+    uint8_t currentPVBucket = 0;
+    uint8_t currentTempBucket = 0;
+    uint8_t currentHumidBucket = 0;
 
     TerrainDebugUIParams debugTerrainParams;
 
@@ -296,11 +301,13 @@ private:
     GLuint queryDrawSkyPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawCloudsPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawWaterReflectionPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawWaterRefractionPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawShadowsPool[QUERY_POOL_SIZE]{};
     GLuint queryRenderShaderPool[QUERY_POOL_SIZE]{};
     GLuint queryRenderWaterPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawEntities[QUERY_POOL_SIZE]{};
     GLuint querySSAOPool[QUERY_POOL_SIZE]{};
+    GLuint queryGBufferPool[QUERY_POOL_SIZE]{};
 
     // Track which queries were actually issued this frame (conditional passes like shadows/SSAO)
     bool shadowQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
@@ -314,11 +321,13 @@ private:
     double measuredAverageMsDrawSky = 0.0;
     double measuredAverageMsDrawClouds = 0.0;
     double measuredAverageMsDrawWaterReflection = 0.0;
+    double measuredAverageMsDrawWaterRefraction = 0.0;
     double measuredAverageMsDrawShadows = 0.0;
     double measuredAverageMsRenderShader = 0.0;
     double measuredAverageMsRenderWater = 0.0;
     double measuredAverageMsDrawEntities = 0.0;
     double measuredAverageMsSSAO = 0.0;
+    double measuredAverageMsGBuffer = 0.0;
 };
 
 #endif //APP_HPP

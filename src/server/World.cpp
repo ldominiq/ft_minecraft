@@ -240,13 +240,22 @@ void World::dumpBiomeMap(const TerrainGenerationParams& params, int centerChunkX
 
             glm::u8vec3 color;
             switch (biome) {
-                case BiomeType::PLAINS:  color = { 80, 200, 120 }; break;
-                case BiomeType::DESERT:  color = { 210, 180, 80 }; break;
-                case BiomeType::FOREST:  color = { 40, 160, 60 }; break;
-                case BiomeType::TUNDRA:  color = { 200, 220, 230 }; break;
-                case BiomeType::SWAMP:   color = { 150, 140, 45 }; break;
+                case BiomeType::PLAINS:  color = { 4, 130, 67 }; break;
+                case BiomeType::DESERT:  color = { 255, 255, 0 }; break;
+                case BiomeType::DARK_FOREST:  color = { 19, 77, 19 }; break;
+                case BiomeType::TUNDRA:  color = { 255, 255, 255 }; break;
+                case BiomeType::SWAMP:   color = { 100, 70, 30 }; break;
                 case BiomeType::OCEAN:   color = { 40, 60, 160 }; break;
             	case BiomeType::MOUNTAIN: color = { 100, 100, 100 }; break;
+				case BiomeType::BIRCH_FOREST: color = { 177, 240, 177 }; break;
+				case BiomeType::JUNGLE: color = { 0, 255, 0 }; break;
+				case BiomeType::SAVANNA: color = { 175, 191, 0 }; break;
+				case BiomeType::MESA: color = { 255, 0, 0 }; break;
+				case BiomeType::ICE_PLAINS: color = { 87, 252, 255 }; break;
+				case BiomeType::VOLCANIC: color = { 0, 0, 0 }; break;
+				case BiomeType::RED_DESERT: color = { 255, 115, 0 }; break;
+				case BiomeType::NETHER: color = { 183, 52, 235 }; break;
+				case BiomeType::MUSHROOM_ISLAND: color = { 255, 183, 168 }; break;
                 default:                  color = { 255, 0, 255 }; break;
             }
 

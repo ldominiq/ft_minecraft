@@ -242,41 +242,39 @@ void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& 
 	vegetationShader->setVec3("viewPos", viewPos);
 }
 
-void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation) const {
+void Renderer::processMeshUpdates() {
 	for (auto& weakChunk : renderedChunks) {
 		if (auto chunk = weakChunk.lock())
-		{
 			if (chunk->needsUpdate)
 				chunk->updateMesh();
+	}
+}
 
-			if (chunk->getMeshVerticesSize() == 0)
-				continue;
+void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation) const {
+	std::vector<std::shared_ptr<ChunkRenderer>> visibleChunks;
 
-			// Frustum cull: skip chunks entirely outside the camera view
-			if (frustumCullingEnabled) {
-				const float x0 = static_cast<float>(chunk->getOriginX());
-				const float z0 = static_cast<float>(chunk->getOriginZ());
-				const glm::vec3 minP(x0, 0.0f, z0);
-				const glm::vec3 maxP(x0 + Chunk::WIDTH, Chunk::HEIGHT, z0 + Chunk::DEPTH);
+	for (auto& weakChunk : renderedChunks) {
+		auto chunk = weakChunk.lock();
+		if (!chunk || chunk->getMeshVerticesSize() == 0)
+			continue;
 
-				if (!cameraFrustum.isBoxVisible(minP, maxP))
-					continue;
-			}
+		// Frustum cull: skip chunks entirely outside the camera view
+		if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
+			continue;
 
-			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+		visibleChunks.push_back(chunk);
+	}
 
-			// Render vegetation for this chunk if it exists
-			if (renderVegetation && vegetationShader && chunk->getVegetationRenderer()) {
-				auto vegRenderer = chunk->getVegetationRenderer();
-				if (vegRenderer->getInstanceCount() > 0) {
-					// Switch to vegetation shader (uniforms already set in renderScene)
-					vegetationShader->use();
-					vegRenderer->render();
-					// Switch back to main shader
-					shaderProgram->use();
-				}
-			}
+	// Render all vegetation in a single shader-switch batch
+	if (renderVegetation && vegetationShader) {
+		vegetationShader->use();
+		for (auto& chunk : visibleChunks) {
+			auto vegRenderer = chunk->getVegetationRenderer();
+			if (vegRenderer && vegRenderer->getInstanceCount() > 0)
+				vegRenderer->render();
 		}
+		shaderProgram->use();
 	}
 }
 
@@ -286,20 +284,16 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 		if (!chunk)
 			continue;
 
-		// Update mesh before checking size (a chunk needing update may go from 0 to non-zero vertices)
-		if (chunk->needsUpdate)
-			chunk->updateMesh();
-
 		// Skip empty chunks (no geometry to cast shadows)
 		if (chunk->getMeshVerticesSize() == 0)
 			continue;
 
 		// Frustum cull: test the chunk AABB against the light's clip volume.
 		// Chunk world-space AABB:
-		const float x0 = static_cast<float>(chunk->getOriginX());
-		const float z0 = static_cast<float>(chunk->getOriginZ());
-		const float x1 = x0 + static_cast<float>(Chunk::WIDTH);
-		const float z1 = z0 + static_cast<float>(Chunk::DEPTH);
+		const float x0 = chunk->getCachedMinP().x;
+		const float z0 = chunk->getCachedMinP().z;
+		const float x1 = chunk->getCachedMaxP().x;
+		const float z1 = chunk->getCachedMaxP().z;
 		constexpr float y0 = 0.0f;
 		constexpr float y1 = static_cast<float>(Chunk::HEIGHT);
 
@@ -420,15 +414,8 @@ void Renderer::renderWater() const {
                 continue;
 
             // Frustum cull water the same as terrain
-            if (frustumCullingEnabled) {
-                const float x0 = static_cast<float>(chunk->getOriginX());
-                const float z0 = static_cast<float>(chunk->getOriginZ());
-                const glm::vec3 minP(x0, 0.0f, z0);
-                const glm::vec3 maxP(x0 + Chunk::WIDTH, Chunk::HEIGHT, z0 + Chunk::DEPTH);
-
-                if (!cameraFrustum.isBoxVisible(minP, maxP))
-                    continue;
-            }
+            if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
+                continue;
 
             glBindVertexArray(chunk->getWaterVao());
             glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);
@@ -443,15 +430,8 @@ bool Renderer::hasVisibleWater() const {
 			if (chunk->getWaterMeshVerticesSize() == 0)
 				continue;
 
-			if (frustumCullingEnabled) {
-				const float x0 = static_cast<float>(chunk->getOriginX());
-				const float z0 = static_cast<float>(chunk->getOriginZ());
-				const glm::vec3 minP(x0, 0.0f, z0);
-				const glm::vec3 maxP(x0 + Chunk::WIDTH, Chunk::HEIGHT, z0 + Chunk::DEPTH);
-
-				if (!cameraFrustum.isBoxVisible(minP, maxP))
-					continue;
-			}
+			if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
+				continue;
 
 			return true; // Found at least one visible water chunk
 		}

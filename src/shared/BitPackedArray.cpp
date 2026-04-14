@@ -131,7 +131,7 @@ void BitPackedArray::encodeAll(
         ++neededBits;
     }
     if (neededBits > m_bitsPerEntry) {
-        throw std::runtime_error("encodeAll: palette requires more bits than this BitPackedArray supports");
+        grow(neededBits);
     }
 
     std::fill(m_data.begin(), m_data.end(), 0);

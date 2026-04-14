@@ -3,6 +3,8 @@
 
 ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVerticesSize(0), waterMeshVerticesSize(0) {
     vegetationRenderer = std::make_unique<VegetationRenderer>();
+    cachedMinP = glm::vec3(static_cast<float>(originX), 0.0f, static_cast<float>(originZ));
+    cachedMaxP = glm::vec3(static_cast<float>(originX) + Chunk::WIDTH, static_cast<float>(Chunk::HEIGHT), static_cast<float>(originZ) + Chunk::DEPTH);
 }
 
 ChunkRenderer::~ChunkRenderer() {
@@ -132,6 +134,9 @@ void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockTy
     if (textureManager) {
         const BlockTextures& bt = textureManager->getBlockTextures(type);
         texLayer = static_cast<float>(bt.getLayerForFace(face));
+        if (type == BlockType::GRASS && face == 2) {
+            texLayer = textureManager->getGrassTintLayer(getBiomeAt(x, z));
+        }
     }
 
     // Build six vertices for this face using the computed light
@@ -479,7 +484,8 @@ void ChunkRenderer::buildVegetationMesh() const {
                         static_cast<uint8_t>(lx),
                         static_cast<uint8_t>(ly),
                         static_cast<uint8_t>(lz),
-                        b
+                        b,
+                        static_cast<uint8_t>(getBiomeAt(lx, lz))
                     });
                 }
             }

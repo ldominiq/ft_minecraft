@@ -415,9 +415,6 @@ void TerrainDebugWindow::render(TerrainGenerationParams& params) {
         pkt.snapClimateToCells = params.snapClimateToCells;
         pkt.climateWarpFrequency = params.climateWarpFrequency;
         pkt.climateWarpStrength = params.climateWarpStrength;
-        pkt.desertMoistureThreshold = params.desertMoistureThreshold;
-        pkt.forestMoistureThreshold = params.forestMoistureThreshold;
-        pkt.snowTemperatureThreshold = params.snowTemperatureThreshold;
         pkt.debugOresOnly = params.debugOresOnly;
         sendParamsCallback(pkt);
         sendParamsTimer = 0.0f;
