@@ -46,6 +46,18 @@ struct ChunkEntry {
     std::uint32_t size;
 };
 
+struct SkyTimeState {
+	// Sky time (server-authoritative)
+	float   skyTimeOffset  = 0.5f;
+	float   sunYawDeg      = 45.0f;
+	float   sunPauseTimer  = 0.0f;
+	float   sunStepTimer   = 0.0f;
+	bool    sunStepping    = false;
+	bool    skyTimePaused  = false;
+	uint8_t skyMode        = 1;     // 0 = Skyrim, 1 = Smooth
+	float   skyTimeSpeed   = 0.05f;
+};
+
 class World final : public CommonWorld<ChunkGeneration>
 {
     TerrainGenerationParams terrainParams;
@@ -75,6 +87,8 @@ class World final : public CommonWorld<ChunkGeneration>
     std::size_t maxConcurrentGeneration = 20;
 	std::size_t maxConcurrentGenerationPerPlayer = 4;
 
+	static constexpr size_t MAX_DUMP_PIXELS = 4096ULL * 4096ULL; // ~64MB/channel
+
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkGeneration> &chunk); // TODO : consider moving to shared?
 
 	std::unordered_set<ChunkPos> loadedRegions;
@@ -87,6 +101,8 @@ class World final : public CommonWorld<ChunkGeneration>
 	ChunkPos findNextChunk(CPlayerInfo& player);
 	void unloadPlayerKnownChunks(CPlayerInfo &player);
 	std::vector<ChunkPos> buildCircularOffsets(int radius);
+
+	SkyTimeState skyTimeState;
 
 	public:
 		World();
@@ -101,8 +117,8 @@ class World final : public CommonWorld<ChunkGeneration>
 		std::vector<ChunkPos> rdyChunks;
 		std::unordered_map<int, std::unordered_set<ChunkPos>> PlayerKnownChunks;
 
-		void dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
-		void dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
+		void dumpHeightmap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const;
+		void dumpBiomeMap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample);
 
 		std::vector<s_waterPath> findShortestWaterPath(const glm::ivec3 &initialBlockPos);
 		std::vector<std::shared_ptr<s_liquid>> waterFlowTowardsShortestPath(const glm::ivec3 &initialBlockPos, const std::shared_ptr<s_liquid> &liquid, const std::vector<s_waterPath> &paths);
@@ -124,6 +140,9 @@ class World final : public CommonWorld<ChunkGeneration>
 		// Terrain params for ImGui
 		TerrainGenerationParams& getTerrainParams() { return terrainParams;}
 
+		// Set all terrain parameters at once (used for syncing from client)
+		void setTerrainParams(const TerrainGenerationParams& p) { terrainParams = p; }
+
 		// void setCandidates(std::vector<std::tuple<int, int, float, float>> &candidates, const CPlayerInfo &player);
 		// void updatePlannedChunks(CPlayerInfo &player);
 
@@ -135,6 +154,12 @@ class World final : public CommonWorld<ChunkGeneration>
 
 		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 		void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
+
+		void advanceSkyTime();
+
+		void setSkyTime(const SkyTimeState &newState);
+
+		const SkyTimeState& getSkyTimeState() const { return skyTimeState; };
 };
 
 #endif //WORLD_HPP

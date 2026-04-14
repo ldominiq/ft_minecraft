@@ -101,6 +101,15 @@ void App::init(const std::string& serverIp) {
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
+    // Initialize terrain debug window for parameter tweaking
+    terrainDebugWindow = std::make_unique<TerrainDebugWindow>();
+    // Set callback to send terrain params to server when changed
+    terrainDebugWindow->setSendParamsCallback([this](const NetTerrainParams& pkt) {
+        if (udpClient) {
+            udpClient->sendPacket(pkt);
+        }
+    });
+
     gBuffer = std::make_shared<GBuffer>(screenWidth, screenHeight);
     ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
@@ -354,8 +363,36 @@ void App::setUdpClientPacketCallback()
 
             case PacketType::NET_IMGUI: {
                 auto& p = static_cast<NetImGui&>(*pkt);
-                // handle ImGui data (e.g., update UI state)
                 currentBiome = p.currentBiome;
+                currentTerrainHeight = p.terrainHeight;
+                currentSeaLevel = p.seaLevel;
+                currentWorldSeed = p.worldSeed;
+                currentContinentalness = p.continentalness;
+                currentErosion = p.erosion;
+                currentPeakValley = p.peakValley;
+                currentTemperature = p.temperature;
+                currentHumidity = p.humidity;
+                break;
+            }
+
+            case PacketType::NET_TERRAIN_PARAMS: {
+                auto& p = static_cast<NetTerrainParams&>(*pkt);
+                // Log receipt of terrain params update
+                std::cout << "[Client] Received terrain parameters update from server (seed: " << p.seed << ")\n";
+                // Could optionally cache these for UI display, but server will handle actual generation
+                break;
+            }
+
+            case PacketType::NET_SKY_TIME: {
+                auto& p = static_cast<NetSkyTime&>(*pkt);
+                lighting->setSkyTimeOffset(p.skyTimeOffset);
+                lighting->setSunYawDeg(p.sunYawDeg);
+                lighting->setSkyTimePaused(p.skyTimePaused);
+                lighting->setSunStepping(p.sunStepping);
+                lighting->setSunPauseTimer(p.sunPauseTimer);
+                lighting->setSunStepTimer(p.sunStepTimer);
+                lighting->setSkyMode(p.skyMode);
+                lighting->setSkyTimeSpeed(p.skyTimeSpeed);
                 break;
             }
 
@@ -597,21 +634,25 @@ void App::render() {
             // render refraction texture
             waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
         }
-
+        
+        const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
+        const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
+        renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
+        
     	// render to screen
     	renderScene(view, projection, clipPlane);
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
-        if (waterVisible)
+        if (waterVisible) {
+            const float chunkDist = renderer->getMaxRenderedChunkDist();
+            waterRenderer->setFogParams(fogEnabled, chunkDist * fogStartFraction, chunkDist, fogStrength);
     	    waterRenderer->renderWaterSurface(projection);
+        }
         glEndQuery(GL_TIME_ELAPSED);
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
-		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius());
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         // Draw chunk boundary overlay (if enabled)
@@ -791,14 +832,22 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 
     // Bind SSAO texture for the lighting shader (must be after activeShader->use())
     if (ssao && ssao->isEnabled()) {
-        glActiveTexture(GL_TEXTURE5);
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::SSAO);
         glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
-        activeShader->setInt("ssaoTexture", 5);
+        activeShader->setInt("ssaoTexture", TextureUnits::SSAO);
         activeShader->setInt("ssaoEnabled", 1);
         activeShader->setVec2("screenSize", glm::vec2(screenWidth, screenHeight));
     } else {
         activeShader->setInt("ssaoEnabled", 0);
     }
+
+    // Fog
+    GLuint skyLUTTex = lighting->getSkyLUTTexture();
+    const float maxChunkDist = renderer->getMaxRenderedChunkDist();
+    const float fogEnd   = maxChunkDist;
+    const float fogStart = maxChunkDist * fogStartFraction;
+    uploadFogUniforms(*activeShader, fogEnabled, skyLUTTex,
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
 
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
@@ -836,6 +885,10 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         // Upload CSM shadow uniforms to vegetation shader
         lighting->uploadCSMUniforms(*vegShader, view);
         vegShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
+
+        // Fog for vegetation
+        uploadFogUniforms(*vegShader, fogEnabled, skyLUTTex,
+                          lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
 
         activeShader->use(); // Switch back to main shader
     }
@@ -934,24 +987,23 @@ void App::debugWindow() {
                     // Display camera coordinates
                     ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
 
-                    // ImGui::Text("World SEED: %i", params.seed);
+                    ImGui::Text("World SEED: %d", currentWorldSeed);
+                    ImGui::Text("Terrain Height: %d (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
+                    ImGui::Text("Continentalness: %.3f", currentContinentalness);
+                    ImGui::Text("Erosion: %.3f", currentErosion);
+                    ImGui::Text("Peak/Valley: %.3f", currentPeakValley);
+                    ImGui::Text("Temperature: %.3f", currentTemperature);
+                    ImGui::Text("Humidity: %.3f", currentHumidity);
 
-                    // ImGui::Text("Continentalness: %.3f", Chunk::getContinentalness(params, wx, wz));
-                    // ImGui::Text("Erosion: %.3f", Chunk::getErosion(params, wx, wz));
-                    // ImGui::Text("Peak/Valley: %.3f", Chunk::getPV(params, wx, wz));
-                    // ImGui::Text("Temperature: %.3f", Chunk::getTemperature(params, wx, wz));
-                    // ImGui::Text("Humidity: %.3f", Chunk::getHumidity(params, wx, wz));
-
-                    uint8_t biome = currentBiome;
                     const char* biomeName =
-                        (static_cast<BiomeType>(biome) == BiomeType::PLAINS) ? "PLAINS" :
-                        (static_cast<BiomeType>(biome) == BiomeType::DESERT) ? "DESERT" :
-                        (static_cast<BiomeType>(biome) == BiomeType::FOREST) ? "FOREST" :
-                        (static_cast<BiomeType>(biome) == BiomeType::TUNDRA) ? "TUNDRA" :
-                        (static_cast<BiomeType>(biome) == BiomeType::SWAMP)  ? "SWAMP"  :
-                        (static_cast<BiomeType>(biome) == BiomeType::OCEAN)  ? "OCEAN"  :
-                        (static_cast<BiomeType>(biome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
-                                                    "UNKNOWN";
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::PLAINS) ? "PLAINS" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::DESERT) ? "DESERT" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::FOREST) ? "FOREST" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::TUNDRA) ? "TUNDRA" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::SWAMP)  ? "SWAMP"  :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::OCEAN)  ? "OCEAN"  :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
+                                                                                    "UNKNOWN";
                     ImGui::Text("BIOME: %s", biomeName);
 
 
@@ -964,13 +1016,13 @@ void App::debugWindow() {
                 ImGui::Text("Approx. Visible Blocks: %zu", cachedDebugStats.cubes);
             }
 
-            // Display memory usage in megabytes.  We call a static helper to
-            // obtain the current resident set size (RSS).
-            {
-                const size_t memBytes = getCurrentRSS();
-                const double memMB = memBytes / (1024.0 * 1024.0);
-                ImGui::Text("Memory: %.2f MB", memMB);
-            }
+                    // Display memory usage in megabytes.  We call a static helper to
+                    // obtain the current resident set size (RSS).
+                    {
+                        const size_t memBytes = getCurrentRSS();
+                        const double memMB = memBytes / (1024.0 * 1024.0);
+                        ImGui::Text("Memory: %.2f MB", memMB);
+                    }
 
 
                     ImGui::Separator();
@@ -994,74 +1046,41 @@ void App::debugWindow() {
                     // Need to expose terrainParams from the server to the client..
                     // ImGui::Checkbox("Debug: Ores Only", &terrainParams.debugOresOnly);
 
-                    // if (ImGui::CollapsingHeader("Noise Generation")) {
-                    //     if (ImGui::CollapsingHeader("Continentalness Parameters")) {
-                    //         ImGui::SliderFloat("frequency", &params.continentalnessFrequency, 0.001f, 0.01f);
-                    //         ImGui::SliderInt("octaves", &params.continentalnessOctaves, 1, 10);
-                    //         ImGui::SliderFloat("persistence", &params.continentalnessPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("lacunarity", &params.continentalnessLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("scaling factor", &params.continentalnessScalingFactor, 1.0f, 5.0f);
-                    //     }
+                    ImGui::Separator();
 
-                    //     if (ImGui::CollapsingHeader("Erosion Parameters")) {
-                    //         ImGui::SliderFloat("#frequency", &params.erosionFrequency, 0.001f, 0.02f);
-                    //         ImGui::SliderInt("#octaves", &params.erosionOctaves, 1, 10);
-                    //         ImGui::SliderFloat("#persistence", &params.erosionPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("#lacunarity", &params.erosionLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("#scaling factor", &params.erosionScalingFactor, 1.0f, 5.0f);
-                    //     }
+                    if (ImGui::CollapsingHeader("Heightmap")) {
+                        ImGui::Text("Heightmap Generation (server-side)");
+                        ImGui::InputInt("Size ([1-1024])", &debugTerrainParams.genSize);
+                        ImGui::InputInt("Downsample ([1-256])", &debugTerrainParams.downsample);
 
-                    //     if (ImGui::CollapsingHeader("Peak/Valley Parameters")) {
-                    //         ImGui::SliderFloat("-frequency", &params.peakValleyFrequency, 0.001f, 0.09f);
-                    //         ImGui::SliderInt("-octaves", &params.peakValleyOctaves, 1, 10);
-                    //         ImGui::SliderFloat("-persistence", &params.peakValleyPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("-lacunarity", &params.peakValleyLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("-scaling factor", &params.peakValleyScalingFactor, 1.0f, 5.0f);
-                    //     }
+                        debugTerrainParams.genSize = std::max(1, debugTerrainParams.genSize);
+                        debugTerrainParams.downsample = std::max(1, debugTerrainParams.downsample);
 
-                    //     if (ImGui::CollapsingHeader("Temperature Parameters")) {
-                    //         ImGui::SliderFloat("--frequency", &params.temperatureFrequency, 0.0001f, 0.0012f);
-                    //         ImGui::SliderInt("--octaves", &params.temperatureOctaves, 1, 10);
-                    //         ImGui::SliderFloat("--persistence", &params.temperaturePersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("--lacunarity", &params.temperatureLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("--scaling factor", &params.temperatureScalingFactor, 1.0f, 5.0f);
-                    //     }
+                        auto sendDumpCommand = [&](const char* mode) {
+                            if (!udpClient) return;
+                            NetMessage cmd;
+                            cmd.message = std::string("/dump ") + mode + " " +
+                                          std::to_string(debugTerrainParams.genSize) + " " +
+                                          std::to_string(debugTerrainParams.downsample);
+                            udpClient->sendPacket(cmd);
+                        };
 
-                    //     if (ImGui::CollapsingHeader("Humidity Parameters")) {
-                    //         ImGui::SliderFloat("---frequency", &params.humidityFrequency, 0.0005f, 0.0015f);
-                    //         ImGui::SliderInt("---octaves", &params.humidityOctaves, 1, 10);
-                    //         ImGui::SliderFloat("---persistence", &params.humidityPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("---lacunarity", &params.humidityLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("---scaling factor", &params.humidityScalingFactor, 1.0f, 5.0f);
-                    //     }
-                    // }
+                        if (ImGui::Button("Generate Hydros")) {
+                            sendDumpCommand("hydro");
+                        }
 
+                        if (ImGui::Button("Generate Noises")) {
+                            sendDumpCommand("noises");
+                        }
+                        if (ImGui::Button("Generate Heightmaps")) {
+                            sendDumpCommand("heightmap");
+                        }
+                        if (ImGui::Button("Generate Biome Map")) {
+                            sendDumpCommand("biome");
+                        }
+                    }
 
-                    // ImGui::Separator();
-
-                    // if (ImGui::CollapsingHeader("Heightmap")) {
-                    //     // Create heightmap image
-                    //     ImGui::Text("Heightmap Generation");
-                    //     ImGui::InputInt("Size (ex. 100)", &params.genSize);
-                    //     ImGui::InputInt("Downsample (ex. 8)", &params.downsample);
-                    //     if (ImGui::Button("Generate Noises")) {
-                    //         if (world) {
-                    //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 1);
-                    //         }
-                    //     }
-                    //     if (ImGui::Button("Generate Heightmaps")) {
-                    //         if (world) {
-                    //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 0);
-                    //         }
-                    //     }
-                    //     if (ImGui::Button("Generate Biome Map")) {
-                    //         if (world) {
-                    //             world->dumpBiomeMap(0, 0, params.genSize, params.genSize, params.downsample);
-                    //         }
-                    //     }
-                    // }
-
-                    // ImGui::Separator();
+                    ImGui::Separator();
 
                     if (ImGui::CollapsingHeader("Rendering")) {
                         if (ImGui::BeginTabBar("Rendering", tab_bar_flags))
@@ -1310,6 +1329,8 @@ void App::debugWindow() {
                     ImGui::Separator();
                     if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
                         bool skyTimePaused = lighting->isSkyTimePaused();
+                        int skyMode = static_cast<int>(lighting->getSkyMode());
+                        float skyTimeSpeed = lighting->getSkyTimeSpeed();
                     	float skyTimeOffset = lighting->getSkyTimeOffset();
                     	float sunYawDeg = lighting->getSunYawDeg();
                     	float skyExposure = lighting->getSkyExposure();
@@ -1333,12 +1354,67 @@ void App::debugWindow() {
                                 bool skyLUTEnabled = lighting->isSkyLUTEnabled();
                                 if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
                                     lighting->setSkyLUTEnabled(skyLUTEnabled);
-                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
+                                // Mode selector
+                                {
+                                    bool modeChanged = ImGui::RadioButton("Skyrim (pause/step)", &skyMode, 0);
+                                    ImGui::SameLine();
+                                    modeChanged |= ImGui::RadioButton("Smooth (linear)", &skyMode, 1);
+                                    if (modeChanged) {
+                                        lighting->setSkyMode(static_cast<uint8_t>(skyMode));
+                                        NetSkyTime pkt;
+                                        pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                        pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                        pkt.skyTimeSpeed  = skyTimeSpeed;
+                                        pkt.sunStepping   = lighting->getSunStepping();
+                                        pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                        pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                        udpClient->sendPacket(pkt);
+                                    }
+                                }
+                                if (ImGui::SliderFloat("Time Speed", &skyTimeSpeed, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
+                                    lighting->setSkyTimeSpeed(skyTimeSpeed);
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
+
+                                ImGui::Separator();
+                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused)) {
                                     lighting->setSkyTimePaused(skyTimePaused);
-                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f"))
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f")) {
                                     lighting->setSkyTimeOffset(skyTimeOffset);
-                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping = false; pkt.sunPauseTimer = 0.0f; pkt.sunStepTimer = 0.0f;
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f")) {
                                     lighting->setSunYawDeg(sunYawDeg);
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
                                 if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
                                     lighting->setSkyExposure(skyExposure);
                                 if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))
@@ -1348,6 +1424,17 @@ void App::debugWindow() {
                                 if (ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f"))
                                     lighting->setPlanetScale(planetScale);
                                 ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
+                                ImGui::EndTabItem();
+                            }
+
+                            if (ImGui::BeginTabItem("Fog")) {
+                                ImGui::Text("Distance Fog");
+                                ImGui::Checkbox("Fog Enabled", &fogEnabled);
+                                if (fogEnabled) {
+                                    ImGui::SliderFloat("Fog Start (fraction of chunk radius)", &fogStartFraction, 0.0f, 0.95f, "%.2f");
+                                    ImGui::SliderFloat("Fog Strength", &fogStrength, 0.1f, 10.0f, "%.1f");
+                                    ImGui::Text("Fog range: %.0f - %.0f blocks", renderer->getMaxRenderedChunkDist() * fogStartFraction, renderer->getMaxRenderedChunkDist());
+                                }
                                 ImGui::EndTabItem();
                             }
 
@@ -1412,7 +1499,6 @@ void App::debugWindow() {
                 			lighting->setUnderwaterFogColor(underwaterFogColor);
 
                 		float underwaterFogDensity = lighting->getUnderwaterFogDensity();
-
                 		if (ImGui::SliderFloat("Underwater Fog Density", &underwaterFogDensity, 0.00f, 0.5f, "%.2f"))
                 			lighting->setUnderwaterFogDensity(underwaterFogDensity);
                 	}
@@ -1458,6 +1544,16 @@ void App::debugWindow() {
             if (!uiInteractive) {
                 ImGui::PopStyleVar();
             }
+        }
+
+        // ── Terrain Debug Window ──
+        if (terrainDebugWindow && showDebugWindow) {
+            // Get the actual terrain params from the world (server side)
+            // For now, use default params but they should persist across frames
+            if (!terrainDebugWindowParams) {
+                terrainDebugWindowParams = std::make_unique<TerrainGenerationParams>();
+            }
+            terrainDebugWindow->render(*terrainDebugWindowParams);
         }
 
         // ── Detachable Profiler Window ──

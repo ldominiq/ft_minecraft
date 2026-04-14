@@ -8,6 +8,7 @@
 #include <sstream>
 #include <iostream>
 #include <string>
+#include <filesystem>
 
 #include "stb_image.h"
 

@@ -25,6 +25,14 @@ uniform vec3 underwaterFogColor;
 uniform float underwaterFogDensity;
 uniform vec3 underwaterTintColor;
 
+// Distance fog (sky LUT blending)
+uniform sampler2D skyLUT;
+uniform float skyExposure;
+uniform float fogStart;
+uniform float fogEnd;
+uniform float fogStrength;
+uniform bool fogEnabled;
+
 // CSM shadow uniforms
 #define MAX_CASCADES 5
 uniform sampler2DArrayShadow shadowMapArray;
@@ -34,6 +42,8 @@ uniform int cascadeCount;
 uniform float farPlane;
 uniform mat4 view;
 uniform bool shadowsEnabled;
+
+#include "sky_common.glsl"
 
 // Forward declarations
 float computeVegetationShadow(vec3 fragPosWorldSpace);
@@ -94,6 +104,14 @@ void main() {
         vec3 tintedColor = result * underwaterTintColor;
 
         result = mix(underwaterFogColor, tintedColor, fogFactor);
+    }
+
+    
+    if (fogEnabled && !cameraUnderwater) {
+        float dist = length(fs_in.FragPos - viewPos);
+        float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
+        vec3 fogDir = normalize(fs_in.FragPos - viewPos);
+        result = mix(sampleSkyColor(skyLUT, fogDir, -lightDir, skyExposure), result, fogFactor);
     }
 
     FragColor = vec4(result, texColor.a);
