@@ -361,6 +361,11 @@ struct NetImGui final : public Packet {
 	float peakValley = 0.0f;
 	float temperature = 0.0f;
 	float humidity = 0.0f;
+	uint8_t contBucket = 0;
+	uint8_t erosionBucket = 0;
+	uint8_t pvBucket = 0;
+	uint8_t tempBucket = 0;
+	uint8_t humidBucket = 0;
 
     NetImGui() : Packet(ID) {}
 
@@ -374,6 +379,11 @@ struct NetImGui final : public Packet {
         w.write_f32(peakValley);
         w.write_f32(temperature);
         w.write_f32(humidity);
+        w.write_u8(contBucket);
+        w.write_u8(erosionBucket);
+        w.write_u8(pvBucket);
+        w.write_u8(tempBucket);
+        w.write_u8(humidBucket);
     }
 
     void decode(BufferReader& r) override {
@@ -386,6 +396,11 @@ struct NetImGui final : public Packet {
         peakValley = r.read_f32();
         temperature = r.read_f32();
         humidity = r.read_f32();
+        contBucket = r.read_u8();
+        erosionBucket = r.read_u8();
+        pvBucket = r.read_u8();
+        tempBucket = r.read_u8();
+        humidBucket = r.read_u8();
     }
 };
 inline AutoRegister<NetImGui> _reg_NetImGui;
@@ -461,8 +476,8 @@ struct NetTerrainParams final : public Packet {
     float lakeMaxContinentalness;
 
     // Heightmap dump settings
-    int32_t genSize;
-    int32_t downsample;
+    int32_t genSize = 1000;
+    int32_t downsample = 16;
 
     // Continentalness noise params
     float continentalnessFrequency;
@@ -505,10 +520,6 @@ struct NetTerrainParams final : public Packet {
     float climateWarpFrequency;
     float climateWarpStrength;
 
-    float desertMoistureThreshold;
-    float forestMoistureThreshold;
-    float snowTemperatureThreshold;
-
     bool debugOresOnly;
 
     TerrainGenerationParams toParams() const {
@@ -547,9 +558,6 @@ struct NetTerrainParams final : public Packet {
         p.humidityScalingFactor = humidityScalingFactor;
         p.biomeScaleChunks = biomeScaleChunks; p.snapClimateToCells = snapClimateToCells;
         p.climateWarpFrequency = climateWarpFrequency; p.climateWarpStrength = climateWarpStrength;
-        p.desertMoistureThreshold = desertMoistureThreshold;
-        p.forestMoistureThreshold = forestMoistureThreshold;
-        p.snowTemperatureThreshold = snowTemperatureThreshold;
         p.debugOresOnly = debugOresOnly;
         return p;
     }
@@ -594,9 +602,6 @@ struct NetTerrainParams final : public Packet {
         humidityScalingFactor = p.humidityScalingFactor;
         biomeScaleChunks = p.biomeScaleChunks; snapClimateToCells = p.snapClimateToCells;
         climateWarpFrequency = p.climateWarpFrequency; climateWarpStrength = p.climateWarpStrength;
-        desertMoistureThreshold = p.desertMoistureThreshold;
-        forestMoistureThreshold = p.forestMoistureThreshold;
-        snowTemperatureThreshold = p.snowTemperatureThreshold;
         debugOresOnly = p.debugOresOnly;
     }
 
@@ -657,9 +662,6 @@ struct NetTerrainParams final : public Packet {
         w.write_u8(snapClimateToCells ? 1 : 0);
         w.write_f32(climateWarpFrequency);
         w.write_f32(climateWarpStrength);
-        w.write_f32(desertMoistureThreshold);
-        w.write_f32(forestMoistureThreshold);
-        w.write_f32(snowTemperatureThreshold);
         w.write_u8(debugOresOnly ? 1 : 0);
     }
 
@@ -718,9 +720,6 @@ struct NetTerrainParams final : public Packet {
         snapClimateToCells = r.read_u8() != 0;
         climateWarpFrequency = r.read_f32();
         climateWarpStrength = r.read_f32();
-        desertMoistureThreshold = r.read_f32();
-        forestMoistureThreshold = r.read_f32();
-        snowTemperatureThreshold = r.read_f32();
         debugOresOnly = r.read_u8() != 0;
     }
 };

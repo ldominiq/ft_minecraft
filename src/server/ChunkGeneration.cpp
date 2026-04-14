@@ -21,15 +21,16 @@ float ChunkGeneration::getRiverNoise(const TerrainGenerationParams& terrainParam
         lastSeedRiver = terrainParams.seed;
     }
 
+    // Offset a little to move the rivers from [0, 0]
     const float warpX = riverWarpX.fractalBrownianMotion2D(
-        worldX * terrainParams.riverWarpFrequency,
-        worldZ * terrainParams.riverWarpFrequency,
+        worldX * terrainParams.riverWarpFrequency + 31.7f,
+        worldZ * terrainParams.riverWarpFrequency + 17.3f,
         3, 2.0f, 0.5f
     ) * terrainParams.riverWarpStrength;
 
     const float warpZ = riverWarpZ.fractalBrownianMotion2D(
-        worldX * terrainParams.riverWarpFrequency,
-        worldZ * terrainParams.riverWarpFrequency,
+        worldX * terrainParams.riverWarpFrequency + 53.1f,
+        worldZ * terrainParams.riverWarpFrequency + 79.4f,
         3, 2.0f, 0.5f
     ) * terrainParams.riverWarpStrength;
 
@@ -142,6 +143,28 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
     // local storage
     BlockStorage blocks;
 
+	generateTerrain(blocks, terrainParams);
+
+    generateCaves(blocks, terrainParams);
+
+    generateTrees(blocks, terrainParams);
+    generateCacti(blocks, terrainParams);
+    generateIceStructures(blocks, terrainParams);
+
+    generateOres(blocks, terrainParams);
+    
+    #ifndef NDEBUG
+	    stripBlocks(blocks, terrainParams);
+    #endif
+
+    // encode palette and block data (must be done before vegetation generation)
+    blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
+
+    generateVegetation(blocks, terrainParams);
+}
+
+// Core terrain generation: heightmap, biome assignment and base block types.
+void ChunkGeneration::generateTerrain(BlockStorage& blocks, const TerrainGenerationParams& terrainParams) {
     for (int x = 0; x < WIDTH; ++x) {
         for (int z = 0; z < DEPTH; ++z) {
             const auto worldX = static_cast<float>(originX + x);
@@ -178,28 +201,77 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
             // Compute biome
             const BiomeType biome = computeBiome(terrainParams, worldX, worldZ, surfaceY);
+            setBiomeAt(x, z, biome);
 
             // Set blocks based on biome
             for (int y = std::max(terrainParams.bedrockLevel + 1, surfaceY - 3); y < surfaceY && y < HEIGHT; y++) {
                 switch (biome) {
-                    case BiomeType::DESERT:
-                        top = fill = BlockType::SAND;
-                        break;
-                    case BiomeType::TUNDRA:
-                        top = BlockType::SNOW;
-                        fill = BlockType::DIRT;
-                        break;
-                    case BiomeType::FOREST: {
-                        top = BlockType::GRASS;
-                        fill = BlockType::DIRT;
-                        break;
-                    }
-                        
-                    case BiomeType::SWAMP: top = fill = BlockType::SAND; break;
-                    case BiomeType::MOUNTAIN: top = fill = BlockType::STONE; break;
-                    default:
-                        top = BlockType::GRASS;
-                        fill = BlockType::DIRT; // PLAINS
+                case BiomeType::DESERT:
+                    top = BlockType::SAND;
+                    fill = BlockType::SANDSTONE;
+                    break;
+                case BiomeType::SWAMP:
+                    top = BlockType::CLAY;
+                    fill = BlockType::COARSE_DIRT;
+                    break;
+                case BiomeType::TUNDRA:
+                    top = BlockType::SNOW;
+                    fill = BlockType::DIRT;
+                    break;
+                case BiomeType::VOLCANIC:
+                    top = fill = BlockType::BASALT;
+                    break;
+
+                case BiomeType::ICE_PLAINS:
+                    top = BlockType::ICE;
+                    fill = BlockType::PACKED_ICE;
+                    break;
+
+                case BiomeType::MOUNTAIN: {
+                    static constexpr BlockType mountainLayers[] = {
+                        BlockType::STONE, BlockType::GRANITE, BlockType::STONE,
+                        BlockType::DIORITE, BlockType::STONE, BlockType::ANDESITE,
+                        BlockType::STONE, BlockType::COBBLESTONE,
+                    };
+                    constexpr int N = static_cast<int>(std::size(mountainLayers));
+                    fill = mountainLayers[((y % N) + N) % N];
+                    top = BlockType::STONE;
+                    break;
+                }
+
+                case BiomeType::RED_DESERT:
+                    top = BlockType::RED_SAND;
+                    fill = BlockType::RED_SANDSTONE;
+                    break;
+
+                case BiomeType::NETHER:
+                    top = fill = BlockType::NETHERRACK;
+                    break;
+
+                case BiomeType::MUSHROOM_ISLAND:
+                    top = BlockType::RED_MUSHROOM_BLOCK;
+                    fill = BlockType::COARSE_DIRT;
+                    break;
+                case BiomeType::MESA: {
+                    static constexpr BlockType mesaLayers[] = {
+                        BlockType::TERRACOTTA,
+                        BlockType::RED_TERRACOTTA,
+                        BlockType::ORANGE_TERRACOTTA,
+                        BlockType::YELLOW_TERRACOTTA,
+                        BlockType::BROWN_TERRACOTTA,
+                        BlockType::WHITE_TERRACOTTA,
+                        BlockType::RED_TERRACOTTA,
+                        BlockType::ORANGE_TERRACOTTA,
+                        BlockType::TERRACOTTA,
+                        BlockType::PINK_TERRACOTTA,
+                    };
+                    constexpr int N = static_cast<int>(std::size(mesaLayers));
+                    top = fill = mesaLayers[((y % N) + N) % N];
+                    break;
+                }
+                default:
+                    top = BlockType::GRASS;
+                    fill = BlockType::DIRT; // PLAINS
                 }
 
                 blocks.at(x, y, z) = fill;
@@ -207,9 +279,9 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
             // Water up to sea levels
             for (int y = surfaceY; y <= terrainParams.seaLevel && y < HEIGHT; ++y)
-			{
+            {
                 blocks.at(x, y, z) = BlockType::WATER;
-			}
+            }
 
             // Set top block only if above water
             if (surfaceY > terrainParams.seaLevel) {
@@ -220,15 +292,11 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
 
         }
     }
+}
 
-    generateCaves(blocks, terrainParams);
 
-    generateTrees(blocks, terrainParams);
-    generateCacti(blocks, terrainParams);
-
-    generateOres(blocks, terrainParams);
-    
-    // DEBUG: strip everything except ores so they're visible in isolation
+// DEBUG: strip everything except ores so they're visible in isolation
+void ChunkGeneration::stripBlocks(BlockStorage& blocks, const TerrainGenerationParams& terrainParams) {
     if (terrainParams.debugOresOnly) {
         // Build a set of ore block types for fast lookup
         std::unordered_set<BlockType> oreTypes;
@@ -243,73 +311,285 @@ void ChunkGeneration::generate(const TerrainGenerationParams& terrainParams) {
                         blocks.at(x, y, z) = BlockType::AIR;
                 }
     }
+}
 
-    // encode palette and block data (must be done before vegetation generation)
-    blockIndices.encodeAll(blocks.getData(), palette, paletteMap);
 
-    generateVegetation(blocks, terrainParams);
+// Fast integer hash used to create organic leaf edges.
+// Returns true ~25% of the time for a given world position + tree anchor.
+static inline bool shouldSkipEdgeLeaf(int wx, int wy, int wz, int twx, int twz) {
+    uint32_t h = static_cast<uint32_t>(wx * 1619 + wy * 31337 + wz * 6271 + twx * 8191 + twz * 1087);
+    h ^= h >> 16;
+    h *= 0x45d9f3bu;
+    h ^= h >> 16;
+    return (h & 0xFF) < 64; // ~25% skip rate
 }
 
 // Place a single tree's blocks into the local BlockStorage.
 // trunkWorldX/Z is the world-space column of the trunk.
 // Only blocks that fall within this chunk's bounds are written.
 void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ,
-                                int surfaceY, int treeHeight) const {
-    // Convert trunk world coords to local coords
-    const int trunkLocalX = trunkWorldX - originX;
-    const int trunkLocalZ = trunkWorldZ - originZ;
+                                int surfaceY, int treeHeight,
+                                BlockType logType, BlockType leafType, int canopyStyle,
+                                int maxTrunkWidth, std::mt19937 &rng) const {
 
-    // Place dirt under the tree (only if trunk is inside this chunk)
-    if (trunkLocalX >= 0 && trunkLocalX < WIDTH &&
-        trunkLocalZ >= 0 && trunkLocalZ < DEPTH) {
-        blocks.at(trunkLocalX, surfaceY, trunkLocalZ) = BlockType::DIRT;
+    // Helper: write a log block at world (wx, wz, y), bounds-checked to this chunk.
+    auto placeLog = [&](int wx, int wz, int y) {
+        const int lx = wx - originX;
+        const int lz = wz - originZ;
+        if (lx < 0 || lx >= WIDTH || lz < 0 || lz >= DEPTH || y < 0 || y >= HEIGHT) return;
+        blocks.at(lx, y, lz) = logType;
+    };
+
+    // Helper: fill a horizontal disc of leaves centered at world (cwx, cwz) at height ly.
+    // skipCorners=true produces a diamond pattern.
+    // organic=true randomly skips ~25% of outermost-ring blocks for a natural edge.
+    auto placeLeafLayer = [&](int cwx, int cwz, int ly, int radius, bool skipCorners, bool organic = false) {
+        if (ly < 0 || ly >= HEIGHT) return;
+        for (int lx = -radius; lx <= radius; ++lx) {
+            for (int lz = -radius; lz <= radius; ++lz) {
+                if (skipCorners && abs(lx) == radius && abs(lz) == radius)
+                    continue;
+                if (organic && (abs(lx) == radius || abs(lz) == radius)) {
+                    if (shouldSkipEdgeLeaf(cwx + lx, ly, cwz + lz, trunkWorldX, trunkWorldZ)) {
+                        // Don't skip if an adjacent block in this layer is a log
+                        const int dx[] = {1, -1, 0, 0};
+                        const int dz[] = {0, 0, 1, -1};
+                        bool nextToLog = false;
+                        for (int d = 0; d < 4; ++d) {
+                            const int nx = cwx + lx + dx[d] - originX;
+                            const int nz = cwz + lz + dz[d] - originZ;
+                            if (nx >= 0 && nx < WIDTH && nz >= 0 && nz < DEPTH &&
+                                blocks.at(nx, ly, nz) == logType) {
+                                nextToLog = true;
+                                break;
+                            }
+                        }
+                        if (!nextToLog)
+                            continue;
+                    }
+                }
+                const int leafLocalX = cwx + lx - originX;
+                const int leafLocalZ = cwz + lz - originZ;
+                if (leafLocalX < 0 || leafLocalX >= WIDTH || leafLocalZ < 0 || leafLocalZ >= DEPTH)
+                    continue;
+                if (blocks.at(leafLocalX, ly, leafLocalZ) == BlockType::AIR)
+                    blocks.at(leafLocalX, ly, leafLocalZ) = leafType;
+            }
+        }
+    };
+
+    // --- Compute trunk width (used by trunk placement and canopy) ---
+    // Only dark oak, jungle and spruce can have wider trunks (2x2 or 3x3).
+    int trunkW = 1;
+    if (canopyStyle != 1) { // acacia always 1x1 (builds its own angled trunk)
+        if (maxTrunkWidth >= 3 && treeHeight >= 18)
+            trunkW = 3;
+        else if (maxTrunkWidth >= 2 && treeHeight >= 10)
+            trunkW = 2;
     }
 
-    // Trunk
-    if (trunkLocalX >= 0 && trunkLocalX < WIDTH &&
-        trunkLocalZ >= 0 && trunkLocalZ < DEPTH) {
-        for (int treeY = surfaceY + 1; treeY <= surfaceY + treeHeight && treeY < HEIGHT; ++treeY) {
-            blocks.at(trunkLocalX, treeY, trunkLocalZ) = BlockType::LOG;
+    // Canopy center and extra radius to account for wider trunks.
+    // For 2x2: center at +1, extraR=1. For 3x3: center at +1, extraR=1.
+    const int canopyCX = trunkWorldX + trunkW / 2;
+    const int canopyCZ = trunkWorldZ + trunkW / 2;
+    const int extraR   = (trunkW > 1) ? 1 : 0;
+
+    // --- Trunk (acacia builds its own angled trunk inside the switch) ---
+    if (canopyStyle != 1) {
+        if (trunkW > 1) {
+            // Dirt under entire base footprint
+            for (int ox = 0; ox < trunkW; ++ox)
+                for (int oz = 0; oz < trunkW; ++oz) {
+                    const int lx = trunkWorldX + ox - originX;
+                    const int lz = trunkWorldZ + oz - originZ;
+                    if (lx >= 0 && lx < WIDTH && lz >= 0 && lz < DEPTH)
+                        blocks.at(lx, surfaceY, lz) = BlockType::DIRT;
+                }
+            // Full-width trunk goes all the way to the top
+            for (int y = surfaceY + 1; y <= surfaceY + treeHeight && y < HEIGHT; ++y)
+                for (int ox = 0; ox < trunkW; ++ox)
+                    for (int oz = 0; oz < trunkW; ++oz)
+                        placeLog(trunkWorldX + ox, trunkWorldZ + oz, y);
+        } else {
+            const int tlx = trunkWorldX - originX, tlz = trunkWorldZ - originZ;
+            if (tlx >= 0 && tlx < WIDTH && tlz >= 0 && tlz < DEPTH) {
+                blocks.at(tlx, surfaceY, tlz) = BlockType::DIRT;
+                for (int y = surfaceY + 1; y <= surfaceY + treeHeight && y < HEIGHT; ++y)
+                    blocks.at(tlx, y, tlz) = logType;
+            }
         }
     }
 
-    // Leaves – 4 layers with widths 5-5-3-1 (bottom to top)
-    // Layer 0 (bottom): radius 2, Layer 1: radius 2, Layer 2: radius 1, Layer 3 (top): radius 0
-    constexpr int leafRadii[4] = {2, 2, 1, 0};
+    // --- Branches (Dark Oak height>=7, Jungle height>=10) ---
+    const bool doBranches = (canopyStyle == 0 && treeHeight >= 7) ||
+                            (canopyStyle == 3 && treeHeight >= 10);
+    if (doBranches) {
+        const int maxBranches = (canopyStyle == 3) ? 4 : 3;
+        const int minBranches = (canopyStyle == 3) ? 2 : 1;
+        const int numBranches = minBranches + static_cast<int>(rng() % (maxBranches - minBranches + 1));
 
-    for (int layer = 0; layer < 4; ++layer) {
-        const int ly = surfaceY + treeHeight - 2 + layer;
-        if (ly < 0 || ly >= HEIGHT)
-            continue;
+        constexpr int bdx[4] = {1, -1, 0,  0};
+        constexpr int bdz[4] = {0,  0, 1, -1};
 
-        const int radius = leafRadii[layer];
-        for (int lx = -radius; lx <= radius; ++lx) {
-            for (int lz = -radius; lz <= radius; ++lz) {
-                // Diamond shape: skip corners for radius 2
-                if (radius == 2 && abs(lx) == 2 && abs(lz) == 2)
-                    continue;
+        const int branchMinY = surfaceY + static_cast<int>(treeHeight * 0.55f);
+        const int branchMaxY = surfaceY + treeHeight - 2;
+        const int branchYRange = std::max(1, branchMaxY - branchMinY);
 
-                const int leafLocalX = trunkLocalX + lx;
-                const int leafLocalZ = trunkLocalZ + lz;
+        for (int b = 0; b < numBranches; ++b) {
+            const int dir       = static_cast<int>(rng() % 4);
+            const int branchY   = branchMinY + static_cast<int>(rng() % branchYRange);
+            const int branchLen = 1 + static_cast<int>(rng() % 2); // 1 or 2
 
-                if (leafLocalX < 0 || leafLocalX >= WIDTH ||
-                    leafLocalZ < 0 || leafLocalZ >= DEPTH)
-                    continue;
+            if (branchY >= HEIGHT) continue;
 
-                if (blocks.at(leafLocalX, ly, leafLocalZ) != BlockType::LOG)
-                    blocks.at(leafLocalX, ly, leafLocalZ) = BlockType::LEAVES;
+            // Branch starts from the edge of the trunk
+            int curX = canopyCX + bdx[dir] * (trunkW / 2 + 1);
+            int curZ = canopyCZ + bdz[dir] * (trunkW / 2 + 1);
+            placeLog(curX, curZ, branchY);
+            for (int seg = 1; seg < branchLen; ++seg) {
+                curX += bdx[dir]; curZ += bdz[dir];
+                placeLog(curX, curZ, branchY);
             }
+            placeLog(curX, curZ, branchY + 1); // tip angles upward
+
+            const int leafR = branchLen;
+            placeLeafLayer(curX, curZ, branchY + 1, leafR,                    true, true);
+            placeLeafLayer(curX, curZ, branchY + 2, std::max(1, leafR - 1),   true, true);
+        }
+    }
+
+    // --- Canopy ---
+    switch (canopyStyle) {
+        default:
+        case 0: {
+            // Round pyramid (Oak, Birch, Dark Oak): organic ragged edges
+            constexpr int leafRadii[4] = {2, 2, 1, 0};
+            for (int layer = 0; layer < 4; ++layer)
+                placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight - 2 + layer, leafRadii[layer] + extraR, true, true);
+            // Leaf cap above trunk tip
+            placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight + 1, extraR, false);
+            break;
+        }
+        case 1: {
+            // Acacia: angled main trunk + extra branches that fork off similarly.
+            // Branches go mostly sideways: 1 block horizontal shift per 1 block up.
+            constexpr int adx[4] = {1, -1,  0, 0};
+            constexpr int adz[4] = {0,  0,  1, -1};
+
+            // Dirt under base
+            { const int lx = trunkWorldX - originX, lz = trunkWorldZ - originZ;
+              if (lx >= 0 && lx < WIDTH && lz >= 0 && lz < DEPTH)
+                  blocks.at(lx, surfaceY, lz) = BlockType::DIRT; }
+
+            // Helper: build an angled acacia trunk/branch.
+            // Pattern: for each step, place 1 log going sideways, then 1 log going up.
+            // This creates a shallow ~45° angle that spreads outward.
+            struct BranchTip { int x, z, y; };
+            auto buildAcaciaTrunk = [&](int startX, int startZ, int startY,
+                                        int numSteps, int leanDir) -> BranchTip {
+                const int dx = adx[leanDir], dz = adz[leanDir];
+                int curX = startX, curZ = startZ, curY = startY;
+                for (int step = 0; step < numSteps && curY + 1 < HEIGHT; ++step) {
+                    // Go sideways
+                    curX += dx; curZ += dz;
+                    // Then go up
+                    ++curY;
+                    placeLog(curX, curZ, curY);
+                }
+                return {curX, curZ, curY};
+            };
+
+            // Straight vertical trunk base (3-5 blocks tall)
+            const int baseHeight = 3 + static_cast<int>(rng() % 3);
+            { const int tlx = trunkWorldX - originX, tlz = trunkWorldZ - originZ;
+              if (tlx >= 0 && tlx < WIDTH && tlz >= 0 && tlz < DEPTH) {
+                  for (int y = surfaceY + 1; y <= surfaceY + baseHeight && y < HEIGHT; ++y)
+                      blocks.at(tlx, y, tlz) = logType;
+              }
+            }
+
+            // Main angled section from top of base
+            const int mainLeanDir = static_cast<int>(rng() % 4);
+            const int mainSteps   = 3 + static_cast<int>(rng() % 3); // 3..5 steps
+            auto mainTip = buildAcaciaTrunk(trunkWorldX, trunkWorldZ,
+                                            surfaceY + baseHeight, mainSteps, mainLeanDir);
+
+            // Main canopy
+            placeLeafLayer(mainTip.x, mainTip.z, mainTip.y + 2, 3, false);
+            placeLeafLayer(mainTip.x, mainTip.z, mainTip.y + 1, 3, false);
+            placeLeafLayer(mainTip.x, mainTip.z, mainTip.y,     2, false);
+            placeLeafLayer(mainTip.x, mainTip.z, mainTip.y - 1, 2, false);
+
+            // Extra branches forking off the vertical base
+            const int numBranches = 1 + static_cast<int>(rng() % 3); // 1..3 branches
+            for (int b = 0; b < numBranches; ++b) {
+                // Pick a direction different from the main lean
+                int branchDir = static_cast<int>(rng() % 4);
+                if (branchDir == mainLeanDir)
+                    branchDir = (branchDir + 1 + static_cast<int>(rng() % 3)) % 4;
+
+                // Fork from somewhere on the vertical base
+                const int forkY    = surfaceY + 2 + static_cast<int>(rng() % std::max(1, baseHeight - 1));
+                const int bSteps   = 2 + static_cast<int>(rng() % 3); // 2..4 steps
+
+                auto branchTip = buildAcaciaTrunk(trunkWorldX, trunkWorldZ,
+                                                  forkY, bSteps, branchDir);
+
+                // Smaller canopy on branches
+                placeLeafLayer(branchTip.x, branchTip.z, branchTip.y + 2, 2, false);
+                placeLeafLayer(branchTip.x, branchTip.z, branchTip.y + 1, 2, false);
+                placeLeafLayer(branchTip.x, branchTip.z, branchTip.y,     1, false);
+            }
+            break;
+        }
+        case 2: {
+            // Spruce: pinecone shape, scaled for trunk width.
+            const int  N    = std::max(4, std::min(treeHeight - 2, 14));
+            const float maxR = ((N >= 12) ? 4.0f : (N >= 8) ? 3.0f : 2.0f) + extraR;
+
+            for (int i = 0; i < N; ++i) {
+                int r;
+                if (i == 0) {
+                    r = 0;
+                } else {
+                    const float t    = static_cast<float>(i) / (N - 1);
+                    float envR;
+                    if (t < 0.55f)
+                        envR = 1.0f + t / 0.55f * (maxR - 1.0f);
+                    else
+                        envR = maxR - (t - 0.55f) / 0.45f * (maxR - 1.0f);
+                    envR = std::max(1.0f, std::min(maxR, envR));
+                    r = (i % 2 == 0) ? static_cast<int>(std::ceil(envR))
+                                     : static_cast<int>(std::floor(envR));
+                    r = std::max(1, std::min(static_cast<int>(maxR), r));
+                }
+                placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight - i, r, true);
+            }
+            // Leaf cap one block above the trunk tip
+            placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight + 1, extraR, false);
+            break;
+        }
+        case 3: {
+            // Jungle: wide 5-layer lush canopy, organic edges, scaled for trunk width
+            const int jungleRadii[] = {1 + extraR, 2 + extraR, 3 + extraR, 3 + extraR, 2 + extraR};
+            for (int layer = 0; layer < 5; ++layer)
+                placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight - 1 + layer, jungleRadii[layer], false, true);
+            // Leaf cap
+            placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight + 1, extraR, false);
+            break;
         }
     }
 }
 
+// Generate trees for this chunk based on biome and deterministic RNG.
 void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     // Tree leaves extend up to 2 blocks horizontally. To handle trees from
     // neighboring chunks whose canopy spills into this chunk, we iterate
     // over the current chunk and all 8 neighbors' tree positions.
 
     // The maximum horizontal reach of a tree canopy in blocks.
-    constexpr int TREE_REACH = 2;
+    // Acacia: up to 5 sideways steps + leaf radius 3 = 8. Wide trunks add ~1 extra.
+    constexpr int TREE_REACH = 9;
 
     // Iterate only over columns whose trees can reach into this chunk:
     // expand the area by TREE_REACH in all directions around [originX, originZ].
@@ -332,38 +612,77 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
             const int surfaceY = computeTerrainHeight(terrainParams,
                 static_cast<float>(worldX), static_cast<float>(worldZ));
 
-            // Only place trees above sea level
-            if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 12) {
+            // Only place trees above sea level; leave enough headroom for tallest trees (~27 blocks)
+            if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 30) {
                 // Still advance the RNG to keep determinism
                 rng(); // for the tree chance roll
                 continue;
             }
 
-            const BiomeType biome = computeBiome(terrainParams,
-                static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
-            if (biome != BiomeType::FOREST) {
-                rng();
-                continue;
-            }
-
-            // 1% chance per column to place a tree
-            if (rng() % 1000 >= 10)
-                continue;
-
-            int treeHeight = 4 + static_cast<int>(rng() % 7);
-
-            // Quick check: can any part of this tree reach into our chunk?
+            // Reuse the biome already stored during terrain generation instead of recomputing it.
             int localTrunkX = worldX - originX;
             int localTrunkZ = worldZ - originZ;
-            if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
-                localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH)
-                continue;
+            const BiomeType biome = getBiomeAt(localTrunkX, localTrunkZ);
 
-            placeTree(blocks, worldX, worldZ, surfaceY, treeHeight);
+            // One chance roll per column — all biomes consume the same number of RNG calls
+            // so world generation stays deterministic regardless of which biome a column is in.
+            int chanceRoll = static_cast<int>(rng() % 1000);
+
+            // Quick check: can any part of this tree reach into our chunk?
+
+            int treeHeight;
+            switch (biome) {
+                case BiomeType::DARK_FOREST:
+                    if (chanceRoll >= 8) continue;  // 1.0%
+                    treeHeight = 8 + static_cast<int>(rng() % 19); // 8..26, tip up to 27 blocks
+                    if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
+                        localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::DARK_OAK_LOG, BlockType::DARK_OAK_LEAVES, 0, 3, rng);
+                    break;
+                case BiomeType::JUNGLE:
+                    if (chanceRoll >= 10) continue;  // 2.0%
+                    treeHeight = 12 + static_cast<int>(rng() % 13); // 12..24, canopy tip up to 27 blocks
+                    if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
+                        localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::JUNGLE_LOG, BlockType::JUNGLE_LEAVES, 3, 2, rng);
+                    break;
+                case BiomeType::SAVANNA:
+                    if (chanceRoll >= 1) continue;   // 0.1%
+                    treeHeight = 4 + static_cast<int>(rng() % 4);
+                    if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
+                        localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::ACACIA_LOG, BlockType::ACACIA_LEAVES, 1, 1, rng);
+                    break;
+                case BiomeType::BIRCH_FOREST:
+                    if (chanceRoll >= 6) continue;  // 1.2%
+                    treeHeight = 5 + static_cast<int>(rng() % 5);
+                    if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
+                        localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::BIRCH_LOG, BlockType::BIRCH_LEAVES, 0, 1, rng);
+                    break;
+                case BiomeType::PLAINS:
+                    if (chanceRoll >= 1) continue;          // initial 0.1% filter
+                    if (static_cast<int>(rng() % 2) == 0) continue; // halve further → ~0.05%
+                    treeHeight = 4 + static_cast<int>(rng() % 5);
+                    if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
+                        localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
+                    placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::OAK_LOG, BlockType::OAK_LEAVES, 0, 1, rng);
+                    break;
+                // case BiomeType::TUNDRA:
+                //     if (chanceRoll >= 5) continue;   // 0.5%
+                //     treeHeight = 8 + static_cast<int>(rng() % 19); // 8..26, tip up to 27 blocks
+                //     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
+                //         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
+                //     placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::SPRUCE_LOG, BlockType::SPRUCE_LEAVES, 2, 3, rng);
+                //     break;
+                default:
+                    continue;
+            }
         }
     }
 }
 
+// Generate cacti in desert biomes. Cacti are 3 blocks tall and can be placed next to each other, but not diagonally.
 void ChunkGeneration::generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     const int minWorldX = originX - 1;
     const int maxWorldX = originX + WIDTH + 1;
@@ -414,6 +733,105 @@ void ChunkGeneration::generateCacti(BlockStorage &blocks, const TerrainGeneratio
     }
 }
 
+// Generate ice spikes and boulders in ICE_PLAINS biome.
+void ChunkGeneration::generateIceStructures(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
+    constexpr int STRUCTURE_REACH = 3;
+
+    const int minWorldX = originX - STRUCTURE_REACH;
+    const int maxWorldX = originX + WIDTH + STRUCTURE_REACH;
+    const int minWorldZ = originZ - STRUCTURE_REACH;
+    const int maxWorldZ = originZ + DEPTH + STRUCTURE_REACH;
+
+    for (int worldX = minWorldX; worldX <= maxWorldX; ++worldX) {
+        for (int worldZ = minWorldZ; worldZ <= maxWorldZ; ++worldZ) {
+
+            std::seed_seq seedData{
+                static_cast<uint32_t>(terrainParams.seed + 5555),
+                static_cast<uint32_t>(worldX),
+                static_cast<uint32_t>(worldZ)
+            };
+            std::mt19937 rng(seedData);
+
+            const int surfaceY = computeTerrainHeight(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ));
+
+            if (surfaceY <= terrainParams.seaLevel || surfaceY >= HEIGHT - 20) {
+                rng();
+                continue;
+            }
+
+            const BiomeType biome = computeBiome(terrainParams,
+                static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
+
+            if (biome != BiomeType::ICE_PLAINS) {
+                rng();
+                continue;
+            }
+
+            const int chanceRoll = static_cast<int>(rng() % 1000);
+
+            // Helper: place a block at world offset (dx, dz), dy above surface+1, bounds-checked.
+            auto place = [&](int dx, int dz, int dy, BlockType type) {
+                const int lx = worldX + dx - originX;
+                const int lz = worldZ + dz - originZ;
+                const int y  = surfaceY + 1 + dy;
+                if (lx < 0 || lx >= WIDTH || lz < 0 || lz >= DEPTH || y < 0 || y >= HEIGHT) return;
+                blocks.at(lx, y, lz) = type;
+            };
+
+            // 0.2% chance
+            if (chanceRoll < 2) {
+                // Large ice spike
+                const int h = 8 + static_cast<int>(rng() % 11);
+                for (int dy = 0; dy < h; ++dy) {
+                    const int r = std::max(0, 2 - dy);
+                    const BlockType t = (dy >= h - 2) ? BlockType::BLUE_ICE : BlockType::PACKED_ICE;
+                    for (int dx = -r; dx <= r; ++dx)
+                        for (int dz = -r; dz <= r; ++dz)
+                            place(dx, dz, dy, t);
+                }
+            
+            // 2% chance
+            } else if (chanceRoll < 12) {
+                // Small ice spike
+                const int h = 3 + static_cast<int>(rng() % 5);
+                for (int dy = 0; dy < h; ++dy) {
+                    const int r = (dy == 0) ? 1 : 0;
+                    const BlockType t = (dy == h - 1) ? BlockType::BLUE_ICE : BlockType::PACKED_ICE;
+                    for (int dx = -r; dx <= r; ++dx)
+                        for (int dz = -r; dz <= r; ++dz)
+                            place(dx, dz, dy, t);
+                }
+
+            // 3% chance
+            } else if (chanceRoll < 27) {
+                // Ice boulder
+                const int h = 3 + static_cast<int>(rng() % 3);
+                for (int dy = 0; dy < h; ++dy) {
+                    if (dy == 0) {
+                        for (int dx = -2; dx <= 2; ++dx)
+                            for (int dz = -2; dz <= 2; ++dz)
+                                if (std::abs(dx) + std::abs(dz) <= 2)
+                                    place(dx, dz, dy, BlockType::BLUE_ICE);
+                    } else if (dy == 1) {
+                        for (int dx = -1; dx <= 1; ++dx)
+                            for (int dz = -1; dz <= 1; ++dz)
+                                place(dx, dz, dy, BlockType::BLUE_ICE);
+                    } else if (dy == 2) {
+                        for (int dx = -1; dx <= 1; ++dx)
+                            for (int dz = -1; dz <= 1; ++dz)
+                                if (std::abs(dx) + std::abs(dz) <= 1)
+                                    place(dx, dz, dy, BlockType::BLUE_ICE);
+                    } else {
+                        place(0, 0, dy, BlockType::BLUE_ICE);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Carve caves using 3D Perlin noise. Caves are more likely and larger deeper underground, with small narrow entrances near the surface.
 void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     // Maybe check based on biome or something to skip cave generation for some biomes (e.g. ocean)
     const int yStart = terrainParams.bedrockLevel + 3;
@@ -483,6 +901,7 @@ void ChunkGeneration::generateCaves(BlockStorage &blocks, const TerrainGeneratio
     }
 }
 
+// Place ore veins based on deterministic RNG.
 void ChunkGeneration::generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const {
     for (const auto &ore : oreTable) {
         // Deterministic RNG per ore type per chunk
@@ -549,15 +968,16 @@ float ChunkGeneration::getContinentalness(const TerrainGenerationParams& terrain
         lastSeedCont = terrainParams.seed;
     }
 
+    // Little offset to vary spawn area
     float fbm = baseNoise.fractalBrownianMotion2D(
-        wx * terrainParams.continentalnessFrequency,
+        wx * terrainParams.continentalnessFrequency + 1.0f,
         wz * terrainParams.continentalnessFrequency,
         terrainParams.continentalnessOctaves,
         terrainParams.continentalnessLacunarity,
         terrainParams.continentalnessPersistence
         );
 
-    fbm *= terrainParams.continentalnessScalingFactor;
+    fbm *= 2.0f * terrainParams.continentalnessScalingFactor;
     
     float continentalness = glm::clamp(fbm, -3.8f, 3.8f);
 
@@ -655,12 +1075,57 @@ float ChunkGeneration::surfaceNoiseTransformation(float noise, int splineIndex) 
     return noiseTransform;
 }
 
-BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height) {
+static ClimateTemperature quantizeTemp(float t) {
+    // t in [0,1]
+    if (t < 0.25f) return ClimateTemperature::VERY_COLD;
+    if (t < 0.475f) return ClimateTemperature::COLD;
+    if (t < 0.55f)  return ClimateTemperature::TEMPERATE;
+    if (t < 0.75f)  return ClimateTemperature::WARM;
+    return ClimateTemperature::HOT;
+}
 
-    // Build very low-frequency (coarse) climate fields so biomes form large contiguous regions.
-    // biomeScaleChunks controls how many chunks make up a biome patch; use an extra multiplier to ensure broad bands.
-    if (height <= terrainParams.seaLevel) return BiomeType::OCEAN;
+static ClimateHumidity quantizeHumidity(float h) {
+    // h in [-1,1]
+    if (h < -0.35f) return ClimateHumidity::ARID;
+    if (h < -0.1f) return ClimateHumidity::DRY;
+    if (h < 0.1f) return ClimateHumidity::NEUTRAL;
+    if (h < 0.3f) return ClimateHumidity::HUMID;
+    return ClimateHumidity::WET;
+}
 
+static ClimateErosion quantizeErosion(float e) {
+    // e in [-1,1]
+    if (e < -0.71f) return ClimateErosion::E0;
+    if (e < -0.43f) return ClimateErosion::E1;
+    if (e < -0.14f) return ClimateErosion::E2;
+    if (e < 0.14f) return ClimateErosion::E3;
+    if (e < 0.43f) return ClimateErosion::E4;
+    if (e < 0.71f) return ClimateErosion::E5;
+    return ClimateErosion::E6;
+}
+
+static ClimateContinentalness quantizeContinentalness(float c) {
+    // c in [-3.8,3.8]
+    if (c < -1.3f) return ClimateContinentalness::MUSHROOM;
+    if (c < -0.35f) return ClimateContinentalness::OCEAN;
+    if (c < -0.2f) return ClimateContinentalness::COAST;
+    if (c < 0.1f) return ClimateContinentalness::NEAR_INLAND;
+    if (c < 0.3f) return ClimateContinentalness::MID_INLAND;
+    return ClimateContinentalness::FAR_INLAND;
+}
+
+static ClimatePeaksValleys quantizePV(float pv) {
+    // pv in [-1,1]
+    if (pv > 0.7) return ClimatePeaksValleys::PEAK;
+    if (pv > 0.2f) return ClimatePeaksValleys::HIGH;
+    if (pv > -0.2f) return ClimatePeaksValleys::MID;
+    if (pv > -0.85f) return ClimatePeaksValleys::LOW;
+    return ClimatePeaksValleys::VALLEY;
+}
+
+struct CoarseClimate { float temp; float humidity; };
+
+static CoarseClimate computeCoarseClimate(const TerrainGenerationParams& terrainParams, float wx, float wz) {
     thread_local int32_t lastSeedBiome = std::numeric_limits<int32_t>::min();
     thread_local Noise tempNoise(terrainParams.seed + 45);
     thread_local Noise humidNoise(terrainParams.seed + 964);
@@ -676,51 +1141,187 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     const float worldUnitsPerPatch = chunks * Chunk::WIDTH * 8.0f;
     const float freqCoarse = 1.0f / glm::max(256.0f, worldUnitsPerPatch);
 
-    // Coarse climate fields in [0..1]
-    float tempCoarse  = (tempNoise.fractalBrownianMotion2D(worldX * freqCoarse,            worldZ * freqCoarse,            4, 2.0f, 0.5f) + 1.0f) * 0.5f;
-    float humidCoarse = (humidNoise.fractalBrownianMotion2D(worldX * freqCoarse * 0.9f,    worldZ * freqCoarse * 0.9f,    4, 2.0f, 0.5f) + 1.0f) * 0.5f;
+    // Temperature in [0,1]: shift FBM from ~[-0.5,0.5] to [0,1]
+    float t = glm::clamp((tempNoise.fractalBrownianMotion2D(wx * freqCoarse,         wz * freqCoarse,         4, 2.0f, 0.5f) + 0.5f), 0.0f, 1.0f);
+    // Humidity in [-1,1]: stretch FBM from ~[-0.5,0.5] to [-1,1]
+    float h = glm::clamp( humidNoise.fractalBrownianMotion2D(wx * freqCoarse * 0.9f, wz * freqCoarse * 0.9f, 4, 2.0f, 0.5f) * 2.0f,       -1.0f, 1.0f);
+    return {t, h};
+}
 
-    // Small regional bias
-    float bias = (regionBiasNoise.fractalBrownianMotion2D(worldX * freqCoarse * 0.6f, worldZ * freqCoarse * 0.6f, 3, 2.0f, 0.5f) + 1.0f) * 0.5f;
+BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height) {
 
-    float climate = glm::clamp(glm::mix(tempCoarse, 1.0f - humidCoarse, 0.35f) * 0.7f + bias * 0.3f, 0.0f, 1.0f);
+    if (height <= terrainParams.seaLevel) return BiomeType::OCEAN;
+
+    const auto [tempCoarse, humidCoarse] = computeCoarseClimate(terrainParams, worldX, worldZ);
 
 
-    climate = glm::clamp((climate - 0.5f) * 1.2f + 0.5f, 0.0f, 1.0f);
+    const float rawCont = getContinentalness(terrainParams, worldX, worldZ);
+    const float rawEro = getErosion(terrainParams, worldX, worldZ);
+    const float rawPV = getPV(terrainParams, worldX, worldZ);
 
-    // High, cold overrides
-    // if (height > terrainParams.seaLevel + 28) {
-        if (tempCoarse < terrainParams.snowTemperatureThreshold) return BiomeType::TUNDRA;
-        // return BiomeType::MOUNTAIN;
-    // }
-    float pv = getPV(terrainParams, worldX, worldZ);
-    // --- DESERT: hot + dry, inland, mid elevations ---
-    float aridity = (1.0f - humidCoarse) * tempCoarse;
-    if (aridity > 0.3f &&
-        tempCoarse > 0.40f &&
-        humidCoarse < 0.45f &&
-        height <= 90 && pv < 0.2f
-        ){
-        return BiomeType::DESERT;
-        }
+    const auto ct = quantizeTemp(tempCoarse);
+    const auto ch = quantizeHumidity(humidCoarse);
+    const auto ce = quantizeErosion(rawEro);
+    const auto cc = quantizeContinentalness(rawCont);
+    const auto cpv = quantizePV(rawPV);
 
-    // Cold lowlands
-    if (climate < 0.16f) return BiomeType::TUNDRA;
-    if (height > terrainParams.seaLevel + 30 && tempCoarse < 0.45f) return BiomeType::TUNDRA;
+    // OCEAN
+    // if (cc == ClimateContinentalness::OCEAN) return BiomeType::OCEAN;
 
-    // SWAMP: wet, low-lying, mild temps
-    if (height <= terrainParams.seaLevel + 6 &&
-        humidCoarse > 0.60f &&
-        tempCoarse > 0.30f && tempCoarse < 0.80f) {
-        return BiomeType::SWAMP;
+    // Mushroom Island
+    if (cc == ClimateContinentalness::MUSHROOM)
+        return BiomeType::MUSHROOM_ISLAND;
+
+    // VERY COLD
+    if (ct == ClimateTemperature::VERY_COLD &&
+        ch >= ClimateHumidity::HUMID &&
+        cc == ClimateContinentalness::FAR_INLAND) {
+        return BiomeType::ICE_PLAINS;
     }
 
-    // Forest: moist and not too hot
-    if (humidCoarse > terrainParams.forestMoistureThreshold * 0.9f && climate < 0.65f) return BiomeType::FOREST;
+    // COLD
+    if (ct == ClimateTemperature::COLD &&
+        ch >= ClimateHumidity::HUMID &&
+        cc == ClimateContinentalness::FAR_INLAND) {
+        return BiomeType::TUNDRA;
+    }
+
+    // Nether — hot, arid, elevated terrain (high or peak peaks)
+    if (ct == ClimateTemperature::HOT &&
+        ch == ClimateHumidity::ARID &&
+        cpv >= ClimatePeaksValleys::HIGH)
+        return BiomeType::NETHER;
+
+    // Volcanic — hot, arid, flat-to-mid terrain (elevated Nether already claimed above)
+    if (ct == ClimateTemperature::HOT &&
+        ch == ClimateHumidity::ARID)
+        return BiomeType::VOLCANIC;
+
+    // Mesa — hot, dry/arid-but-not-arid (ARID is claimed by VOLCANIC above), or
+    //        warm/hot + dry + not too eroded
+    if ((ct == ClimateTemperature::WARM || ct == ClimateTemperature::HOT) &&
+        ch <= ClimateHumidity::DRY &&
+        ce <= ClimateErosion::E3 &&
+        cc >= ClimateContinentalness::NEAR_INLAND)
+        return BiomeType::MESA;
+
+    if (ct == ClimateTemperature::HOT && ch == ClimateHumidity::DRY)
+        return BiomeType::MESA;
+
+    // Red Desert — warm + arid flat lands (distinct from hot MESA)
+    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::ARID &&
+        ce >= ClimateErosion::E4)
+        return BiomeType::RED_DESERT;
+
+    // Desert — warm/hot, arid/dry only (NEUTRAL excluded so Savanna can claim WARM+NEUTRAL)
+    if ((ct == ClimateTemperature::WARM || ct == ClimateTemperature::HOT) &&
+        ch <= ClimateHumidity::DRY && height < 110)
+        return BiomeType::DESERT;
+
+    // Savanna — warm, moderate (checked before Jungle/Swamp to avoid being swallowed)
+    if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::NEUTRAL &&
+        cc >= ClimateContinentalness::MID_INLAND &&
+        cpv <= ClimatePeaksValleys::MID)
+        return BiomeType::SAVANNA;
+
+    // Jungle — hot and wet
+    if ((ct == ClimateTemperature::HOT && ch >= ClimateHumidity::HUMID) || 
+        (ct == ClimateTemperature::WARM && ch == ClimateHumidity::WET))
+        return BiomeType::JUNGLE;
+
+    // Swamp — temperate/warm, wet, flat/valley
+    if ((ct == ClimateTemperature::TEMPERATE || ct == ClimateTemperature::WARM) &&
+        ch >= ClimateHumidity::HUMID &&
+        cpv <= ClimatePeaksValleys::LOW &&
+        cc <= ClimateContinentalness::NEAR_INLAND)
+        return BiomeType::SWAMP;
+
+    // Dark Forest — cool/temperate, humid
+    if (ct <= ClimateTemperature::TEMPERATE && ch >= ClimateHumidity::HUMID)
+        return BiomeType::DARK_FOREST;
+
+    // Mountain — high peaks, inland (checked before Birch Forest so mountainous
+    // temperate+neutral terrain becomes mountains, not forest)
+    if (cpv >= ClimatePeaksValleys::HIGH && cc == ClimateContinentalness::FAR_INLAND &&
+        ch <= ClimateHumidity::NEUTRAL)
+        return BiomeType::MOUNTAIN;
+
+    // Birch Forest — temperate, neutral humidity, low/mid terrain
+    if (ct == ClimateTemperature::TEMPERATE &&
+        (ch == ClimateHumidity::DRY))
+        return BiomeType::BIRCH_FOREST;
+
+
+
+
+
+    // Small regional bias
+    // static Noise regionBias(terrainParams.seed + 4242);
+    // float bias = (regionBias.fractalBrownianMotion2D(worldX * freqCoarse * 0.6f, worldZ * freqCoarse * 0.6f, 3, 2.0f, 0.5f) + 1.0f) * 0.5f;
+
+    // float climate = glm::clamp(glm::mix(tempCoarse, 1.0f - humidCoarse, 0.35f) * 0.7f + bias * 0.3f, 0.0f, 1.0f);
+
+
+    // climate = glm::clamp((climate - 0.5f) * 1.2f + 0.5f, 0.0f, 1.0f);
+
+    // // High, cold overrides
+    // // if (height > terrainParams.seaLevel + 28) {
+    //     if (tempCoarse < terrainParams.snowTemperatureThreshold) return BiomeType::TUNDRA;
+    //     // return BiomeType::MOUNTAIN;
+    // // }
+    // float pv = getPV(terrainParams, worldX, worldZ);
+    // float aridity = (1.0f - humidCoarse) * tempCoarse;
+
+    // // MESA: hot + very dry — terracotta terrain
+    // if (tempCoarse > 0.60f && humidCoarse < 0.35f && aridity > 0.25f)
+    //     return BiomeType::MESA;
+
+    // // --- DESERT: hot + dry, inland, mid elevations ---
+    // if (aridity > 0.3f &&
+    //     tempCoarse > 0.40f &&
+    //     humidCoarse < 0.45f &&
+    //     height <= 90 && pv < 0.2f
+    //     ){
+    //     return BiomeType::DESERT;
+    //     }
+
+    // // Cold lowlands
+    // if (climate < 0.16f) return BiomeType::TUNDRA;
+    // if (height > terrainParams.seaLevel + 30 && tempCoarse < 0.45f) return BiomeType::TUNDRA;
+    
+    // if (tempCoarse > 0.6f && humidCoarse > 0.6f) return BiomeType::JUNGLE;
+
+    // // SWAMP: wet, low-lying, mild temps
+    // if (height <= terrainParams.seaLevel + 6 &&
+    //     humidCoarse > 0.60f &&
+    //     tempCoarse > 0.30f && tempCoarse < 0.80f) {
+    //     return BiomeType::SWAMP;
+    // }
+
+    // if (tempCoarse > 0.35f && tempCoarse < 0.55f && humidCoarse > 0.50f) return BiomeType::BIRCH_FOREST;
+
+    // // Forest: moist and not too hot
+    // if (humidCoarse > terrainParams.forestMoistureThreshold * 0.9f && climate < 0.65f) return BiomeType::DARK_FOREST;
+
+
+    // if (tempCoarse > 0.55f && humidCoarse > 0.35f && humidCoarse < 0.55f) return BiomeType::SAVANNA;
+
+
 
     return BiomeType::PLAINS;
 
 
+}
+
+ChunkGeneration::QuantizedClimate ChunkGeneration::computeQuantizedClimate(const TerrainGenerationParams& terrainParams, float wx, float wz) {
+    const auto [t, h] = computeCoarseClimate(terrainParams, wx, wz);
+    return {
+        static_cast<uint8_t>(quantizeContinentalness(getContinentalness(terrainParams, wx, wz))),
+        static_cast<uint8_t>(quantizeErosion(getErosion(terrainParams, wx, wz))),
+        static_cast<uint8_t>(quantizePV(getPV(terrainParams, wx, wz))),
+        static_cast<uint8_t>(quantizeTemp(t)),
+        static_cast<uint8_t>(quantizeHumidity(h)),
+    };
 }
 
 int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrainParams, const float worldX, const float worldZ) {
@@ -790,10 +1391,8 @@ int ChunkGeneration::computeTerrainHeight(const TerrainGenerationParams& terrain
     return surfaceY;
 }
 
+// Place grass and flowers based on deterministic RNG and biome-specific spawn chances, weighted tables, and placement rules.
 void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams) {
-    // Generate grass and flowers on suitable surface blocks
-    // Only place vegetation on solid blocks that are not water/sand/snow
-    // Vegetation should be above sea level
 
     vegetation.clear();
 
@@ -811,8 +1410,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             const BlockType surfaceBlock = blocks.at(x, surfaceY, z);
             const BlockType aboveBlock = blocks.at(x, surfaceY + 1, z);
 
-            const BiomeType biome = computeBiome(terrainParams, worldX, worldZ, surfaceY);
-
+            const BiomeType biome = getBiomeAt(x, z);
             if (biome == BiomeType::OCEAN) {
                 // Ocean vegetation: surface must be sand and above must be water
                 if (surfaceBlock != BlockType::SAND)
@@ -829,8 +1427,10 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     surfaceBlock == BlockType::SNOW)
                     continue;
 
-                // Only place vegetation on grass, dirt, or sand blocks
-                if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT && surfaceBlock != BlockType::SAND)
+                // Only place vegetation on grass, dirt, sand, or terracotta (mesa)
+                if (surfaceBlock != BlockType::GRASS && surfaceBlock != BlockType::DIRT &&
+                    surfaceBlock != BlockType::SAND && surfaceBlock != BlockType::RED_SAND &&
+                    biome != BiomeType::MESA)
                     continue;
 
                 // Don't place if there's already something above (like a tree)
@@ -849,12 +1449,18 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             // Skip some columns for variety — spawn chance is per-biome
             int spawnChance; // out of 100
             switch (biome) {
-                case BiomeType::PLAINS:  spawnChance = 10; break;
-                case BiomeType::FOREST:  spawnChance = 5; break;
-                case BiomeType::SWAMP:   spawnChance = 0; break;
-                case BiomeType::OCEAN:   spawnChance = 20; break;
-                case BiomeType::DESERT:  spawnChance = 1;  break;
-                default:                 spawnChance = 10; break;
+                case BiomeType::PLAINS:       spawnChance = 10; break;
+                case BiomeType::DARK_FOREST:  spawnChance = 5;  break;
+                case BiomeType::JUNGLE:       spawnChance = 15; break;
+                case BiomeType::SAVANNA:      spawnChance = 4;  break;
+                case BiomeType::BIRCH_FOREST: spawnChance = 8;  break;
+                case BiomeType::SWAMP:        spawnChance = 0;  break;
+                case BiomeType::OCEAN:        spawnChance = 20; break;
+                case BiomeType::DESERT:       spawnChance = 1;  break;
+                case BiomeType::MESA:         spawnChance = 1;  break;
+                case BiomeType::RED_DESERT:   spawnChance = 1;  break;
+                case BiomeType::TUNDRA:       spawnChance = 0;  break;
+                default:                      spawnChance = 0;  break;
             }
             if (static_cast<int>(rng() % 100) >= spawnChance)
                 continue;
@@ -881,19 +1487,44 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             };
 
             static constexpr VegEntry forestVeg[] = {
-                { BlockType::SHORT_GRASS,           50 },
-                { BlockType::BROWN_MUSHROOM,        50 },
-                { BlockType::RED_MUSHROOM,          50 },
+                { BlockType::SHORT_GRASS,           80 },
+                { BlockType::BROWN_MUSHROOM,        10 },
+                { BlockType::RED_MUSHROOM,          10 },
             };
 
             static constexpr VegEntry desertVeg[] = {
-                { BlockType::DEAD_BUSH,             100 },
+                { BlockType::DEAD_BUSH, 100 },
             };
 
-            // static const VegEntry swampVeg[] = {
-            //     // { BlockType::SHORT_GRASS, 100 },
-            //     // { BlockType::TALL_GRASS, 80 },
-            // };
+            static constexpr VegEntry jungleVeg[] = {
+                { BlockType::SHORT_GRASS,        80 },
+                { BlockType::BLUE_ORCHID,        10 },
+                { BlockType::ALLIUM,              5 },
+                { BlockType::CORNFLOWER,          3 },
+                { BlockType::POPPY,               2 },
+            };
+
+            static constexpr VegEntry savannaVeg[] = {
+                { BlockType::SHORT_GRASS, 100 },
+            };
+
+            static constexpr VegEntry birchVeg[] = {
+                { BlockType::SHORT_GRASS,        60 },
+                { BlockType::POPPY,               5 },
+                { BlockType::CORNFLOWER,          5 },
+                { BlockType::DANDELION,           5 },
+                { BlockType::AZURE_BLUET,         4 },
+                { BlockType::OXEYE_DAISY,         3 },
+                { BlockType::LILY_OF_THE_VALLEY,  2 },
+            };
+
+            static constexpr VegEntry mesaVeg[] = {
+                { BlockType::DEAD_BUSH, 100 },
+            };
+
+            static constexpr VegEntry redDesertVeg[] = {
+                { BlockType::DEAD_BUSH, 100 },
+            };
 
             static const VegEntry oceanVeg[] = {
                 { BlockType::KELP,                  100 },
@@ -920,7 +1551,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     vegTable = plainsVeg;
                     vegTableSize = std::size(plainsVeg);
                     break;
-                case BiomeType::FOREST:
+                case BiomeType::DARK_FOREST:
                     vegTable = forestVeg;
                     vegTableSize = std::size(forestVeg);
                     break;
@@ -936,8 +1567,28 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     vegTable = desertVeg;
                     vegTableSize = std::size(desertVeg);
                     break;
+                case BiomeType::JUNGLE:
+                    vegTable = jungleVeg;
+                    vegTableSize = std::size(jungleVeg);
+                    break;
+                case BiomeType::SAVANNA:
+                    vegTable = savannaVeg;
+                    vegTableSize = std::size(savannaVeg);
+                    break;
+                case BiomeType::BIRCH_FOREST:
+                    vegTable = birchVeg;
+                    vegTableSize = std::size(birchVeg);
+                    break;
+                case BiomeType::MESA:
+                    vegTable = mesaVeg;
+                    vegTableSize = std::size(mesaVeg);
+                    break;
+                case BiomeType::RED_DESERT:
+                    vegTable = redDesertVeg;
+                    vegTableSize = std::size(redDesertVeg);
+                    break;
                 default:
-                    continue; // No vegetation in, tundra, mountain
+                    continue; // No vegetation in tundra, mountain, swamp
             }
 
             // Weighted random pick from the table
@@ -967,12 +1618,13 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                     veg.y = static_cast<uint8_t>(surfaceY + 1);
                     veg.z = static_cast<uint8_t>(z);
                     veg.type = vegType;
+                    veg.biome = static_cast<uint8_t>(biome);
                     vegetation.push_back(veg);
                 } else {
                     // Kelp or tall seagrass: stack multiple instances
                     const int waterDepth = terrainParams.seaLevel - surfaceY;
-                    constexpr int maxHeight = std::max(2, 10);
-                    int height = 2 + static_cast<int>(rng() % std::max(1, maxHeight - 1));
+                    constexpr int kMaxSeaVegHeight = 10;
+                    int height = 2 + static_cast<int>(rng() % (kMaxSeaVegHeight - 1));
                     height = std::min(height, waterDepth - 1); // don't poke above water
 
                     const bool isKelp = (vegType == BlockType::KELP);
@@ -990,6 +1642,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                             // Tall seagrass
                             veg.type = isTop ? BlockType::TALL_SEAGRASS_TOP : BlockType::TALL_SEAGRASS_BOTTOM;
                         }
+                        veg.biome = static_cast<uint8_t>(biome);
                         vegetation.push_back(veg);
                     }
                 }

@@ -20,12 +20,16 @@ class ChunkGeneration : public Chunk {
 		ChunkGeneration(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
 
 		void generate(const TerrainGenerationParams& terrainParams);
+		void generateTerrain(BlockStorage& blocks, const TerrainGenerationParams& terrainParams);
 		void generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
-		void placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ, int surfaceY, int treeHeight) const;
+		void placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ, int surfaceY, int treeHeight, BlockType logType, BlockType leafType, int canopyStyle, int maxTrunkWidth, std::mt19937 &rng) const;
 		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 		void generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
 		void generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+		void generateIceStructures(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+
+		void stripBlocks(BlockStorage& blocks, const TerrainGenerationParams& terrainParams);
 
 		static float interpolateSpline(float noise, std::span<const std::pair<float, float>> spline);
 
@@ -48,6 +52,15 @@ class ChunkGeneration : public Chunk {
 
 		static int computeTerrainHeight(const TerrainGenerationParams& terrainParams, float worldX, float worldZ);
 		static BiomeType computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height);
+
+		struct QuantizedClimate {
+			uint8_t continentalness;
+			uint8_t erosion;
+			uint8_t peakValley;
+			uint8_t temperature;
+			uint8_t humidity;
+		};
+		static QuantizedClimate computeQuantizedClimate(const TerrainGenerationParams& terrainParams, float wx, float wz);
 
 };
 

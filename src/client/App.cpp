@@ -21,6 +21,16 @@ App::App(const std::string& serverIp):
 
 App::~App() { cleanup(); }
 
+GLFWimage load_icon(const char* path) {
+    GLFWimage image;
+    int channels;
+    image.pixels = stbi_load(path, &image.width, &image.height, &channels, 4);
+    if (!image.pixels) {
+        std::cerr << "Failed to load window icon: " << stbi_failure_reason() << std::endl;
+    }
+    return image;
+}
+
 void App::init(const std::string& serverIp) {
     std::string targetIp = serverIp;
 
@@ -49,6 +59,16 @@ void App::init(const std::string& serverIp) {
     window = glfwCreateWindow(windowedWidth, windowedHeight, "ft_minecraft", nullptr, nullptr);
     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
 	glfwSetWindowUserPointer(window, this);
+
+    // Set the window icon
+    GLFWimage image;
+    image = load_icon("assets/textures/icon.png");
+    if (image.pixels) {
+        glfwSetWindowIcon(window, 1, &image);
+        stbi_image_free(image.pixels); // <- free stb allocation
+        image.pixels = nullptr;
+    }
+    
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
@@ -285,6 +305,8 @@ void App::init(const std::string& serverIp) {
     glGenQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawCloudsPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glGenQueries(QUERY_POOL_SIZE, queryDrawWaterRefractionPool);
+    glGenQueries(QUERY_POOL_SIZE, queryGBufferPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
@@ -370,6 +392,11 @@ void App::setUdpClientPacketCallback()
                 currentPeakValley = p.peakValley;
                 currentTemperature = p.temperature;
                 currentHumidity = p.humidity;
+                currentContBucket    = p.contBucket;
+                currentErosionBucket = p.erosionBucket;
+                currentPVBucket      = p.pvBucket;
+                currentTempBucket    = p.tempBucket;
+                currentHumidBucket   = p.humidBucket;
                 break;
             }
 
@@ -536,6 +563,8 @@ void App::render() {
         lighting->updateSkyLUT(camera->getPlayer()->getPosition().y);
 
 
+        renderer->processMeshUpdates();
+
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
@@ -585,6 +614,7 @@ void App::render() {
         }
 
         // GBuffer pass
+        glBeginQuery(GL_TIME_ELAPSED, queryGBufferPool[currentQueryIndex]);
         if (ssao && ssao->isEnabled()) {
             gBuffer->resize(screenWidth, screenHeight);
             ssao->resize(screenWidth, screenHeight);
@@ -599,8 +629,11 @@ void App::render() {
             renderer->render(gBufferShader);
 
             gBuffer->unbind();
+        }
+        glEndQuery(GL_TIME_ELAPSED);
 
-            // SSAO pass
+        // SSAO pass
+        if (ssao && ssao->isEnabled()) {
             glBeginQuery(GL_TIME_ELAPSED, querySSAOPool[currentQueryIndex]);
 
             ssao->renderSSAO(*gBuffer, projection);
@@ -628,16 +661,18 @@ void App::render() {
         glEndQuery(GL_TIME_ELAPSED);
 
 
-    	if (waterVisible) {
+        glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterRefractionPool[currentQueryIndex]);
+        if (waterVisible) {
             // render refraction texture
             waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
         }
+        glEndQuery(GL_TIME_ELAPSED);    	
         
         const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
         const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
         renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
         
-    	// render to screen
+    	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
     	renderScene(view, projection, clipPlane);
     	
     	// Render water with proper shader setup
@@ -743,6 +778,8 @@ void App::render() {
             readGPUQueryEMA(queryDrawSkyPool[readIndex], measuredAverageMsDrawSky, a);
             readGPUQueryEMA(queryDrawCloudsPool[readIndex], measuredAverageMsDrawClouds, a);
             readGPUQueryEMA(queryDrawWaterReflectionPool[readIndex], measuredAverageMsDrawWaterReflection, a);
+            readGPUQueryEMA(queryDrawWaterRefractionPool[readIndex], measuredAverageMsDrawWaterRefraction, a);
+            readGPUQueryEMA(queryGBufferPool[readIndex], measuredAverageMsGBuffer, a);
             readGPUQueryEMA(queryRenderShaderPool[readIndex], measuredAverageMsRenderShader, a);
             readGPUQueryEMA(queryRenderWaterPool[readIndex], measuredAverageMsRenderWater, a);
             readGPUQueryEMA(queryDrawEntities[readIndex], measuredAverageMsDrawEntities, a);
@@ -958,20 +995,35 @@ void App::debugWindow() {
 
                     ImGui::Text("World SEED: %d", currentWorldSeed);
                     ImGui::Text("Terrain Height: %d (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
-                    ImGui::Text("Continentalness: %.3f", currentContinentalness);
-                    ImGui::Text("Erosion: %.3f", currentErosion);
-                    ImGui::Text("Peak/Valley: %.3f", currentPeakValley);
-                    ImGui::Text("Temperature: %.3f", currentTemperature);
-                    ImGui::Text("Humidity: %.3f", currentHumidity);
+                    static const char* contBucketNames[]   = { "MUSHROOM", "OCEAN", "COAST", "NEAR_INLAND", "MID_INLAND", "FAR_INLAND" };
+                    static const char* erosionBucketNames[] = { "E0", "E1", "E2", "E3", "E4", "E5", "E6" };
+                    static const char* pvBucketNames[]      = { "VALLEY", "LOW", "MID", "HIGH", "PEAK" };
+                    static const char* tempBucketNames[]    = { "VERY_COLD", "COLD", "TEMPERATE", "WARM", "HOT" };
+                    static const char* humidBucketNames[]   = { "ARID", "DRY", "NEUTRAL", "HUMID", "WET" };
+
+                    ImGui::Text("Continentalness: %.3f", currentContinentalness); ImGui::SameLine(); ImGui::Text("(%s)", contBucketNames[currentContBucket]);
+                    ImGui::Text("Erosion: %.3f", currentErosion);                 ImGui::SameLine(); ImGui::Text("(%s)", erosionBucketNames[currentErosionBucket]);
+                    ImGui::Text("Peak/Valley: %.3f", currentPeakValley);          ImGui::SameLine(); ImGui::Text("(%s)", pvBucketNames[currentPVBucket]);
+                    ImGui::Text("Temperature: %.3f", currentTemperature);         ImGui::SameLine(); ImGui::Text("(%s)", tempBucketNames[currentTempBucket]);
+                    ImGui::Text("Humidity: %.3f", currentHumidity);               ImGui::SameLine(); ImGui::Text("(%s)", humidBucketNames[currentHumidBucket]);
 
                     const char* biomeName =
                         (static_cast<BiomeType>(currentBiome) == BiomeType::PLAINS) ? "PLAINS" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::DESERT) ? "DESERT" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::FOREST) ? "FOREST" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::DARK_FOREST) ? "DARK_FOREST" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::TUNDRA) ? "TUNDRA" :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::SWAMP)  ? "SWAMP"  :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::OCEAN)  ? "OCEAN"  :
                         (static_cast<BiomeType>(currentBiome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::BIRCH_FOREST) ? "BIRCH_FOREST" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::JUNGLE) ? "JUNGLE" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::SAVANNA) ? "SAVANNA" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::MESA) ? "MESA" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::ICE_PLAINS) ? "ICE_PLAINS" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::VOLCANIC) ? "VOLCANIC" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::RED_DESERT) ? "RED_DESERT" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::NETHER) ? "NETHER" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::MUSHROOM_ISLAND) ? "MUSHROOM_ISLAND" :
                                                                                     "UNKNOWN";
                     ImGui::Text("BIOME: %s", biomeName);
 
@@ -1557,7 +1609,8 @@ void App::debugWindow() {
                 // Calculate totals
                 float totalGPU = static_cast<float>(
                     measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
-                    measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
+                    measuredAverageMsDrawShadows + measuredAverageMsGBuffer + measuredAverageMsSSAO +
+                    measuredAverageMsDrawWaterReflection + measuredAverageMsDrawWaterRefraction +
                     measuredAverageMsRenderWater + measuredAverageMsDrawEntities);
 
                 // Frame budget target
@@ -1583,7 +1636,9 @@ void App::debugWindow() {
                 showTimingBar("Clouds",        measuredAverageMsDrawClouds,          ImVec4(0.8f, 0.8f, 0.9f, 1.0f));
                 showTimingBar("Terrain",       measuredAverageMsRenderShader,        ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
                 showTimingBar("Shadows",       measuredAverageMsDrawShadows,         ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+                showTimingBar("GBuffer",       measuredAverageMsGBuffer,             ImVec4(0.5f, 0.3f, 0.7f, 1.0f));
                 showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
+                showTimingBar("Water Refract", measuredAverageMsDrawWaterRefraction, ImVec4(0.2f, 0.4f, 0.75f, 1.0f));
                 showTimingBar("Water Render",  measuredAverageMsRenderWater,         ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
                 showTimingBar("Entities",      measuredAverageMsDrawEntities,        ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
                 showTimingBar("SSAO",          measuredAverageMsSSAO,                ImVec4(0.6f, 0.2f, 0.8f, 1.0f));
@@ -1613,6 +1668,8 @@ void App::debugWindow() {
                         measuredAverageMsDrawSky = 0.0;
                         measuredAverageMsDrawClouds = 0.0;
                         measuredAverageMsDrawWaterReflection = 0.0;
+                        measuredAverageMsDrawWaterRefraction = 0.0;
+                        measuredAverageMsGBuffer = 0.0;
                         measuredAverageMsDrawShadows = 0.0;
                         measuredAverageMsRenderShader = 0.0;
                         measuredAverageMsRenderWater = 0.0;
@@ -1649,6 +1706,8 @@ void App::cleanup() {
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawCloudsPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterRefractionPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryGBufferPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);

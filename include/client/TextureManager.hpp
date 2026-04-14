@@ -68,6 +68,9 @@ class TextureManager {
 
         void bind(GLenum textureUnit = GL_TEXTURE0) const;
 
+        int getGrassTintLayer(BiomeType biome) const;
+        int getShortGrassTintLayer(BiomeType biome) const;
+
     private:
         GLuint textureArray { 0 };
         int textureSize { 16 };
@@ -89,6 +92,9 @@ class TextureManager {
 
         // store raw pixels per layer so we can tint them later
         std::vector<std::vector<unsigned char>> layerPixels;
+
+        std::unordered_map<BiomeType, int> biomeGrassTopLayer;
+        std::unordered_map<BiomeType, int> biomeShortGrassLayer;
 };
 
 #endif // TEXTURE_MANAGER_HPP

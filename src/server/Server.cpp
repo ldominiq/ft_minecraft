@@ -570,6 +570,13 @@ void Server::sendImGuiData(CPlayerInfo &player) {
     pkt.temperature = ChunkGeneration::getTemperature(params, wx, wz);
     pkt.humidity = ChunkGeneration::getHumidity(params, wx, wz);
 
+    const auto qc = ChunkGeneration::computeQuantizedClimate(params, wx, wz);
+    pkt.contBucket    = qc.continentalness;
+    pkt.erosionBucket = qc.erosion;
+    pkt.pvBucket      = qc.peakValley;
+    pkt.tempBucket    = qc.temperature;
+    pkt.humidBucket   = qc.humidity;
+
     sendPacketTo(pkt, player.addr);
 }
 

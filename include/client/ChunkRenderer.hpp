@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "GLFW/glfw3.h"
+#include <glm/glm.hpp>
 #include "Chunk.hpp"
 #include "TextureManager.hpp"
 #include "blockRenderingHelperFunctions.hpp"
@@ -43,6 +44,11 @@ class ChunkRenderer : public Chunk {
 
 		bool needsUpdate = false;
 		bool neighbourNeedUpdate[4] { false };
+
+		glm::vec3 cachedMinP;
+		glm::vec3 cachedMaxP;
+		const glm::vec3& getCachedMinP() const { return cachedMinP; }
+		const glm::vec3& getCachedMaxP() const { return cachedMaxP; }
 
 		// Set the TextureManager (must be called before building meshes)
 		void setTextureManager(const TextureManager* tm) { textureManager = tm; }

@@ -70,6 +70,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void drawFrustumCullingDebug(const glm::vec3& cameraPos, const glm::vec3& cameraFront,
 		                             float fovDeg, float aspectRatio, float nearP, float farP);
 
+		void processMeshUpdates();
 		void render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation = true) const ;
 
 		/// Update vegetation shader uniforms (for reflection pass where view/clip differ from main camera)
