@@ -12,23 +12,38 @@ static std::string resolveIncludes(const std::string& src, const std::filesystem
     std::string line;
 
     while (std::getline(stream, line)) {
-        if (line.rfind("#include \"", 0) == 0 && line.back() == '"') {
-            std::string rel = line.substr(10, line.size() - 11); // Extract path between quotes
-            std::filesystem::path includePath = shaderDir / rel;
-            std::ifstream inclFile(includePath);
-            if (!inclFile.is_open()) {
-                std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath << "\n";
-                result += "// MISSING INCLUDE: " + rel + '\n';
-            } else {
-                std::stringstream s;
-                s << inclFile.rdbuf();
-                result += s.str() + '\n';
+        // Strip Windows CR if present
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+
+        // Skip leading whitespace for include detection
+        size_t first = line.find_first_not_of(" \t");
+        if (first != std::string::npos && line.compare(first, 10, "#include \"") == 0) {
+            size_t openQuote = line.find('"', first);
+            size_t closeQuote = (openQuote == std::string::npos) ? std::string::npos : line.find('"', openQuote + 1);
+
+            if (openQuote != std::string::npos && closeQuote != std::string::npos && closeQuote > openQuote + 1) {
+                std::string rel = line.substr(openQuote + 1, closeQuote - openQuote - 1);
+                std::filesystem::path includePath = shaderDir / rel;
+
+                std::ifstream inclFile(includePath, std::ios::in | std::ios::binary);
+                if (!inclFile.is_open()) {
+                    std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath << "\n";
+                    result += "// MISSING INCLUDE: " + rel + '\n';
+                }
+                else {
+                    std::stringstream s;
+                    s << inclFile.rdbuf();
+                    // Optional recursion in case included files also include others
+                    result += resolveIncludes(s.str(), includePath.parent_path()) + '\n';
+                }
+                continue;
             }
         }
-        else {
-            result += line + '\n';
-        }
+
+        result += line + '\n';
     }
+
     return result;
 }
 
