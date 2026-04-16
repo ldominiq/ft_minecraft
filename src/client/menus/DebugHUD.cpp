@@ -45,6 +45,13 @@ void DebugHUD::onRender()
         textY -= lineH;
     };
 
+    auto formatInt = [](size_t n) {
+        std::string s = std::to_string(n);
+        int i = static_cast<int>(s.size()) - 3;
+        while (i > 0) { s.insert(i, ","); i -= 3; }
+        return s;
+    };
+
     snprintf(buf, sizeof(buf), "FPS: %.0f", m_stats.fps);
     drawLine(buf);
 
@@ -54,10 +61,10 @@ void DebugHUD::onRender()
     snprintf(buf, sizeof(buf), "Player Position: X=%.0f Y=%.0f Z=%.0f", m_stats.playerPos.x, m_stats.playerPos.y, m_stats.playerPos.z);
     drawLine(buf);
 
-    snprintf(buf, sizeof(buf), "Triangles: %zu", m_stats.triangles);
+    snprintf(buf, sizeof(buf), "Triangles: %s", formatInt(m_stats.triangles).c_str());
     drawLine(buf);
 
-    snprintf(buf, sizeof(buf), "Cubes: ~%zu", m_stats.cubes);
+    snprintf(buf, sizeof(buf), "Cubes: ~%s", formatInt(m_stats.cubes).c_str());
     drawLine(buf);
 
     snprintf(buf, sizeof(buf), "Chunks: %zu / %zu", m_stats.visibleChunks, m_stats.totalChunks);
