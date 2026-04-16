@@ -1022,6 +1022,9 @@ void App::computeDebugStats()
         cachedDebugStats.cubes       = cachedDebugStats.triangles / 12;
 
 		cachedDebugStats.terrainDrawCalls = renderer->getDrawCallCount();
+
+        if (camera && camera->getPlayer())
+            cachedDebugStats.playerPos = camera->getPlayer()->getPosition();
     }
 }
 
@@ -1062,6 +1065,8 @@ void App::debugWindow() {
                     // Display smoothed FPS and frame time
                     ImGui::Text("FPS: %.1f (%.3f ms)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
 
+					ImGui::Text("Ping: %.0f ms", clientConnected ? pingMs : -1.0f);
+
                     // Display camera coordinates
                     ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
 
@@ -1100,14 +1105,15 @@ void App::debugWindow() {
                     ImGui::Text("BIOME: %s", biomeName);
 
 
-            // Additional metrics: number of loaded chunks and approximate memory usage
-            if (renderer) {
-                ImGui::Text("Chunks: %zu visible / %zu total",
-                            cachedDebugStats.visibleChunks, cachedDebugStats.totalChunks);
-                // TODO: fix real count based on frustum culling
-                ImGui::Text("Triangles: %zu", cachedDebugStats.triangles);
-                ImGui::Text("Approx. Visible Blocks: %zu", cachedDebugStats.cubes);
-            }
+                    // Additional metrics: number of loaded chunks and approximate memory usage
+                    if (renderer) {
+                        ImGui::Text("Chunks: %zu visible / %zu total",
+                                    cachedDebugStats.visibleChunks, cachedDebugStats.totalChunks);
+                        // TODO: fix real count based on frustum culling
+                        ImGui::Text("Triangles: %zu", cachedDebugStats.triangles);
+                        ImGui::Text("Approx. Visible Blocks: %zu", cachedDebugStats.cubes);
+						ImGui::Text("Draw Calls: %zu", cachedDebugStats.terrainDrawCalls);
+                    }
 
                     // Display memory usage in megabytes.  We call a static helper to
                     // obtain the current resident set size (RSS).

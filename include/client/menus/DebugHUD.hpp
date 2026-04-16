@@ -15,6 +15,7 @@ struct DebugStats {
     size_t totalChunks      = 0;
     size_t terrainDrawCalls = 0;
 	float  pingMs           = -1.0f;
+    glm::vec3 playerPos{};
 };
 
 class DebugHUD : public Menu {
