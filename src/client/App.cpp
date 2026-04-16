@@ -480,13 +480,20 @@ void App::gameTick() {
 		float now = static_cast<float>(glfwGetTime());
         if (now - lastPingSentTime >= 2.0f) {
             lastPingSentTime = now;
-            auto ts = static_cast<uint64_t>(
-                std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::steady_clock::now().time_since_epoch()).count());
-			lastPingTimestamp = ts;
-            NetPing ping;
-			ping.timestamp = ts;
-			udpClient->sendPacket(ping);
+			if (serverIp == "127.0.0.1" || serverIp == "localhost") {
+                // If connecting to localhost, we can skip the ping and just set latency to 0
+                pingMs = 0.0f;
+                return;
+            }
+            else {
+                auto ts = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count());
+			    lastPingTimestamp = ts;
+                NetPing ping;
+			    ping.timestamp = ts;
+			    udpClient->sendPacket(ping);
+            }
         }
     }
 

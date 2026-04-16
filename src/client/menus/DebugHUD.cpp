@@ -71,7 +71,7 @@ void DebugHUD::onRender()
     textRenderer.renderText(buf, textX, textY, white);
     textY -= lineH;
 
-    snprintf(buf, sizeof(buf), "Ping: %.1f ms", m_stats.pingMs);
+    snprintf(buf, sizeof(buf), "Ping: %.0f ms", m_stats.pingMs);
     textRenderer.renderText(buf, textX, textY, white);
     textY -= lineH;
 

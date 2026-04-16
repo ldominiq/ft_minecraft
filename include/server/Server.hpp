@@ -19,6 +19,8 @@
 #include <zstd.h>
 
 #include <mutex>
+#include <condition_variable>
+#include <queue>
 
 #include "Protocol.hpp"
 #include "World.hpp"
@@ -47,6 +49,17 @@ private:
 
 	std::vector<std::thread> dumpThreads;
 	std::mutex dumpThreadsMutex;
+
+	struct PingJob {
+		sockaddr_in addr;
+		uint64_t timestamp;
+	};
+	std::queue<PingJob> pingQueue;
+	std::mutex pingMutex;
+	std::condition_variable pingCV;
+	std::thread pingThread;
+
+	void pingLoop();
 
 	void gameTick();
 

@@ -331,7 +331,7 @@ private:
 
 	// Ping measurement
     float pingMs = -1.0f;
-    float pingEMASmoothing = 0.1f;
+    float pingEMASmoothing = 1.0f;
     float lastPingSentTime = -999.0f;
 	uint64_t lastPingTimestamp = 0;
 };
