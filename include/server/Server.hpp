@@ -39,7 +39,7 @@ private:
 	std::deque<std::string> messages;
 	std::unique_ptr<World> world;
 
-	bool running = false;
+	std::atomic<bool> running = false;
 
 	int32_t tick = 0;
 	float deltaTime;
