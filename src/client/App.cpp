@@ -483,7 +483,6 @@ void App::gameTick() {
 			if (serverIp == "127.0.0.1" || serverIp == "localhost") {
                 // If connecting to localhost, we can skip the ping and just set latency to 0
                 pingMs = 0.0f;
-                return;
             }
             else {
                 auto ts = static_cast<uint64_t>(
@@ -1013,8 +1012,8 @@ void App::computeDebugStats()
         size_t waterVerts = 0;
         for (auto& weakChunk : renderer->getRenderedChunks()) {
             if (auto chunk = weakChunk.lock()) {
-                solidVerts += chunk->getMeshVerticesSize() / 10;
-                waterVerts += chunk->getWaterMeshVerticesSize() / 10;
+                solidVerts += chunk->getMeshVerticesSize() / 11;
+                waterVerts += chunk->getWaterMeshVerticesSize() / 11;
             }
         }
         const size_t totalVerts      = solidVerts + waterVerts;
