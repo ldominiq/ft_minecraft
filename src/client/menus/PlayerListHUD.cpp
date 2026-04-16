@@ -42,8 +42,6 @@ void PlayerListHUD::build()
 
 void PlayerListHUD::resize(float width, float height)
 {
-    DESIGN_WIDTH  = static_cast<int>(width);
-    DESIGN_HEIGHT = static_cast<int>(height);
     Menu::resize(width, height);
 }
 
@@ -51,14 +49,15 @@ void PlayerListHUD::onRender()
 {
     if (m_players.empty()) return;
 
-    constexpr float panelW   = 300.0f;
-    constexpr float padX     = 10.0f;
-    constexpr float padY     = 8.0f;
-    constexpr float lineH    = 20.0f;
-    constexpr float iconSize = 12.0f;
-    constexpr float topGap   = 10.0f;
+    const float s        = menuScale;
+    const float panelW   = 300.0f * s;
+    const float padX     = 10.0f  * s;
+    const float padY     = 8.0f   * s;
+    const float lineH    = 20.0f  * s;
+    const float iconSize = 12.0f  * s;
+    const float topGap   = 10.0f  * s;
 
-    const float headerH = lineH + 4.0f;
+    const float headerH = lineH + 4.0f * s;
     const float panelH  = padY + headerH + static_cast<float>(m_players.size()) * lineH + padY;
 
     const float panelX = (static_cast<float>(fullscreenWidth) - panelW) * 0.5f;
@@ -76,7 +75,7 @@ void PlayerListHUD::onRender()
 
     // Separator line
     float sepY = panelY + panelH - padY - headerH;
-    drawSimpleQuad(panelX + padX, sepY, panelW - padX * 2.0f, 1.0f, glm::vec4(1.0f, 1.0f, 1.0f, 0.4f));
+    drawSimpleQuad(panelX + padX, sepY, panelW - padX * 2.0f, std::max(1.0f, s), glm::vec4(1.0f, 1.0f, 1.0f, 0.4f));
 
     // Rows top-to-bottom
     float  rowY = sepY - lineH;
