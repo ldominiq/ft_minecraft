@@ -243,6 +243,16 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 
 		// NET_PING is handled by pingThread before dispatch() is called
 
+		case PacketType::NET_PLAYER_PING: {
+			auto& p = static_cast<NetPlayerPing&>(*pkt);
+			auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+			if (player != players.end()) {
+				player->pingMs = p.pingMs;
+				broadcastPingList();
+			}
+			break;
+		}
+
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
@@ -297,6 +307,15 @@ void Server::broadcastSkyTime() {
     pkt.skyTimeSpeed   = s.skyTimeSpeed;
     for (CPlayerInfo& p : players)
         sendPacketTo(pkt, p.addr);
+}
+
+void Server::broadcastPingList()
+{
+	NetPingList pkt;
+	for (const CPlayerInfo& p : players)
+		pkt.entries.push_back({ static_cast<uint32_t>(p.movement->getID()), p.pingMs });
+	for (const CPlayerInfo& p : players)
+		sendPacketTo(pkt, p.addr);
 }
 
 void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
@@ -951,6 +970,8 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	sendPacketTo(skyPkt, cliaddr);
 
 	NetAccept acceptPkt;
+	if (player != players.end())
+		acceptPkt.clientId = static_cast<uint32_t>(player->movement->getID());
 	sendPacketTo(acceptPkt, cliaddr);
 }
 

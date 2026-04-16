@@ -35,6 +35,8 @@ enum class PacketType : uint8_t {
 	NET_TERRAIN_PARAMS,		// C2S && S2C (for syncing terrain generation parameters)
 	NET_PING,				// C2S && S2C (for latency measurement)
 	NET_PONG,				// S2C && C2S (response to ping)
+	NET_PLAYER_PING,		// C2S: client reports its measured ping to server
+	NET_PING_LIST,			// S2C: server broadcasts all players pings
 
 	GROUP,					// for grouped packets
 };
