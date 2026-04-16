@@ -145,15 +145,20 @@ void Server::loop() {
 #endif
 				break;
 			}
-			if (buffer[0] == static_cast<uint8_t>(PacketType::NET_PING)) {
-				auto pkt = decodePacket(buffer, n);
-				auto& ping = static_cast<NetPing&>(*pkt);
-				// send data to the worker thread
-				{
-					std::lock_guard<std::mutex> lock(pingMutex);
-					pingQueue.push({ cliaddr, ping.timestamp });
+			if (n > 0 && buffer[0] == static_cast<uint8_t>(PacketType::NET_PING)) {
+				try {
+					auto pkt = decodePacket(buffer, n);
+					auto& ping = static_cast<NetPing&>(*pkt);
+					// send data to the worker thread
+					{
+						std::lock_guard<std::mutex> lock(pingMutex);
+						pingQueue.push({ cliaddr, ping.timestamp });
+					}
+					pingCV.notify_one();
 				}
-				pingCV.notify_one();
+				catch (const std::exception& e) {
+					std::cerr << "[Server] Failed to decode ping packet: " << e.what() << "\n";
+				}
 			}
 			else {
 				dispatch(buffer, n, cliaddr);
