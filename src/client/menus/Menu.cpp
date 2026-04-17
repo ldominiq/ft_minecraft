@@ -47,9 +47,9 @@ Menu::~Menu()
 	if (glfwGetCurrentContext()) {
 		glDeleteVertexArrays(1, &VAO);
 		glDeleteBuffers(1, &VBO);
-	
-		glDeleteTextures(1, &textureVAO);
-		glDeleteTextures(1, &textureVBO);
+
+		glDeleteVertexArrays(1, &textureVAO);
+		glDeleteBuffers(1, &textureVBO);
 	} else {
 		VAO = 0;
 		VBO = 0;
@@ -118,6 +118,62 @@ void Menu::drawTexturedQuad(float x, float y, float w, float h, unsigned int tex
     texturedQuadShader->setInt("uTexture", 0);
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+void Menu::drawTiledTexturedQuad(float x, float y, float w, float h, unsigned int textureID, float tileSize)
+{
+    float tilesX = w / tileSize;
+    float tilesY = h / tileSize;
+
+    float verts[] = {
+        x,     y,     0.0f,   0.0f,
+        x + w, y,     tilesX, 0.0f,
+        x + w, y + h, tilesX, tilesY,
+
+        x,     y,     0.0f,   0.0f,
+        x + w, y + h, tilesX, tilesY,
+        x,     y + h, 0.0f,   tilesY
+    };
+
+    glBindVertexArray(textureVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, textureVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+
+    texturedQuadShader->use();
+    texturedQuadShader->setMat4("uProjection", glm::ortho(0.0f, static_cast<float>(fullscreenWidth),
+                                                         0.0f, static_cast<float>(fullscreenHeight),
+                                                         -1.0f, 1.0f));
+    texturedQuadShader->setFloat("uAlpha", 1.0f);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    texturedQuadShader->setInt("uTexture", 0);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+GLuint Menu::loadTexture2D(const char* path)
+{
+    int width, height, channels;
+    unsigned char* data = stbi_load(path, &width, &height, &channels, 4);
+    if (!data) {
+        std::cerr << "Failed to load texture: " << path << std::endl;
+        return 0;
+    }
+
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    stbi_image_free(data);
+    return texture;
 }
 
 void Menu::resize(float width, float height)

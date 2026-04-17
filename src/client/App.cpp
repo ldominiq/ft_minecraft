@@ -86,6 +86,9 @@ void App::init(const std::string& serverIp) {
 			app->chat->resize(width, height);
 		app->debugHUD->resize(width, height);
 		app->playerListHUD->resize(width, height);
+		if (app->mainMenu) app->mainMenu->resize(width, height);
+		if (app->multiplayerMenu) app->multiplayerMenu->resize(width, height);
+		if (app->settingsMenu) app->settingsMenu->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -93,9 +96,6 @@ void App::init(const std::string& serverIp) {
 
     glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
     glViewport(0, 0, screenWidth, screenHeight);
-
-	udpClient = std::make_unique<UDPClient>(targetIp.c_str());
-	setUdpClientPacketCallback();
 
 	renderer = std::make_unique<Renderer>();
 
@@ -150,6 +150,15 @@ void App::init(const std::string& serverIp) {
     glfwSetCursorPosCallback(window, [](GLFWwindow* w, const double xpos, const double ypos) {
         static App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
         if (!app) return;
+
+		// In non-Playing states, forward to menu and skip camera
+		if (app->gameState != GameState::Playing) {
+			auto menuManagerPtr = app->menuManager.lock();
+			if (menuManagerPtr)
+				menuManagerPtr->handleMouseMove(xpos, ypos);
+			return;
+		}
+
         // Honour ImGui’s mouse capture: if the UI is being interacted with
         // (e.g. hovering/clicking in a window), do not rotate the camera.
         ImGuiIO& io = ImGui::GetIO();
@@ -178,11 +187,16 @@ void App::init(const std::string& serverIp) {
 		app->mouseMovedRecently = true;
 		app->lastMouseMoveTime = glfwGetTime();
     });
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int codepoint) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		if (app->gameState == GameState::Multiplayer) {
+			app->multiplayerMenu->addChar(static_cast<char>(codepoint));
+			return;
+		}
+
 		auto manager = app->menuManager.lock();
 		if (manager != app->chat) return ;
 
@@ -192,6 +206,16 @@ void App::init(const std::string& serverIp) {
 	glfwSetKeyCallback(window, [](GLFWwindow* w, int key, int scancode, int action, int mods) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		// In non-Playing states, handle ESC to go back / don't close window
+		if (app->gameState != GameState::Playing) {
+			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+				if (app->gameState == GameState::Multiplayer || app->gameState == GameState::Settings)
+					app->transitionTo(GameState::MainMenu);
+			}
+			app->processInputMenus(key, action);
+			return;
+		}
 
 		auto manager = app->menuManager.lock();
 
@@ -248,10 +272,15 @@ void App::init(const std::string& serverIp) {
 			double mouseX, mouseY;
     		glfwGetCursorPos(w, &mouseX, &mouseY);
 
+			if (app->gameState != GameState::Playing) {
+				manager->handleMouseClick(mouseX, mouseY, button, action);
+				return;
+			}
+
 			if (manager == app->inventoryUI)
 			{
 				manager->handleMouseClick(mouseX, mouseY, button, action);
-				if (app->inventoryUI->lastAction.has_value())
+				if (app->inventoryUI->lastAction.has_value() && app->udpClient)
 				{
 					auto [slot, type] = *app->inventoryUI->lastAction;
 					NetInventoryAction pkt;
@@ -263,6 +292,8 @@ void App::init(const std::string& serverIp) {
 			}
 			return ;
 		}
+
+		if (app->gameState != GameState::Playing || !app->udpClient) return;
 
 		//kinda weird way to do it.
 		uint8_t mouseButtons = 0;
@@ -316,6 +347,35 @@ void App::init(const std::string& serverIp) {
     glGenQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawEntities);
     glGenQueries(QUERY_POOL_SIZE, querySSAOPool);
+
+	// Create main menu screens
+	GLuint dirtTex = Menu::loadTexture2D("assets/textures/block/dirt.png");
+	mainMenu = std::make_shared<MainMenu>(screenWidth, screenHeight);
+	multiplayerMenu = std::make_shared<MultiplayerMenu>(screenWidth, screenHeight, dirtTex);
+	settingsMenu = std::make_shared<SettingsMenu>(screenWidth, screenHeight, dirtTex);
+
+	mainMenu->setButtonCallback([this](int btn) {
+		switch (btn) {
+			case 0: break; // Singleplayer - disabled
+			case 1: transitionTo(GameState::Multiplayer); break;
+			case 2: transitionTo(GameState::Settings); break;
+			case 3: glfwSetWindowShouldClose(window, true); break;
+		}
+	});
+
+	multiplayerMenu->setConnectCallback([this](const std::string& ip) {
+		connectToServer(ip);
+		transitionTo(GameState::Playing);
+	});
+	multiplayerMenu->setCancelCallback([this]() {
+		transitionTo(GameState::MainMenu);
+	});
+
+	settingsMenu->setDoneCallback([this]() {
+		transitionTo(GameState::MainMenu);
+	});
+
+	transitionTo(GameState::MainMenu);
 }
 
 void App::setUdpClientPacketCallback()
@@ -487,6 +547,7 @@ void App::loadResources() {
 }
 
 void App::gameTick() {
+	if (!udpClient) return;
 	// sending/receiving packets and stuff
 
 	udpClient->receivePacket();
@@ -538,15 +599,34 @@ void App::render() {
             continue;
         }
 
-        // Rotate query index each frame
-        currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
-
-        if (renderer) renderer->resetDrawCallCount();
-    
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+		// Menu rendering path (non-Playing states)
+		if (gameState != GameState::Playing) {
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			ImGui_ImplOpenGL3_NewFrame();
+			ImGui_ImplGlfw_NewFrame();
+			ImGui::NewFrame();
+			ImGui::Render();
+			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+			auto manager = menuManager.lock();
+			if (manager) manager->render();
+
+			glfwSwapBuffers(window);
+			glfwPollEvents();
+			continue;
+		}
+
+        // Rotate query index each frame
+        currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
+
+        if (renderer) renderer->resetDrawCallCount();
 
 		//Tick logic
 		float tickDuration = 1.0f / TPS; // 0.05s per tick
@@ -1766,6 +1846,36 @@ void App::run() {
     render();
 }
 
+void App::connectToServer(const std::string& ip) {
+	serverIp = ip;
+	udpClient = std::make_unique<UDPClient>(ip.c_str());
+	setUdpClientPacketCallback();
+}
+
+void App::transitionTo(GameState newState) {
+	gameState = newState;
+	switch (newState) {
+		case GameState::MainMenu:
+			menuManager = mainMenu;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			firstMouse = true;
+			break;
+		case GameState::Multiplayer:
+			menuManager = multiplayerMenu;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
+		case GameState::Settings:
+			menuManager = settingsMenu;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
+		case GameState::Playing:
+			menuManager.reset();
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			firstMouse = true;
+			break;
+	}
+}
+
 void App::cleanup() {
 
     // Shutdown ImGui before terminating GLFW
@@ -1784,9 +1894,11 @@ void App::cleanup() {
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
 
-	NetDisconnect pkt;
-	pkt.username = "Steve";
-	udpClient->sendPacket(pkt);
+	if (udpClient) {
+		NetDisconnect pkt;
+		pkt.username = "Steve";
+		udpClient->sendPacket(pkt);
+	}
 
     glfwTerminate();
     saveControls();
@@ -1909,6 +2021,21 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 
 void App::processInputMenus(int key, int action) {
 
+	// Handle input for non-Playing menu states
+	if (gameState == GameState::Multiplayer) {
+		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
+			multiplayerMenu->removeChar();
+		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
+			if (multiplayerMenu->getIpAddress().empty()) return;
+			connectToServer(multiplayerMenu->getIpAddress());
+			transitionTo(GameState::Playing);
+		}
+		return;
+	}
+
+	if (gameState != GameState::Playing) return;
+
+	// Playing state menu handling below
 	auto manager = menuManager.lock();
 
 	// HANDLE EVENTS WHEN CHAT OPEN
@@ -1927,7 +2054,7 @@ void App::processInputMenus(int key, int action) {
 			if (chat->currMsg.empty()) return ; //will this return be safe in the future?
 			NetMessage pkt;
 			pkt.message = chat->currMsg;
-			udpClient->sendPacket(pkt);
+			if (udpClient) udpClient->sendPacket(pkt);
 
 			chat->cleanMsgSent();
 		}
