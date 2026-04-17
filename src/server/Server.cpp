@@ -245,6 +245,8 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 
 		case PacketType::NET_PLAYER_PING: {
 			auto& p = static_cast<NetPlayerPing&>(*pkt);
+			if (!std::isfinite(p.pingMs) || p.pingMs < 0.0f || p.pingMs > 9999.0f)
+				break; // discard invalide ping
 			auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 			if (player != players.end())
 				player->pingMs = p.pingMs;
