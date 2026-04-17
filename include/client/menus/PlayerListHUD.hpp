@@ -17,7 +17,6 @@ public:
     PlayerListHUD(float width, float height);
 
     void update(const std::vector<PlayerEntry>& players);
-    void resize(float width, float height) override;
 
 protected:
     void build() override;

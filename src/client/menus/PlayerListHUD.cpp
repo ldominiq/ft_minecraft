@@ -40,11 +40,6 @@ void PlayerListHUD::build()
     textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 }
 
-void PlayerListHUD::resize(float width, float height)
-{
-    Menu::resize(width, height);
-}
-
 void PlayerListHUD::onRender()
 {
     if (m_players.empty()) return;
