@@ -23,7 +23,6 @@ public:
     DebugHUD(float width, float height);
 
     void update(const DebugStats& stats);
-    void resize(float width, float height) override;
 
 protected:
     void build() override;
