@@ -1,4 +1,5 @@
 #include "Shader.hpp"
+#include <unordered_set>
 #ifdef _WIN32
 #include <direct.h>
 #define getcwd _getcwd
@@ -6,7 +7,12 @@
 #include <unistd.h> // getcwd
 #endif
 
-static std::string resolveIncludes(const std::string& src, const std::filesystem::path& shaderDir) {
+static std::string resolveIncludes(
+    const std::string& src,
+    const std::filesystem::path& shaderDir,
+    const std::filesystem::path& shaderRoot,
+    std::unordered_set<std::string>& visited)
+{
     std::string result;
     std::istringstream stream(src);
     std::string line;
@@ -24,7 +30,33 @@ static std::string resolveIncludes(const std::string& src, const std::filesystem
 
             if (openQuote != std::string::npos && closeQuote != std::string::npos && closeQuote > openQuote + 1) {
                 std::string rel = line.substr(openQuote + 1, closeQuote - openQuote - 1);
-                std::filesystem::path includePath = shaderDir / rel;
+
+                // Reject absolute include paths — they would bypass shaderDir entirely
+                if (std::filesystem::path(rel).is_absolute()) {
+                    std::cerr << "ERROR::SHADER::INCLUDE_ABSOLUTE_PATH: " << rel << "\n";
+                    result += "// REJECTED INCLUDE (absolute path): " + rel + '\n';
+                    continue;
+                }
+
+                // Resolve and normalise without touching the filesystem
+                std::filesystem::path includePath = (shaderDir / rel).lexically_normal();
+
+                // Reject paths that escape the shader root via .. segments
+                auto relToRoot = includePath.lexically_relative(shaderRoot);
+                std::string relStr = relToRoot.string();
+                if (relStr.empty() || relStr.rfind("..", 0) == 0) {
+                    std::cerr << "ERROR::SHADER::INCLUDE_PATH_ESCAPE: " << includePath << "\n";
+                    result += "// REJECTED INCLUDE (path escape): " + rel + '\n';
+                    continue;
+                }
+
+                // Cycle detection — skip files already on the current include stack
+                std::string normalStr = includePath.string();
+                if (visited.count(normalStr)) {
+                    std::cerr << "ERROR::SHADER::INCLUDE_CYCLE: " << includePath << "\n";
+                    result += "// SKIPPED INCLUDE (cycle): " + rel + '\n';
+                    continue;
+                }
 
                 std::ifstream inclFile(includePath, std::ios::in | std::ios::binary);
                 if (!inclFile.is_open()) {
@@ -34,8 +66,9 @@ static std::string resolveIncludes(const std::string& src, const std::filesystem
                 else {
                     std::stringstream s;
                     s << inclFile.rdbuf();
-                    // Optional recursion in case included files also include others
-                    result += resolveIncludes(s.str(), includePath.parent_path()) + '\n';
+                    visited.insert(normalStr);
+                    result += resolveIncludes(s.str(), includePath.parent_path(), shaderRoot, visited) + '\n';
+                    visited.erase(normalStr); // allow re-inclusion from other non-cyclic paths
                 }
                 continue;
             }
@@ -84,8 +117,11 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
         }
     }
 
-    vCode = resolveIncludes(vCode, std::filesystem::path(vertexPath).parent_path());
-    fCode = resolveIncludes(fCode, std::filesystem::path(fragmentPath).parent_path());
+    std::filesystem::path vRoot = std::filesystem::path(vertexPath).parent_path().lexically_normal();
+    std::filesystem::path fRoot = std::filesystem::path(fragmentPath).parent_path().lexically_normal();
+    std::unordered_set<std::string> vVisited, fVisited;
+    vCode = resolveIncludes(vCode, vRoot, vRoot, vVisited);
+    fCode = resolveIncludes(fCode, fRoot, fRoot, fVisited);
 
     const char* vShaderCode = vCode.c_str();
     const char* fShaderCode = fCode.c_str();

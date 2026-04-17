@@ -619,10 +619,10 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
                 continue;
             }
 
-            // Reuse the biome already stored during terrain generation instead of recomputing it.
+            // reuse the biome when in-bounds already stored during terrain generation, recompute otherwise 
             int localTrunkX = worldX - originX;
             int localTrunkZ = worldZ - originZ;
-			const BiomeType biome = (localTrunkX >= 0 && localTrunkX < WIDTH && localTrunkZ >= 0 && localTrunkZ < DEPTH)
+            const BiomeType biome = (localTrunkX >= 0 && localTrunkX < WIDTH && localTrunkZ >= 0 && localTrunkZ < DEPTH)
                 ? getBiomeAt(localTrunkX, localTrunkZ)
                 : computeBiome(terrainParams, static_cast<float>(worldX), static_cast<float>(worldZ), surfaceY);
 
