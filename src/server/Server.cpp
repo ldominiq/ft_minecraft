@@ -246,10 +246,8 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 		case PacketType::NET_PLAYER_PING: {
 			auto& p = static_cast<NetPlayerPing&>(*pkt);
 			auto player = NetUtils::findPlayerByAddr(players, cliaddr);
-			if (player != players.end()) {
+			if (player != players.end())
 				player->pingMs = p.pingMs;
-				broadcastPingList();
-			}
 			break;
 		}
 
@@ -274,9 +272,10 @@ void Server::gameTick()
 	world->advanceSkyTime();
 
 	// Broadcast every 20 ticks (~1s)
-	if (tick % static_cast<int>(TPS) == 0) {
+	if (tick % static_cast<int>(TPS) == 0)
 		broadcastSkyTime();
-	}
+	if (tick % static_cast<int>(TPS * 2) == 0)
+		broadcastPingList();
 	sendAll();
 }
 
