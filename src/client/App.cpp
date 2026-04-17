@@ -443,6 +443,7 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::NET_PING_LIST: {
 				auto& p = static_cast<NetPingList&>(*pkt);
+                remotePings.clear();
 				for (const auto& e : p.entries)
 					remotePings[e.entityId] = e.pingMs;
 				break;
