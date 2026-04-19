@@ -132,7 +132,7 @@ void MainMenu::drawSplashText()
 	float titleCX = fullscreenWidth / 2.0f;
 	float titleY = fullscreenHeight - (titleH + 30.0f * menuScale);
 	float anchorX = titleCX + titleW * 0.42f;
-	float anchorY = titleY + titleH * 0.3f;
+	float anchorY = titleY + titleH * 0.5f;
 
 	// Offset the text so it's centered on the anchor (pre-rotation)
 	float splashWidth = textRenderer.getPixelSizeOfString(splashText);
