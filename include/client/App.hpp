@@ -140,7 +140,7 @@ private:
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
 	void processInputMenus(int key, int action);
-	void connectToServer(const std::string& ip);
+	bool connectToServer(const std::string& ip);
 	void transitionTo(GameState newState);
     void updateWindowTitle();
     void toggleDisplayMode();

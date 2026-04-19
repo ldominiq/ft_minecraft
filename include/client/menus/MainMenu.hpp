@@ -33,6 +33,8 @@ private:
 	std::function<void(int)> onButtonClick;
 
 	GLuint dirtTexture = 0;
+	GLuint titleTexture = 0;
+	float titleTexAspect = 6.0f;
 
 	std::array<Button, 4> buttons;
 

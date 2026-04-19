@@ -1,6 +1,7 @@
 #include "Typer.hpp"
+#include <cmath>
 
-Typer::Typer(const std::string& fontPath) : shader("shaders/freetype.vert", "shaders/freetype.frag") {
+Typer::Typer(const std::string& fontPath, unsigned int pixelSize) : shader("shaders/freetype.vert", "shaders/freetype.frag") {
     // Initialize FreeType
 	FT_Library ft;
 	if (FT_Init_FreeType(&ft))
@@ -16,7 +17,7 @@ Typer::Typer(const std::string& fontPath) : shader("shaders/freetype.vert", "sha
     }
     else {
         // set size to load glyphs as
-        FT_Set_Pixel_Sizes(face, 0, 48);
+        FT_Set_Pixel_Sizes(face, 0, pixelSize);
 
         // disable byte-alignment restriction
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -108,48 +109,71 @@ uint Typer::getPixelSizeOfString(const std::string &str)
     return static_cast<uint>(len * scale);
 }
 
-// render line of text
-void Typer::renderText(const std::string &text, float x, float y, const glm::vec3 &color, const float alpha /* = 1.0f */)
+float Typer::getAscent()
 {
-    // activate corresponding render state	
+    auto it = Characters.find('A');
+    if (it == Characters.end()) return 0.0f;
+    return it->second.Bearing.y * scale;
+}
+
+// render line of text (rotationDeg rotates around the starting anchor x,y)
+void Typer::renderText(const std::string &text, float x, float y, const glm::vec3 &color, const float alpha /* = 1.0f */, float rotationDeg /* = 0.0f */)
+{
+    // activate corresponding render state
     shader.use();
 	shader.setVec4("textColor", glm::vec4(color.x, color.y, color.z, alpha));
 
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(VAO);
 
+    const float rad = rotationDeg * 3.14159265358979323846f / 180.0f;
+    const float cs = std::cos(rad);
+    const float sn = std::sin(rad);
+    const float anchorX = x;
+    const float anchorY = y;
+    float penOffset = 0.0f; // offset along the (rotated) baseline
+
+    auto rotatePoint = [&](float px, float py, float& ox, float& oy) {
+        float dx = px - anchorX;
+        float dy = py - anchorY;
+        ox = anchorX + dx * cs - dy * sn;
+        oy = anchorY + dx * sn + dy * cs;
+    };
+
     // iterate through all characters
-    std::string::const_iterator c;
-    for (c = text.begin(); c != text.end(); c++) 
+    for (auto c = text.begin(); c != text.end(); ++c)
     {
         TypingCharacter ch = Characters[*c];
 
-        float xpos = x + ch.Bearing.x * scale;
-        float ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
+        // position relative to anchor in un-rotated space
+        float baseX = anchorX + penOffset + ch.Bearing.x * scale;
+        float baseY = anchorY - (ch.Size.y - ch.Bearing.y) * scale;
 
         float w = ch.Size.x * scale;
         float h = ch.Size.y * scale;
-        // update VBO for each character
-        float vertices[6][4] = {
-            { xpos,     ypos + h,   0.0f, 0.0f },            
-            { xpos,     ypos,       0.0f, 1.0f },
-            { xpos + w, ypos,       1.0f, 1.0f },
 
-            { xpos,     ypos + h,   0.0f, 0.0f },
-            { xpos + w, ypos,       1.0f, 1.0f },
-            { xpos + w, ypos + h,   1.0f, 0.0f }           
+        float tlX, tlY, blX, blY, brX, brY, trX, trY;
+        rotatePoint(baseX,     baseY + h, tlX, tlY);
+        rotatePoint(baseX,     baseY,     blX, blY);
+        rotatePoint(baseX + w, baseY,     brX, brY);
+        rotatePoint(baseX + w, baseY + h, trX, trY);
+
+        float vertices[6][4] = {
+            { tlX, tlY, 0.0f, 0.0f },
+            { blX, blY, 0.0f, 1.0f },
+            { brX, brY, 1.0f, 1.0f },
+
+            { tlX, tlY, 0.0f, 0.0f },
+            { brX, brY, 1.0f, 1.0f },
+            { trX, trY, 1.0f, 0.0f }
         };
-        // render glyph texture over quad
         glBindTexture(GL_TEXTURE_2D, ch.TextureID);
-        // update content of VBO memory
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // be sure to use glBufferSubData and not glBufferData
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
-        // render quad
         glDrawArrays(GL_TRIANGLES, 0, 6);
-        // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
-        x += (ch.Advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+        penOffset += (ch.Advance >> 6) * scale;
     }
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);

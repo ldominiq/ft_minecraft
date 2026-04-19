@@ -27,14 +27,19 @@ static constexpr float DESIGN_W = 960.0f;
 static constexpr float DESIGN_H = 540.0f;
 
 // Button layout in design coordinates
-static constexpr float BTN_W = 400.0f;
-static constexpr float BTN_H = 40.0f;
-static constexpr float BTN_SPACING = 10.0f;
+static constexpr float BTN_W = 300.0f;
+static constexpr float BTN_H = 30.0f;
+static constexpr float BTN_SPACING = 8.0f;
 
 MainMenu::MainMenu(float width, float height)
 	: Menu(DESIGN_W, DESIGN_H)
 {
 	dirtTexture = loadTexture2D("assets/textures/block/dirt.png");
+
+	int titleW = 0, titleH = 0;
+	titleTexture = loadTexture2D("assets/textures/FT-MINECRAFT.png", false, &titleW, &titleH);
+	if (titleTexture && titleH > 0)
+		titleTexAspect = static_cast<float>(titleW) / static_cast<float>(titleH);
 
 	srand(static_cast<unsigned>(time(nullptr)));
 	splashText = splashTexts[rand() % splashCount];
@@ -50,8 +55,10 @@ MainMenu::MainMenu(float width, float height)
 
 MainMenu::~MainMenu()
 {
-	if (glfwGetCurrentContext() && dirtTexture)
-		glDeleteTextures(1, &dirtTexture);
+	if (glfwGetCurrentContext()) {
+		if (dirtTexture)  glDeleteTextures(1, &dirtTexture);
+		if (titleTexture) glDeleteTextures(1, &titleTexture);
+	}
 }
 
 void MainMenu::build()
@@ -63,9 +70,9 @@ void MainMenu::build()
 	float btnH = BTN_H * menuScale;
 	float spacing = BTN_SPACING * menuScale;
 
-	// Stack 4 buttons vertically, centered a bit below center
+	// Stack 4 buttons vertically, positioned in the lower portion of the screen
 	float totalHeight = 4 * btnH + 3 * spacing;
-	float startY = centerY - totalHeight / 2.0f + 20.0f * menuScale;
+	float startY = centerY - totalHeight / 2.0f - 50.0f * menuScale;
 
 	for (int i = 0; i < 4; i++) {
 		buttons[i].w = btnW;
@@ -86,8 +93,17 @@ void MainMenu::drawTiledBackground()
 
 void MainMenu::drawTitle()
 {
-	float savedScale = textRenderer.getScale();
+	if (titleTexture) {
+		float titleH = 140.0f * menuScale;
+		float titleW = titleH * titleTexAspect;
+		float titleX = (fullscreenWidth - titleW) / 2.0f;
+		float titleY = fullscreenHeight - (titleH + 30.0f * menuScale);
+		drawTexturedQuad(titleX, titleY, titleW, titleH, titleTexture, 1.0f);
+		return;
+	}
 
+	// Fallback: render as text if PNG is missing
+	float savedScale = textRenderer.getScale();
 	float titleScale = 1.8f * menuScale;
 	textRenderer.setScale(titleScale);
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
@@ -98,7 +114,6 @@ void MainMenu::drawTitle()
 	float titleY = fullscreenHeight - 120.0f * menuScale;
 
 	textRenderer.renderText(title, titleX, titleY, glm::vec3(1.0f, 1.0f, 1.0f));
-
 	textRenderer.setScale(savedScale);
 }
 
@@ -107,15 +122,26 @@ void MainMenu::drawSplashText()
 	float savedScale = textRenderer.getScale();
 
 	float pulse = 1.0f + 0.08f * std::sin(glfwGetTime() * 3.0f);
-	float splashScale = 0.6f * menuScale * pulse;
+	float splashScale = 0.35f * menuScale * pulse;
 	textRenderer.setScale(splashScale);
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
-	float splashWidth = textRenderer.getPixelSizeOfString(splashText);
-	float splashX = fullscreenWidth / 2.0f + 100.0f * menuScale - splashWidth / 2.0f;
-	float splashY = fullscreenHeight - 180.0f * menuScale;
+	// Anchor near the title's lower-right corner and rotated
+	float titleH = 140.0f * menuScale;
+	float titleW = titleH * titleTexAspect;
+	float titleCX = fullscreenWidth / 2.0f;
+	float titleY = fullscreenHeight - (titleH + 30.0f * menuScale);
+	float anchorX = titleCX + titleW * 0.42f;
+	float anchorY = titleY + titleH * 0.3f;
 
-	textRenderer.renderText(splashText, splashX, splashY, glm::vec3(1.0f, 1.0f, 0.0f));
+	// Offset the text so it's centered on the anchor (pre-rotation)
+	float splashWidth = textRenderer.getPixelSizeOfString(splashText);
+	const float rotDeg = 20.0f;
+	const float rad = rotDeg * 3.14159265358979323846f / 180.0f;
+	float startX = anchorX - (splashWidth / 2.0f) * std::cos(rad);
+	float startY = anchorY - (splashWidth / 2.0f) * std::sin(rad);
+
+	textRenderer.renderText(splashText, startX, startY, glm::vec3(1.0f, 1.0f, 0.0f), 1.0f, rotDeg);
 
 	textRenderer.setScale(savedScale);
 }
@@ -147,8 +173,9 @@ void MainMenu::drawButton(const Button& btn)
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
 	float labelWidth = textRenderer.getPixelSizeOfString(btn.label);
+	float ascent = textRenderer.getAscent();
 	float labelX = btn.x + (btn.w - labelWidth) / 2.0f;
-	float labelY = btn.y + btn.h * 0.25f;
+	float labelY = btn.y + (btn.h - ascent) / 2.0f;
 
 	glm::vec3 textColor = btn.enabled ? glm::vec3(1.0f) : glm::vec3(0.5f);
 	textRenderer.renderText(btn.label, labelX, labelY, textColor);
@@ -160,10 +187,11 @@ void MainMenu::onRender()
 {
 	drawTiledBackground();
 	drawTitle();
-	drawSplashText();
 
 	for (auto& btn : buttons)
 		drawButton(btn);
+
+	drawSplashText();
 
 	// Version text (bottom-left)
 	float savedScale = textRenderer.getScale();

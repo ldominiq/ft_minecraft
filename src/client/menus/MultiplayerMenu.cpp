@@ -56,32 +56,35 @@ void MultiplayerMenu::drawTiledBackground()
 void MultiplayerMenu::addChar(char c)
 {
 	if (ipAddress.size() >= 45) return;
-	if ((c >= '0' && c <= '9') || c == '.' || c == ':')
+	if ((c >= '0' && c <= '9') || c == '.' || c == ':') {
 		ipAddress += c;
+		clearError();
+	}
 }
 
 void MultiplayerMenu::removeChar()
 {
-	if (!ipAddress.empty())
+	if (!ipAddress.empty()) {
 		ipAddress.pop_back();
+		clearError();
+	}
 }
 
 void MultiplayerMenu::onRender()
 {
 	drawTiledBackground();
 
-	// Title
+	// Title (high-resolution Typer for crisp rendering)
 	float savedScale = textRenderer.getScale();
-	float titleScale = 1.2f * menuScale;
-	textRenderer.setScale(titleScale);
-	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+	titleRenderer.setScale(0.45f * menuScale);
+	titleRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
 	std::string title = "Direct Connection";
-	float titleWidth = textRenderer.getPixelSizeOfString(title);
+	float titleWidth = titleRenderer.getPixelSizeOfString(title);
 	float titleX = (fullscreenWidth - titleWidth) / 2.0f;
 	float titleY = fullscreenHeight - 100.0f * menuScale;
 
-	textRenderer.renderText(title, titleX, titleY, glm::vec3(1.0f));
+	titleRenderer.renderText(title, titleX, titleY, glm::vec3(1.0f));
 
 	// Label above input
 	float labelScale = 0.45f * menuScale;
@@ -128,13 +131,25 @@ void MultiplayerMenu::onRender()
 		textRenderer.setScale(lblScale);
 		textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 		float lblWidth = textRenderer.getPixelSizeOfString(btn.label);
+		float ascent = textRenderer.getAscent();
 		float lblX = btn.x + (btn.w - lblWidth) / 2.0f;
-		float lblY = btn.y + btn.h * 0.25f;
+		float lblY = btn.y + (btn.h - ascent) / 2.0f;
 		textRenderer.renderText(btn.label, lblX, lblY, glm::vec3(1.0f));
 	};
 
 	drawBtn(connectButton);
 	drawBtn(cancelButton);
+
+	// Error message (red, between input box and buttons)
+	if (!errorMessage.empty()) {
+		float errScale = 0.4f * menuScale;
+		textRenderer.setScale(errScale);
+		textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+		float errWidth = textRenderer.getPixelSizeOfString(errorMessage);
+		float errX = (fullscreenWidth - errWidth) / 2.0f;
+		float errY = inputBoxY - 20.0f * menuScale;
+		textRenderer.renderText(errorMessage, errX, errY, glm::vec3(1.0f, 0.3f, 0.3f));
+	}
 
 	textRenderer.setScale(savedScale);
 }

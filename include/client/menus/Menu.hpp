@@ -30,6 +30,7 @@ class Menu {
 		float textScale = 0.3f;
 
 		Typer textRenderer;
+		Typer titleRenderer;
 		GLuint VAO = 0;
 		GLuint VBO = 0;
 		GLuint textureVAO = 0;
@@ -42,7 +43,7 @@ class Menu {
 		void drawTiledTexturedQuad(float x, float y, float w, float h, unsigned int textureID, float tileSize);
 
 	public:
-		static GLuint loadTexture2D(const char* path);
+		static GLuint loadTexture2D(const char* path, bool pixelated = true, int* outWidth = nullptr, int* outHeight = nullptr);
 
 	protected:
 

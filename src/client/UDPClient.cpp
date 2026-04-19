@@ -1,37 +1,42 @@
 #include "UDPClient.hpp"
 
-UDPClient::UDPClient(const char* server_ip) {
+UDPClient::UDPClient(const char* server_ip) : sockfd(-1) {
 #ifdef _WIN32
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        std::cerr << "WSAStartup failed\n";
-        exit(EXIT_FAILURE);
+        throw std::runtime_error("WSAStartup failed");
     }
 #endif
     // Create socket
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        perror("socket creation failed");
-        exit(EXIT_FAILURE);
+#ifdef _WIN32
+        WSACleanup();
+#endif
+        throw std::runtime_error("socket creation failed");
     }
 
 #ifdef _WIN32
     u_long mode = 1;
     if (ioctlsocket(sockfd, FIONBIO, &mode) != 0) {
-        perror("ioctlsocket failed");
-        exit(EXIT_FAILURE);
+        close(sockfd);
+        WSACleanup();
+        sockfd = -1;
+        throw std::runtime_error("ioctlsocket failed");
     }
 #else
     // Get current flags
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1) {
-        perror("fcntl F_GETFL failed");
-        exit(EXIT_FAILURE);
+        close(sockfd);
+        sockfd = -1;
+        throw std::runtime_error("fcntl F_GETFL failed");
     }
 
     // Add non-blocking flag
     if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-        perror("fcntl F_SETFL failed");
-        exit(EXIT_FAILURE);
+        close(sockfd);
+        sockfd = -1;
+        throw std::runtime_error("fcntl F_SETFL failed");
     }
 #endif
 
@@ -41,8 +46,12 @@ UDPClient::UDPClient(const char* server_ip) {
     servaddr.sin_port = htons(PORT);
 
     if (inet_pton(AF_INET, server_ip, &servaddr.sin_addr) <= 0) {
-        perror("Invalid address / Address not supported");
-        exit(EXIT_FAILURE);
+        close(sockfd);
+#ifdef _WIN32
+        WSACleanup();
+#endif
+        sockfd = -1;
+        throw std::runtime_error(std::string("Invalid address: ") + server_ip);
     }
 
     std::cout << "Connecting to server at " << server_ip << ":" << PORT << "..." << std::endl;

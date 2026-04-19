@@ -213,6 +213,8 @@ void App::init(const std::string& serverIp) {
 				if (app->gameState == GameState::Multiplayer || app->gameState == GameState::Settings)
 					app->transitionTo(GameState::MainMenu);
 			}
+			if (key == app->controlsArray[TOGGLE_FULLSCREEN] && action == GLFW_PRESS)
+				app->toggleDisplayMode();
 			app->processInputMenus(key, action);
 			return;
 		}
@@ -364,8 +366,12 @@ void App::init(const std::string& serverIp) {
 	});
 
 	multiplayerMenu->setConnectCallback([this](const std::string& ip) {
-		connectToServer(ip);
-		transitionTo(GameState::Playing);
+		if (ip.empty()) {
+			multiplayerMenu->setErrorMessage("Please enter a server address.");
+			return;
+		}
+		if (connectToServer(ip))
+			transitionTo(GameState::Playing);
 	});
 	multiplayerMenu->setCancelCallback([this]() {
 		transitionTo(GameState::MainMenu);
@@ -1846,10 +1852,19 @@ void App::run() {
     render();
 }
 
-void App::connectToServer(const std::string& ip) {
+bool App::connectToServer(const std::string& ip) {
+	try {
+		udpClient = std::make_unique<UDPClient>(ip.c_str());
+	} catch (const std::exception& e) {
+		std::cerr << "[Network] Failed to connect: " << e.what() << std::endl;
+		udpClient.reset();
+		if (multiplayerMenu)
+			multiplayerMenu->setErrorMessage(std::string("Could not connect: ") + e.what());
+		return false;
+	}
 	serverIp = ip;
-	udpClient = std::make_unique<UDPClient>(ip.c_str());
 	setUdpClientPacketCallback();
+	return true;
 }
 
 void App::transitionTo(GameState newState) {
@@ -2026,9 +2041,12 @@ void App::processInputMenus(int key, int action) {
 		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			multiplayerMenu->removeChar();
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
-			if (multiplayerMenu->getIpAddress().empty()) return;
-			connectToServer(multiplayerMenu->getIpAddress());
-			transitionTo(GameState::Playing);
+			if (multiplayerMenu->getIpAddress().empty()) {
+				multiplayerMenu->setErrorMessage("Please enter a server address.");
+				return;
+			}
+			if (connectToServer(multiplayerMenu->getIpAddress()))
+				transitionTo(GameState::Playing);
 		}
 		return;
 	}

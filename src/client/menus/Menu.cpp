@@ -2,7 +2,9 @@
 #include "Menu.hpp"
 
 Menu::Menu(float width, float height)
-: DESIGN_WIDTH(width), DESIGN_HEIGHT(height), textRenderer("fonts/Roboto-Regular.ttf")
+: DESIGN_WIDTH(width), DESIGN_HEIGHT(height),
+  textRenderer("fonts/upheavtt.ttf"),
+  titleRenderer("fonts/upheavtt.ttf", 128)
 {
     resize(width, height);
 
@@ -152,12 +154,14 @@ void Menu::drawTiledTexturedQuad(float x, float y, float w, float h, unsigned in
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-GLuint Menu::loadTexture2D(const char* path)
+GLuint Menu::loadTexture2D(const char* path, bool pixelated, int* outWidth, int* outHeight)
 {
     int width, height, channels;
     unsigned char* data = stbi_load(path, &width, &height, &channels, 4);
     if (!data) {
         std::cerr << "Failed to load texture: " << path << std::endl;
+        if (outWidth)  *outWidth = 0;
+        if (outHeight) *outHeight = 0;
         return 0;
     }
 
@@ -169,10 +173,13 @@ GLuint Menu::loadTexture2D(const char* path)
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    GLint filter = pixelated ? GL_NEAREST : GL_LINEAR;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
 
     stbi_image_free(data);
+    if (outWidth)  *outWidth = width;
+    if (outHeight) *outHeight = height;
     return texture;
 }
 

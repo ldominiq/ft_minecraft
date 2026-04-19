@@ -40,17 +40,16 @@ void SettingsMenu::onRender()
 
 	float savedScale = textRenderer.getScale();
 
-	// Title
-	float titleScale = 1.2f * menuScale;
-	textRenderer.setScale(titleScale);
-	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+	// Title (high-resolution Typer for crisp rendering)
+	titleRenderer.setScale(0.45f * menuScale);
+	titleRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
 	std::string title = "Settings";
-	float titleWidth = textRenderer.getPixelSizeOfString(title);
+	float titleWidth = titleRenderer.getPixelSizeOfString(title);
 	float titleX = (fullscreenWidth - titleWidth) / 2.0f;
 	float titleY = fullscreenHeight - 100.0f * menuScale;
 
-	textRenderer.renderText(title, titleX, titleY, glm::vec3(1.0f));
+	titleRenderer.renderText(title, titleX, titleY, glm::vec3(1.0f));
 
 	// Coming soon text
 	float msgScale = 0.6f * menuScale;
@@ -81,8 +80,9 @@ void SettingsMenu::onRender()
 	textRenderer.setScale(lblScale);
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 	float lblWidth = textRenderer.getPixelSizeOfString(doneButton.label);
+	float ascent = textRenderer.getAscent();
 	float lblX = doneButton.x + (doneButton.w - lblWidth) / 2.0f;
-	float lblY = doneButton.y + doneButton.h * 0.25f;
+	float lblY = doneButton.y + (doneButton.h - ascent) / 2.0f;
 	textRenderer.renderText(doneButton.label, lblX, lblY, glm::vec3(1.0f));
 
 	textRenderer.setScale(savedScale);

@@ -15,6 +15,9 @@ public:
 	void removeChar();
 	std::string getIpAddress() const { return ipAddress; }
 
+	void setErrorMessage(const std::string& msg) { errorMessage = msg; }
+	void clearError() { errorMessage.clear(); }
+
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
 	void handleMouseMove(double mouseX, double mouseY) override;
 
@@ -35,6 +38,7 @@ private:
 
 	GLuint dirtTexture = 0;
 	std::string ipAddress = "127.0.0.1";
+	std::string errorMessage;
 
 	float inputBoxX = 0, inputBoxY = 0, inputBoxW = 0, inputBoxH = 0;
 	Button connectButton;

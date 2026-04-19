@@ -32,14 +32,15 @@ private:
 	unsigned int VAO, VBO;
 
 public:
-    Typer(const std::string& fontPath);
+    Typer(const std::string& fontPath, unsigned int pixelSize = 48);
     ~Typer();
 
 	uint getPixelSizeOfString(const std::string &str);
+	float getAscent(); // pixel ascent at current scale (height of 'A')
 	void setProjection(int width, int height);
 	void setScale (float scale) {this->scale = scale;}
 	float getScale() const { return scale; }
-	void renderText(const std::string &text, float x, float y, const glm::vec3 &color, const float alpha = 1.0f);
+	void renderText(const std::string &text, float x, float y, const glm::vec3 &color, const float alpha = 1.0f, float rotationDeg = 0.0f);
 };
 
 #endif
