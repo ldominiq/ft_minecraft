@@ -35,8 +35,8 @@ public:
     Typer(const std::string& fontPath, unsigned int pixelSize = 48);
     ~Typer();
 
-	uint getPixelSizeOfString(const std::string &str);
-	float getAscent(); // pixel ascent at current scale (height of 'A')
+	uint getPixelSizeOfString(const std::string &str) const;
+	float getAscent() const; // pixel ascent at current scale (height of 'A')
 	void setProjection(int width, int height);
 	void setScale (float scale) {this->scale = scale;}
 	float getScale() const { return scale; }

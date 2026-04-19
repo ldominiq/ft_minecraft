@@ -39,8 +39,9 @@ class Menu {
 		std::unique_ptr<Shader> texturedQuadShader;
 
 		void drawSimpleQuad(float x, float y, float w, float h, const glm::vec4 &color) const;
-		void drawTexturedQuad(float x, float y, float w, float h, unsigned int textureID, float alpha = 1.0f); //untested. Vibe coded.
+		void drawTexturedQuad(float x, float y, float w, float h, unsigned int textureID, float alpha = 1.0f);
 		void drawTiledTexturedQuad(float x, float y, float w, float h, unsigned int textureID, float tileSize);
+		void drawButton(float x, float y, float w, float h, const std::string& label, bool hovered, bool enabled = true);
 
 	public:
 		static GLuint loadTexture2D(const char* path, bool pixelated = true, int* outWidth = nullptr, int* outHeight = nullptr);

@@ -56,7 +56,7 @@ UDPClient::UDPClient(const char* server_ip) : sockfd(-1) {
 
     std::cout << "Connecting to server at " << server_ip << ":" << PORT << "..." << std::endl;
 
-	sendConnect(); //CONNECTS THE CLIENT TO SERVER AUTOMATICALLY WHEN STARTED. Will have to change when we have a menu. Wont work if server isn't running already as there's no retry.
+	sendConnect();
 }
 
 UDPClient::~UDPClient() {

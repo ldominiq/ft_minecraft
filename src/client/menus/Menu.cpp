@@ -154,6 +154,39 @@ void Menu::drawTiledTexturedQuad(float x, float y, float w, float h, unsigned in
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
+void Menu::drawButton(float x, float y, float w, float h, const std::string& label, bool hovered, bool enabled)
+{
+	glm::vec4 bgColor;
+	if (!enabled)
+		bgColor = glm::vec4(0.2f, 0.2f, 0.2f, 0.8f);
+	else if (hovered)
+		bgColor = glm::vec4(0.4f, 0.4f, 0.5f, 0.9f);
+	else
+		bgColor = glm::vec4(0.25f, 0.25f, 0.3f, 0.85f);
+
+	float border = 2.0f * menuScale;
+	glm::vec4 borderColor = (hovered && enabled)
+		? glm::vec4(0.7f, 0.7f, 0.8f, 1.0f)
+		: glm::vec4(0.4f, 0.4f, 0.4f, 1.0f);
+
+	drawSimpleQuad(x - border, y - border, w + 2 * border, h + 2 * border, borderColor);
+	drawSimpleQuad(x, y, w, h, bgColor);
+
+	float savedScale = textRenderer.getScale();
+	float labelScale = 0.5f * menuScale;
+	textRenderer.setScale(labelScale);
+	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+
+	float labelWidth = textRenderer.getPixelSizeOfString(label);
+	float ascent = textRenderer.getAscent();
+	float labelX = x + (w - labelWidth) / 2.0f;
+	float labelY = y + (h - ascent) / 2.0f;
+
+	glm::vec3 textColor = enabled ? glm::vec3(1.0f) : glm::vec3(0.5f);
+	textRenderer.renderText(label, labelX, labelY, textColor);
+	textRenderer.setScale(savedScale);
+}
+
 GLuint Menu::loadTexture2D(const char* path, bool pixelated, int* outWidth, int* outHeight)
 {
     int width, height, channels;

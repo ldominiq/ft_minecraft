@@ -80,12 +80,12 @@ void App::init(const std::string& serverIp) {
 		auto manager = app->menuManager.lock();
 		if (manager)
 			manager->resize(width, height);
-		if (manager != app->inventoryUI)
+		if (app->inventoryUI && manager != app->inventoryUI)
 			app->inventoryUI->resize(width, height);
-		if (manager != app->chat)
+		if (app->chat && manager != app->chat)
 			app->chat->resize(width, height);
-		app->debugHUD->resize(width, height);
-		app->playerListHUD->resize(width, height);
+		if (app->debugHUD) app->debugHUD->resize(width, height);
+		if (app->playerListHUD) app->playerListHUD->resize(width, height);
 		if (app->mainMenu) app->mainMenu->resize(width, height);
 		if (app->multiplayerMenu) app->multiplayerMenu->resize(width, height);
 		if (app->settingsMenu) app->settingsMenu->resize(width, height);
@@ -351,10 +351,10 @@ void App::init(const std::string& serverIp) {
     glGenQueries(QUERY_POOL_SIZE, querySSAOPool);
 
 	// Create main menu screens
-	GLuint dirtTex = Menu::loadTexture2D("assets/textures/block/dirt.png");
-	mainMenu = std::make_shared<MainMenu>(screenWidth, screenHeight);
-	multiplayerMenu = std::make_shared<MultiplayerMenu>(screenWidth, screenHeight, dirtTex);
-	settingsMenu = std::make_shared<SettingsMenu>(screenWidth, screenHeight, dirtTex);
+	menuDirtTex = Menu::loadTexture2D("assets/textures/block/dirt.png");
+	mainMenu = std::make_shared<MainMenu>(screenWidth, screenHeight, menuDirtTex);
+	multiplayerMenu = std::make_shared<MultiplayerMenu>(screenWidth, screenHeight, menuDirtTex);
+	settingsMenu = std::make_shared<SettingsMenu>(screenWidth, screenHeight, menuDirtTex);
 
 	mainMenu->setButtonCallback([this](int btn) {
 		switch (btn) {
@@ -370,10 +370,18 @@ void App::init(const std::string& serverIp) {
 			multiplayerMenu->setErrorMessage("Please enter a server address.");
 			return;
 		}
-		if (connectToServer(ip))
-			transitionTo(GameState::Playing);
+		if (!connectToServer(ip))
+			return;
+		multiplayerMenu->setErrorMessage("Connecting...");
+		connectPending = true;
+		connectStartTime = static_cast<float>(glfwGetTime());
 	});
 	multiplayerMenu->setCancelCallback([this]() {
+		if (connectPending) {
+			connectPending = false;
+			udpClient.reset();
+			clientConnected = false;
+		}
 		transitionTo(GameState::MainMenu);
 	});
 
@@ -612,6 +620,20 @@ void App::render() {
 
 		// Menu rendering path (non-Playing states)
 		if (gameState != GameState::Playing) {
+			if (connectPending && udpClient) {
+				udpClient->receivePacket();
+				if (clientConnected) {
+					connectPending = false;
+					multiplayerMenu->clearError();
+					transitionTo(GameState::Playing);
+				} else if (glfwGetTime() - connectStartTime > connectTimeoutSec) {
+					connectPending = false;
+					udpClient.reset();
+					clientConnected = false;
+					multiplayerMenu->setErrorMessage("Connection timed out.");
+				}
+			}
+
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1915,6 +1937,16 @@ void App::cleanup() {
 		udpClient->sendPacket(pkt);
 	}
 
+	// Release GL resources owned via menus (and the shared dirt texture) while
+	// the GL context is still current
+	mainMenu.reset();
+	multiplayerMenu.reset();
+	settingsMenu.reset();
+	if (menuDirtTex) {
+		glDeleteTextures(1, &menuDirtTex);
+		menuDirtTex = 0;
+	}
+
     glfwTerminate();
     saveControls();
 }
@@ -2045,8 +2077,12 @@ void App::processInputMenus(int key, int action) {
 				multiplayerMenu->setErrorMessage("Please enter a server address.");
 				return;
 			}
-			if (connectToServer(multiplayerMenu->getIpAddress()))
-				transitionTo(GameState::Playing);
+			if (connectPending) return;
+			if (!connectToServer(multiplayerMenu->getIpAddress()))
+				return;
+			multiplayerMenu->setErrorMessage("Connecting...");
+			connectPending = true;
+			connectStartTime = static_cast<float>(glfwGetTime());
 		}
 		return;
 	}

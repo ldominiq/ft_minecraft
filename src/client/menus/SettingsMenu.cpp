@@ -63,27 +63,8 @@ void SettingsMenu::onRender()
 
 	textRenderer.renderText(msg, msgX, msgY, glm::vec3(0.7f));
 
-	// Done button
-	float b = 2.0f * menuScale;
-	glm::vec4 brdColor = doneButton.hovered
-		? glm::vec4(0.7f, 0.7f, 0.8f, 1.0f)
-		: glm::vec4(0.4f, 0.4f, 0.4f, 1.0f);
-	glm::vec4 bgColor = doneButton.hovered
-		? glm::vec4(0.4f, 0.4f, 0.5f, 0.9f)
-		: glm::vec4(0.25f, 0.25f, 0.3f, 0.85f);
-
-	drawSimpleQuad(doneButton.x - b, doneButton.y - b,
-				   doneButton.w + 2 * b, doneButton.h + 2 * b, brdColor);
-	drawSimpleQuad(doneButton.x, doneButton.y, doneButton.w, doneButton.h, bgColor);
-
-	float lblScale = 0.5f * menuScale;
-	textRenderer.setScale(lblScale);
-	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
-	float lblWidth = textRenderer.getPixelSizeOfString(doneButton.label);
-	float ascent = textRenderer.getAscent();
-	float lblX = doneButton.x + (doneButton.w - lblWidth) / 2.0f;
-	float lblY = doneButton.y + (doneButton.h - ascent) / 2.0f;
-	textRenderer.renderText(doneButton.label, lblX, lblY, glm::vec3(1.0f));
+	drawButton(doneButton.x, doneButton.y, doneButton.w, doneButton.h,
+			   doneButton.label, doneButton.hovered);
 
 	textRenderer.setScale(savedScale);
 }

@@ -98,18 +98,19 @@ void Typer::setProjection(int width, int height) {
 	shader.setMat4("projection", projection);
 }
 
-uint Typer::getPixelSizeOfString(const std::string &str)
+uint Typer::getPixelSizeOfString(const std::string &str) const
 {
     uint len = 0;
     for (auto &c : str)
     {
-        TypingCharacter ch = Characters[c];
-        len += (ch.Advance >> 6);
+        auto it = Characters.find(c);
+        if (it == Characters.end()) continue;
+        len += (it->second.Advance >> 6);
     }
     return static_cast<uint>(len * scale);
 }
 
-float Typer::getAscent()
+float Typer::getAscent() const
 {
     auto it = Characters.find('A');
     if (it == Characters.end()) return 0.0f;
@@ -126,24 +127,20 @@ void Typer::renderText(const std::string &text, float x, float y, const glm::vec
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(VAO);
 
-    const float rad = rotationDeg * 3.14159265358979323846f / 180.0f;
-    const float cs = std::cos(rad);
-    const float sn = std::sin(rad);
+    const bool rotated = rotationDeg != 0.0f;
+    const float rad = rotated ? rotationDeg * 3.14159265358979323846f / 180.0f : 0.0f;
+    const float cs = rotated ? std::cos(rad) : 1.0f;
+    const float sn = rotated ? std::sin(rad) : 0.0f;
     const float anchorX = x;
     const float anchorY = y;
     float penOffset = 0.0f; // offset along the (rotated) baseline
 
-    auto rotatePoint = [&](float px, float py, float& ox, float& oy) {
-        float dx = px - anchorX;
-        float dy = py - anchorY;
-        ox = anchorX + dx * cs - dy * sn;
-        oy = anchorY + dx * sn + dy * cs;
-    };
-
     // iterate through all characters
     for (auto c = text.begin(); c != text.end(); ++c)
     {
-        TypingCharacter ch = Characters[*c];
+        auto charIt = Characters.find(*c);
+        if (charIt == Characters.end()) continue;
+        const TypingCharacter& ch = charIt->second;
 
         // position relative to anchor in un-rotated space
         float baseX = anchorX + penOffset + ch.Bearing.x * scale;
@@ -153,10 +150,23 @@ void Typer::renderText(const std::string &text, float x, float y, const glm::vec
         float h = ch.Size.y * scale;
 
         float tlX, tlY, blX, blY, brX, brY, trX, trY;
-        rotatePoint(baseX,     baseY + h, tlX, tlY);
-        rotatePoint(baseX,     baseY,     blX, blY);
-        rotatePoint(baseX + w, baseY,     brX, brY);
-        rotatePoint(baseX + w, baseY + h, trX, trY);
+        if (rotated) {
+            auto rot = [&](float px, float py, float& ox, float& oy) {
+                float dx = px - anchorX;
+                float dy = py - anchorY;
+                ox = anchorX + dx * cs - dy * sn;
+                oy = anchorY + dx * sn + dy * cs;
+            };
+            rot(baseX,     baseY + h, tlX, tlY);
+            rot(baseX,     baseY,     blX, blY);
+            rot(baseX + w, baseY,     brX, brY);
+            rot(baseX + w, baseY + h, trX, trY);
+        } else {
+            tlX = baseX;     tlY = baseY + h;
+            blX = baseX;     blY = baseY;
+            brX = baseX + w; brY = baseY;
+            trX = baseX + w; trY = baseY + h;
+        }
 
         float vertices[6][4] = {
             { tlX, tlY, 0.0f, 0.0f },

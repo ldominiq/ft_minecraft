@@ -1,7 +1,6 @@
 #include "MainMenu.hpp"
-#include <cstdlib>
-#include <ctime>
 #include <cmath>
+#include <random>
 #include <GLFW/glfw3.h>
 
 static const char* splashTexts[] = {
@@ -31,18 +30,19 @@ static constexpr float BTN_W = 300.0f;
 static constexpr float BTN_H = 30.0f;
 static constexpr float BTN_SPACING = 8.0f;
 
-MainMenu::MainMenu(float width, float height)
+MainMenu::MainMenu(float width, float height, GLuint dirtTex)
 	: Menu(DESIGN_W, DESIGN_H)
 {
-	dirtTexture = loadTexture2D("assets/textures/block/dirt.png");
+	dirtTexture = dirtTex;
 
 	int titleW = 0, titleH = 0;
 	titleTexture = loadTexture2D("assets/textures/FT-MINECRAFT.png", false, &titleW, &titleH);
 	if (titleTexture && titleH > 0)
 		titleTexAspect = static_cast<float>(titleW) / static_cast<float>(titleH);
 
-	srand(static_cast<unsigned>(time(nullptr)));
-	splashText = splashTexts[rand() % splashCount];
+	static std::mt19937 rng(std::random_device{}());
+	std::uniform_int_distribution<int> dist(0, splashCount - 1);
+	splashText = splashTexts[dist(rng)];
 
 	buttons[0].label = "Singleplayer";
 	buttons[0].enabled = false;
@@ -55,10 +55,8 @@ MainMenu::MainMenu(float width, float height)
 
 MainMenu::~MainMenu()
 {
-	if (glfwGetCurrentContext()) {
-		if (dirtTexture)  glDeleteTextures(1, &dirtTexture);
-		if (titleTexture) glDeleteTextures(1, &titleTexture);
-	}
+	if (titleTexture && glfwGetCurrentContext())
+		glDeleteTextures(1, &titleTexture);
 }
 
 void MainMenu::build()
@@ -146,50 +144,13 @@ void MainMenu::drawSplashText()
 	textRenderer.setScale(savedScale);
 }
 
-void MainMenu::drawButton(const Button& btn)
-{
-	glm::vec4 bgColor;
-	if (!btn.enabled)
-		bgColor = glm::vec4(0.2f, 0.2f, 0.2f, 0.8f);
-	else if (btn.hovered)
-		bgColor = glm::vec4(0.4f, 0.4f, 0.5f, 0.9f);
-	else
-		bgColor = glm::vec4(0.25f, 0.25f, 0.3f, 0.85f);
-
-	// Button border
-	float border = 2.0f * menuScale;
-	glm::vec4 borderColor = btn.hovered && btn.enabled
-		? glm::vec4(0.7f, 0.7f, 0.8f, 1.0f)
-		: glm::vec4(0.4f, 0.4f, 0.4f, 1.0f);
-	drawSimpleQuad(btn.x - border, btn.y - border, btn.w + 2 * border, btn.h + 2 * border, borderColor);
-
-	// Button background
-	drawSimpleQuad(btn.x, btn.y, btn.w, btn.h, bgColor);
-
-	// Button label
-	float savedScale = textRenderer.getScale();
-	float labelScale = 0.5f * menuScale;
-	textRenderer.setScale(labelScale);
-	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
-
-	float labelWidth = textRenderer.getPixelSizeOfString(btn.label);
-	float ascent = textRenderer.getAscent();
-	float labelX = btn.x + (btn.w - labelWidth) / 2.0f;
-	float labelY = btn.y + (btn.h - ascent) / 2.0f;
-
-	glm::vec3 textColor = btn.enabled ? glm::vec3(1.0f) : glm::vec3(0.5f);
-	textRenderer.renderText(btn.label, labelX, labelY, textColor);
-
-	textRenderer.setScale(savedScale);
-}
-
 void MainMenu::onRender()
 {
 	drawTiledBackground();
 	drawTitle();
 
 	for (auto& btn : buttons)
-		drawButton(btn);
+		drawButton(btn.x, btn.y, btn.w, btn.h, btn.label, btn.hovered, btn.enabled);
 
 	drawSplashText();
 

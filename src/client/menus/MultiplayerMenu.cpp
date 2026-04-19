@@ -114,31 +114,10 @@ void MultiplayerMenu::onRender()
 
 	textRenderer.renderText(displayText, inputBoxX + 8.0f * menuScale, inputBoxY + inputBoxH * 0.25f, glm::vec3(1.0f));
 
-	// Draw buttons
-	auto drawBtn = [&](const Button& btn) {
-		glm::vec4 bgColor = btn.hovered
-			? glm::vec4(0.4f, 0.4f, 0.5f, 0.9f)
-			: glm::vec4(0.25f, 0.25f, 0.3f, 0.85f);
-
-		float b = 2.0f * menuScale;
-		glm::vec4 brdColor = btn.hovered
-			? glm::vec4(0.7f, 0.7f, 0.8f, 1.0f)
-			: glm::vec4(0.4f, 0.4f, 0.4f, 1.0f);
-		drawSimpleQuad(btn.x - b, btn.y - b, btn.w + 2 * b, btn.h + 2 * b, brdColor);
-		drawSimpleQuad(btn.x, btn.y, btn.w, btn.h, bgColor);
-
-		float lblScale = 0.5f * menuScale;
-		textRenderer.setScale(lblScale);
-		textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
-		float lblWidth = textRenderer.getPixelSizeOfString(btn.label);
-		float ascent = textRenderer.getAscent();
-		float lblX = btn.x + (btn.w - lblWidth) / 2.0f;
-		float lblY = btn.y + (btn.h - ascent) / 2.0f;
-		textRenderer.renderText(btn.label, lblX, lblY, glm::vec3(1.0f));
-	};
-
-	drawBtn(connectButton);
-	drawBtn(cancelButton);
+	drawButton(connectButton.x, connectButton.y, connectButton.w, connectButton.h,
+			   connectButton.label, connectButton.hovered);
+	drawButton(cancelButton.x, cancelButton.y, cancelButton.w, cancelButton.h,
+			   cancelButton.label, cancelButton.hovered);
 
 	// Error message (red, between input box and buttons)
 	if (!errorMessage.empty()) {

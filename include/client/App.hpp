@@ -200,6 +200,7 @@ private:
 	std::shared_ptr<MainMenu> mainMenu;
 	std::shared_ptr<MultiplayerMenu> multiplayerMenu;
 	std::shared_ptr<SettingsMenu> settingsMenu;
+	GLuint menuDirtTex = 0;
 
 	std::unique_ptr<PlayerListHUD> playerListHUD;
 	bool     playerListVisible = false;
@@ -254,6 +255,10 @@ private:
     float lastFrame = 0.0f;
 
 	bool clientConnected = false;
+
+	bool connectPending = false;
+	float connectStartTime = 0.0f;
+	static constexpr float connectTimeoutSec = 5.0f;
 
     bool wireframe = false;
 

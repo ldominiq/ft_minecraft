@@ -7,7 +7,7 @@
 
 class MainMenu : public Menu {
 public:
-	MainMenu(float width, float height);
+	MainMenu(float width, float height, GLuint dirtTex);
 	~MainMenu();
 
 	void setButtonCallback(std::function<void(int)> cb) { onButtonClick = std::move(cb); }
@@ -28,7 +28,6 @@ private:
 	void drawTiledBackground();
 	void drawTitle();
 	void drawSplashText();
-	void drawButton(const Button& btn);
 
 	std::function<void(int)> onButtonClick;
 
