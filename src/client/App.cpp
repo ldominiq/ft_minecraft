@@ -337,7 +337,8 @@ void App::setUdpClientPacketCallback()
 				auto& p = static_cast<NetAccept&>(*pkt);
 				std::cout << "Client accepted! id=" << p.clientId << "\n";
 				clientConnected = true;
-				localClientId = p.clientId;
+				localClientId     = p.clientId;
+				localPlayerListId = p.playerListId;
 				break;
 			}
 
@@ -450,8 +451,11 @@ void App::setUdpClientPacketCallback()
 			case PacketType::NET_PING_LIST: {
 				auto& p = static_cast<NetPingList&>(*pkt);
                 remotePings.clear();
-				for (const auto& e : p.entries)
-					remotePings[e.entityId] = e.pingMs;
+				entityToPlayerListId.clear();
+				for (const auto& e : p.entries) {
+					remotePings[e.entityId]          = e.pingMs;
+					entityToPlayerListId[e.entityId] = e.playerListId;
+				}
 				break;
 			}
 
@@ -873,7 +877,7 @@ void App::render() {
 
 		if (playerListVisible && clientConnected) {
 			std::vector<PlayerEntry> entries;
-			entries.push_back({ localClientId, true, pingMs });
+			entries.push_back({ localPlayerListId, true, pingMs });
 			for (auto& le : renderer->livingEntities) {
 				if (!le || le->getLivingEntityType() != PLAYER) continue;
 				if (le->getID() == localClientId) continue;
@@ -881,7 +885,11 @@ void App::render() {
 				auto it = remotePings.find(le->getID());
 				if (it != remotePings.end())
 					remPing = it->second;
-				entries.push_back({ le->getID(), false, remPing });
+				uint32_t plId = 0;
+				auto pit = entityToPlayerListId.find(le->getID());
+				if (pit != entityToPlayerListId.end())
+					plId = pit->second;
+				entries.push_back({ plId, false, remPing });
 			}
 			playerListHUD->update(entries);
 			playerListHUD->render();

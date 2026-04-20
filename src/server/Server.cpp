@@ -328,7 +328,7 @@ void Server::broadcastPingList()
 {
 	NetPingList pkt;
 	for (const CPlayerInfo& p : players)
-		pkt.entries.push_back({ static_cast<uint32_t>(p.movement->getID()), p.pingMs });
+		pkt.entries.push_back({ static_cast<uint32_t>(p.movement->getID()), static_cast<uint32_t>(p.id), p.pingMs });
 	for (const CPlayerInfo& p : players)
 		sendPacketTo(pkt, p.addr);
 }
@@ -1060,8 +1060,10 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	sendPacketTo(skyPkt, cliaddr);
 
 	NetAccept acceptPkt;
-	if (player != players.end())
-		acceptPkt.clientId = static_cast<uint32_t>(player->movement->getID());
+	if (player != players.end()) {
+		acceptPkt.clientId     = static_cast<uint32_t>(player->movement->getID());
+		acceptPkt.playerListId = static_cast<uint32_t>(player->id);
+	}
 	sendPacketTo(acceptPkt, cliaddr);
 }
 
