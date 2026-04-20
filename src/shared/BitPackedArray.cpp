@@ -76,8 +76,8 @@ void BitPackedArray::grow(uint8_t newBitsPerEntry) {
         size_t wordIndex = bitPos >> 5;
         size_t bitOffset = bitPos & 31;
         m_data[wordIndex] |= value << bitOffset;
-        if (bitOffset + m_bitsPerEntry > 32)
-            m_data[wordIndex + 1] |= value >> (32 - bitOffset);
+		if (bitOffset > 0 && bitOffset + m_bitsPerEntry > 32)
+			m_data[wordIndex + 1] |= value >> (32 - bitOffset);
         bitPos += m_bitsPerEntry;
     }
 }
@@ -95,9 +95,9 @@ void BitPackedArray::decodeAll(std::vector<uint32_t>& out) const {
         size_t bitOffset = bitPos & 31;        // bitPos % 32
 
         uint64_t val = m_data[wordIndex] >> bitOffset;
-        if (bitOffset + bits > 32) {
-            val |= static_cast<uint64_t>(m_data[wordIndex + 1]) << (32 - bitOffset);
-        }
+		if (bitOffset > 0 && bitOffset + bits > 32) {
+			val |= static_cast<uint64_t>(m_data[wordIndex + 1]) << (32 - bitOffset);
+		}
 
         out[i] = static_cast<uint32_t>(val) & mask;
         bitPos += bits;
