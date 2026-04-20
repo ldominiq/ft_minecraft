@@ -1319,6 +1319,57 @@ void App::debugWindow() {
                         if (ImGui::Button("Generate Biome Map"))  sendDumpCommand("biome");
                     }
 
+                    if (ImGui::CollapsingHeader("Network Debug")) {
+                        auto netStats = camera->getReconcileDebugStats();
+                        ImGui::Text("Client Tick: %d", clientTick);
+                        ImGui::Text("Last Ack Tick: %d", camera->getLastAppliedAckTick());
+                        ImGui::Text("Pending Snapshot Tick: %d", camera->getPendingCorrectionTick());
+                        ImGui::Text("Last effective ack tick: %d", netStats.lastEffectiveAckTick);
+                        ImGui::Text("Predicted States: %zu", camera->getPredictedStateCount());
+                        ImGui::Text("Pending Inputs: %zu", camera->getPendingInputCount());
+                        ImGui::Text("Corrections total/applied/ignored: %llu / %llu / %llu",
+                            static_cast<unsigned long long>(netStats.totalCorrections),
+                            static_cast<unsigned long long>(netStats.appliedCorrections),
+                            static_cast<unsigned long long>(netStats.ignoredCorrections));
+                        ImGui::Text("Suspected 1-tick phase mismatch count: %llu",
+                            static_cast<unsigned long long>(netStats.suspectedOffByOneCorrections));
+                        ImGui::Text("Last errors: pos=%.6f vel=%.6f horiz=%.6f vert=%.6f",
+                            netStats.lastPosErr,
+                            netStats.lastVelErr,
+                            netStats.lastHorizontalErr,
+                            netStats.lastVerticalErr);
+                        ImGui::Text("Ack match check: err(ack)=%.6f err(ack-1)=%.6f",
+                            netStats.lastErrAtAckTick,
+                            netStats.lastErrAtAckMinusOneTick);
+
+                        if (uiInteractive) {
+                            float simLatMs = udpClient->getSimulatedLatency();
+                            if (ImGui::SliderFloat("Sim Latency (ms)", &simLatMs, 0.0f, 500.0f, "%.0f ms"))
+                                udpClient->setSimulatedLatency(simLatMs);
+
+                            float posThreshold = camera->getReconcilePosErrorThreshold();
+                            if (ImGui::SliderFloat("Reconcile Pos Threshold", &posThreshold, 0.01f, 0.5f, "%.3f"))
+                                camera->setReconcilePosErrorThreshold(posThreshold);
+
+                            float velThreshold = camera->getReconcileVelErrorThreshold();
+                            if (ImGui::SliderFloat("Reconcile Vel Threshold", &velThreshold, 0.001f, 0.5f, "%.3f"))
+                                camera->setReconcileVelErrorThreshold(velThreshold);
+
+                            bool reconcileLogEnabled = camera->isReconcileLogEnabled();
+                            if (ImGui::Checkbox("Verbose Reconcile Logs", &reconcileLogEnabled))
+                                camera->setReconcileLogEnabled(reconcileLogEnabled);
+
+                            bool reconcileAutoPhaseAdjust = camera->isReconcileAutoPhaseAdjustEnabled();
+                            if (ImGui::Checkbox("Auto Ack Phase Adjust", &reconcileAutoPhaseAdjust))
+                                camera->setReconcileAutoPhaseAdjustEnabled(reconcileAutoPhaseAdjust);
+
+                            ImGui::TextDisabled("Simulates S->C receive delay for reconciliation testing.");
+                        }
+                        else {
+                            ImGui::Text("Sim Latency: %.0f ms", udpClient->getSimulatedLatency());
+                        }
+                    }
+
                     ImGui::EndTabItem();
                 }
 
