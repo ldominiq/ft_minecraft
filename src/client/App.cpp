@@ -4,10 +4,11 @@
 
 #include "App.hpp"
 
-App::App():
+App::App(const std::string& serverIp):
 			camera(nullptr),
 			monitor(nullptr),
 			mode(nullptr),
+			serverIp(serverIp),
 
             lighting(nullptr),
             textureShader(nullptr),
@@ -20,7 +21,31 @@ App::App():
 
 App::~App() { cleanup(); }
 
-void App::init() {
+GLFWimage load_icon(const char* path) {
+    GLFWimage image;
+    int channels;
+    image.pixels = stbi_load(path, &image.width, &image.height, &channels, 4);
+    if (!image.pixels) {
+        std::cerr << "Failed to load window icon: " << stbi_failure_reason() << std::endl;
+    }
+    return image;
+}
+
+void App::init(const std::string& serverIp) {
+    std::string targetIp = serverIp;
+
+    {
+        // Check for a server.txt file in the current directory
+        std::ifstream serverFile("server.txt");
+        if (serverFile.is_open()) {
+            std::string line;
+            if (std::getline(serverFile, line) && !line.empty()) {
+                targetIp = line;
+                std::cout << "[Config] Found server.txt, overriding IP with: " << targetIp << std::endl;
+            }
+        }
+    }
+
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -29,12 +54,27 @@ void App::init() {
     monitor = glfwGetPrimaryMonitor();
     mode = glfwGetVideoMode(monitor);
 
+	std::cout << "[Config] Using monitor resolution: " << mode->width << "x" << mode->height << std::endl;
+
     window = glfwCreateWindow(windowedWidth, windowedHeight, "ft_minecraft", nullptr, nullptr);
     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
 	glfwSetWindowUserPointer(window, this);
 
+    // Set the window icon
+    GLFWimage image;
+    image = load_icon("assets/textures/icon.png");
+    if (image.pixels) {
+        glfwSetWindowIcon(window, 1, &image);
+        stbi_image_free(image.pixels); // <- free stb allocation
+        image.pixels = nullptr;
+    }
+    
+
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
+		// Skip resize if window is minimized (0x0)
+		if (width == 0 || height == 0)
+			return;
         glViewport(0, 0, width, height);
 		glfwGetFramebufferSize(w, &app->screenWidth, &app->screenHeight);
 		auto manager = app->menuManager.lock();
@@ -49,15 +89,16 @@ void App::init() {
     glfwMakeContextCurrent(window);
     gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
 
-    glfwGetFramebufferSize(window, &windowedWidth, &windowedHeight);
+    glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
+    glViewport(0, 0, screenWidth, screenHeight);
 
-	udpClient = std::make_unique<UDPClient>("127.0.0.1");
+	udpClient = std::make_unique<UDPClient>(targetIp.c_str());
 	setUdpClientPacketCallback();
 
 	renderer = std::make_unique<Renderer>();
 
 	// ********************Water Renderer setup******************************
-	waterFramebuffer = std::make_shared<WaterFramebuffer>(windowedWidth, windowedHeight);
+	waterFramebuffer = std::make_shared<WaterFramebuffer>(screenWidth, screenHeight);
 	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
 	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
 
@@ -65,20 +106,29 @@ void App::init() {
 	chunkBoundaryRenderer = std::make_unique<ChunkBoundaryRenderer>();
 
 	// ********************Render Type Debug Framebuffers********************
-	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(windowedWidth, windowedHeight);
+	renderTypeFramebuffer = std::make_unique<RenderTypeFramebuffer>(screenWidth, screenHeight);
 
 	loader = std::make_unique<Loader>();
 	// GUI textures are now dynamically managed based on debug flags
     guiRenderer = std::make_unique<GuiRenderer>(*loader);
 
-    lighting = std::make_unique<Lighting>(windowedWidth, windowedHeight);
+    lighting = std::make_unique<Lighting>(screenWidth, screenHeight);
 
-	chat = std::make_shared<Chat>(windowedWidth, windowedHeight);
+	chat = std::make_shared<Chat>(screenWidth, screenHeight);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
-    gBuffer = std::make_shared<GBuffer>(windowedWidth, windowedHeight);
-    ssao = std::make_shared<SSAO>(windowedWidth, windowedHeight);
+    // Initialize terrain debug window for parameter tweaking
+    terrainDebugWindow = std::make_unique<TerrainDebugWindow>();
+    // Set callback to send terrain params to server when changed
+    terrainDebugWindow->setSendParamsCallback([this](const NetTerrainParams& pkt) {
+        if (udpClient) {
+            udpClient->sendPacket(pkt);
+        }
+    });
+
+    gBuffer = std::make_shared<GBuffer>(screenWidth, screenHeight);
+    ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
     glEnable(GL_DEPTH_TEST);
     
@@ -258,6 +308,8 @@ void App::init() {
     glGenQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawCloudsPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glGenQueries(QUERY_POOL_SIZE, queryDrawWaterRefractionPool);
+    glGenQueries(QUERY_POOL_SIZE, queryGBufferPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glGenQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
@@ -303,14 +355,20 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
-				glfwTickTime = glfwGetTime();
-				camera->onSnapshot(p, *renderer);
+				// snapshotReceivedTime = glfwGetTime();
+				camera->onSnapshot(p);
+				break;
+			}
+
+			case PacketType::PLAYER_GAMEMODE: {
+				auto& p = static_cast<NetPlayerGameMode&>(*pkt);
+				camera->getPlayer()->gamemode = static_cast<GAMEMODES>(p.gamemode);
 				break;
 			}
 
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
-				renderer->onEntity(p, glfwTickTime);
+				renderer->onEntity(p, clientTime);
 				break;
 			}
 
@@ -338,8 +396,41 @@ void App::setUdpClientPacketCallback()
 
             case PacketType::NET_IMGUI: {
                 auto& p = static_cast<NetImGui&>(*pkt);
-                // handle ImGui data (e.g., update UI state)
                 currentBiome = p.currentBiome;
+                currentTerrainHeight = p.terrainHeight;
+                currentSeaLevel = p.seaLevel;
+                currentWorldSeed = p.worldSeed;
+                currentContinentalness = p.continentalness;
+                currentErosion = p.erosion;
+                currentPeakValley = p.peakValley;
+                currentTemperature = p.temperature;
+                currentHumidity = p.humidity;
+                currentContBucket    = p.contBucket;
+                currentErosionBucket = p.erosionBucket;
+                currentPVBucket      = p.pvBucket;
+                currentTempBucket    = p.tempBucket;
+                currentHumidBucket   = p.humidBucket;
+                break;
+            }
+
+            case PacketType::NET_TERRAIN_PARAMS: {
+                auto& p = static_cast<NetTerrainParams&>(*pkt);
+                // Log receipt of terrain params update
+                std::cout << "[Client] Received terrain parameters update from server (seed: " << p.seed << ")\n";
+                // Could optionally cache these for UI display, but server will handle actual generation
+                break;
+            }
+
+            case PacketType::NET_SKY_TIME: {
+                auto& p = static_cast<NetSkyTime&>(*pkt);
+                lighting->setSkyTimeOffset(p.skyTimeOffset);
+                lighting->setSunYawDeg(p.sunYawDeg);
+                lighting->setSkyTimePaused(p.skyTimePaused);
+                lighting->setSunStepping(p.sunStepping);
+                lighting->setSunPauseTimer(p.sunPauseTimer);
+                lighting->setSunStepTimer(p.sunStepTimer);
+                lighting->setSkyMode(p.skyMode);
+                lighting->setSkyTimeSpeed(p.skyTimeSpeed);
                 break;
             }
 
@@ -356,7 +447,6 @@ void App::loadResources() {
 
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
-
     // Load individual block textures into a texture array
     textureManager.loadResourcePack("assets");
 
@@ -374,53 +464,91 @@ void App::loadResources() {
     gBufferShader->use();
     gBufferShader->setInt("blockTextures", 0);
 
-    // Wire the texture manager to subsystems that need it
+    // Wire the texture manager and shaders to subsystems that need them
     renderer->setTextureManager(&textureManager);
-}
-
-void App::gameTick() {
-	// sending/receiving packets and stuff
-
-	udpClient->receivePacket();
-	auto manager = menuManager.lock();
-	if ((keyPressedRecently || mouseMovedRecently) && !manager)
-	{
-		NetPlayerInputs inputs = buildPlayerInputsPacket();
-		udpClient->sendPacket(inputs);
-	}
-
-	static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
-	static float waveSpeed = waterRenderer->waveStrength;
-	waterMoveOffset += waveSpeed * deltaTime;
-	if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
-	waterRenderer->setWaterMoveFactor(waterMoveOffset);
+    renderer->setVegetationShader(std::make_shared<Shader>("shaders/vegetation.vert", "shaders/vegetation.frag"));
+    renderer->getVegetationShader()->use();
+    renderer->getVegetationShader()->setInt("blockTextures", 0);
 }
 
 void App::render() {
 
-    while (!glfwWindowShouldClose(window)) {
+	while (!glfwWindowShouldClose(window)) {
+		// Rotate query index each frame
+		currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
 
-        // Rotate query index each frame
-        currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
-    
-        // Calculate delta time for frame rate
-        const float currentFrame = glfwGetTime();
-        deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
+        // Skip rendering if window is minimized
+        if (screenWidth == 0 || screenHeight == 0) {
+            glfwPollEvents();
+            continue;
+        }
+
+		// Calculate delta time for frame rate
+		currentFrame = glfwGetTime();
+		deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
+
+		if (camera)
+			camera->updateSmoothing(deltaTime);
+
+		NetPlayerInputs inputs = buildPlayerInputsPacket();
+		auto manager = menuManager.lock();
 
 		//Tick logic
 		float tickDuration = 1.0f / TPS; // 0.05s per tick
 		static float accumulator = 0.0f;
 		accumulator += deltaTime;
 
-		while (accumulator >= tickDuration) //should never be more than 1 tick...
-		{
-			// Advance one tick
-			gameTick();
-			accumulator -= tickDuration;
-		}
+        int simulatedTicksThisFrame = 0;
+        constexpr int kMaxSimulatedTicksPerFrame = 6;
+        std::vector<NetPlayerInputs> frameInputs;
+        frameInputs.reserve(kMaxSimulatedTicksPerFrame);
+        while (accumulator >= tickDuration && simulatedTicksThisFrame < kMaxSimulatedTicksPerFrame)
+        {
+            NetPlayerInputs tickInputs = inputs;
+            if (manager)
+                tickInputs.keys = 0;
 
-		camera->lerpToNextPosition(glfwGetTime() - glfwTickTime);
+            tickInputs.serverClientReconciliationTick = clientTick;
+            camera->queueInput(tickInputs, clientTick);
+
+            // Collect every tick's input; all will be sent as a batch so the
+            // server can run one physics step per entry during catch-up.
+            frameInputs.push_back(tickInputs);
+
+            camera->predict(*renderer, clientTick);
+
+            clientTime = clientTick * tickDuration;
+            accumulator -= tickDuration;
+            clientTickChangedTime = glfwGetTime();
+            clientTick++;
+            simulatedTicksThisFrame++;
+        }
+
+        // Send all inputs for this frame in one datagram.
+        if (!frameInputs.empty()) {
+            if (frameInputs.size() == 1) {
+                udpClient->sendPacket(frameInputs[0]);
+            } else {
+                NetPacketGroup group;
+                for (auto& inp : frameInputs)
+                    group.add(inp);
+                udpClient->sendPacket(group);
+            }
+        }
+
+        if (simulatedTicksThisFrame == kMaxSimulatedTicksPerFrame && accumulator > tickDuration * 2.0f)
+            accumulator = tickDuration * 2.0f;
+
+        camera->setRenderTickAlpha(accumulator / tickDuration);
+		udpClient->receivePacket();
+        camera->flushPendingSnapshot(*renderer, clientTick);
+
+		//for some reason mouse needs a little delay to be put to false otherwise it glitches.
+		if ((glfwGetTime() - lastMouseMoveTime) > tickDuration * 2)
+			mouseMovedRecently = false;
+
+     // Local player must be rendered from current predicted state (present time), not interpolated in the past.
 
 		// const double mouseIdleThreshold = 0.2; // seconds
 		// if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
@@ -457,7 +585,7 @@ void App::render() {
 
         updateWindowTitle();
 
-		auto manager = menuManager.lock();
+		// auto manager = menuManager.lock();
 		if (manager != chat)
         	processInput();
 
@@ -483,6 +611,8 @@ void App::render() {
         lighting->updateSunDirection(deltaTime);
         lighting->updateSkyLUT(camera->getPlayer()->getPosition().y);
 
+
+        renderer->processMeshUpdates();
 
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
@@ -533,6 +663,7 @@ void App::render() {
         }
 
         // GBuffer pass
+        glBeginQuery(GL_TIME_ELAPSED, queryGBufferPool[currentQueryIndex]);
         if (ssao && ssao->isEnabled()) {
             gBuffer->resize(screenWidth, screenHeight);
             ssao->resize(screenWidth, screenHeight);
@@ -547,8 +678,11 @@ void App::render() {
             renderer->render(gBufferShader);
 
             gBuffer->unbind();
+        }
+        glEndQuery(GL_TIME_ELAPSED);
 
-            // SSAO pass
+        // SSAO pass
+        if (ssao && ssao->isEnabled()) {
             glBeginQuery(GL_TIME_ELAPSED, querySSAOPool[currentQueryIndex]);
 
             ssao->renderSSAO(*gBuffer, projection);
@@ -565,30 +699,48 @@ void App::render() {
             ssaoQueryIssuedThisFrame[currentQueryIndex] = false;
         }
 
+		static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
+		static float waveSpeed = waterRenderer->waveStrength;
+		waterMoveOffset += waveSpeed * deltaTime;
+		if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
+		waterRenderer->setWaterMoveFactor(waterMoveOffset);
+
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
-        // Render reflection texture
-    	waterRenderer->renderWaterReflectionPass(activeShader, projection, textureManager);
+        bool waterVisible = renderer->hasVisibleWater();
+        if (waterVisible) {
+            // Render reflection texture
+            waterRenderer->renderWaterReflectionPass(activeShader, projection, textureManager);
+        }
 
         glEndQuery(GL_TIME_ELAPSED);
 
 
-    	// render refraction texture
-    	waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
-
-    	// render to screen
+        glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterRefractionPool[currentQueryIndex]);
+        if (waterVisible) {
+            // render refraction texture
+            waterRenderer->renderWaterRefractionPass(activeShader, view, projection, textureManager);
+        }
+        glEndQuery(GL_TIME_ELAPSED);    	
+        
+        const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
+        const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
+        renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
+        
+    	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
     	renderScene(view, projection, clipPlane);
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
-    	waterRenderer->renderWaterSurface(projection);
+        if (waterVisible) {
+            const float chunkDist = renderer->getMaxRenderedChunkDist();
+            waterRenderer->setFogParams(fogEnabled, chunkDist * fogStartFraction, chunkDist, fogStrength);
+    	    waterRenderer->renderWaterSurface(projection);
+        }
         glEndQuery(GL_TIME_ELAPSED);
 
-		const int currentChunkX = static_cast<int>(std::floor(camera->getPlayer()->getPosition().x / Chunk::WIDTH));
-		const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
 
 		renderer->buildChunks();
-		renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius());
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         // Draw chunk boundary overlay (if enabled)
@@ -666,6 +818,7 @@ void App::render() {
 		else
 		{
 			inventoryUI->drawHotbar();
+			inventoryUI->drawHealth(camera->getPlayer()->health);
 			chat->renderRecentMessages();
 		}
 
@@ -681,6 +834,8 @@ void App::render() {
             readGPUQueryEMA(queryDrawSkyPool[readIndex], measuredAverageMsDrawSky, a);
             readGPUQueryEMA(queryDrawCloudsPool[readIndex], measuredAverageMsDrawClouds, a);
             readGPUQueryEMA(queryDrawWaterReflectionPool[readIndex], measuredAverageMsDrawWaterReflection, a);
+            readGPUQueryEMA(queryDrawWaterRefractionPool[readIndex], measuredAverageMsDrawWaterRefraction, a);
+            readGPUQueryEMA(queryGBufferPool[readIndex], measuredAverageMsGBuffer, a);
             readGPUQueryEMA(queryRenderShaderPool[readIndex], measuredAverageMsRenderShader, a);
             readGPUQueryEMA(queryRenderWaterPool[readIndex], measuredAverageMsRenderWater, a);
             readGPUQueryEMA(queryDrawEntities[readIndex], measuredAverageMsDrawEntities, a);
@@ -728,7 +883,7 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
     return true;
 }
 
-void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane) {
+void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4 clipPlane) const {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Render sky/clouds first with proper depth
@@ -738,8 +893,10 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
     glEndQuery(GL_TIME_ELAPSED);
 
+    const bool cameraUnderwater = camera->getPlayer()->isUnderwater(*renderer);
+
     glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);
-    lighting->drawSky(view, projection, camera->getPlayer()->getPosition());
+    lighting->drawSky(view, projection, camera->getPlayer()->getPosition(), cameraUnderwater);
     glEndQuery(GL_TIME_ELAPSED);
 
     // Now render terrain with depth testing enabled
@@ -753,21 +910,72 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
     lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+    lighting->uploadUnderwaterUniforms(*activeShader);
+    activeShader->setBool("cameraUnderwater", cameraUnderwater);
     lighting->uploadCSMUniforms(*activeShader, view);
 
     // Bind SSAO texture for the lighting shader (must be after activeShader->use())
     if (ssao && ssao->isEnabled()) {
-        glActiveTexture(GL_TEXTURE5);
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::SSAO);
         glBindTexture(GL_TEXTURE_2D, ssao->getSSAOTexture());
-        activeShader->setInt("ssaoTexture", 5);
+        activeShader->setInt("ssaoTexture", TextureUnits::SSAO);
         activeShader->setInt("ssaoEnabled", 1);
         activeShader->setVec2("screenSize", glm::vec2(screenWidth, screenHeight));
     } else {
         activeShader->setInt("ssaoEnabled", 0);
     }
 
+    // Fog
+    GLuint skyLUTTex = lighting->getSkyLUTTexture();
+    const float maxChunkDist = renderer->getMaxRenderedChunkDist();
+    const float fogEnd   = maxChunkDist;
+    const float fogStart = maxChunkDist * fogStartFraction;
+    uploadFogUniforms(*activeShader, fogEnabled, skyLUTTex,
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
+
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
+
+    // Setup vegetation shader with same lighting as terrain
+    if (const auto& vegShader = renderer->getVegetationShader()) {
+        vegShader->use();
+        vegShader->setVec4("clipPlane", clipPlane);
+        vegShader->setMat4("view", view);
+        vegShader->setMat4("projection", projection);
+        vegShader->setVec3("viewPos", camera->getPlayer()->getPosition());
+
+        // Use the same day/night cycle as the main lighting system
+        glm::vec3 sunDir = lighting->getDirectionalLightDirection();
+        float sunElevation = sunDir.y;
+        float day = glm::clamp(sunElevation * 2.0f, 0.0f, 1.0f);
+        day = glm::smoothstep(0.0f, 1.0f, day);
+
+        constexpr float nightAmbientMin = 0.3f;
+        glm::vec3 ambientColor = lighting->getDirectionalAmbientColor() * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
+        glm::vec3 diffuseColor = lighting->getDirectionalDiffuseColor() * day;
+
+        vegShader->setVec3("lightDir", -sunDir);
+        vegShader->setVec3("lightColor", diffuseColor);
+        vegShader->setVec3("ambientColor", ambientColor);
+        vegShader->setFloat("time", static_cast<float>(glfwGetTime()));
+        vegShader->setFloat("seaLevel", 64.0f);
+
+        // Underwater fog for vegetation
+        vegShader->setBool("cameraUnderwater", cameraUnderwater);
+    	vegShader->setVec3("underwaterTintColor", lighting->getUnderwaterTintColor());
+    	vegShader->setVec3("underwaterFogColor", lighting->getUnderwaterFogColor());
+    	vegShader->setFloat("underwaterFogDensity", lighting->getUnderwaterFogDensity());
+
+        // Upload CSM shadow uniforms to vegetation shader
+        lighting->uploadCSMUniforms(*vegShader, view);
+        vegShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
+
+        // Fog for vegetation
+        uploadFogUniforms(*vegShader, fogEnabled, skyLUTTex,
+                          lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
+
+        activeShader->use(); // Switch back to main shader
+    }
 
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
     renderer->render(activeShader);
@@ -775,27 +983,63 @@ void App::renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane)
 
     lighting->drawLightCubes(view, projection);
 
-	//THIS CODE IS AWFULLY BAD
+	// Check if the entity is within the player's load radius
+	auto updateDrawState = [&](auto &entity)
+	{
+		glm::vec3 playerPos = camera->getPlayer()->getPosition();
+		glm::vec3 entityPos = entity->getPosition();
+
+		glm::vec2 diff(playerPos.x - entityPos.x, playerPos.z - entityPos.z);
+
+		float distSq = glm::dot(diff, diff);
+		float radius = camera->getPlayer()->getLoadRadius() * Chunk::WIDTH;
+
+		entity->setDoDraw(distSq <= radius * radius);
+	};
+
+	//this code is mehhhh
+	double intraTick = (glfwGetTime() - clientTickChangedTime);
+	double delay = (1.0/TPS) * 1;
 	//items
 	for (auto &entity : renderer->itemEntities)
 	{
 		if (!entity->positionUpdated) continue ;
-		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - glfwTickTime, entity->prevPosition, entity->nextPosition);
-		entity->setPosition(newEntityPos);
+		entity->lerp(clientTime + intraTick - delay);
 	}
     glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
 	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
-	for (auto &entity : renderer->itemEntities)
-		if (entity->glfwTickTime < glfwTickTime) entity->positionUpdated = false;
 	glEndQuery(GL_TIME_ELAPSED);
 
 	//mobs
 	for (auto &entity : renderer->livingEntities)
 	{
-		if (!entity->positionUpdated) continue ;
-		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - glfwTickTime, entity->prevPosition, entity->nextPosition);
-		entity->setPosition(newEntityPos);
-		// if (entity->glfwTickTime < glfwTickTime) entity->positionUpdated = false;
+		updateDrawState(entity);
+
+		entity->lerp(clientTime + intraTick - delay);
+
+		// firstFrame = false;
+	}
+
+	for (auto &entity : renderer->itemEntities)
+	{
+		updateDrawState(entity);
+
+		static bool firstFrame = true;
+		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) { 
+            entity->positionUpdated = false; 
+        }
+		firstFrame = false;
+	}
+
+	// Sync the local player's mesh position with the interpolated camera target
+	// so the character doesn't shake in third-person due to the prediction/
+	// reconciliation cycle updating the raw physics position mid-frame.
+	auto &localPlayer = *camera->getPlayer();
+	if (camera->isThirdPersonCameraActive()) {
+		localPlayer.renderPos = camera->getInterpolatedPlayerPos();
+		localPlayer.hasRenderPos = true;
+	} else {
+		localPlayer.hasRenderPos = false;
 	}
 
 	renderer->drawCharacters(projection, view, deltaTime);
@@ -841,59 +1085,74 @@ void App::debugWindow() {
                     // Display camera coordinates
                     ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
 
-                    // ImGui::Text("World SEED: %i", params.seed);
+					ImGui::Text("Player YAW: %f", camera->getPlayer()->yaw);
 
-                    // ImGui::Text("Continentalness: %.3f", Chunk::getContinentalness(params, wx, wz));
-                    // ImGui::Text("Erosion: %.3f", Chunk::getErosion(params, wx, wz));
-                    // ImGui::Text("Peak/Valley: %.3f", Chunk::getPV(params, wx, wz));
-                    // ImGui::Text("Temperature: %.3f", Chunk::getTemperature(params, wx, wz));
-                    // ImGui::Text("Humidity: %.3f", Chunk::getHumidity(params, wx, wz));
+                    ImGui::Text("World SEED: %d", currentWorldSeed);
+                    ImGui::Text("Terrain Height: %d (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
+                    static const char* contBucketNames[]   = { "MUSHROOM", "OCEAN", "COAST", "NEAR_INLAND", "MID_INLAND", "FAR_INLAND" };
+                    static const char* erosionBucketNames[] = { "E0", "E1", "E2", "E3", "E4", "E5", "E6" };
+                    static const char* pvBucketNames[]      = { "VALLEY", "LOW", "MID", "HIGH", "PEAK" };
+                    static const char* tempBucketNames[]    = { "VERY_COLD", "COLD", "TEMPERATE", "WARM", "HOT" };
+                    static const char* humidBucketNames[]   = { "ARID", "DRY", "NEUTRAL", "HUMID", "WET" };
 
-                    uint8_t biome = currentBiome;
+                    ImGui::Text("Continentalness: %.3f", currentContinentalness); ImGui::SameLine(); ImGui::Text("(%s)", contBucketNames[currentContBucket]);
+                    ImGui::Text("Erosion: %.3f", currentErosion);                 ImGui::SameLine(); ImGui::Text("(%s)", erosionBucketNames[currentErosionBucket]);
+                    ImGui::Text("Peak/Valley: %.3f", currentPeakValley);          ImGui::SameLine(); ImGui::Text("(%s)", pvBucketNames[currentPVBucket]);
+                    ImGui::Text("Temperature: %.3f", currentTemperature);         ImGui::SameLine(); ImGui::Text("(%s)", tempBucketNames[currentTempBucket]);
+                    ImGui::Text("Humidity: %.3f", currentHumidity);               ImGui::SameLine(); ImGui::Text("(%s)", humidBucketNames[currentHumidBucket]);
+
                     const char* biomeName =
-                        (static_cast<BiomeType>(biome) == BiomeType::PLAINS) ? "PLAINS" :
-                        (static_cast<BiomeType>(biome) == BiomeType::DESERT) ? "DESERT" :
-                        (static_cast<BiomeType>(biome) == BiomeType::FOREST) ? "FOREST" :
-                        (static_cast<BiomeType>(biome) == BiomeType::TUNDRA) ? "TUNDRA" :
-                        (static_cast<BiomeType>(biome) == BiomeType::SWAMP)  ? "SWAMP"  :
-                        (static_cast<BiomeType>(biome) == BiomeType::OCEAN)  ? "OCEAN"  :
-                        (static_cast<BiomeType>(biome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
-                                                    "UNKNOWN";
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::PLAINS) ? "PLAINS" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::DESERT) ? "DESERT" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::DARK_FOREST) ? "DARK_FOREST" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::TUNDRA) ? "TUNDRA" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::SWAMP)  ? "SWAMP"  :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::OCEAN)  ? "OCEAN"  :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::BIRCH_FOREST) ? "BIRCH_FOREST" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::JUNGLE) ? "JUNGLE" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::SAVANNA) ? "SAVANNA" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::MESA) ? "MESA" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::ICE_PLAINS) ? "ICE_PLAINS" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::VOLCANIC) ? "VOLCANIC" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::RED_DESERT) ? "RED_DESERT" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::NETHER) ? "NETHER" :
+                        (static_cast<BiomeType>(currentBiome) == BiomeType::MUSHROOM_ISLAND) ? "MUSHROOM_ISLAND" :
+                                                                                    "UNKNOWN";
                     ImGui::Text("BIOME: %s", biomeName);
 
+                    // Additional metrics: number of loaded chunks and approximate memory usage
+                    if (renderer) {
+                        const size_t visibleChunks = renderer->getVisibleChunkCount();
+                        const size_t totalChunks   = renderer->getTotalChunkCount();
+                        ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
 
-            // Additional metrics: number of loaded chunks and approximate memory usage
-            if (renderer) {
-                const size_t visibleChunks = renderer->getVisibleChunkCount();
-                const size_t totalChunks   = renderer->getTotalChunkCount();
-                ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
-
-                size_t solidVertices = 0;
-                size_t waterVertices = 0;
-                for (auto& weakChunk : renderer->getRenderedChunks()) {
-                    if (auto chunk = weakChunk.lock()) {
-                        solidVertices += chunk->getMeshVerticesSize() / 10;
-                        waterVertices += chunk->getWaterMeshVerticesSize() / 10;
+                        size_t solidVertices = 0;
+                        size_t waterVertices = 0;
+                        for (auto& weakChunk : renderer->getRenderedChunks()) {
+                            if (auto chunk = weakChunk.lock()) {
+                                solidVertices += chunk->getMeshVerticesSize() / 10;
+                                waterVertices += chunk->getWaterMeshVerticesSize() / 10;
+                            }
+                        }
+                        
+                        size_t totalVertices = solidVertices + waterVertices;
+                        size_t totalTriangles = totalVertices / 3;
+                        size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
+                        
+                        // TODO: fix real count based on frustum culling
+                        ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
+                        ImGui::Text("Triangles: %zu", totalTriangles);
+                        ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
                     }
-                }
-                
-                size_t totalVertices = solidVertices + waterVertices;
-                size_t totalTriangles = totalVertices / 3;
-                size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
-                
-                // TODO: fix real count based on frustum culling
-                ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
-                ImGui::Text("Triangles: %zu", totalTriangles);
-                ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
-            }
 
-            // Display memory usage in megabytes.  We call a static helper to
-            // obtain the current resident set size (RSS).
-            {
-                const size_t memBytes = getCurrentRSS();
-                const double memMB = memBytes / (1024.0 * 1024.0);
-                ImGui::Text("Memory: %.2f MB", memMB);
-            }
+                    // Display memory usage in megabytes.  We call a static helper to
+                    // obtain the current resident set size (RSS).
+                    {
+                        const size_t memBytes = getCurrentRSS();
+                        const double memMB = memBytes / (1024.0 * 1024.0);
+                        ImGui::Text("Memory: %.2f MB", memMB);
+                    }
 
 
                     ImGui::Separator();
@@ -917,74 +1176,41 @@ void App::debugWindow() {
                     // Need to expose terrainParams from the server to the client..
                     // ImGui::Checkbox("Debug: Ores Only", &terrainParams.debugOresOnly);
 
-                    // if (ImGui::CollapsingHeader("Noise Generation")) {
-                    //     if (ImGui::CollapsingHeader("Continentalness Parameters")) {
-                    //         ImGui::SliderFloat("frequency", &params.continentalnessFrequency, 0.001f, 0.01f);
-                    //         ImGui::SliderInt("octaves", &params.continentalnessOctaves, 1, 10);
-                    //         ImGui::SliderFloat("persistence", &params.continentalnessPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("lacunarity", &params.continentalnessLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("scaling factor", &params.continentalnessScalingFactor, 1.0f, 5.0f);
-                    //     }
+                    ImGui::Separator();
 
-                    //     if (ImGui::CollapsingHeader("Erosion Parameters")) {
-                    //         ImGui::SliderFloat("#frequency", &params.erosionFrequency, 0.001f, 0.02f);
-                    //         ImGui::SliderInt("#octaves", &params.erosionOctaves, 1, 10);
-                    //         ImGui::SliderFloat("#persistence", &params.erosionPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("#lacunarity", &params.erosionLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("#scaling factor", &params.erosionScalingFactor, 1.0f, 5.0f);
-                    //     }
+                    if (ImGui::CollapsingHeader("Heightmap")) {
+                        ImGui::Text("Heightmap Generation (server-side)");
+                        ImGui::InputInt("Size ([1-1024])", &debugTerrainParams.genSize);
+                        ImGui::InputInt("Downsample ([1-256])", &debugTerrainParams.downsample);
 
-                    //     if (ImGui::CollapsingHeader("Peak/Valley Parameters")) {
-                    //         ImGui::SliderFloat("-frequency", &params.peakValleyFrequency, 0.001f, 0.09f);
-                    //         ImGui::SliderInt("-octaves", &params.peakValleyOctaves, 1, 10);
-                    //         ImGui::SliderFloat("-persistence", &params.peakValleyPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("-lacunarity", &params.peakValleyLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("-scaling factor", &params.peakValleyScalingFactor, 1.0f, 5.0f);
-                    //     }
+                        debugTerrainParams.genSize = std::max(1, debugTerrainParams.genSize);
+                        debugTerrainParams.downsample = std::max(1, debugTerrainParams.downsample);
 
-                    //     if (ImGui::CollapsingHeader("Temperature Parameters")) {
-                    //         ImGui::SliderFloat("--frequency", &params.temperatureFrequency, 0.0001f, 0.0012f);
-                    //         ImGui::SliderInt("--octaves", &params.temperatureOctaves, 1, 10);
-                    //         ImGui::SliderFloat("--persistence", &params.temperaturePersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("--lacunarity", &params.temperatureLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("--scaling factor", &params.temperatureScalingFactor, 1.0f, 5.0f);
-                    //     }
+                        auto sendDumpCommand = [&](const char* mode) {
+                            if (!udpClient) return;
+                            NetMessage cmd;
+                            cmd.message = std::string("/dump ") + mode + " " +
+                                          std::to_string(debugTerrainParams.genSize) + " " +
+                                          std::to_string(debugTerrainParams.downsample);
+                            udpClient->sendPacket(cmd);
+                        };
 
-                    //     if (ImGui::CollapsingHeader("Humidity Parameters")) {
-                    //         ImGui::SliderFloat("---frequency", &params.humidityFrequency, 0.0005f, 0.0015f);
-                    //         ImGui::SliderInt("---octaves", &params.humidityOctaves, 1, 10);
-                    //         ImGui::SliderFloat("---persistence", &params.humidityPersistence, 0.0f, 1.0f);
-                    //         ImGui::SliderFloat("---lacunarity", &params.humidityLacunarity, 1.0f, 4.0f);
-                    //         ImGui::SliderFloat("---scaling factor", &params.humidityScalingFactor, 1.0f, 5.0f);
-                    //     }
-                    // }
+                        if (ImGui::Button("Generate Hydros")) {
+                            sendDumpCommand("hydro");
+                        }
 
+                        if (ImGui::Button("Generate Noises")) {
+                            sendDumpCommand("noises");
+                        }
+                        if (ImGui::Button("Generate Heightmaps")) {
+                            sendDumpCommand("heightmap");
+                        }
+                        if (ImGui::Button("Generate Biome Map")) {
+                            sendDumpCommand("biome");
+                        }
+                    }
 
-                    // ImGui::Separator();
-
-                    // if (ImGui::CollapsingHeader("Heightmap")) {
-                    //     // Create heightmap image
-                    //     ImGui::Text("Heightmap Generation");
-                    //     ImGui::InputInt("Size (ex. 100)", &params.genSize);
-                    //     ImGui::InputInt("Downsample (ex. 8)", &params.downsample);
-                    //     if (ImGui::Button("Generate Noises")) {
-                    //         if (world) {
-                    //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 1);
-                    //         }
-                    //     }
-                    //     if (ImGui::Button("Generate Heightmaps")) {
-                    //         if (world) {
-                    //             world->dumpHeightmap(0, 0, params.genSize, params.genSize, params.downsample, 0);
-                    //         }
-                    //     }
-                    //     if (ImGui::Button("Generate Biome Map")) {
-                    //         if (world) {
-                    //             world->dumpBiomeMap(0, 0, params.genSize, params.genSize, params.downsample);
-                    //         }
-                    //     }
-                    // }
-
-                    // ImGui::Separator();
+                    ImGui::Separator();
 
                     if (ImGui::CollapsingHeader("Rendering")) {
                         if (ImGui::BeginTabBar("Rendering", tab_bar_flags))
@@ -1106,6 +1332,7 @@ void App::debugWindow() {
                                 ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
                                 ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
                                 
+
                                 ImGui::Separator();
                                 ImGui::Text("Render Type");
                                 ImGui::Checkbox("Show Normals View", &showNormalsTexture);
@@ -1233,6 +1460,8 @@ void App::debugWindow() {
                     ImGui::Separator();
                     if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
                         bool skyTimePaused = lighting->isSkyTimePaused();
+                        int skyMode = static_cast<int>(lighting->getSkyMode());
+                        float skyTimeSpeed = lighting->getSkyTimeSpeed();
                     	float skyTimeOffset = lighting->getSkyTimeOffset();
                     	float sunYawDeg = lighting->getSunYawDeg();
                     	float skyExposure = lighting->getSkyExposure();
@@ -1256,12 +1485,67 @@ void App::debugWindow() {
                                 bool skyLUTEnabled = lighting->isSkyLUTEnabled();
                                 if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
                                     lighting->setSkyLUTEnabled(skyLUTEnabled);
-                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused))
+                                // Mode selector
+                                {
+                                    bool modeChanged = ImGui::RadioButton("Skyrim (pause/step)", &skyMode, 0);
+                                    ImGui::SameLine();
+                                    modeChanged |= ImGui::RadioButton("Smooth (linear)", &skyMode, 1);
+                                    if (modeChanged) {
+                                        lighting->setSkyMode(static_cast<uint8_t>(skyMode));
+                                        NetSkyTime pkt;
+                                        pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                        pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                        pkt.skyTimeSpeed  = skyTimeSpeed;
+                                        pkt.sunStepping   = lighting->getSunStepping();
+                                        pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                        pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                        udpClient->sendPacket(pkt);
+                                    }
+                                }
+                                if (ImGui::SliderFloat("Time Speed", &skyTimeSpeed, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
+                                    lighting->setSkyTimeSpeed(skyTimeSpeed);
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
+
+                                ImGui::Separator();
+                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused)) {
                                     lighting->setSkyTimePaused(skyTimePaused);
-                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 30.0f, "%.1f"))
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f")) {
                                     lighting->setSkyTimeOffset(skyTimeOffset);
-                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f"))
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping = false; pkt.sunPauseTimer = 0.0f; pkt.sunStepTimer = 0.0f;
+                                    udpClient->sendPacket(pkt);
+                                }
+                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f")) {
                                     lighting->setSunYawDeg(sunYawDeg);
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
                                 if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
                                     lighting->setSkyExposure(skyExposure);
                                 if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))
@@ -1271,6 +1555,17 @@ void App::debugWindow() {
                                 if (ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f"))
                                     lighting->setPlanetScale(planetScale);
                                 ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
+                                ImGui::EndTabItem();
+                            }
+
+                            if (ImGui::BeginTabItem("Fog")) {
+                                ImGui::Text("Distance Fog");
+                                ImGui::Checkbox("Fog Enabled", &fogEnabled);
+                                if (fogEnabled) {
+                                    ImGui::SliderFloat("Fog Start (fraction of chunk radius)", &fogStartFraction, 0.0f, 0.95f, "%.2f");
+                                    ImGui::SliderFloat("Fog Strength", &fogStrength, 0.1f, 10.0f, "%.1f");
+                                    ImGui::Text("Fog range: %.0f - %.0f blocks", renderer->getMaxRenderedChunkDist() * fogStartFraction, renderer->getMaxRenderedChunkDist());
+                                }
                                 ImGui::EndTabItem();
                             }
 
@@ -1326,7 +1621,69 @@ void App::debugWindow() {
                 		ImGui::SliderFloat("Water wave strength", &waterRenderer->waveStrength, 0.000f, 0.09f, "%.3f");
                 		ImGui::SliderFloat("Water dudv tiling", &waterRenderer->dudvTiling, 0.000f, 0.09f, "%.2f");
 
+                		glm::vec3 underwaterTint = lighting->getUnderwaterTintColor();
+                		if (ImGui::ColorEdit3("Underwater Tint", &underwaterTint.x))
+                			lighting->setUnderwaterTintColor(underwaterTint);
+
+                		glm::vec3 underwaterFogColor = lighting->getUnderwaterFogColor();
+                		if (ImGui::ColorEdit3("Underwater Fog Color", &underwaterFogColor.x))
+                			lighting->setUnderwaterFogColor(underwaterFogColor);
+
+                		float underwaterFogDensity = lighting->getUnderwaterFogDensity();
+                		if (ImGui::SliderFloat("Underwater Fog Density", &underwaterFogDensity, 0.00f, 0.5f, "%.2f"))
+                			lighting->setUnderwaterFogDensity(underwaterFogDensity);
                 	}
+
+					ImGui::Separator();
+					if (ImGui::CollapsingHeader("Network Debug")) {
+                        auto netStats = camera->getReconcileDebugStats();
+                        ImGui::Text("Client Tick: %d", clientTick);
+                        ImGui::Text("Last Ack Tick: %d", camera->getLastAppliedAckTick());
+                        ImGui::Text("Pending Snapshot Tick: %d", camera->getPendingCorrectionTick());
+                     ImGui::Text("Last effective ack tick: %d", netStats.lastEffectiveAckTick);
+                        ImGui::Text("Predicted States: %zu", camera->getPredictedStateCount());
+                        ImGui::Text("Pending Inputs: %zu", camera->getPendingInputCount());
+                        ImGui::Text("Corrections total/applied/ignored: %llu / %llu / %llu",
+                            static_cast<unsigned long long>(netStats.totalCorrections),
+                            static_cast<unsigned long long>(netStats.appliedCorrections),
+                            static_cast<unsigned long long>(netStats.ignoredCorrections));
+                        ImGui::Text("Suspected 1-tick phase mismatch count: %llu",
+                            static_cast<unsigned long long>(netStats.suspectedOffByOneCorrections));
+                        ImGui::Text("Last errors: pos=%.6f vel=%.6f horiz=%.6f vert=%.6f",
+                            netStats.lastPosErr,
+                            netStats.lastVelErr,
+                            netStats.lastHorizontalErr,
+                            netStats.lastVerticalErr);
+                        ImGui::Text("Ack match check: err(ack)=%.6f err(ack-1)=%.6f",
+                            netStats.lastErrAtAckTick,
+                            netStats.lastErrAtAckMinusOneTick);
+
+						if (uiInteractive) {
+							float simLatMs = udpClient->getSimulatedLatency();
+							if (ImGui::SliderFloat("Sim Latency (ms)", &simLatMs, 0.0f, 500.0f, "%.0f ms"))
+								udpClient->setSimulatedLatency(simLatMs);
+
+                            float posThreshold = camera->getReconcilePosErrorThreshold();
+                            if (ImGui::SliderFloat("Reconcile Pos Threshold", &posThreshold, 0.01f, 0.5f, "%.3f"))
+                                camera->setReconcilePosErrorThreshold(posThreshold);
+
+                            float velThreshold = camera->getReconcileVelErrorThreshold();
+                            if (ImGui::SliderFloat("Reconcile Vel Threshold", &velThreshold, 0.001f, 0.5f, "%.3f"))
+                                camera->setReconcileVelErrorThreshold(velThreshold);
+
+                            bool reconcileLogEnabled = camera->isReconcileLogEnabled();
+                            if (ImGui::Checkbox("Verbose Reconcile Logs", &reconcileLogEnabled))
+                                camera->setReconcileLogEnabled(reconcileLogEnabled);
+
+                            bool reconcileAutoPhaseAdjust = camera->isReconcileAutoPhaseAdjustEnabled();
+                            if (ImGui::Checkbox("Auto Ack Phase Adjust", &reconcileAutoPhaseAdjust))
+                                camera->setReconcileAutoPhaseAdjustEnabled(reconcileAutoPhaseAdjust);
+
+							ImGui::TextDisabled("Simulates S->C receive delay for reconciliation testing.");
+						} else {
+							ImGui::Text("Sim Latency: %.0f ms", udpClient->getSimulatedLatency());
+						}
+					}
 
                     ImGui::EndTabItem();
                 }
@@ -1371,6 +1728,16 @@ void App::debugWindow() {
             }
         }
 
+        // ── Terrain Debug Window ──
+        if (terrainDebugWindow && showDebugWindow) {
+            // Get the actual terrain params from the world (server side)
+            // For now, use default params but they should persist across frames
+            if (!terrainDebugWindowParams) {
+                terrainDebugWindowParams = std::make_unique<TerrainGenerationParams>();
+            }
+            terrainDebugWindow->render(*terrainDebugWindowParams);
+        }
+
         // ── Detachable Profiler Window ──
         if (showProfilerWindow) {
             ImGui::SetNextWindowSize(ImVec2(580, 400), ImGuiCond_FirstUseEver);
@@ -1387,7 +1754,8 @@ void App::debugWindow() {
                 // Calculate totals
                 float totalGPU = static_cast<float>(
                     measuredAverageMsDrawSky + measuredAverageMsDrawClouds + measuredAverageMsRenderShader +
-                    measuredAverageMsDrawShadows + measuredAverageMsDrawWaterReflection +
+                    measuredAverageMsDrawShadows + measuredAverageMsGBuffer + measuredAverageMsSSAO +
+                    measuredAverageMsDrawWaterReflection + measuredAverageMsDrawWaterRefraction +
                     measuredAverageMsRenderWater + measuredAverageMsDrawEntities);
 
                 // Frame budget target
@@ -1413,7 +1781,9 @@ void App::debugWindow() {
                 showTimingBar("Clouds",        measuredAverageMsDrawClouds,          ImVec4(0.8f, 0.8f, 0.9f, 1.0f));
                 showTimingBar("Terrain",       measuredAverageMsRenderShader,        ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
                 showTimingBar("Shadows",       measuredAverageMsDrawShadows,         ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+                showTimingBar("GBuffer",       measuredAverageMsGBuffer,             ImVec4(0.5f, 0.3f, 0.7f, 1.0f));
                 showTimingBar("Water Reflect", measuredAverageMsDrawWaterReflection, ImVec4(0.3f, 0.5f, 0.9f, 1.0f));
+                showTimingBar("Water Refract", measuredAverageMsDrawWaterRefraction, ImVec4(0.2f, 0.4f, 0.75f, 1.0f));
                 showTimingBar("Water Render",  measuredAverageMsRenderWater,         ImVec4(0.1f, 0.4f, 0.8f, 1.0f));
                 showTimingBar("Entities",      measuredAverageMsDrawEntities,        ImVec4(0.8f, 0.6f, 0.2f, 1.0f));
                 showTimingBar("SSAO",          measuredAverageMsSSAO,                ImVec4(0.6f, 0.2f, 0.8f, 1.0f));
@@ -1443,6 +1813,8 @@ void App::debugWindow() {
                         measuredAverageMsDrawSky = 0.0;
                         measuredAverageMsDrawClouds = 0.0;
                         measuredAverageMsDrawWaterReflection = 0.0;
+                        measuredAverageMsDrawWaterRefraction = 0.0;
+                        measuredAverageMsGBuffer = 0.0;
                         measuredAverageMsDrawShadows = 0.0;
                         measuredAverageMsRenderShader = 0.0;
                         measuredAverageMsRenderWater = 0.0;
@@ -1462,7 +1834,7 @@ void App::debugWindow() {
 }
 
 void App::run() {
-    init();
+    init(serverIp);
     loadResources();
     render();
 }
@@ -1479,6 +1851,8 @@ void App::cleanup() {
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawSkyPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawCloudsPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterReflectionPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryDrawWaterRefractionPool);
+    glDeleteQueries(QUERY_POOL_SIZE, queryGBufferPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
@@ -1599,8 +1973,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	inputs.yaw = camera->getPlayer()->getYaw();
 	inputs.loadRadius = camera->getPlayer()->getLoadRadius();
 	inputs.activeHotbarSlot = activeHotbarSlot;
-
-	camera->inputsList.push_back(inputs);
+	inputs.serverClientReconciliationTick = clientTick;
 
 	return inputs;
 }
@@ -1618,6 +1991,7 @@ void App::processInputMenus(int key, int action) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 
+	//TODO : Change gamemode for player on chat too so prediction works on other modes other than spectator when changing gamemode by chat.
 	if (manager == chat)
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)

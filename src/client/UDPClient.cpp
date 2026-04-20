@@ -45,6 +45,8 @@ UDPClient::UDPClient(const char* server_ip) {
         exit(EXIT_FAILURE);
     }
 
+    std::cout << "Connecting to server at " << server_ip << ":" << PORT << "..." << std::endl;
+
 	sendConnect(); //CONNECTS THE CLIENT TO SERVER AUTOMATICALLY WHEN STARTED. Will have to change when we have a menu. Wont work if server isn't running already as there's no retry.
 }
 
@@ -70,8 +72,8 @@ void UDPClient::sendConnect() {
 }
 
 void UDPClient::receivePacket() {
-    std::vector<uint8_t> buffer(MAXLINE);
-    socklen_t addrlen = sizeof(servaddr);
+	std::vector<uint8_t> buffer(MAXLINE);
+	socklen_t addrlen = sizeof(servaddr);
 
     while (true) {
         ssize_t n = recvfrom(sockfd, reinterpret_cast<char*>(buffer.data()), static_cast<int>(buffer.size()), 0,
@@ -85,19 +87,43 @@ void UDPClient::receivePacket() {
                 // TODO: handle correctly
                 continue;
             }
-            std::cerr << "recvfrom error: " << err << "\n";
+            std::cerr << "[Network] recvfrom error: " << err << "\n";
 #else
             if (errno == EWOULDBLOCK || errno == EAGAIN) break; // no more packets
             if (errno == ECONNREFUSED) {
                 // ICMP Port Unreachable received, ignore it for UDP
                 continue;
             }
-            perror("recvfrom error");
+            perror("[Network] recvfrom error");
 #endif
             break;
         }
-        // pass the actual number of bytes received
-        dispatch(buffer.data(), static_cast<size_t>(n));
+
+        if (m_simLatencyMs > 0.0f) {
+            auto dispatchAt = std::chrono::steady_clock::now()
+                + std::chrono::microseconds(static_cast<long long>(m_simLatencyMs * 1000.0f));
+            constexpr size_t kMaxDelayQueueSize = 512;
+            if (m_receiveDelayQueue.size() >= kMaxDelayQueueSize)
+                m_receiveDelayQueue.pop_front(); // drop oldest to bound memory
+            m_receiveDelayQueue.push_back({dispatchAt,
+                std::vector<uint8_t>(buffer.data(), buffer.data() + n)});
+        } else {
+            dispatch(buffer.data(), static_cast<size_t>(n));
+        }
+    }
+
+    // Flush any packets whose simulated delay has expired.
+    // Full scan (not just front) so out-of-order dispatchAt entries
+    // caused by mid-flight latency slider changes are not stuck indefinitely.
+    auto now = std::chrono::steady_clock::now();
+    for (auto it = m_receiveDelayQueue.begin(); it != m_receiveDelayQueue.end(); )
+    {
+        if (it->dispatchAt <= now) {
+            dispatch(it->data.data(), it->data.size());
+            it = m_receiveDelayQueue.erase(it);
+        } else {
+            ++it;
+        }
     }
 }
 
@@ -105,6 +131,13 @@ void UDPClient::dispatch(const uint8_t* data, size_t n)
 {
     // 1. Decode packet from buffer (returns unique_ptr<Packet>)
     auto pkt = decodePacket(data, n);
-	if (onPacket) onPacket({ std::move(pkt) });
+    if (pkt) {
+        if (pkt->type == PacketType::NET_ACCEPT) {
+            std::cout << "[Network] Successfully decoded NET_ACCEPT packet\n";
+        }
+		if (onPacket) onPacket({ std::move(pkt) });
+	} else {
+        std::cerr << "[Network] Failed to decode packet of " << n << " bytes. First byte: " << (n > 0 ? (int)data[0] : -1) << "\n";
+    }
 }
 

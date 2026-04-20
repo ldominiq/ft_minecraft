@@ -153,6 +153,8 @@ int MAX_BUFFER_SIZE = 0;
 		//return value corresponds to where we dragged over a new slot or not.
 		bool checkInventoryDrag(NetInventoryAction &pkt);
 		void drawHotbar();
+		void drawHealth(float health) const;
+		void drawInventory() const;
 
 		std::optional<NetInventoryAction> lastAction; //awful solution
 };

@@ -29,6 +29,7 @@ public:
 
     size_t size() const { return m_size; }
     uint8_t bitsPerEntry() const { return m_bitsPerEntry; }
+    void grow(uint8_t newBitsPerEntry);
 
 	void saveToStream(std::ostream& out) const;
 	void loadFromStream(std::istream& in);

@@ -63,7 +63,7 @@ static void saveHeightmapPPM(const std::string &path, const std::vector<float> &
 // centerChunkX/Z: center of the dump in chunk coordinates
 // chunksX/chunksZ: number of chunks across and down (total image = chunksX*Chunk::WIDTH)
 // downsample: sample every N world-voxels to reduce output resolution and cost
-void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const {
+void World::dumpHeightmap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample, int image) const {
     if (downsample < 1) downsample = 1;
 
     // compute world bounds in world-block coordinates
@@ -79,26 +79,65 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
     // output resolution after downsampling
     const int outW = static_cast<int>((worldW + downsample - 1) / downsample);
     const int outH = static_cast<int>((worldD + downsample - 1) / downsample);
-    std::vector<float> img(outW * outH);
-    std::vector<float> imgCont(outW * outH);
-    std::vector<float> imgEro(outW * outH);
-    std::vector<float> imgPV(outW * outH);
-    std::vector<float> imgHumidity(outW * outH);
-    std::vector<float> imgTemperature(outW * outH);
+
+	if (outW <= 0 || outH <= 0 || static_cast<size_t>(outW) * static_cast<size_t>(outH) > MAX_DUMP_PIXELS) {
+        std::cerr << "[World] dumpHeightmap: " << outW << "x" << outH << " exceeds limit. Aborting.\n";
+        return;
+    }
+
+    const size_t npixels = static_cast<size_t>(outW) * outH;
+	std::vector<float> img, imgCont, imgEro, imgPV, imgHumidity, imgTemperature;
+	std::vector<float> imgRiverNoise, imgRiverMask, imgLakeNoise, imgLakeMask;
+
+	if (image == 0) {
+		img.resize(npixels);
+	} else if (image == 1) {
+		imgCont.resize(npixels); imgEro.resize(npixels); imgPV.resize(npixels);
+		imgHumidity.resize(npixels); imgTemperature.resize(npixels);
+		imgRiverNoise.resize(npixels); imgRiverMask.resize(npixels);
+		imgLakeNoise.resize(npixels); imgLakeMask.resize(npixels);
+	} else if (image == 2) {
+		imgRiverNoise.resize(npixels); imgRiverMask.resize(npixels);
+		imgLakeNoise.resize(npixels); imgLakeMask.resize(npixels);
+	}
+
+    // Precompute erosion spline range once — used in every pixel
+    float eroMin = std::numeric_limits<float>::infinity();
+    float eroMax = -std::numeric_limits<float>::infinity();
+    for (const auto& sp : erosionSpline) {
+        eroMin = glm::min(eroMin, sp.second);
+        eroMax = glm::max(eroMax, sp.second);
+    }
 
     for (int oz = 0, wz = 0; wz < outH; ++wz, oz += downsample) {
         for (int ox = 0, wx = 0; wx < outW; ++wx, ox += downsample) {
             const auto worldX = static_cast<float>(startX + ox);
             const auto worldZ = static_cast<float>(startZ + oz);
 
-        	const float continentalness = ChunkGeneration::getContinentalness(terrainParams, worldX, worldZ);
-        	const float erosion = ChunkGeneration::getErosion(terrainParams, worldX, worldZ);
-        	const float pv = ChunkGeneration::getPV(terrainParams, worldX, worldZ);
+        	const float continentalness = ChunkGeneration::getContinentalness(params, worldX, worldZ);
+        	const float erosion = ChunkGeneration::getErosion(params, worldX, worldZ);
+        	const float pv = ChunkGeneration::getPV(params, worldX, worldZ);
+            const float baseHeight = ChunkGeneration::surfaceNoiseTransformation(continentalness, 1);
+            const float erosionSplineValue = ChunkGeneration::surfaceNoiseTransformation(erosion, 2);
+            const float pvSplineValue = ChunkGeneration::surfaceNoiseTransformation(pv, 3);
+
+            float erosionNorm = 0.0f;
+            if (eroMax > eroMin)
+                erosionNorm = glm::clamp((erosionSplineValue - eroMin) / (eroMax - eroMin), 0.0f, 1.0f);
+            erosionNorm = 1.0f - erosionNorm;
+
+            const float inlandMask = glm::smoothstep(-0.19f, 3.8f, continentalness);
+            constexpr float minErosionStrength = 2.0f;
+            constexpr float maxErosionStrength = 140.0f;
+            const float erosionStrength = glm::mix(minErosionStrength, maxErosionStrength, inlandMask);
+            const float erosionDelta = erosionNorm * erosionStrength;
+            const float pvFactor = pvSplineValue * (1.0f - erosionNorm);
+            const float preHydroHeight = baseHeight - erosionDelta + pvFactor;
 
             if (image == 0) {
 
-                const int surfaceY = ChunkGeneration::computeTerrainHeight(terrainParams, worldX, worldZ);
-                
+                const int surfaceY = ChunkGeneration::computeTerrainHeight(params, worldX, worldZ);
+
                 img[wx + wz * outW] = surfaceY;
                 // imgCont[wx + wz * outW] = baseHeight;
                 // imgEro[wx + wz * outW] = erosionDelta;
@@ -107,11 +146,22 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
                 imgCont[wx + wz * outW] = continentalness;
                 imgEro[wx + wz * outW] = erosion;
                 imgPV[wx + wz * outW] = pv;
-            	imgHumidity[wx + wz * outW] = ChunkGeneration::getHumidity(terrainParams, worldX, worldZ);
-            	imgTemperature[wx + wz * outW] = ChunkGeneration::getTemperature(terrainParams, worldX, worldZ);
-
+            	imgHumidity[wx + wz * outW] = ChunkGeneration::getHumidity(params, worldX, worldZ);
+            	imgTemperature[wx + wz * outW] = ChunkGeneration::getTemperature(params, worldX, worldZ);
+                imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(params, worldX, worldZ);
+                const float riverMask = ChunkGeneration::getRiverMask(params, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgRiverMask[wx + wz * outW] = std::pow(glm::clamp(riverMask, 0.0f, 1.0f), 0.45f);
+                imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(params, worldX, worldZ);
+                const float lakeMask = ChunkGeneration::getLakeMask(params, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgLakeMask[wx + wz * outW] = std::pow(glm::clamp(lakeMask, 0.0f, 1.0f), 0.35f);
+            } else if (image == 2) {
+                imgRiverNoise[wx + wz * outW] = ChunkGeneration::getRiverNoise(params, worldX, worldZ);
+                const float riverMask = ChunkGeneration::getRiverMask(params, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgRiverMask[wx + wz * outW] = std::pow(glm::clamp(riverMask, 0.0f, 1.0f), 0.45f);
+                imgLakeNoise[wx + wz * outW] = ChunkGeneration::getLakeNoise(params, worldX, worldZ);
+                const float lakeMask = ChunkGeneration::getLakeMask(params, worldX, worldZ, continentalness, preHydroHeight, pv);
+                imgLakeMask[wx + wz * outW] = std::pow(glm::clamp(lakeMask, 0.0f, 1.0f), 0.35f);
             }
-            
         }
     }
     if (image == 0) {
@@ -125,11 +175,20 @@ void World::dumpHeightmap(int centerChunkX, int centerChunkZ, int chunksX, int c
     	saveHeightmapPPM("pvNoise.ppm", imgPV, outW, outH);
     	saveHeightmapPPM("humidNoise.ppm", imgHumidity, outW, outH);
     	saveHeightmapPPM("tempNoise.ppm", imgTemperature, outW, outH);
+        saveHeightmapPPM("riverNoise.ppm", imgRiverNoise, outW, outH);
+        saveHeightmapPPM("riverMask.ppm", imgRiverMask, outW, outH);
+        saveHeightmapPPM("lakeNoise.ppm", imgLakeNoise, outW, outH);
+        saveHeightmapPPM("lakeMask.ppm", imgLakeMask, outW, outH);
+    } else if (image == 2) {
+        saveHeightmapPPM("riverNoise.ppm", imgRiverNoise, outW, outH);
+        saveHeightmapPPM("riverMask.ppm", imgRiverMask, outW, outH);
+        saveHeightmapPPM("lakeNoise.ppm", imgLakeNoise, outW, outH);
+        saveHeightmapPPM("lakeMask.ppm", imgLakeMask, outW, outH);
     }
 }
 
 // Dump a color-coded biome map as a PPM. Each column maps to a pixel.
-void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample) {
+void World::dumpBiomeMap(const TerrainGenerationParams& params, int centerChunkX, int centerChunkZ, int chunksX, int chunksZ, int downsample) {
     // Validate inputs
     if (downsample <= 0) downsample = 1;
     if (chunksX <= 0 || chunksZ <= 0) return;
@@ -143,7 +202,13 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
     const int imgH = (worldH + downsample - 1) / downsample;
 
     // Guard against absurd sizes
-    if (imgW <= 0 || imgH <= 0) return;
+    if (imgW <= 0 || imgH <= 0 ||
+		static_cast<size_t>(imgW) * static_cast<size_t>(imgH) > MAX_DUMP_PIXELS) {
+		std::cerr << "[World] dumpHeightmap: " << imgW << "x" << imgH << " exceeds limit. Aborting.\n";
+		return;
+	}
+
+	
 
     // Pre-size output and only index inside [0, size)
     std::vector<glm::u8vec3> pixels;
@@ -170,18 +235,27 @@ void World::dumpBiomeMap(int centerChunkX, int centerChunkZ, int chunksX, int ch
             const float wz = static_cast<float>(startWorldZ + z);
 
             // Sample your biome function (replace with your logic)
-            const int height = ChunkGeneration::computeTerrainHeight(terrainParams, wx, wz);
-            const BiomeType biome = ChunkGeneration::computeBiome(terrainParams, wx, wz, height);
+            const int height = ChunkGeneration::computeTerrainHeight(params, wx, wz);
+            const BiomeType biome = ChunkGeneration::computeBiome(params, wx, wz, height);
 
             glm::u8vec3 color;
             switch (biome) {
-                case BiomeType::PLAINS:  color = { 80, 200, 120 }; break;
-                case BiomeType::DESERT:  color = { 210, 180, 80 }; break;
-                case BiomeType::FOREST:  color = { 40, 160, 60 }; break;
-                case BiomeType::TUNDRA:  color = { 200, 220, 230 }; break;
-                case BiomeType::SWAMP:   color = { 150, 140, 45 }; break;
+                case BiomeType::PLAINS:  color = { 4, 130, 67 }; break;
+                case BiomeType::DESERT:  color = { 255, 255, 0 }; break;
+                case BiomeType::DARK_FOREST:  color = { 19, 77, 19 }; break;
+                case BiomeType::TUNDRA:  color = { 255, 255, 255 }; break;
+                case BiomeType::SWAMP:   color = { 100, 70, 30 }; break;
                 case BiomeType::OCEAN:   color = { 40, 60, 160 }; break;
             	case BiomeType::MOUNTAIN: color = { 100, 100, 100 }; break;
+				case BiomeType::BIRCH_FOREST: color = { 177, 240, 177 }; break;
+				case BiomeType::JUNGLE: color = { 0, 255, 0 }; break;
+				case BiomeType::SAVANNA: color = { 175, 191, 0 }; break;
+				case BiomeType::MESA: color = { 255, 0, 0 }; break;
+				case BiomeType::ICE_PLAINS: color = { 87, 252, 255 }; break;
+				case BiomeType::VOLCANIC: color = { 0, 0, 0 }; break;
+				case BiomeType::RED_DESERT: color = { 255, 115, 0 }; break;
+				case BiomeType::NETHER: color = { 183, 52, 235 }; break;
+				case BiomeType::MUSHROOM_ISLAND: color = { 255, 183, 168 }; break;
                 default:                  color = { 255, 0, 255 }; break;
             }
 
@@ -309,8 +383,9 @@ void World::updateVisibleChunks(CPlayerInfo &player)
 		else
 		{	
 			plannedChunks.insert(bestChunk);
-			chunkJobs[bestChunk] = std::async(std::launch::async, [this, bestChunk]() {
-				return std::make_shared<ChunkGeneration>(bestChunk.first, bestChunk.second, terrainParams);
+			const TerrainGenerationParams paramsCopy = terrainParams;
+			chunkJobs[bestChunk] = std::async(std::launch::async, [bestChunk, paramsCopy]() {
+				return std::make_shared<ChunkGeneration>(bestChunk.first, bestChunk.second, paramsCopy);
 			});
 		}
 	}
@@ -389,7 +464,7 @@ std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialB
 
 				BlockType type = getBlockWorld(newPosition);
 
-				if (type == BlockType::AIR)
+				if (type == BlockType::AIR || isBlockVegetation(type))
 				{
 					if (dir == down)
 					{
@@ -421,7 +496,8 @@ std::vector<std::shared_ptr<s_liquid>> World::waterFlowTowardsShortestPath(const
 		glm::ivec3 pos = path.currPath.front();
 		glm::ivec3 position = pos + initialBlockPos;
 
-		if (getBlockWorld(position) != BlockType::AIR) continue ;
+		BlockType block = getBlockWorld(position);
+		if (block != BlockType::AIR && !isBlockVegetation(block)) continue ;
 
 		int newLiquidPropagationValue = liquid->currPropagation - 1;
 		if (path.currPath.size() == 2 && path.currPath.back() == down) // if propagation goes to 0 but last is down. make sure it goes down and doesn't keep floating
@@ -506,7 +582,7 @@ void World::updateLiquids()
 			visitedPositions.insert(newPosition);
 
 			BlockType neighbor = getBlockWorld(newPosition);
-			if (neighbor == BlockType::AIR)
+			if (neighbor == BlockType::AIR || isBlockVegetation(neighbor))
 			{
 				std::shared_ptr<s_liquid> newLiquidPtr = std::make_shared<s_liquid>();
 				newLiquidPtr->currPropagation = liquid->currPropagation - 1;
@@ -596,7 +672,8 @@ void World::updateRegionStreaming(std::vector<CPlayerInfo> &players)
 			}
 			else
 			{
-				unloadChunksInRegion(it->first, it->second);
+				if (SAVES_ACTIVE)
+					unloadChunksInRegion(it->first, it->second);
 			}
 
             it = loadedRegions.erase(it);
@@ -731,26 +808,19 @@ std::string World::getRegionFilename(int regionX, int regionZ) const {
 
 bool World::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
-    // Offset the global coordinates in the direction of the face normal
-    glm::ivec3 targetCoords = globalCoords;
-    if (faceNormal.has_value()) {
-        targetCoords += *faceNormal;
-    }
-
     int x, y, z;
-    int chunkX, chunkZ;
-    globalCoordsToLocalCoords(x, y, z, 
-        targetCoords.x, targetCoords.y, targetCoords.z, 
-        chunkX, chunkZ);
-
-    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-    if (it == chunks.end())
+    auto currChunk = resolveTarget(globalCoords, faceNormal, x, y, z);
+    if (!currChunk)
         return false;
 
-    std::shared_ptr<Chunk> currChunk = it->second;
-
+    glm::ivec3 targetCoords = globalCoords + faceNormal.value_or(glm::ivec3{0});
 	updatedBlocks.push_back({targetCoords, type});
-    currChunk->setBlock(x, y, z, type);
+
+    // Place/break the block, cascading to clear any land vegetation above when breaking.
+    // Land vegetation is tracked only in the block grid; the vegetation list holds sea veg only.
+    bool clearedVegAbove = currChunk->setBlockCascade(x, y, z, type);
+    if (clearedVegAbove)
+        updatedBlocks.push_back({targetCoords + glm::ivec3(0, 1, 0), BlockType::AIR});
 
 	// update neat water blocks
 	static const glm::ivec3 directions[6] = {
@@ -825,28 +895,33 @@ void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 	currChunk->setBlock(x, y, z, type);
 }
 
-bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t serverTick)
+bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t clientTick)
 {
-	//Repetition. Not clean. And not performance friendly either.
+	LivingEntity* livingEntity = nullptr;
 	glm::ivec3 blockPos, faceNormal;
-	getTargetedBlock(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal);
-	BlockType dropped = getBlockWorld(blockPos);
+	TargetType target = getTarget(*player.movement, blockPos, faceNormal, livingEntity);
 
 	ItemType item = player.movement->inventory->getItemAtSlot(player.movement->inventory->activeHotbarSlot);
 
 	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
 	{
-		if (setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir(), std::get<BlockType>(item)))
+		if (target == TargetType::Block)
 		{
-			player.movement->inventory->removeItemsFromSlot(player.movement->inventory->activeHotbarSlot, 1);
-			return true;
+			for (const auto &entity : livingEntities)
+				if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
+			if (setBlockWorld(blockPos, faceNormal, std::get<BlockType>(item)))
+			{
+				player.movement->inventory->removeItemsFromSlot(player.movement->inventory->activeHotbarSlot, 1);
+				return true;
+			}
 		}
-		return false;
 	}
-	if (pkt.mouseButtons & IN_LEFT_CLICK)
+	else if (pkt.mouseButtons & IN_LEFT_CLICK)
 	{
-		if (removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir()) && player.movement->gamemode == GAMEMODES::SURVIVAL)
+		if (target == TargetType::Block && player.movement->gamemode == GAMEMODES::SURVIVAL)
 		{
+			BlockType dropped = getBlockWorld(blockPos);
+
 			// random generator
 			static std::mt19937 rng(std::random_device{}());
 			std::uniform_real_distribution<float> angleDist(0.0f, 360.0f);
@@ -859,8 +934,8 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			float yawRad = glm::radians(randomAngle);
 
 			// small position offset from the block center
-			glm::vec3 positionOffset = glm::normalize(glm::vec3(std::cos(yawRad), 0.0f, std::sin(yawRad))) 
-									* 0.15f; // radius offset
+			glm::vec3 positionOffset = glm::normalize(glm::vec3(std::cos(yawRad), 0.0f, std::sin(yawRad)))
+				* 0.15f; // radius offset
 
 			// optional: add some slight random variation so they don’t stack perfectly
 			positionOffset.x += offsetDist(rng);
@@ -869,13 +944,21 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			// spawn the entity at block center + offset
 			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
 
-			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, serverTick));
+			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, clientTick));
 		}
+		else if (target == TargetType::LivingEntity && livingEntity)
+		{
+			player.movement->attack(*livingEntity);
+		}
+
+		if (target == TargetType::Block)
+			if (setBlockWorld(blockPos, std::nullopt, BlockType::AIR))
+				return false;
 	}
 	return false;
 }
 
-void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t serverTick)
+void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t clientTick)
 {
 	for (auto &entity : livingEntities)
 		entity->calculateNewPosition(*this);
@@ -883,7 +966,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{
 		//Checks for every prop if there's a player nearby that can pick it up. TODO: if this is too expensive do it every n ticks instead.
-		if (entityIt->get()->getSpawnTick() + TPS * 1.5 < serverTick)
+		if (entityIt->get()->getSpawnTick() + TPS * 1.5 < clientTick)
 		{
 			bool itemErased = false;
 			for (auto &player : players)
@@ -892,9 +975,9 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					continue ;
 
 				glm::vec3 diff = player.movement->getPosition() - entityIt->get()->getPosition();
-				if (abs(diff.x) < 2 &&
+				if (std::abs(diff.x) < 2 &&
 					diff.y >= 0 && diff.y < 4 &&
-					abs(diff.z) < 2)
+					std::abs(diff.z) < 2)
 				{
 					int one = 1;
 					int slotUsed = player.movement->inventory->insertItems(entityIt->get()->getItemType(), one);
@@ -906,7 +989,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					pkt.type = -1;
 
 					pkt.positionX = player.movement->getPosition().x;
-					pkt.positionY = player.movement->getPosition().y;
+					pkt.positionY = player.movement->getPosition().y + player.movement->getEyesHeight();
 					pkt.positionZ = player.movement->getPosition().z;
 					pkt.yaw = entityIt->get()->yaw;
 
@@ -931,4 +1014,54 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 		entityIt->get()->calculateNewPosition(*this);
 		entityIt++;
 	}
+}
+
+void World::advanceSkyTime() {
+	// Advance sky time
+	constexpr float tickDt        = 1.0f / TPS;
+	constexpr float pauseDuration = 20.0f;
+	constexpr float stepDuration  = 2.0f;
+
+	if (!skyTimeState.skyTimePaused) {
+		if (skyTimeState.skyMode == 1) {
+			// Smooth: continuous linear advancement
+			skyTimeState.skyTimeOffset += skyTimeState.skyTimeSpeed * tickDt;
+		} else {
+			// Skyrim: hold then step
+			if (!skyTimeState.sunStepping) {
+				skyTimeState.sunPauseTimer += tickDt;
+				if (skyTimeState.sunPauseTimer >= pauseDuration) {
+					skyTimeState.sunPauseTimer = 0.0f;
+					skyTimeState.sunStepping   = true;
+					skyTimeState.sunStepTimer  = 0.0f;
+				}
+			} else {
+				skyTimeState.sunStepTimer += tickDt;
+				float t_step  = std::min(skyTimeState.sunStepTimer / stepDuration, 1.0f);
+				float smoothT = t_step * t_step * (3.0f - 2.0f * t_step);
+				float totalStepOffset = (pauseDuration + stepDuration) * skyTimeState.skyTimeSpeed;
+				if (skyTimeState.sunStepTimer <= tickDt)
+					skyTimeState.sunPauseTimer = skyTimeState.skyTimeOffset;  // first tick: store stepBase
+				skyTimeState.skyTimeOffset = skyTimeState.sunPauseTimer + smoothT * totalStepOffset;
+				if (t_step >= 1.0f) {
+					skyTimeState.sunStepping   = false;
+					skyTimeState.sunPauseTimer = 0.0f;
+					skyTimeState.sunStepTimer  = 0.0f;
+				}
+			}
+		}
+	}
+}
+
+void World::setSkyTime(const SkyTimeState &newState) {
+    skyTimeState.skyTimeOffset = newState.skyTimeOffset;
+    skyTimeState.sunYawDeg     = newState.sunYawDeg;
+    skyTimeState.skyTimePaused = newState.skyTimePaused;
+    skyTimeState.skyMode       = newState.skyMode;
+    skyTimeState.skyTimeSpeed  = newState.skyTimeSpeed;
+
+    // reset step state after external set
+    skyTimeState.sunStepping   = false;
+    skyTimeState.sunPauseTimer = 0.0f;
+    skyTimeState.sunStepTimer  = 0.0f;
 }

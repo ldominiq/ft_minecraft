@@ -18,6 +18,8 @@
 #include <chrono>
 #include <zstd.h>
 
+#include <mutex>
+
 #include "Protocol.hpp"
 #include "World.hpp"
 #include "PlayerInfo.hpp"
@@ -39,6 +41,12 @@ private:
 
 	int32_t tick = 0;
 	float deltaTime;
+	
+	void updateSkyTime(NetSkyTime &pkt);
+	void broadcastSkyTime();
+
+	std::vector<std::thread> dumpThreads;
+	std::mutex dumpThreadsMutex;
 
 	void gameTick();
 
@@ -48,11 +56,13 @@ private:
     void loop();
 
 	void dispatch(const uint8_t *data, int n, sockaddr_in &clidarr);
+	void dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr);
 	void receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr);
 	void receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr);
 	void receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &clieaddr);
 	void receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &clieddr);
 	void receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr);
+	void receiveTerrainParams(NetTerrainParams &pkt, const sockaddr_in &cliaddr);
 	void receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &cliaddr);
 	// void sendInventorySlot(int slot, NetInventoryAction &pkt, const sockaddr_in &cliaddr);
 
@@ -61,6 +71,7 @@ private:
 	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
 	void sendAccept(const sockaddr_in &cliaddr);
 	
+	void sendDeaths();
 	void sendMessage(CPlayerInfo &player);
 	void sendImGuiData(CPlayerInfo &player);
 	void sendChunk(CPlayerInfo &player);

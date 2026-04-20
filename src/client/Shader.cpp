@@ -6,6 +6,32 @@
 #include <unistd.h> // getcwd
 #endif
 
+static std::string resolveIncludes(const std::string& src, const std::filesystem::path& shaderDir) {
+    std::string result;
+    std::istringstream stream(src);
+    std::string line;
+
+    while (std::getline(stream, line)) {
+        if (line.rfind("#include \"", 0) == 0 && line.back() == '"') {
+            std::string rel = line.substr(10, line.size() - 11); // Extract path between quotes
+            std::filesystem::path includePath = shaderDir / rel;
+            std::ifstream inclFile(includePath);
+            if (!inclFile.is_open()) {
+                std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath << "\n";
+                result += "// MISSING INCLUDE: " + rel + '\n';
+            } else {
+                std::stringstream s;
+                s << inclFile.rdbuf();
+                result += s.str() + '\n';
+            }
+        }
+        else {
+            result += line + '\n';
+        }
+    }
+    return result;
+}
+
 Shader::Shader(const char* vertexPath, const char* fragmentPath) {
     std::string vCode;
     std::string fCode;
@@ -42,6 +68,10 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
             std::cerr << "ERROR::SHADER::EMPTY_SOURCE after read. CWD='" << cwdBuf << "'\n";
         }
     }
+
+    vCode = resolveIncludes(vCode, std::filesystem::path(vertexPath).parent_path());
+    fCode = resolveIncludes(fCode, std::filesystem::path(fragmentPath).parent_path());
+
     const char* vShaderCode = vCode.c_str();
     const char* fShaderCode = fCode.c_str();
 
@@ -51,7 +81,7 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
     glGetShaderiv(vertex, GL_COMPILE_STATUS, &success);
     if (!success) {
         glGetShaderInfoLog(vertex, 512, nullptr, infoLog);
-        std::cerr << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
+        std::cerr << "ERROR::SHADER::VERTEX::COMPILATION_FAILED [" << vertexPath << "]\n" << infoLog << std::endl;
     }
 
     GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
@@ -60,7 +90,7 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
     glGetShaderiv(fragment, GL_COMPILE_STATUS, &success);
     if (!success) {
         glGetShaderInfoLog(fragment, 512, nullptr, infoLog);
-        std::cerr << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
+        std::cerr << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED [" << fragmentPath << "]\n" << infoLog << std::endl;
     }
 
     ID = glCreateProgram();
@@ -70,7 +100,7 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
     glGetProgramiv(ID, GL_LINK_STATUS, &success);
     if (!success) {
         glGetProgramInfoLog(ID, 512, nullptr, infoLog);
-        std::cerr << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+        std::cerr << "ERROR::SHADER::PROGRAM::LINKING_FAILED [" << vertexPath << "][" << fragmentPath << "]\n" << infoLog << std::endl;
     }
 
     glDeleteShader(vertex);
@@ -83,6 +113,10 @@ void Shader::use() const {
 
 void Shader::stop() const {
     glUseProgram(0);
+}
+
+void Shader::setBool(const std::string& name, bool value) const {
+    glUniform1i(glGetUniformLocation(ID, name.c_str()), value);
 }
 
 void Shader::setInt(const std::string& name, int value) const {

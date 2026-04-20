@@ -30,6 +30,8 @@
 #include "GBuffer.hpp"
 #include "SSAO.hpp"
 #include "TextureManager.hpp"
+#include "ui/TerrainDebugWindow.hpp"
+#include "FogUniforms.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -38,6 +40,7 @@
 #include <glm/vec3.hpp>
 #include <cstdint>
 #include <memory>
+#include <algorithm>
 
 #include <optional>
 
@@ -99,17 +102,21 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha);
 
 class App {
 public:
-    App();
+    struct TerrainDebugUIParams {
+        int genSize = 1000;
+        int downsample = 16;
+    };
+
+    App(const std::string& serverIp = "127.0.0.1");
     ~App();
 
     void run();
 
 private:
-    void init();
+    void init(const std::string& serverIp);
     void loadResources();
     void render();
-	void renderScene(glm::mat4 view, glm::mat4 projection, glm::vec4 clipPlane);
-	void gameTick();
+	void renderScene(const glm::mat4 &view, const glm::mat4 &projection, glm::vec4 clipPlane) const;
 
     void cleanup();
     void setUdpClientPacketCallback();
@@ -135,7 +142,6 @@ private:
     bool keyPressedRecently = false;
 	bool mouseMovedRecently = false;
 	float lastMouseMoveTime = 0;
-	float glfwTickTime = 0;
 
     TextureManager textureManager;
 
@@ -181,6 +187,9 @@ private:
 	// Render type debug framebuffers
 	std::unique_ptr<RenderTypeFramebuffer> renderTypeFramebuffer;
 
+    // Terrain parameter debugging and tweaking
+    std::unique_ptr<TerrainDebugWindow> terrainDebugWindow;
+    std::unique_ptr<TerrainGenerationParams> terrainDebugWindowParams;
     // SSAO
     std::shared_ptr<GBuffer> gBuffer;
     std::shared_ptr<SSAO> ssao;
@@ -188,12 +197,31 @@ private:
 
 	std::optional<int> seed;
 
-    uint8_t currentBiome;
+    uint8_t currentBiome = 0;
+    int currentTerrainHeight = 0;
+    int currentSeaLevel = 64;
+    int currentWorldSeed = 0;
+    float currentContinentalness = 0.0f;
+    float currentErosion = 0.0f;
+    float currentPeakValley = 0.0f;
+    float currentTemperature = 0.0f;
+    float currentHumidity = 0.0f;
+    uint8_t currentContBucket = 0;
+    uint8_t currentErosionBucket = 0;
+    uint8_t currentPVBucket = 0;
+    uint8_t currentTempBucket = 0;
+    uint8_t currentHumidBucket = 0;
+
+    TerrainDebugUIParams debugTerrainParams;
 
     float lastX = 400, lastY = 300;
     bool firstMouse = true;
+	float currentFrame;
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
+	int32_t clientTick = 0;
+	double clientTime = 0.0;
+	float clientTickChangedTime = 0.0f;
 
 	bool clientConnected = false;
 
@@ -209,9 +237,16 @@ private:
 	int screenWidth = 1280;
 	int screenHeight = 720;
 
+    std::string serverIp;
+
     bool useGradientShader = false;
 
     float renderDistance = 1000.0f; // Distance of the far clipping plane
+
+    // Distance fog
+    float fogStartFraction = 0.5f;  // fog begins at this fraction of maxRenderedChunkDist (0=camera, 1=edge) (the nearest unloaded chunk boundary)
+    float fogStrength = 1.4f;       // exponent on fog ramp: 1=linear, 10=at the edge
+    bool  fogEnabled = true;
 
     // Variables for smoothing the FPS shown in the debug UI.  We maintain a
     // moving average of frame times over a sample buffer to reduce jitter.
@@ -263,11 +298,13 @@ private:
     GLuint queryDrawSkyPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawCloudsPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawWaterReflectionPool[QUERY_POOL_SIZE]{};
+    GLuint queryDrawWaterRefractionPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawShadowsPool[QUERY_POOL_SIZE]{};
     GLuint queryRenderShaderPool[QUERY_POOL_SIZE]{};
     GLuint queryRenderWaterPool[QUERY_POOL_SIZE]{};
     GLuint queryDrawEntities[QUERY_POOL_SIZE]{};
     GLuint querySSAOPool[QUERY_POOL_SIZE]{};
+    GLuint queryGBufferPool[QUERY_POOL_SIZE]{};
 
     // Track which queries were actually issued this frame (conditional passes like shadows/SSAO)
     bool shadowQueryIssuedThisFrame[QUERY_POOL_SIZE]{};
@@ -281,11 +318,13 @@ private:
     double measuredAverageMsDrawSky = 0.0;
     double measuredAverageMsDrawClouds = 0.0;
     double measuredAverageMsDrawWaterReflection = 0.0;
+    double measuredAverageMsDrawWaterRefraction = 0.0;
     double measuredAverageMsDrawShadows = 0.0;
     double measuredAverageMsRenderShader = 0.0;
     double measuredAverageMsRenderWater = 0.0;
     double measuredAverageMsDrawEntities = 0.0;
     double measuredAverageMsSSAO = 0.0;
+    double measuredAverageMsGBuffer = 0.0;
 };
 
 #endif //APP_HPP

@@ -27,39 +27,109 @@ void CommonWorld<ChunkT>::globalCoordsToLocalCoords(int &x, int &y, int &z, int 
 }
 
 template <typename ChunkT>
-BlockType CommonWorld<ChunkT>::getBlockWorld(glm::ivec3 globalCoords) const
+std::shared_ptr<ChunkT> CommonWorld<ChunkT>::resolveTarget(glm::ivec3 globalCoords,
+                                                            std::optional<glm::ivec3> faceNormal,
+                                                            int& x, int& y, int& z) const
 {
-	int x, y, z;
+	if (faceNormal.has_value())
+		globalCoords += *faceNormal;
+
 	int chunkX, chunkZ;
 	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
 
 	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-	if (it == chunks.end()) {
+	if (it == chunks.end())
+		return nullptr;
+	return it->second;
+}
+
+template <typename ChunkT>
+BlockType CommonWorld<ChunkT>::getBlockWorld(glm::ivec3 globalCoords) const
+{
+	int x, y, z;
+	auto chunk = resolveTarget(globalCoords, std::nullopt, x, y, z);
+	if (!chunk)
 		return BlockType::END;
-	}
-	std::shared_ptr<Chunk> currChunk = it->second;
-	return currChunk->getBlock(x, y, z);
+	return chunk->getBlock(x, y, z);
 }
 
 template <typename ChunkT>
 bool CommonWorld<ChunkT>::isBlockVisibleWorld(glm::ivec3 globalCoords)
 {
 	int x, y, z;
-	int chunkX, chunkZ;
-	globalCoordsToLocalCoords(x, y, z, globalCoords.x, globalCoords.y, globalCoords.z, chunkX, chunkZ);
-
-	auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-	if (it == chunks.end()) {
+	auto chunk = resolveTarget(globalCoords, std::nullopt, x, y, z);
+	if (!chunk)
 		return false;
-	}
-
-	std::shared_ptr<Chunk> currChunk = it->second;
-	return currChunk->isBlockVisible(glm::vec3(x, y ,z));
+	return chunk->isBlockVisible(glm::vec3(x, y, z));
 }
 
 template <typename ChunkT>
-bool CommonWorld<ChunkT>::getTargetedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, glm::ivec3& hitBlock, glm::ivec3& faceNormal, float maxDistance)
+bool CommonWorld<ChunkT>::rayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir, const AABB& box, float maxDistance, float& outT)
 {
+	//check that raydir isn't 0 to avoid division by 0;
+	const float eps = 1e-6f;
+	glm::vec3 safeDir(
+		rayDir.x > 0.0f ? glm::max(rayDir.x, eps) : (rayDir.x < 0.0f ? glm::min(rayDir.x, -eps) : eps),
+		rayDir.y > 0.0f ? glm::max(rayDir.y, eps) : (rayDir.y < 0.0f ? glm::min(rayDir.y, -eps) : eps),
+		rayDir.z > 0.0f ? glm::max(rayDir.z, eps) : (rayDir.z < 0.0f ? glm::min(rayDir.z, -eps) : eps)
+	);
+	glm::vec3 invDir = 1.0f / safeDir;
+
+    glm::vec3 t0 = (box.min - rayOrigin) * invDir;
+    glm::vec3 t1 = (box.max - rayOrigin) * invDir;
+
+    glm::vec3 tmin = glm::min(t0, t1);
+    glm::vec3 tmax = glm::max(t0, t1);
+
+    float entry = glm::max(glm::max(tmin.x, tmin.y), tmin.z);
+    float exit  = glm::min(glm::min(tmax.x, tmax.y), tmax.z);
+
+    if (exit < 0.0f || entry > exit)
+        return false;
+
+    if (entry > maxDistance)
+        return false;
+
+    outT = entry;
+    return true;
+}
+
+template <typename ChunkT>
+bool CommonWorld<ChunkT>::findClosestEntityHit(const LivingEntity& src, float maxDistance, LivingEntity*& outEntity, float& outT)
+{
+    outT = maxDistance;
+    outEntity = nullptr;
+
+    glm::vec3 rayOrigin = src.getPosition() + glm::vec3(0, src.getEyesHeight(), 0);
+    glm::vec3 rayDir = src.Front;
+
+    for (const auto& e : livingEntities) {
+        AABB box = e->constructAABB(e->getPosition());
+
+        float t;
+        if (rayIntersectsAABB(rayOrigin, rayDir, box, maxDistance, t)) {
+			if (e.get() == &src) continue; //don't hit yourself
+            if (t < outT) {
+                outT = t;
+                outEntity = e.get();
+            }
+        }
+    }
+
+    return outEntity != nullptr;
+}
+
+template <typename ChunkT>
+TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance)
+{
+	bool entityHit = false;
+	float entityT = maxDistance;
+
+	glm::vec3 rayOrigin = src.getPosition() + glm::vec3(0, src.getEyesHeight(), 0);
+	glm::vec3 rayDir = src.Front;
+
+	entityHit = findClosestEntityHit(src, maxDistance, livingEntity, entityT);
+
     glm::ivec3 blockPos = glm::floor(rayOrigin);
 
     glm::vec3 deltaDist = glm::abs(glm::vec3(1.0f) / rayDir);
@@ -98,38 +168,42 @@ bool CommonWorld<ChunkT>::getTargetedBlock(const glm::vec3 &rayOrigin, const glm
 
 		distanceTraveled = glm::min(glm::min(sideDist.x, sideDist.y), sideDist.z);
 
+		if (entityHit && distanceTraveled >= entityT)
+			return TargetType::LivingEntity;
+
         // Check if this block exists in your world
         if (isBlockVisibleWorld(blockPos)) {
             hitBlock = blockPos;
-            return true;
+            return TargetType::Block;
         }
     }
 
-    return false;
+    return TargetType::None;
 }
 
-template <typename ChunkT>
-bool CommonWorld<ChunkT>::removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir)
-{
-	glm::ivec3 blockPos, faceNormal;
-	if (getTargetedBlock(rayOrigin, rayDir, blockPos, faceNormal))
-	{
-		setBlockWorld(blockPos, std::nullopt, BlockType::AIR);
-		return true;
-	}
-	return false;
-}
+// template <typename ChunkT>
+// bool CommonWorld<ChunkT>::removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, BlockType &dropped)
+// {
+// 	glm::ivec3 blockPos, faceNormal;
+// 	if (getTarget(rayOrigin, rayDir, blockPos, faceNormal) == TargetType::Block)
+// 	{
+// 		dropped = getBlockWorld(blockPos);
+// 		setBlockWorld(blockPos, std::nullopt, BlockType::AIR);
+// 		return true;
+// 	}
+// 	return false;
+// }
 
-template <typename ChunkT>
-bool CommonWorld<ChunkT>::setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block)
-{
-	glm::ivec3 blockPos, faceNormal;
-	if (getTargetedBlock(rayOrigin, rayDir, blockPos, faceNormal))
-	{
-		for (auto &entity : livingEntities)
-			if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
-		if (setBlockWorld(blockPos, faceNormal, block))
-			return true;
-	}
-	return false;
-}
+// template <typename ChunkT>
+// bool CommonWorld<ChunkT>::setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block)
+// {
+// 	glm::ivec3 blockPos, faceNormal;
+// 	if (getTarget(rayOrigin, rayDir, blockPos, faceNormal) == TargetType::Block)
+// 	{
+// 		for (auto &entity : livingEntities)
+// 			if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
+// 		if (setBlockWorld(blockPos, faceNormal, block))
+// 			return true;
+// 	}
+// 	return false;
+// }

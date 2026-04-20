@@ -30,25 +30,15 @@ void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRender
 
 bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type)
 {
-    // Offset the global coordinates in the direction of the face normal
-    glm::ivec3 targetCoords = globalCoords;
-    if (faceNormal.has_value()) {
-        targetCoords += *faceNormal;
-    }
-
     int x, y, z;
-    int chunkX, chunkZ;
-    globalCoordsToLocalCoords(x, y, z, 
-        targetCoords.x, targetCoords.y, targetCoords.z, 
-        chunkX, chunkZ);
-
-    auto it = chunks.find(std::make_pair(chunkX, chunkZ));
-    if (it == chunks.end())
+    auto currChunk = resolveTarget(globalCoords, faceNormal, x, y, z);
+    if (!currChunk)
         return false;
 
-    std::shared_ptr<ChunkRenderer> currChunk = it->second;
-
-    currChunk->setBlock(x, y, z, type);
+    // Place/break the block, cascading to clear any land vegetation above when breaking.
+    // Land vegetation is tracked only in the block grid; buildVegetationMesh() derives
+    // instances by scanning blocks, so no separate vegetation list sync is needed.
+    currChunk->setBlockCascade(x, y, z, type);
 	currChunk->needsUpdate = true;
 
 	// //update possible neighbour
@@ -107,6 +97,7 @@ void Renderer::buildChunks()
 		auto chunk = getChunk(pos.first, pos.second);
 		if (chunk) {
 			chunk->uploadMesh();
+			chunk->buildVegetationMesh(); // Build vegetation after mesh is uploaded
 			chunks[{pos.first, pos.second}] = chunk;
 		}
 		it = meshFutures.erase(it);
@@ -115,12 +106,13 @@ void Renderer::buildChunks()
 }
 
 //sets rendered chunks and unloads far away chunks
-void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
+void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius, float deltaTime)
 {
     // Clear renderedChunks first
     renderedChunks.clear();
 
 	int unloadRadius = loadRadius * 4;
+    const int radiusSq = loadRadius * loadRadius;
 
     for (auto it = chunks.begin(); it != chunks.end(); )
     {
@@ -132,7 +124,7 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
         int dz = chunkPos.second - pos.second;
         int distSq = dx * dx + dz * dz;
 
-        if (distSq <= loadRadius * loadRadius)
+        if (distSq <= radiusSq)
         {
             // Inside load radius -> render
             renderedChunks.push_back(chunkPtr);
@@ -149,6 +141,37 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius)
             ++it;
         }
     }
+
+    // Find the nearest chunk position within the load radius that has NOT yet
+    // been received from the server.  Fog is placed at that boundary so any
+    // unloaded area is always hidden while the world generates.
+    int minMissingDistSq = radiusSq; // default: assume fully loaded
+    for (int dx = -loadRadius; dx <= loadRadius; ++dx) {
+        for (int dz = -loadRadius; dz <= loadRadius; ++dz) {
+            int dSq = dx * dx + dz * dz;
+            if (dSq > radiusSq) continue;
+            ChunkPos testPos = {pos.first + dx, pos.second + dz};
+            if (chunks.find(testPos) == chunks.end()) {
+                if (dSq < minMissingDistSq)
+                    minMissingDistSq = dSq;
+            }
+        }
+    }
+    float rawDist = std::sqrt(static_cast<float>(minMissingDistSq)) * Chunk::WIDTH;
+    
+    // we could initialize immediately to avoid a long fade-in on startup but i think i like it
+    // if (maxRenderedChunkDist <= 0.0f) {
+        //     maxRenderedChunkDist = rawDist;
+    // } else {
+
+        // Use different speeds for inward vs outward movement but always smooth
+        // Inward: ~0.33s time constant, fast enough to cover a gap before the player walks into it.
+        // Outward: ~2s time constant, slow enough that loading chunks don't flicker.
+        float speed = (rawDist < maxRenderedChunkDist) ? 3.0f : 0.5f;
+        float alpha = 1.0f - std::exp(-deltaTime * speed);
+        maxRenderedChunkDist += (rawDist - maxRenderedChunkDist) * alpha;
+
+    // }
 }
 
 void Renderer::prepareChunk(const NetChunkHeader& pkt) {
@@ -209,29 +232,49 @@ void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, co
     glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 11); // 11 floats per vertex
 }
 
-void Renderer::render(const std::shared_ptr<Shader> &shaderProgram) const {
+void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
+                                        const glm::vec4& clipPlane, const glm::vec3& viewPos) const {
+	if (!vegetationShader) return;
+	vegetationShader->use();
+	vegetationShader->setMat4("view", view);
+	vegetationShader->setMat4("projection", projection);
+	vegetationShader->setVec4("clipPlane", clipPlane);
+	vegetationShader->setVec3("viewPos", viewPos);
+}
+
+void Renderer::processMeshUpdates() {
 	for (auto& weakChunk : renderedChunks) {
 		if (auto chunk = weakChunk.lock())
-		{
 			if (chunk->needsUpdate)
 				chunk->updateMesh();
+	}
+}
 
-			if (chunk->getMeshVerticesSize() == 0)
-				continue;
+void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation) const {
+	std::vector<std::shared_ptr<ChunkRenderer>> visibleChunks;
 
-			// Frustum cull: skip chunks entirely outside the camera view
-			if (frustumCullingEnabled) {
-				const float x0 = static_cast<float>(chunk->getOriginX());
-				const float z0 = static_cast<float>(chunk->getOriginZ());
-				const glm::vec3 minP(x0, 0.0f, z0);
-				const glm::vec3 maxP(x0 + Chunk::WIDTH, Chunk::HEIGHT, z0 + Chunk::DEPTH);
+	for (auto& weakChunk : renderedChunks) {
+		auto chunk = weakChunk.lock();
+		if (!chunk || chunk->getMeshVerticesSize() == 0)
+			continue;
 
-				if (!cameraFrustum.isBoxVisible(minP, maxP))
-					continue;
-			}
+		// Frustum cull: skip chunks entirely outside the camera view
+		if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
+			continue;
 
-			draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+		visibleChunks.push_back(chunk);
+	}
+
+	// Render all vegetation in a single shader-switch batch
+	if (renderVegetation && vegetationShader) {
+		vegetationShader->use();
+		for (auto& chunk : visibleChunks) {
+			auto vegRenderer = chunk->getVegetationRenderer();
+			if (vegRenderer && vegRenderer->getInstanceCount() > 0)
+				vegRenderer->render();
 		}
+		shaderProgram->use();
 	}
 }
 
@@ -241,20 +284,16 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 		if (!chunk)
 			continue;
 
-		// Update mesh before checking size (a chunk needing update may go from 0 to non-zero vertices)
-		if (chunk->needsUpdate)
-			chunk->updateMesh();
-
 		// Skip empty chunks (no geometry to cast shadows)
 		if (chunk->getMeshVerticesSize() == 0)
 			continue;
 
 		// Frustum cull: test the chunk AABB against the light's clip volume.
 		// Chunk world-space AABB:
-		const float x0 = static_cast<float>(chunk->getOriginX());
-		const float z0 = static_cast<float>(chunk->getOriginZ());
-		const float x1 = x0 + static_cast<float>(Chunk::WIDTH);
-		const float z1 = z0 + static_cast<float>(Chunk::DEPTH);
+		const float x0 = chunk->getCachedMinP().x;
+		const float z0 = chunk->getCachedMinP().z;
+		const float x1 = chunk->getCachedMaxP().x;
+		const float z1 = chunk->getCachedMaxP().z;
 		constexpr float y0 = 0.0f;
 		constexpr float y1 = static_cast<float>(Chunk::HEIGHT);
 
@@ -291,7 +330,7 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 	}
 }
 
-void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
+void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 {
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
 	entityID ID = pkt.entityID;
@@ -302,21 +341,33 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 	{
 		auto ent = entity->second.lock();
 		if (ent) {
-			ent->prevPosition = ent->nextPosition;
-			ent->nextPosition = position;
+			const double oneTick = 1.0 / TPS;
+			bool stale = ent->snapshots.empty()
+			          || ent->lastNetUpdateTime < 0.0
+			          || ent->snapshots.back().time < serverTime - 2.0 * oneTick;
+			if (stale) {
+				ent->snapshots.clear();
+				ent->snapshots.emplace_back(Snapshot{ent->getPosition(), glm::vec3(0.0f), serverTime - oneTick});
+			}
+			bool actuallyMoved = !ent->snapshots.empty() &&
+				glm::length(position - ent->snapshots.back().position) > 0.001f;
+			ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			ent->yaw = yaw;
-			ent->positionUpdated = true;
-			ent->glfwTickTime = glfwTickTime;
+			if (actuallyMoved)
+				ent->positionUpdated = true;
+			else
+				ent->rotationUpdated = true;
+			ent->hasHorizontalInput = (pkt.positionFlags & 0x01) != 0;
+			ent->setOnGround((pkt.positionFlags & 0x02) != 0);
+			ent->lastNetUpdateTime = serverTime;
+
 			if (pkt.type == static_cast<uint16_t>(-1))
 			{
 				ent->removed = true;
 				if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
 				{
-					livingEntities.erase(
-						std::remove_if(livingEntities.begin(), livingEntities.end(),
-							[ID](const std::shared_ptr<Entity>& e){ return e->getID() == ID; }),
-						livingEntities.end()
-					);
+					std::erase_if(livingEntities,
+					              [ID](const std::shared_ptr<Entity>& e){ return e->getID() == ID; });
 				}
 			}
 		}
@@ -330,7 +381,6 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 		{
 			ItemType type = itemIDToItemType(pkt.type);
 			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
-			entityPtr->glfwTickTime = glfwTickTime;
 			itemEntities.push_back(entityPtr);
 			entitiesMap[ID] = entityPtr;
 		}
@@ -351,10 +401,8 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 					return;
 			}
 
-			entityPtr->prevPosition = position;
-			entityPtr->nextPosition = position;
 			entityPtr->positionUpdated = true;
-			entityPtr->glfwTickTime = glfwTickTime;
+			entityPtr->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			livingEntitiesManager.add(entityPtr);
 
 			// Convert to shared_ptr<LivingEntity> safely
@@ -378,21 +426,29 @@ void Renderer::renderWater() const {
                 continue;
 
             // Frustum cull water the same as terrain
-            if (frustumCullingEnabled) {
-                const float x0 = static_cast<float>(chunk->getOriginX());
-                const float z0 = static_cast<float>(chunk->getOriginZ());
-                const glm::vec3 minP(x0, 0.0f, z0);
-                const glm::vec3 maxP(x0 + Chunk::WIDTH, Chunk::HEIGHT, z0 + Chunk::DEPTH);
-
-                if (!cameraFrustum.isBoxVisible(minP, maxP))
-                    continue;
-            }
+            if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
+                continue;
 
             glBindVertexArray(chunk->getWaterVao());
             glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);
         }
     }
 	glEnable(GL_CULL_FACE);
+}
+
+bool Renderer::hasVisibleWater() const {
+	for (const auto& weakChunk : renderedChunks) {
+		if (auto chunk = weakChunk.lock()) {
+			if (chunk->getWaterMeshVerticesSize() == 0)
+				continue;
+
+			if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
+				continue;
+
+			return true; // Found at least one visible water chunk
+		}
+	}
+	return false;
 }
 
 // ---------------------------------------------------------------------------

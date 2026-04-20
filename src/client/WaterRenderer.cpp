@@ -3,6 +3,7 @@
 //
 
 #include "WaterRenderer.hpp"
+#include "FogUniforms.hpp"
 
 #include "WaterFramebuffer.hpp"
 #include "Camera.hpp"
@@ -85,17 +86,25 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     const glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
 
     lighting->uploadLightingUniforms(*sceneShader, reflectCamPos, reflectedDir);
-    lighting->uploadCSMUniforms(*sceneShader, reflectView);
-    // Disable SSAO for water reflection (SSAO is computed for main camera only)
+    // Skip uploadCSMUniforms: it binds csmDepthMaps which was just written by the shadow pass
+    // milliseconds ago — binding it for reading here causes an implicit driver sync stall.
     sceneShader->setInt("ssaoEnabled", 0);
+    sceneShader->setFloat("shadows.enabled", 0.0f);
     // Render reflection scene
     texMgr.bind(GL_TEXTURE0);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
-    lighting->drawSky(skyView, projection, reflectCamPos);
-    renderer->render(sceneShader);
+    lighting->drawSky(skyView, projection, reflectCamPos, false);
+    // Update vegetation shader with reflected view/clip before rendering
+    renderer->updateVegetationUniforms(reflectView, projection, clipPlane, reflectCamPos);
+    // Use the reflected view-projection for frustum culling so only chunks
+    // actually visible in the reflection are submitted, not all main-camera chunks.
+    renderer->updateFrustum(projection * reflectView);
+    renderer->render(sceneShader, false); // skip vegetation
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();
+    // Restore main-camera frustum for all subsequent passes this frame.
+    renderer->updateFrustum(projection * camera->getViewMatrix());
 }
 
 void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, const TextureManager& texMgr) {
@@ -114,11 +123,14 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
 
     // Render refraction scene
     lighting->uploadLightingUniforms(*sceneShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
-    lighting->uploadCSMUniforms(*sceneShader, view);
-    // Disable SSAO for water refraction (SSAO is computed for main camera only)
+    // Skip uploadCSMUniforms: same shadow texture hazard as reflection — and underwater
+    // fragments don't need shadow computation at all.
     sceneShader->setInt("ssaoEnabled", 0);
+    sceneShader->setFloat("shadows.enabled", 0.0f);
     texMgr.bind(GL_TEXTURE0);
-    renderer->render(sceneShader);
+    // Render with vegetation so sea vegetation is visible in the refraction texture
+    renderer->updateVegetationUniforms(view, projection, clipPlane, camera->getPlayer()->getPosition());
+    renderer->render(sceneShader, true);
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();
@@ -146,26 +158,31 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     waterShader->setFloat("nearPlane", 0.1f);
     waterShader->setFloat("farPlane", 1000.0f);
 
+    // Fog uniforms
+    uploadFogUniforms(*waterShader, fogEnabled, lighting->getSkyLUTTexture(),
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
+                      lighting->getDirectionalLightDirection());
+
     // Bind water textures
-    glActiveTexture(GL_TEXTURE0);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_REFLECT);
     glBindTexture(GL_TEXTURE_2D, fbos->getReflectionTexture());
-    waterShader->setInt("reflectionTexture", 0);
+    waterShader->setInt("reflectionTexture", TextureUnits::WATER_REFLECT);
 
-    glActiveTexture(GL_TEXTURE1);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_REFRACT);
     glBindTexture(GL_TEXTURE_2D, fbos->getRefractionTexture());
-    waterShader->setInt("refractionTexture", 1);
+    waterShader->setInt("refractionTexture", TextureUnits::WATER_REFRACT);
 
-    glActiveTexture(GL_TEXTURE2);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_DUDV);
     glBindTexture(GL_TEXTURE_2D, dudvTexture);
-    waterShader->setInt("dudvMap", 2);
+    waterShader->setInt("dudvMap", TextureUnits::WATER_DUDV);
 
-    glActiveTexture(GL_TEXTURE3);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_NORMAL);
     glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
-    waterShader->setInt("normalMap", 3);
+    waterShader->setInt("normalMap", TextureUnits::WATER_NORMAL);
 
-    glActiveTexture(GL_TEXTURE4);
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_DEPTH);
     glBindTexture(GL_TEXTURE_2D, fbos->getRefractionDepthTexture());
-    waterShader->setInt("refractionDepthTexture", 4);
+    waterShader->setInt("refractionDepthTexture", TextureUnits::WATER_DEPTH);
 
     // Enable alpha blending
     glEnable(GL_BLEND);

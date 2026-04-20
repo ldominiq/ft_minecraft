@@ -22,6 +22,7 @@ enum class PacketType : uint8_t {
 	PLAYER_INPUT,			// C2S
 	PLAYER_MOUSE_INPUT,		// C2S
 	PLAYER_MOVE,			// S2C
+	PLAYER_GAMEMODE,		// S2C
 	NET_ENTITY_MOVE,		// S2C TODO : put it inside a group and send multiple at once.
 	NET_INVENTORY,			// S2C
 	NET_INVENTORY_ACTION,	// C2S
@@ -31,6 +32,8 @@ enum class PacketType : uint8_t {
 	NET_DISCONNECT,			// C2S
 	NET_MESSAGE,			// S2C && C2S
     NET_IMGUI,          	// S2C
+    NET_SKY_TIME,           // S2C && C2S
+	NET_TERRAIN_PARAMS,		// C2S && S2C (for syncing terrain generation parameters)
 
 	GROUP,					// for grouped packets
 };
