@@ -28,6 +28,7 @@ class LivingEntity : public Entity
 {
 	protected :
 		bool jump = false;
+		float SAFE_FALL_DISTANCE = 3.0f;
 
 		float movementSpeed = WALKING_SPEED; //deprecated?
 		glm::vec3 Right = glm::vec3(0, 0, 0);
@@ -36,7 +37,14 @@ class LivingEntity : public Entity
 
 		LivingEntityType type;
 
+		//used for players
+		const float forehead = 0.3f;
+		float eyesheight = 0.0f;
+
 	public:
+		float health = 20;
+		float damage = 5;
+		float accumulatedFallDistance = 0.0f;
 
 		LivingEntity(const glm::vec3 &position);
 		LivingEntity(const glm::vec3 &position, float yaw, entityID ID);
@@ -45,9 +53,15 @@ class LivingEntity : public Entity
 		glm::vec3 Front = glm::vec3(0, 0, 0);
 		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
+		virtual void attack(LivingEntity &victim);
+		virtual void onDeath();
+		virtual void applyFallDamage();
+		void calculateNewYPosition(const ICommonWorld &world) override;
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::LIVING_ENTITIES; }
 		inline LivingEntityType getLivingEntityType() const { return type; }
+		inline float getEyesHeight() const { return eyesheight; }
 		glm::vec3 getDesiredMove() override;
+		float getAccumulatedFallDistance() const { return accumulatedFallDistance; }
 };
 
 #endif

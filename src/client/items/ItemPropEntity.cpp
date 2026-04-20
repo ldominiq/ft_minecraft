@@ -3,7 +3,7 @@
 
 ItemPropEntity::ItemPropEntity(const glm::vec3 &position, float yaw, ItemType type, entityID ID) : ItemEntity(position, yaw, type, ID)
 {
-	nextPosition = position;
+
 }
 
 ItemPropEntity::~ItemPropEntity()
