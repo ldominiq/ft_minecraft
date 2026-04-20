@@ -5,20 +5,23 @@
 
 static const char* splashTexts[] = {
 	"Also try Terraria!",
-	"42 school project!",
+	"By ldominiq and lskraber",
+	"42 Lausanne >",
 	"Now with water!",
 	"100% organic blocks",
 	"Dirt is beautiful!",
-	"Open source!",
 	"Not affiliated with Mojang!",
 	"Powered by OpenGL!",
 	"Chunky!",
 	"Procedurally generated!",
 	"UDP all the things!",
-	"As seen on GitHub!",
 	"Now with shadows!",
 	"SSAO included!",
-	"Biome diversity!",
+	"so_long ???",
+	"Also try cube3D!",
+	"Is this Minceraft?",
+	"It's not a bug, it's a feature.",
+	"Minecra_ft",
 };
 static constexpr int splashCount = sizeof(splashTexts) / sizeof(splashTexts[0]);
 
