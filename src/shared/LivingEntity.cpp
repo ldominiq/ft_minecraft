@@ -42,7 +42,6 @@ void LivingEntity::applyFallDamage()
 {
 	const uint16_t FALL_DAMAGE_MULTIPLIER = 1; //temporally here just to give the idea in case it ends up being used
 	float fallDamage = std::max(0, (int)std::ceil((accumulatedFallDistance - SAFE_FALL_DISTANCE) * FALL_DAMAGE_MULTIPLIER));
-	auto prevH = health;
 	if (fallDamage >= health)
 		health = 0;
 	else
@@ -69,7 +68,7 @@ glm::vec3 LivingEntity::getDesiredMove()
 
 	float effectMultiplier = 1.0f; 
 	float slipperiness = SM_DEFAULT; 
-	float slipperiness_prev = slipperiness;
+	slipperiness_prev = slipperiness;
 
 	float movementMultiplier = MM_WALKING;
 

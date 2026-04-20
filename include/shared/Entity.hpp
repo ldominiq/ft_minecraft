@@ -131,7 +131,7 @@ class Entity {
 		inline virtual EEntityTypes getEntityType() const = 0;
 		virtual void calculateNewPosition(const ICommonWorld &world);
 		inline const glm::vec3 getPosition() const { return position; }
-		inline const float getentityWidth() const { return entityWidth; }
+		inline const float getEntityWidth() const { return entityWidth; }
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const entityID getID() const { return ID; }
 
@@ -186,8 +186,8 @@ class Entity {
 		//the not yet Implemented is a lie. Those are only client functions defined in the client.
 
 		bool doDraw = true; //this should kinda be private
-		const inline void setDoDraw(bool value) {doDraw = value;}
-		const inline bool DoDraw() const {return doDraw;}
+		inline void setDoDraw(bool value) {doDraw = value;}
+		inline bool DoDraw() const {return doDraw;}
 };
 
 #endif

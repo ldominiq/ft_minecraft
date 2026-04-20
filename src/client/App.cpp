@@ -445,7 +445,7 @@ void App::render() {
         camera->flushPendingSnapshot(*renderer, clientTick);
 
 		//for some reason mouse needs a little delay to be put to false otherwise it glitches.
-		if (lastMouseMoveTime > glfwGetTime() + tickDuration * 2)
+		if ((glfwGetTime() - lastMouseMoveTime) > tickDuration * 2)
 			mouseMovedRecently = false;
 
      // Local player must be rendered from current predicted state (present time), not interpolated in the past.

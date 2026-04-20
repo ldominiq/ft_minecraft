@@ -31,7 +31,7 @@ void Character::setPartsDimensions()
 
 	characterYScaleNorm = 1.0f / (torsoScaleY + headScaleY + legScaleY * 2.0f);
 	characterZScaleNorm = 1.0f / (torsoScaleZ + armScaleZ * 2.0f);
-	characterXScaleNorm = 1.0f / 1.0f;
+	characterXScaleNorm = 1.0f;
 
 	feetPositionY = torsoScaleY/2.0f + legScaleY * 2.0f;
 	YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm, 0);
@@ -112,7 +112,7 @@ void Character::createCharacterAt(const glm::vec3 &pos, float width, float heigh
     characterBodyParts.leftCalf = leftCalf;
 }
 
-void Character::rotateBodyPart(const std::shared_ptr<Shape>& bodyPart, float pivot, float angle)
+void Character::rotateBodyPart(const std::shared_ptr<Shape>& bodyPart, float pivot, float angle) const
 {
 	bodyPart->rotation =
 		glm::translate(glm::mat4(1.0f), glm::vec3(0, pivot, 0)) *

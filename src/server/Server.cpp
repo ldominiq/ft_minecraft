@@ -452,7 +452,7 @@ void Server::sendAll()
 
 void Server::sendDeaths()
 {
-	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end(); le++)
+	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end();)
 	{
 		if (le->get()->health <= 0)
 		{
@@ -475,10 +475,13 @@ void Server::sendDeaths()
 
 				le = world->livingEntities.erase(le);
 
-				for (auto player : players)
+				for (const auto player : players)
 					sendPacketTo(pkt, player.addr);
+				
+				continue ;
 			}
 		}
+		le++;
 	}
 }
 

@@ -60,7 +60,13 @@ bool CommonWorld<ChunkT>::isBlockVisibleWorld(glm::ivec3 globalCoords)
 template <typename ChunkT>
 bool CommonWorld<ChunkT>::rayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir, const AABB& box, float maxDistance, float& outT)
 {
-	glm::vec3 safeDir = glm::max(glm::abs(rayDir), glm::vec3(1e-6f)) * glm::sign(rayDir); //check that raydir isn't 0 to avoid division by 0;
+	//check that raydir isn't 0 to avoid division by 0;
+	const float eps = 1e-6f;
+	glm::vec3 safeDir(
+		rayDir.x > 0.0f ? glm::max(rayDir.x, eps) : (rayDir.x < 0.0f ? glm::min(rayDir.x, -eps) : eps),
+		rayDir.y > 0.0f ? glm::max(rayDir.y, eps) : (rayDir.y < 0.0f ? glm::min(rayDir.y, -eps) : eps),
+		rayDir.z > 0.0f ? glm::max(rayDir.z, eps) : (rayDir.z < 0.0f ? glm::min(rayDir.z, -eps) : eps)
+	);
 	glm::vec3 invDir = 1.0f / safeDir;
 
     glm::vec3 t0 = (box.min - rayOrigin) * invDir;

@@ -59,7 +59,7 @@ class Character
 
 	virtual void setPartsDimensions();
 	virtual void createCharacterAt(const glm::vec3 &pos, float width, float height);
-	void rotateBodyPart(const std::shared_ptr<Shape>& bodyPart, float pivot, float angle);
+	void rotateBodyPart(const std::shared_ptr<Shape>& bodyPart, float pivot, float angle) const;
 
 	public:
 		s_character characterBodyParts;

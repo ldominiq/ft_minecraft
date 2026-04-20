@@ -56,6 +56,7 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 		// 	continue ;
 		// }
 
+		//add the meshes of a prop to the back of the buffer
 		entity->get()->createMesh(vertices, textureManager);
 		memcpy(buffer.data() + i * ITEM_SIZE,
 			vertices.data(),
@@ -67,6 +68,7 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 	}
 
 	++i;
+	//clear the rest of the buffer. (remove old/non drawable prop entities)
 	std::memset(
 		buffer.data() + i * ITEM_SIZE,
 		0,

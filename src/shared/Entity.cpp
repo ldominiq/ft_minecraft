@@ -113,6 +113,7 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 	// attempt Y movement
 
 	//NOT CURRENTLY DOING STEP LOGIC. But the boilerplate is still there just in case it's needed in the near future..
+	onGround = false;
 	float remainingDy = velocity.y;
 	while (std::abs(remainingDy) > 0.0f + EPS) {
 		float step = remainingDy;// glm::clamp(remainingDy, -0.99f, 0.99f); // at most ~1 block per sub-step

@@ -129,6 +129,6 @@ void UDPClient::dispatch(const uint8_t* data, size_t n)
 {
     // 1. Decode packet from buffer (returns unique_ptr<Packet>)
     auto pkt = decodePacket(data, n);
-	if (onPacket) onPacket(std::move(pkt));
+	if (onPacket) onPacket({ std::move(pkt) });
 }
 

@@ -8,6 +8,7 @@
 #include <optional>
 #include <cstdint>
 #include <algorithm>
+#include <map>
 
 #include "Protocol.hpp"
 #include "Renderer.hpp"
@@ -67,7 +68,7 @@ class Camera {
 
 	float reconcilePosErrorThreshold = 0.05f;
 	float reconcileVelErrorThreshold = 0.05f;
-	bool reconcileLogEnabled = true;
+	bool reconcileLogEnabled = false;
    bool reconcileAutoPhaseAdjust = false;
 	float renderTickAlpha = 0.0f;
 	glm::vec3 renderPrevPosition = glm::vec3(0.0f);

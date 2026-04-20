@@ -838,7 +838,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 	{
 		if (target == TargetType::Block)
 		{
-			for (auto &entity : livingEntities)
+			for (const auto &entity : livingEntities)
 				if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
 			if (setBlockWorld(blockPos, faceNormal, std::get<BlockType>(item)))
 			{
