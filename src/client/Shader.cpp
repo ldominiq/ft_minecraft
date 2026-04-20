@@ -11,6 +11,64 @@ static std::string resolveIncludes(
     const std::string& src,
     const std::filesystem::path& shaderDir,
     const std::filesystem::path& shaderRoot,
+    std::unordered_set<std::string>& visited);
+
+static bool parseIncludeDirective(const std::string& line, std::string& rel) {
+    size_t first = line.find_first_not_of(" \t");
+    if (first == std::string::npos || line.compare(first, 10, "#include \"") != 0)
+        return false;
+
+    size_t openQuote = line.find('"', first);
+    size_t closeQuote = (openQuote == std::string::npos) ? std::string::npos : line.find('"', openQuote + 1);
+    if (openQuote == std::string::npos || closeQuote == std::string::npos || closeQuote <= openQuote + 1)
+        return false;
+
+    rel = line.substr(openQuote + 1, closeQuote - openQuote - 1);
+    return true;
+}
+
+static std::string expandInclude(
+    const std::string& rel,
+    const std::filesystem::path& shaderDir,
+    const std::filesystem::path& shaderRoot,
+    std::unordered_set<std::string>& visited)
+{
+    if (std::filesystem::path(rel).is_absolute()) {
+        std::cerr << "ERROR::SHADER::INCLUDE_ABSOLUTE_PATH: " << rel << "\n";
+        return "// REJECTED INCLUDE (absolute path): " + rel + '\n';
+    }
+
+    std::filesystem::path includePath = (shaderDir / rel).lexically_normal();
+    std::string relStr = includePath.lexically_relative(shaderRoot).string();
+    if (relStr.empty() || relStr.rfind("..", 0) == 0) {
+        std::cerr << "ERROR::SHADER::INCLUDE_PATH_ESCAPE: " << includePath << "\n";
+        return "// REJECTED INCLUDE (path escape): " + rel + '\n';
+    }
+
+    std::string normalStr = includePath.string();
+    if (visited.count(normalStr)) {
+        std::cerr << "ERROR::SHADER::INCLUDE_CYCLE: " << includePath << "\n";
+        return "// SKIPPED INCLUDE (cycle): " + rel + '\n';
+    }
+
+    std::ifstream inclFile(includePath, std::ios::in | std::ios::binary);
+    if (!inclFile.is_open()) {
+        std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath << "\n";
+        return "// MISSING INCLUDE: " + rel + '\n';
+    }
+
+    std::stringstream s;
+    s << inclFile.rdbuf();
+    visited.insert(normalStr);
+    std::string expanded = resolveIncludes(s.str(), includePath.parent_path(), shaderRoot, visited) + '\n';
+    visited.erase(normalStr); // allow re-inclusion from other non-cyclic paths
+    return expanded;
+}
+
+static std::string resolveIncludes(
+    const std::string& src,
+    const std::filesystem::path& shaderDir,
+    const std::filesystem::path& shaderRoot,
     std::unordered_set<std::string>& visited)
 {
     std::string result;
@@ -18,63 +76,14 @@ static std::string resolveIncludes(
     std::string line;
 
     while (std::getline(stream, line)) {
-        // Strip Windows CR if present
         if (!line.empty() && line.back() == '\r')
             line.pop_back();
 
-        // Skip leading whitespace for include detection
-        size_t first = line.find_first_not_of(" \t");
-        if (first != std::string::npos && line.compare(first, 10, "#include \"") == 0) {
-            size_t openQuote = line.find('"', first);
-            size_t closeQuote = (openQuote == std::string::npos) ? std::string::npos : line.find('"', openQuote + 1);
-
-            if (openQuote != std::string::npos && closeQuote != std::string::npos && closeQuote > openQuote + 1) {
-                std::string rel = line.substr(openQuote + 1, closeQuote - openQuote - 1);
-
-                // Reject absolute include paths — they would bypass shaderDir entirely
-                if (std::filesystem::path(rel).is_absolute()) {
-                    std::cerr << "ERROR::SHADER::INCLUDE_ABSOLUTE_PATH: " << rel << "\n";
-                    result += "// REJECTED INCLUDE (absolute path): " + rel + '\n';
-                    continue;
-                }
-
-                // Resolve and normalise without touching the filesystem
-                std::filesystem::path includePath = (shaderDir / rel).lexically_normal();
-
-                // Reject paths that escape the shader root via .. segments
-                auto relToRoot = includePath.lexically_relative(shaderRoot);
-                std::string relStr = relToRoot.string();
-                if (relStr.empty() || relStr.rfind("..", 0) == 0) {
-                    std::cerr << "ERROR::SHADER::INCLUDE_PATH_ESCAPE: " << includePath << "\n";
-                    result += "// REJECTED INCLUDE (path escape): " + rel + '\n';
-                    continue;
-                }
-
-                // Cycle detection — skip files already on the current include stack
-                std::string normalStr = includePath.string();
-                if (visited.count(normalStr)) {
-                    std::cerr << "ERROR::SHADER::INCLUDE_CYCLE: " << includePath << "\n";
-                    result += "// SKIPPED INCLUDE (cycle): " + rel + '\n';
-                    continue;
-                }
-
-                std::ifstream inclFile(includePath, std::ios::in | std::ios::binary);
-                if (!inclFile.is_open()) {
-                    std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath << "\n";
-                    result += "// MISSING INCLUDE: " + rel + '\n';
-                }
-                else {
-                    std::stringstream s;
-                    s << inclFile.rdbuf();
-                    visited.insert(normalStr);
-                    result += resolveIncludes(s.str(), includePath.parent_path(), shaderRoot, visited) + '\n';
-                    visited.erase(normalStr); // allow re-inclusion from other non-cyclic paths
-                }
-                continue;
-            }
-        }
-
-        result += line + '\n';
+        std::string rel;
+        if (parseIncludeDirective(line, rel))
+            result += expandInclude(rel, shaderDir, shaderRoot, visited);
+        else
+            result += line + '\n';
     }
 
     return result;
