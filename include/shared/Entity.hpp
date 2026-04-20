@@ -7,6 +7,7 @@
 #include <queue>
 #include <iostream>
 #include <deque>
+#include <algorithm>
 
 #include "Network.hpp" // For inputs. Maybe should do it in some other way
 #include "Item.hpp"
@@ -136,7 +137,10 @@ class Entity {
 		inline const entityID getID() const { return ID; }
 
 		inline void setSlipperinessPrev(float slipperiness) { this->slipperiness_prev = slipperiness; }
-       inline void setOnGround(bool value) { this->onGround = value; }
+		inline void setOnGround(bool value) { this->onGround = value; }
+		bool isUnderwater(const ICommonWorld &world) const;
+		float getDepthUnderwater() const;
+
 		inline void setPosition(glm::vec3 position) {
 			if (this->position != position) positionUpdated = true;
 			this->position = position;

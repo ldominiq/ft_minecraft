@@ -89,6 +89,22 @@ uniform sampler2D ssaoTexture;
 uniform int ssaoEnabled;
 uniform vec2 screenSize; // Full viewport resolution for correct SSAO UV mapping
 
+// Underwater params
+uniform bool cameraUnderwater;
+uniform vec3 underwaterTintColor;
+uniform vec3 underwaterFogColor;
+uniform float underwaterFogDensity;
+
+// Distance fog (sky LUT blending)
+uniform sampler2D skyLUT;
+uniform float skyExposure;
+uniform float fogStart;    // world-space distance where fog begins
+uniform float fogEnd;      // world-space distance where fog is fully opaque
+uniform float fogStrength; // exponent: 1=linear ramp, >1=fog concentrated at edge
+uniform bool fogEnabled;
+
+#include "sky_common.glsl"
+
 float near = 0.1;
 float far  = 100.0;
 
@@ -113,6 +129,12 @@ void main()
     // Discard fully transparent fragments
     if (texColor.a < 0.1)
         discard;
+
+    // Unpremultiply alpha to get original colors (only for semi-transparent pixels)
+    // For opaque or nearly-opaque pixels (alpha > 0.95), skip to avoid precision issues
+    if (texColor.a > 0.01 && texColor.a < 0.95) {
+        texColor.rgb /= texColor.a;
+    }
 
     // properties
     vec3 color = texColor.rgb;
@@ -150,7 +172,15 @@ void main()
         FragColor = vec4(vec3(depth), 1.0);
 
     } else {
-        FragColor = vec4(result * color, 1.0);
+        vec3 finalColor = result * color;
+        if (fogEnabled && !cameraUnderwater) {
+            float dist = length(fs_in.FragPos - viewPos);
+            float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
+            vec3 fogDir = normalize(fs_in.FragPos - viewPos);
+            finalColor = mix(sampleSkyColor(skyLUT, fogDir, normalize(-dirLight.direction), skyExposure),
+                            finalColor, fogFactor);
+        }
+        FragColor = vec4(finalColor, 1.0);
     }
 
     // ── Cascade debug overlay ──
@@ -171,6 +201,17 @@ void main()
 
         // Mix: 80% original color + 20% cascade tint
         FragColor = vec4(mix(FragColor.rgb, cascadeColor, 0.2), FragColor.a);
+    }
+
+    if (cameraUnderwater) {
+        vec3 tintedColor = FragColor.rgb * underwaterTintColor;
+
+        // Distance based fog
+        float distance = length(viewPos - fs_in.FragPos);
+        float fogFactor = exp(-distance * underwaterFogDensity);
+        fogFactor = clamp(fogFactor, 0.0, 1.0);
+
+        FragColor.rgb = mix(underwaterFogColor, tintedColor, fogFactor);
     }
 
     //FragColor = vec4(lighting, texColor.a); // Lighting

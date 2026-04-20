@@ -1,12 +1,15 @@
-
 #ifndef CHUNK_GENERATION_HPP
 #define CHUNK_GENERATION_HPP
 
-#include "TerrainParams.hpp"
+#include "../shared/TerrainParams.hpp"
+#include "TerrainParams.hpp"  // Includes oreTable and Item.hpp for server builds
 #include "Noise.hpp"
 #include "Chunk.hpp"
 
+#include <ranges>
 #include <algorithm>
+#include <limits>
+#include <span>
 
 class ChunkGeneration : public Chunk {
 
@@ -17,12 +20,18 @@ class ChunkGeneration : public Chunk {
 		ChunkGeneration(const int chunkX, const int chunkZ, const TerrainGenerationParams& params, const bool doGenerate = true);
 
 		void generate(const TerrainGenerationParams& terrainParams);
-		void generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
-		void placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ, int surfaceY, int treeHeight);
-		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
-		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
+		void generateTerrain(BlockStorage& blocks, const TerrainGenerationParams& terrainParams);
+		void generateTrees(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+		void placeTree(BlockStorage &blocks, int trunkWorldX, int trunkWorldZ, int surfaceY, int treeHeight, BlockType logType, BlockType leafType, int canopyStyle, int maxTrunkWidth, std::mt19937 &rng) const;
+		void generateCaves(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+		void generateOres(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+		void generateVegetation(const BlockStorage &blocks, const TerrainGenerationParams &terrainParams);
+		void generateCacti(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
+		void generateIceStructures(BlockStorage &blocks, const TerrainGenerationParams &terrainParams) const;
 
-		static float interpolateSpline(float noise, const std::vector<std::pair<float, float>>& spline);
+		void stripBlocks(BlockStorage& blocks, const TerrainGenerationParams& terrainParams);
+
+		static float interpolateSpline(float noise, std::span<const std::pair<float, float>> spline);
 
 		static float getContinentalness(const TerrainGenerationParams& terrainParams, float wx, float wz);
 		static float getErosion(const TerrainGenerationParams& terrainParams, float wx, float wz);
@@ -31,6 +40,14 @@ class ChunkGeneration : public Chunk {
 		static float getTemperature(const TerrainGenerationParams& terrainParams, float wx, float wz);
 		static float getHumidity(const TerrainGenerationParams& terrainParams, float wx, float wz);
 
+		// Raw hydrology noise fields (for debug/image dumps)
+		static float getRiverNoise(const TerrainGenerationParams& terrainParams, float wx, float wz);
+		static float getLakeNoise(const TerrainGenerationParams& terrainParams, float wx, float wz);
+
+		// Final masks used by terrain carving (0..1)
+		static float getRiverMask(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, float continentalness, float baseHeight, float pv);
+		static float getLakeMask(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, float continentalness, float baseHeight, float pv);
+
 		static float surfaceNoiseTransformation(float noise, int splineIndex);
 
 		// TODO: check if surfaceY is below seaLevel and if so, set starting Y to seaLevel + 1 to avoid drowning spawn
@@ -38,6 +55,15 @@ class ChunkGeneration : public Chunk {
 		/// Set the starting position to the top of the terrain at the given spawn point.
 		static int computeTerrainHeight(const TerrainGenerationParams& terrainParams, float worldX, float worldZ);
 		static BiomeType computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height);
+
+		struct QuantizedClimate {
+			uint8_t continentalness;
+			uint8_t erosion;
+			uint8_t peakValley;
+			uint8_t temperature;
+			uint8_t humidity;
+		};
+		static QuantizedClimate computeQuantizedClimate(const TerrainGenerationParams& terrainParams, float wx, float wz);
 
 };
 

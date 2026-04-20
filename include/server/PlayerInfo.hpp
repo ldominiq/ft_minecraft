@@ -10,6 +10,8 @@
 #endif
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cstdint>
 #include <glm/vec3.hpp>
 #include <chrono>
 
@@ -31,16 +33,31 @@ class CPlayerInfo
 
 		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>();
 
-		// TODO: check if surfaceY is below seaLevel and if so, set starting Y to seaLevel + 1 to avoid drowning spawn
-		// (when water physics is implemented) -> max(surfaceY, seaLevel) + offset)
-		/// Set the starting position to the top of the terrain at the given spawn point.
+		/// Spawns as close to [0,0] as possible on dry land.
+		/// Checks radius 0 first (origin), then expands outward by 16 blocks each step.
 		void computeSpawnPosition(const TerrainGenerationParams& params) {
-			int surfaceY = ChunkGeneration::computeTerrainHeight(params, 0.0f, 0.0f);
-			movement->spawnPosition = glm::vec3(0.5, surfaceY + 3, 0.5);
+			movement->skipDuplicateInputs = true; // server: don't re-run physics with stale inputs
+
+			for (int radius = 0; radius <= 100; radius += 16) {
+				for (int dx = -radius; dx <= radius; dx += 16) {
+					for (int dz = -radius; dz <= radius; dz += 16) {
+						const int surfaceY = ChunkGeneration::computeTerrainHeight(params, dx, dz);
+						if (surfaceY > params.seaLevel) {
+							movement->spawnPosition = glm::vec3(dx + 0.5f, surfaceY + 3, dz + 0.5f);
+							movement->setPosition(movement->spawnPosition);
+							movement->setYawAndPitch(0.0f, 0.0f);
+							return;
+						}
+					}
+				}
+			}
+
+			// Last resort: above the water at origin
+			movement->spawnPosition = glm::vec3(0.5f, params.seaLevel + 3, 0.5f);
 			movement->setPosition(movement->spawnPosition);
 			movement->setYawAndPitch(0.0f, 0.0f);
-			movement->skipDuplicateInputs = true; // server: don't re-run physics with stale inputs
 		}
+
 		std::vector<ChunkPos> rdyChunks;
 
 		bool connected; //unused

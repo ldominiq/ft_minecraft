@@ -1,6 +1,9 @@
 #include "Server.hpp"
 
 #include "Creeper.hpp"
+#include <algorithm>
+#include <cmath>
+#include <sstream>
 Server::Server() {
 #ifdef _WIN32
     WSADATA wsaData;
@@ -15,6 +18,14 @@ Server::Server() {
 }
 
 Server::~Server() {
+	{
+		std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+		for (auto& thread : dumpThreads) {
+			if (thread.joinable()) {
+				thread.join();
+			}
+		}
+	}
     close(sockfd);
 #ifdef _WIN32
     WSACleanup();
@@ -78,13 +89,17 @@ void Server::fillServerInfo() {
 
 void Server::bindSocket() {
     if (bind(sockfd, (const struct sockaddr*)&servaddr, sizeof(servaddr)) < 0) {
+#ifdef _WIN32
+        std::cerr << "bind failed: " << WSAGetLastError() << "\n";
+#else
         perror("bind failed");
+#endif
         exit(EXIT_FAILURE);
     }
 }
 
 void Server::loop() {
-	sockaddr_in cliaddr;
+	sockaddr_in cliaddr{};
 	socklen_t addrLen = sizeof(cliaddr);
 
 	auto nextTick = std::chrono::steady_clock::now();
@@ -180,13 +195,32 @@ void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 			auto& group = static_cast<NetPacketGroup&>(*pkt);
 			for (auto& inner : group.unpack())
 				dispatchPacket(inner, cliaddr);
+		}
+
+		case PacketType::NET_SKY_TIME: {
+			// Only allow if player is connected
+			if (NetUtils::findPlayerByAddr(players, cliaddr) == players.end())
+				break;
+			auto& p   = static_cast<NetSkyTime&>(*pkt);
+			if (p.skyMode > 1) // validate mode
+				break;
+			p.skyTimeSpeed = std::clamp(p.skyTimeSpeed, 0.001f, 10.0f); // validate speed
+			updateSkyTime(p);
+			broadcastSkyTime();
+			break;
+		}
+
+		case PacketType::NET_TERRAIN_PARAMS: {
+			auto& p = static_cast<NetTerrainParams&>(*pkt);
+			receiveTerrainParams(p, cliaddr);
 			break;
 		}
 
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
-    }
+
+	}
 }
 
 void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
@@ -206,14 +240,50 @@ void Server::gameTick()
 
 	if (tick % (static_cast<int>(TPS) * 3) == 0)
 		world->updateRegionStreaming(players);
+
+	world->advanceSkyTime();
+
+	// Broadcast every 20 ticks (~1s)
+	if (tick % static_cast<int>(TPS) == 0) {
+		broadcastSkyTime();
+	}
 	sendAll();
+}
+
+void Server::updateSkyTime(NetSkyTime &pkt) {
+
+	world->setSkyTime({
+		.skyTimeOffset 	= pkt.skyTimeOffset,
+		.sunYawDeg 		= pkt.sunYawDeg,
+		.sunPauseTimer 	= pkt.sunPauseTimer,
+		.sunStepTimer 	= pkt.sunStepTimer,
+		.sunStepping 	= pkt.sunStepping,
+		.skyTimePaused 	= pkt.skyTimePaused,
+		.skyMode 		= pkt.skyMode,
+		.skyTimeSpeed 	= pkt.skyTimeSpeed
+	});
+}
+
+void Server::broadcastSkyTime() {
+	const auto& s = world->getSkyTimeState();
+    NetSkyTime pkt;
+    pkt.skyTimeOffset  = s.skyTimeOffset;
+    pkt.sunYawDeg      = s.sunYawDeg;
+    pkt.sunPauseTimer  = s.sunPauseTimer;
+    pkt.sunStepTimer   = s.sunStepTimer;
+    pkt.sunStepping    = s.sunStepping;
+    pkt.skyTimePaused  = s.skyTimePaused;
+    pkt.skyMode        = s.skyMode;
+    pkt.skyTimeSpeed   = s.skyTimeSpeed;
+    for (CPlayerInfo& p : players)
+        sendPacketTo(pkt, p.addr);
 }
 
 void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 {
 	if (players.size() >= MAX_CLIENTS) return ;
 
-	std::cout << "New client connected!\n";
+	std::cout << "New client connecting from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << "...\n";
 
     CPlayerInfo p; //deserializePlayerInfo(pkt.payload);
 	p.id = players.size();
@@ -360,9 +430,75 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 				sendPacketTo(pkt, cliaddr);
 			}
 		}
+        else if (pkt.message.starts_with("dump "))
+        {
+            auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+            if (player == players.end())
+                return;
+
+            std::istringstream iss(pkt.message.substr(strlen("dump ")));
+            std::string mode;
+            int size = 500;
+            int downsample = 16;
+            iss >> mode;
+            if (!(iss >> size)) size = 500;
+            if (!(iss >> downsample)) downsample = 16;
+
+            size = std::clamp(size, 1, 1024);
+            downsample = std::clamp(downsample, 1, 256);
+
+            const glm::vec3 pos = player->movement->getPosition();
+            const int centerChunkX = static_cast<int>(std::floor(pos.x / Chunk::WIDTH));
+            const int centerChunkZ = static_cast<int>(std::floor(pos.z / Chunk::DEPTH));
+
+            const TerrainGenerationParams paramsCopy = world->getTerrainParams();
+
+            if (mode == "noises") {
+                messages.push_back("[server] Generating noise maps...");
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 1);
+                });
+            } else if (mode == "hydro") {
+                messages.push_back("[server] Generating hydro maps...");
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 2);
+                });
+            } else if (mode == "heightmap") {
+                messages.push_back("[server] Generating terrain heightmap...");
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpHeightmap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample, 0);
+                });
+            } else if (mode == "biome") {
+                messages.push_back("[server] Generating biome map...");
+				std::lock_guard<std::mutex> lock(dumpThreadsMutex);
+                dumpThreads.emplace_back([this, paramsCopy, centerChunkX, centerChunkZ, size, downsample]() {
+                    world->dumpBiomeMap(paramsCopy, centerChunkX, centerChunkZ, size, size, downsample);
+                });
+            } else {
+                messages.push_back("[server] Unknown dump mode. Use: noises | hydro | heightmap | biome");
+            }
+        }
 	}
 	else
 		messages.push_back(pkt.message);
+}
+
+void Server::receiveTerrainParams(NetTerrainParams &pkt, const sockaddr_in &cliaddr)
+{
+	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+	if (player == players.end()) return;
+
+	world->setTerrainParams(pkt.toParams());
+
+	// Broadcast the updated params to all connected clients
+	for (auto& player : players) {
+		sendPacketTo(pkt, player.addr);
+	}
+
+	std::cout << "[Server] Terrain parameters updated by client\n";
 }
 
 void Server::sendInventorySlot(int slot, const sockaddr_in &cliaddr)
@@ -487,10 +623,28 @@ void Server::sendDeaths()
 
 void Server::sendImGuiData(CPlayerInfo &player) {
     NetImGui pkt;
-	float wx = player.movement->getPosition().x;
-	float wz = player.movement->getPosition().z;
-	TerrainGenerationParams params = world->getTerrainParams();
-    pkt.currentBiome = static_cast<uint8_t>(ChunkGeneration::computeBiome(params, wx, wz, ChunkGeneration::computeTerrainHeight(params, wx, wz)));
+	const float wx = player.movement->getPosition().x;
+	const float wz = player.movement->getPosition().z;
+	const TerrainGenerationParams params = world->getTerrainParams();
+    const int terrainHeight = ChunkGeneration::computeTerrainHeight(params, wx, wz);
+
+    pkt.currentBiome = static_cast<uint8_t>(ChunkGeneration::computeBiome(params, wx, wz, terrainHeight));
+    pkt.terrainHeight = terrainHeight;
+    pkt.seaLevel = params.seaLevel;
+    pkt.worldSeed = params.seed;
+    pkt.continentalness = ChunkGeneration::getContinentalness(params, wx, wz);
+    pkt.erosion = ChunkGeneration::getErosion(params, wx, wz);
+    pkt.peakValley = ChunkGeneration::getPV(params, wx, wz);
+    pkt.temperature = ChunkGeneration::getTemperature(params, wx, wz);
+    pkt.humidity = ChunkGeneration::getHumidity(params, wx, wz);
+
+    const auto qc = ChunkGeneration::computeQuantizedClimate(params, wx, wz);
+    pkt.contBucket    = qc.continentalness;
+    pkt.erosionBucket = qc.erosion;
+    pkt.pvBucket      = qc.peakValley;
+    pkt.tempBucket    = qc.temperature;
+    pkt.humidBucket   = qc.humidity;
+
     sendPacketTo(pkt, player.addr);
 }
 
@@ -718,7 +872,20 @@ void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_i
 
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
 	auto bytes = encodePacket(pkt);
-	sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
+	int n = sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
+    if (n < 0) {
+#ifdef _WIN32
+        std::cerr << "[Network] Failed to send packet type " << static_cast<int>(pkt.type) << " to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << ". Error: " << WSAGetLastError() << std::endl;
+#else
+        perror("sendto failed");
+#endif
+    } else {
+        if (pkt.type == PacketType::CHUNK_HEADER) {
+            // std::cout << "[Network] Sent CHUNK_HEADER to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << " (" << n << " bytes)\n";
+        } else if (pkt.type == PacketType::NET_ACCEPT) {
+            std::cout << "[Network] Sent NET_ACCEPT to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << " (" << n << " bytes)\n";
+        }
+    }
 }
 
 void Server::sendAccept(const sockaddr_in &cliaddr)
@@ -768,9 +935,11 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		int twohundred0 = 200;
 		int twohundred1 = 200;
 		int twohundred2 = 200;
+		int twohundred3 = 200;
 		player->movement->inventory.insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
 		player->movement->inventory.insertItemsToSlot(BlockType::WATER, 8, twohundred1);
 		player->movement->inventory.insertItemsToSlot(BlockType::STONE, 1, twohundred2);
+		player->movement->inventory.insertItemsToSlot(BlockType::CACTUS, 2, twohundred3);
 
 		auto pkt1 = std::make_unique<NetInventory>();
 		pkt1->amount = 200;
@@ -787,12 +956,30 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		pkt3->slot = 1;
 		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);
 
+		auto pkt4 = std::make_unique<NetInventory>();
+		pkt4->amount = 200;
+		pkt4->slot = 2;
+		pkt4->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::CACTUS);
+
 		groupPkt.push_back(std::move(pkt1));
 		groupPkt.push_back(std::move(pkt2));
 		groupPkt.push_back(std::move(pkt3));
+		groupPkt.push_back(std::move(pkt4));
 	}
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);
+
+	const auto& s = world->getSkyTimeState();
+	NetSkyTime skyPkt;
+	skyPkt.skyTimeOffset = s.skyTimeOffset;
+	skyPkt.sunYawDeg     = s.sunYawDeg;
+	skyPkt.skyTimePaused = s.skyTimePaused;
+	skyPkt.sunStepping   = s.sunStepping;
+	skyPkt.sunPauseTimer = s.sunPauseTimer;
+	skyPkt.sunStepTimer  = s.sunStepTimer;
+	skyPkt.skyMode       = s.skyMode;
+	skyPkt.skyTimeSpeed  = s.skyTimeSpeed;
+	sendPacketTo(skyPkt, cliaddr);
 
 	NetAccept acceptPkt;
 	sendPacketTo(acceptPkt, cliaddr);

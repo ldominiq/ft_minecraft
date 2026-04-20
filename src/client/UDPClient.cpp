@@ -45,6 +45,8 @@ UDPClient::UDPClient(const char* server_ip) {
         exit(EXIT_FAILURE);
     }
 
+    std::cout << "Connecting to server at " << server_ip << ":" << PORT << "..." << std::endl;
+
 	sendConnect(); //CONNECTS THE CLIENT TO SERVER AUTOMATICALLY WHEN STARTED. Will have to change when we have a menu. Wont work if server isn't running already as there's no retry.
 }
 
@@ -85,14 +87,14 @@ void UDPClient::receivePacket() {
                 // TODO: handle correctly
                 continue;
             }
-            std::cerr << "recvfrom error: " << err << "\n";
+            std::cerr << "[Network] recvfrom error: " << err << "\n";
 #else
             if (errno == EWOULDBLOCK || errno == EAGAIN) break; // no more packets
             if (errno == ECONNREFUSED) {
                 // ICMP Port Unreachable received, ignore it for UDP
                 continue;
             }
-            perror("recvfrom error");
+            perror("[Network] recvfrom error");
 #endif
             break;
         }
@@ -129,6 +131,13 @@ void UDPClient::dispatch(const uint8_t* data, size_t n)
 {
     // 1. Decode packet from buffer (returns unique_ptr<Packet>)
     auto pkt = decodePacket(data, n);
-	if (onPacket) onPacket({ std::move(pkt) });
+    if (pkt) {
+        if (pkt->type == PacketType::NET_ACCEPT) {
+            std::cout << "[Network] Successfully decoded NET_ACCEPT packet\n";
+        }
+		if (onPacket) onPacket({ std::move(pkt) });
+	} else {
+        std::cerr << "[Network] Failed to decode packet of " << n << " bytes. First byte: " << (n > 0 ? (int)data[0] : -1) << "\n";
+    }
 }
 

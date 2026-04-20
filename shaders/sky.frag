@@ -30,6 +30,10 @@ uniform float atmThickness;  // scales HR/HM (1.0 = Earth-like)
 uniform float planetScale;
 uniform vec3 sunDir;
 
+// Underwater rendering
+uniform bool cameraUnderwater;
+uniform vec3 underwaterFogColor;
+
 // --- Low-res cloud composite ---
 uniform int cloudsCompositeEnabled;   // 0/1
 uniform sampler2D cloudTex;           // RGBA: rgb=cloud light, a=transmittance
@@ -253,6 +257,12 @@ void main() {
     vec3 mapped = vec3(1.0) - exp(-exposure * col);
 
     vec3 tone = Uncharted2ToneMapping(col);
+
+    // Apply underwater fog to sky
+    if (cameraUnderwater) {
+        // Replace sky with murky water fog color
+        mapped = underwaterFogColor;
+    }
 
     FragColor = vec4(mapped, 1.0);
 }

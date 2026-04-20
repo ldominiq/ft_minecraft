@@ -28,6 +28,12 @@ class CommonWorld : public ICommonWorld{
 	protected:
 		std::unordered_map<ChunkPos, std::shared_ptr<ChunkT>> chunks;
 
+		// Resolve a global position (optionally offset by faceNormal) to a chunk and local
+		// coordinates. Returns nullptr if the chunk is not loaded.
+		std::shared_ptr<ChunkT> resolveTarget(glm::ivec3 globalCoords,
+		                                      std::optional<glm::ivec3> faceNormal,
+		                                      int& x, int& y, int& z) const;
+
 	public:
 		void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ) const;
 		std::shared_ptr<ChunkT> getChunk(int chunkX, int chunkZ);

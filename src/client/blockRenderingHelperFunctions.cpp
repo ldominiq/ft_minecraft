@@ -60,6 +60,17 @@ void addInventoryFace(
         glm::vec2 basePos = unitFacePositionsInventory[face][v];
         glm::vec2 pos = origin + basePos * scale;
 
+		// Cactus: inset side faces for inventory rendering (faces 0 and 1 are sides)
+		if (type == BlockType::CACTUS && (face == 0 || face == 1)) {
+			constexpr float cactusInset = 1.0f / 16.0f;
+			// Shift the face inward on the horizontal axis
+			if (face == 0) { // left face
+				pos.x += cactusInset * scale;
+			} else { // right face
+				pos.x -= cactusInset * scale;
+			}
+		}
+
         glm::vec2 uv = {
             uvTemplate[i].x,
             uvTemplate[i].y
@@ -100,10 +111,21 @@ void addFace(
         if (!isIlluminated) //if it's itemprop..
 		{
 			constexpr float scale = 0.2f;
+			constexpr float cactusInset = 1.0f / 16.0f;
+
+			// Cactus: inset side faces by 1/16 of a block (same as placed block)
+			glm::vec3 adjustedBasePos = basePos;
+			bool isCactusSide = (type == BlockType::CACTUS && face != 2 && face != 3);
+			if (isCactusSide) {
+				if (face == 0) adjustedBasePos.z = 1.0f - cactusInset;   // front (Z+): pull inward
+				if (face == 1) adjustedBasePos.z = cactusInset;           // back  (Z-): push inward
+				if (face == 4) adjustedBasePos.x = 1.0f - cactusInset;   // right (X+): pull inward
+				if (face == 5) adjustedBasePos.x = cactusInset;           // left  (X-): push inward
+			}
 
 			// Translate vertex so (0.5, 0.5, 0.5) becomes the origin, scale, then translate back
 			pos = glm::vec3(originX + x, y, originZ + z)
-				+ glm::vec3(basePos - 0.5f) * scale
+				+ glm::vec3(adjustedBasePos - 0.5f) * scale
 				+ glm::vec3(0.0f, 0.5f * scale, 0.0f);
 		}
 

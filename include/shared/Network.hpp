@@ -32,6 +32,8 @@ enum class PacketType : uint8_t {
 	NET_DISCONNECT,			// C2S
 	NET_MESSAGE,			// S2C && C2S
     NET_IMGUI,          	// S2C
+    NET_SKY_TIME,           // S2C && C2S
+	NET_TERRAIN_PARAMS,		// C2S && S2C (for syncing terrain generation parameters)
 
 	GROUP,					// for grouped packets
 };
