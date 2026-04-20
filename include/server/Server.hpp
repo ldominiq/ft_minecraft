@@ -46,6 +46,7 @@ private:
 	
 	void updateSkyTime(NetSkyTime &pkt);
 	void broadcastSkyTime();
+	void broadcastPingList();
 
 	std::vector<std::thread> dumpThreads;
 	std::mutex dumpThreadsMutex;

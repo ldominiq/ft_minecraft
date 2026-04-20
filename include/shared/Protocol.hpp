@@ -87,12 +87,13 @@ inline AutoRegister<NetDisconnect> _reg_NetDisconnect;
 
 struct NetAccept final : public Packet {
     static constexpr PacketType ID = PacketType::NET_ACCEPT;
-    uint32_t clientId = 0;
+    uint32_t clientId     = 0;
+    uint32_t playerListId = 0;
 
     NetAccept() : Packet(ID) {}
 
-    void encode(BufferWriter& w) const override { w.write_u32(clientId); }
-    void decode(BufferReader& r) override { clientId = r.read_u32(); }
+    void encode(BufferWriter& w) const override { w.write_u32(clientId); w.write_u32(playerListId); }
+    void decode(BufferReader& r) override { clientId = r.read_u32(); playerListId = r.read_u32(); }
 };
 inline AutoRegister<NetAccept> _reg_NetAccept;
 
@@ -814,5 +815,41 @@ struct NetPong final : public Packet {
 	}
 };
 inline AutoRegister<NetPong> _reg_NetPong;
+
+// Client → Server: report measured round-trip ping
+struct NetPlayerPing final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_PLAYER_PING;
+    float pingMs = -1.0f;
+    NetPlayerPing() : Packet(ID) {}
+    void encode(BufferWriter& w) const override { w.write_f32(pingMs); }
+    void decode(BufferReader& r) override { pingMs = r.read_f32(); }
+};
+inline AutoRegister<NetPlayerPing> _reg_NetPlayerPing;
+
+// Server → all clients: list of (entityID, pingMs) for every connected player
+struct NetPingList final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_PING_LIST;
+    struct Entry { uint32_t entityId; uint32_t playerListId; float pingMs; };
+    std::vector<Entry> entries;
+    NetPingList() : Packet(ID) {}
+    void encode(BufferWriter& w) const override {
+        w.write_u8(static_cast<uint8_t>(entries.size()));
+        for (const auto& e : entries) {
+            w.write_u32(e.entityId);
+            w.write_u32(e.playerListId);
+            w.write_f32(e.pingMs);
+        }
+    }
+    void decode(BufferReader& r) override {
+        uint8_t count = r.read_u8();
+        entries.resize(count);
+        for (auto& e : entries) {
+            e.entityId    = r.read_u32();
+            e.playerListId = r.read_u32();
+            e.pingMs      = r.read_f32();
+        }
+    }
+};
+inline AutoRegister<NetPingList> _reg_NetPingList;
 
 #endif

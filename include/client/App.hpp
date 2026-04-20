@@ -43,6 +43,7 @@
 #include <algorithm>
 
 #include <optional>
+#include <unordered_map>
 
 #include <thread>
 #include <chrono>
@@ -63,6 +64,7 @@
 #include "GuiRenderer.hpp"
 #include "ChunkBoundaryRenderer.hpp"
 #include "DebugHUD.hpp"
+#include "PlayerListHUD.hpp"
 
 #define CONTROL_LIST 		\
     X(FORWARD)       		\
@@ -79,6 +81,7 @@
     X(TOGGLE_DEBUG)			\
     X(CLOSE_WINDOW)			\
 	X(THIRD_PERSON_CAMERA)	\
+	X(PLAYER_LIST)			\
 							\
 	X(HOTBAR_1)				\
 	X(HOTBAR_2)				\
@@ -176,6 +179,13 @@ private:
 	std::shared_ptr<InventoryUI> inventoryUI;
 	std::unique_ptr<DebugHUD> debugHUD;
 	bool showHUD = false;
+
+	std::unique_ptr<PlayerListHUD> playerListHUD;
+	bool     playerListVisible = false;
+	uint32_t localClientId      = 0;
+	uint32_t localPlayerListId  = 0;
+	std::unordered_map<uint32_t, float>    remotePings;          // entityId -> pingMs
+	std::unordered_map<uint32_t, uint32_t> entityToPlayerListId; // entityId -> playerListId
 	DebugStats cachedDebugStats{};
 
 	std::shared_ptr<Loader> loader;

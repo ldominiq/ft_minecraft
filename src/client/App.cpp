@@ -85,6 +85,7 @@ void App::init(const std::string& serverIp) {
 		if (manager != app->chat)
 			app->chat->resize(width, height);
 		app->debugHUD->resize(width, height);
+		app->playerListHUD->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -118,6 +119,7 @@ void App::init(const std::string& serverIp) {
 	chat = std::make_shared<Chat>(screenWidth, screenHeight);
 	inventoryUI = std::make_shared<InventoryUI>(screenWidth, screenHeight, &textureManager);
 	debugHUD = std::make_unique<DebugHUD>(screenWidth, screenHeight);
+	playerListHUD = std::make_unique<PlayerListHUD>(screenWidth, screenHeight);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
@@ -335,6 +337,8 @@ void App::setUdpClientPacketCallback()
 				auto& p = static_cast<NetAccept&>(*pkt);
 				std::cout << "Client accepted! id=" << p.clientId << "\n";
 				clientConnected = true;
+				localClientId     = p.clientId;
+				localPlayerListId = p.playerListId;
 				break;
 			}
 
@@ -437,8 +441,23 @@ void App::setUdpClientPacketCallback()
 						std::chrono::steady_clock::now().time_since_epoch()).count());
 				float rttMs = static_cast<float>(nowUs - p.timestamp) / 1000.0f;
 				pingMs = (pingMs < 0.0f) ? rttMs : pingMs + pingEMASmoothing * (rttMs - pingMs);
+				// Report measured ping to server so it can broadcast to other players
+				NetPlayerPing report;
+				report.pingMs = pingMs;
+				udpClient->sendPacket(report);
                 break;
             }
+
+			case PacketType::NET_PING_LIST: {
+				auto& p = static_cast<NetPingList&>(*pkt);
+                remotePings.clear();
+				entityToPlayerListId.clear();
+				for (const auto& e : p.entries) {
+					remotePings[e.entityId]          = e.pingMs;
+					entityToPlayerListId[e.entityId] = e.playerListId;
+				}
+				break;
+			}
 
 			default:
 				std::cout << "Unknown packet type: " << static_cast<int>(pkt->type) << "\n";
@@ -560,8 +579,11 @@ void App::render() {
             if (now - lastPingSentTime >= 2.0f) {
                 lastPingSentTime = now;
                 if (serverIp == "127.0.0.1" || serverIp == "localhost") {
-                    // If connecting to localhost, we can skip the ping and just set latency to 0
+                    // Localhost: skip RTT measurement, set to 0 and report to server
                     pingMs = 0.0f;
+                    NetPlayerPing report;
+                    report.pingMs = 0.0f;
+                    udpClient->sendPacket(report);
                 }
                 else {
                     auto ts = static_cast<uint64_t>(
@@ -851,6 +873,26 @@ void App::render() {
 		if (showHUD) {
 			debugHUD->update(cachedDebugStats);
 			debugHUD->render();
+		}
+
+		if (playerListVisible && clientConnected) {
+			std::vector<PlayerEntry> entries;
+			entries.push_back({ localPlayerListId, true, pingMs });
+			for (auto& le : renderer->livingEntities) {
+				if (!le || le->getLivingEntityType() != PLAYER) continue;
+				if (le->getID() == localClientId) continue;
+				float remPing = -1.0f;
+				auto it = remotePings.find(le->getID());
+				if (it != remotePings.end())
+					remPing = it->second;
+				uint32_t plId = 0;
+				auto pit = entityToPlayerListId.find(le->getID());
+				if (pit != entityToPlayerListId.end())
+					plId = pit->second;
+				entries.push_back({ plId, false, remPing });
+			}
+			playerListHUD->update(entries);
+			playerListHUD->render();
 		}
 
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
@@ -1849,10 +1891,11 @@ void App::loadControlsDefaults() {
     controlsArray[TOGGLE_FULLSCREEN]	= GLFW_KEY_F11;
     controlsArray[TOGGLE_WIREFRAME]		= GLFW_KEY_F1;
     controlsArray[TOGGLE_SHADER]		= GLFW_KEY_F2;
-    controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_TAB;
+    controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_F6;
     controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
 	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
+	controlsArray[PLAYER_LIST]			= GLFW_KEY_TAB;
 	
 	controlsArray[HOTBAR_1]				= GLFW_KEY_1;
 	controlsArray[HOTBAR_2]				= GLFW_KEY_2;
@@ -2067,6 +2110,9 @@ void App::processInput() {
 	if (glfwGetKey(window, controlsArray[THIRD_PERSON_CAMERA]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
 		ThirdPersonCameraKeyActive = false;
 	}
+
+	// Player list overlay: show while key is held
+	playerListVisible = (glfwGetKey(window, controlsArray[PLAYER_LIST]) == GLFW_PRESS);
 
     // Start by getting the ImGui IO structure.  We will respect its capture flags
     // when deciding whether to process game inputs.  Note: this call is valid

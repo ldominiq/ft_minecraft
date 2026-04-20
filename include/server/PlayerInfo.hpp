@@ -61,6 +61,7 @@ class CPlayerInfo
 		std::vector<ChunkPos> rdyChunks;
 
 		bool connected; //unused
+		float pingMs = -1.0f;
 };
 
 #endif
