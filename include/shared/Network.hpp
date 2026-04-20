@@ -34,6 +34,8 @@ enum class PacketType : uint8_t {
     NET_IMGUI,          	// S2C
     NET_SKY_TIME,           // S2C && C2S
 	NET_TERRAIN_PARAMS,		// C2S && S2C (for syncing terrain generation parameters)
+	NET_PING,				// C2S && S2C (for latency measurement)
+	NET_PONG,				// S2C && C2S (response to ping)
 
 	GROUP,					// for grouped packets
 };
@@ -117,6 +119,12 @@ struct BufferWriter {
         buf.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
         buf.push_back(static_cast<uint8_t>(v & 0xFF));
     }
+
+    void write_u64(uint64_t v) {
+        write_u32(static_cast<uint32_t>(v >> 32));
+        write_u32(static_cast<uint32_t>(v & 0xFFFFFFFFu));
+    }
+
 	void write_i32(int32_t v) {
 		write_u32(static_cast<uint32_t>(v));
 	}
@@ -167,6 +175,13 @@ struct BufferReader {
                       static_cast<uint32_t>(p[off+3]);
         off += 4; return v;
     }
+
+    uint64_t read_u64() {
+        uint64_t hi = read_u32();
+		uint64_t lo = read_u32();
+		return (hi << 32) | lo;
+    }
+
 	int32_t read_i32() {
 		uint32_t v = read_u32();          // read 4 bytes as big-endian unsigned
 		return static_cast<int32_t>(v);   // reinterpret as signed

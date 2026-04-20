@@ -84,6 +84,7 @@ void App::init(const std::string& serverIp) {
 			app->inventoryUI->resize(width, height);
 		if (manager != app->chat)
 			app->chat->resize(width, height);
+		app->debugHUD->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -116,6 +117,7 @@ void App::init(const std::string& serverIp) {
 
 	chat = std::make_shared<Chat>(screenWidth, screenHeight);
 	inventoryUI = std::make_shared<InventoryUI>(screenWidth, screenHeight, &textureManager);
+	debugHUD = std::make_unique<DebugHUD>(screenWidth, screenHeight);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
 
@@ -427,6 +429,17 @@ void App::setUdpClientPacketCallback()
                 break;
             }
 
+            case PacketType::NET_PONG: {
+				auto& p = static_cast<NetPong&>(*pkt);
+                if (p.timestamp != lastPingTimestamp) break; // discard stale pongs
+                auto nowUs = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+						std::chrono::steady_clock::now().time_since_epoch()).count());
+				float rttMs = static_cast<float>(nowUs - p.timestamp) / 1000.0f;
+				pingMs = (pingMs < 0.0f) ? rttMs : pingMs + pingEMASmoothing * (rttMs - pingMs);
+                break;
+            }
+
 			default:
 				std::cout << "Unknown packet type: " << static_cast<int>(pkt->type) << "\n";
 				break;
@@ -476,10 +489,15 @@ void App::render() {
             continue;
         }
 
-		// Calculate delta time for frame rate
-		currentFrame = glfwGetTime();
-		deltaTime = currentFrame - lastFrame;
-		lastFrame = currentFrame;
+        // Rotate query index each frame
+        currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
+
+        if (renderer) renderer->resetDrawCallCount();
+    
+        // Calculate delta time for frame rate
+        const float currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
 
 		if (camera)
 			camera->updateSmoothing(deltaTime);
@@ -536,6 +554,26 @@ void App::render() {
         camera->setRenderTickAlpha(accumulator / tickDuration);
 		udpClient->receivePacket();
         camera->flushPendingSnapshot(*renderer, clientTick);
+
+        if (clientConnected && udpClient) {
+            float now = static_cast<float>(glfwGetTime());
+            if (now - lastPingSentTime >= 2.0f) {
+                lastPingSentTime = now;
+                if (serverIp == "127.0.0.1" || serverIp == "localhost") {
+                    // If connecting to localhost, we can skip the ping and just set latency to 0
+                    pingMs = 0.0f;
+                }
+                else {
+                    auto ts = static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count());
+                    lastPingTimestamp = ts;
+                    NetPing ping;
+                    ping.timestamp = ts;
+                    udpClient->sendPacket(ping);
+                }
+            }
+        }
 
 		//for some reason mouse needs a little delay to be put to false otherwise it glitches.
 		if ((glfwGetTime() - lastMouseMoveTime) > tickDuration * 2)
@@ -755,6 +793,8 @@ void App::render() {
     		guiRenderer->render(guis, 0.1f, renderDistance);
         }
 
+        computeDebugStats();
+
         if (showDebugWindow) {
             debugWindow();
         }
@@ -806,6 +846,11 @@ void App::render() {
 			inventoryUI->drawHotbar();
 			inventoryUI->drawHealth(camera->getPlayer()->health);
 			chat->renderRecentMessages();
+		}
+
+		if (showHUD) {
+			debugHUD->update(cachedDebugStats);
+			debugHUD->render();
 		}
 
         // Swap buffers and poll events (keys pressed, mouse movement, etc.)
@@ -1031,6 +1076,37 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 	renderer->drawCharacters(projection, view, deltaTime);
 }
 
+void App::computeDebugStats()
+{
+    cachedDebugStats.fps = uiDisplayFPS;
+
+	cachedDebugStats.cpuFrameMs = deltaTime * 1000.0f;
+
+	cachedDebugStats.pingMs = clientConnected ? pingMs : -1.0f;
+
+    if (renderer) {
+        cachedDebugStats.visibleChunks = renderer->getVisibleChunkCount();
+        cachedDebugStats.totalChunks   = renderer->getTotalChunkCount();
+
+        size_t solidVerts = 0;
+        size_t waterVerts = 0;
+        for (auto& weakChunk : renderer->getRenderedChunks()) {
+            if (auto chunk = weakChunk.lock()) {
+                solidVerts += chunk->getMeshVerticesSize() / 11;
+                waterVerts += chunk->getWaterMeshVerticesSize() / 11;
+            }
+        }
+        const size_t totalVerts      = solidVerts + waterVerts;
+        cachedDebugStats.triangles   = totalVerts / 3;
+        cachedDebugStats.cubes       = cachedDebugStats.triangles / 12;
+
+		cachedDebugStats.terrainDrawCalls = renderer->getDrawCallCount();
+
+        if (camera && camera->getPlayer())
+            cachedDebugStats.playerPos = camera->getPlayer()->getPosition();
+    }
+}
+
 void App::debugWindow() {
         // Build the ImGui UI.  We always draw the debug overlay.  When
         // uiInteractive is false we disable input on the window, allowing
@@ -1058,120 +1134,135 @@ void App::debugWindow() {
                 // Make the overlay slightly transparent when not interactive
                 ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
             }
+
+            // Color helpers
+            auto fpsColor = [](float fps) -> ImVec4 {
+                if (fps >= 60.0f) return ImVec4(0.2f, 0.9f, 0.2f, 1.0f);
+                if (fps >= 30.0f) return ImVec4(0.9f, 0.8f, 0.1f, 1.0f);
+                return ImVec4(0.9f, 0.2f, 0.2f, 1.0f);
+            };
+            auto pingColor = [](float ping) -> ImVec4 {
+                if (ping < 50.0f)  return ImVec4(0.2f, 0.9f, 0.2f, 1.0f);
+                if (ping < 150.0f) return ImVec4(0.9f, 0.8f, 0.1f, 1.0f);
+                return ImVec4(0.9f, 0.2f, 0.2f, 1.0f);
+            };
+
             ImGui::Begin("Debug Window", nullptr, flags);
 
             ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
             if (ImGui::BeginTabBar("Tabs", tab_bar_flags))
             {
-                if (ImGui::BeginTabItem("ALL"))
+                // ── Overview ──────────────────────────────────────────────
+                if (ImGui::BeginTabItem("Overview"))
                 {
-                    // Display smoothed FPS and frame time
-                    ImGui::Text("FPS: %.1f (%.3f ms)", uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
-
-                    // Display camera coordinates
-                    ImGui::Text("Camera Position: x=%d y=%d z=%d", wx, wy, wz);
-
-					ImGui::Text("Player YAW: %f", camera->getPlayer()->yaw);
-
-                    ImGui::Text("World SEED: %d", currentWorldSeed);
-                    ImGui::Text("Terrain Height: %d (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
-                    static const char* contBucketNames[]   = { "MUSHROOM", "OCEAN", "COAST", "NEAR_INLAND", "MID_INLAND", "FAR_INLAND" };
-                    static const char* erosionBucketNames[] = { "E0", "E1", "E2", "E3", "E4", "E5", "E6" };
-                    static const char* pvBucketNames[]      = { "VALLEY", "LOW", "MID", "HIGH", "PEAK" };
-                    static const char* tempBucketNames[]    = { "VERY_COLD", "COLD", "TEMPERATE", "WARM", "HOT" };
-                    static const char* humidBucketNames[]   = { "ARID", "DRY", "NEUTRAL", "HUMID", "WET" };
-
-                    ImGui::Text("Continentalness: %.3f", currentContinentalness); ImGui::SameLine(); ImGui::Text("(%s)", contBucketNames[currentContBucket]);
-                    ImGui::Text("Erosion: %.3f", currentErosion);                 ImGui::SameLine(); ImGui::Text("(%s)", erosionBucketNames[currentErosionBucket]);
-                    ImGui::Text("Peak/Valley: %.3f", currentPeakValley);          ImGui::SameLine(); ImGui::Text("(%s)", pvBucketNames[currentPVBucket]);
-                    ImGui::Text("Temperature: %.3f", currentTemperature);         ImGui::SameLine(); ImGui::Text("(%s)", tempBucketNames[currentTempBucket]);
-                    ImGui::Text("Humidity: %.3f", currentHumidity);               ImGui::SameLine(); ImGui::Text("(%s)", humidBucketNames[currentHumidBucket]);
-
-                    const char* biomeName =
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::PLAINS) ? "PLAINS" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::DESERT) ? "DESERT" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::DARK_FOREST) ? "DARK_FOREST" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::TUNDRA) ? "TUNDRA" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::SWAMP)  ? "SWAMP"  :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::OCEAN)  ? "OCEAN"  :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::MOUNTAIN) ? "MOUNTAIN" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::BIRCH_FOREST) ? "BIRCH_FOREST" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::JUNGLE) ? "JUNGLE" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::SAVANNA) ? "SAVANNA" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::MESA) ? "MESA" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::ICE_PLAINS) ? "ICE_PLAINS" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::VOLCANIC) ? "VOLCANIC" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::RED_DESERT) ? "RED_DESERT" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::NETHER) ? "NETHER" :
-                        (static_cast<BiomeType>(currentBiome) == BiomeType::MUSHROOM_ISLAND) ? "MUSHROOM_ISLAND" :
-                                                                                    "UNKNOWN";
-                    ImGui::Text("BIOME: %s", biomeName);
-
-                    // Additional metrics: number of loaded chunks and approximate memory usage
-                    if (renderer) {
-                        const size_t visibleChunks = renderer->getVisibleChunkCount();
-                        const size_t totalChunks   = renderer->getTotalChunkCount();
-                        ImGui::Text("Chunks: %zu visible / %zu total", visibleChunks, totalChunks);
-
-                        size_t solidVertices = 0;
-                        size_t waterVertices = 0;
-                        for (auto& weakChunk : renderer->getRenderedChunks()) {
-                            if (auto chunk = weakChunk.lock()) {
-                                solidVertices += chunk->getMeshVerticesSize() / 10;
-                                waterVertices += chunk->getWaterMeshVerticesSize() / 10;
-                            }
-                        }
-                        
-                        size_t totalVertices = solidVertices + waterVertices;
-                        size_t totalTriangles = totalVertices / 3;
-                        size_t approximateBlocks = totalTriangles / 12;  // Each block can have up to 6 faces, 2 triangles per face
-                        
-                        // TODO: fix real count based on frustum culling
-                        ImGui::Text("Vertices: %zu solid + %zu water = %zu total", solidVertices, waterVertices, totalVertices);
-                        ImGui::Text("Triangles: %zu", totalTriangles);
-                        ImGui::Text("Approx. Visible Blocks: %zu", approximateBlocks);
-                    }
-
-                    // Display memory usage in megabytes.  We call a static helper to
-                    // obtain the current resident set size (RSS).
+                    // Performance
+                    ImGui::SeparatorText("Performance");
+                    ImGui::TextColored(fpsColor(uiDisplayFPS), "FPS: %.1f (%.3f ms)",
+                        uiDisplayFPS, uiDisplayFPS > 0.0f ? 1000.0f / uiDisplayFPS : 0.0f);
+                    if (clientConnected)
+                        ImGui::TextColored(pingColor(pingMs), "Ping: %.0f ms", pingMs);
+                    else
+                        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Ping: offline");
                     {
                         const size_t memBytes = getCurrentRSS();
                         const double memMB = memBytes / (1024.0 * 1024.0);
-                        ImGui::Text("Memory: %.2f MB", memMB);
+                        ImVec4 memColor = memMB > 2048.0 ? ImVec4(0.9f, 0.2f, 0.2f, 1.0f)
+                                        : memMB > 1024.0 ? ImVec4(0.9f, 0.8f, 0.1f, 1.0f)
+                                                         : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+                        ImGui::TextColored(memColor, "Memory: %.2f MB", memMB);
                     }
 
+                    // Quick Toggles
+                    ImGui::SeparatorText("Quick Toggles");
+                    auto quickToggle = [&](const char* label, bool active, auto onToggle) {
+                        ImGui::PushStyleColor(ImGuiCol_Button,
+                            active ? ImVec4(0.2f, 0.6f, 0.2f, 1.0f) : ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
+                        if (ImGui::Button(label, ImVec2(110, 0)))
+                            onToggle(!active);
+                        ImGui::PopStyleColor();
+                    };
+                    {
+                        bool shadowsEnabled = lighting->isShadowsEnabled();
+                        bool ssaoEnabled    = ssao->isEnabled();
+                        bool flashlightOn   = lighting->isFlashlightOn();
+                        quickToggle("Wireframe", wireframe, [&](bool v) {
+                            wireframe = v;
+                            glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
+                        });
+                        ImGui::SameLine();
+                        quickToggle("V-Sync", vsync, [&](bool v) {
+                            vsync = v;
+                            glfwSwapInterval(vsync ? 1 : 0);
+                        });
+                        ImGui::SameLine();
+                        quickToggle("Shadows", shadowsEnabled, [&](bool v) { lighting->setShadowsEnabled(v); });
+                        ImGui::SameLine();
+                        quickToggle("SSAO", ssaoEnabled, [&](bool v) { ssao->setEnabled(v); });
+                        ImGui::SameLine();
+                        quickToggle("Flashlight", flashlightOn, [&](bool v) { lighting->setSpotLightOn(v); });
+                    }
+
+                    // World
+                    ImGui::SeparatorText("World");
+                    ImGui::Text("Position:  x=%d  y=%d  z=%d", wx, wy, wz);
+                    ImGui::Text("Seed: %d", currentWorldSeed);
+                    ImGui::Text("Height: %d  (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
+                    {
+                        const char* biomeName =
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::PLAINS)          ? "PLAINS" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::DESERT)          ? "DESERT" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::DARK_FOREST)     ? "DARK_FOREST" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::TUNDRA)          ? "TUNDRA" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::SWAMP)           ? "SWAMP" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::OCEAN)           ? "OCEAN" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::MOUNTAIN)        ? "MOUNTAIN" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::BIRCH_FOREST)    ? "BIRCH_FOREST" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::JUNGLE)          ? "JUNGLE" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::SAVANNA)         ? "SAVANNA" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::MESA)            ? "MESA" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::ICE_PLAINS)      ? "ICE_PLAINS" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::VOLCANIC)        ? "VOLCANIC" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::RED_DESERT)      ? "RED_DESERT" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::NETHER)          ? "NETHER" :
+                            (static_cast<BiomeType>(currentBiome) == BiomeType::MUSHROOM_ISLAND) ? "MUSHROOM_ISLAND" :
+                                                                                                   "UNKNOWN";
+                        ImGui::Text("Biome: %s", biomeName);
+                    }
+
+                    // Noise Values (collapsible)
+                    if (ImGui::CollapsingHeader("Noise Values", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        static const char* contBucketNames[]    = { "MUSHROOM", "OCEAN", "COAST", "NEAR_INLAND", "MID_INLAND", "FAR_INLAND" };
+                        static const char* erosionBucketNames[] = { "E0", "E1", "E2", "E3", "E4", "E5", "E6" };
+                        static const char* pvBucketNames[]      = { "VALLEY", "LOW", "MID", "HIGH", "PEAK" };
+                        static const char* tempBucketNames[]    = { "VERY_COLD", "COLD", "TEMPERATE", "WARM", "HOT" };
+                        static const char* humidBucketNames[]   = { "ARID", "DRY", "NEUTRAL", "HUMID", "WET" };
+                        ImGui::Text("Continentalness: %.3f", currentContinentalness); ImGui::SameLine(); ImGui::TextDisabled("(%s)", contBucketNames[currentContBucket]);
+                        ImGui::Text("Erosion:         %.3f", currentErosion);         ImGui::SameLine(); ImGui::TextDisabled("(%s)", erosionBucketNames[currentErosionBucket]);
+                        ImGui::Text("Peak/Valley:     %.3f", currentPeakValley);      ImGui::SameLine(); ImGui::TextDisabled("(%s)", pvBucketNames[currentPVBucket]);
+                        ImGui::Text("Temperature:     %.3f", currentTemperature);     ImGui::SameLine(); ImGui::TextDisabled("(%s)", tempBucketNames[currentTempBucket]);
+                        ImGui::Text("Humidity:        %.3f", currentHumidity);        ImGui::SameLine(); ImGui::TextDisabled("(%s)", humidBucketNames[currentHumidBucket]);
+                    }
+
+                    // Renderer stats
+                    if (renderer) {
+                        // TODO: fix real count based on frustum culling
+                        ImGui::SeparatorText("Renderer");
+                        ImGui::Text("Chunks: %zu / %zu", cachedDebugStats.visibleChunks, cachedDebugStats.totalChunks);
+                        ImGui::Text("Triangles: %zu", cachedDebugStats.triangles);
+                        ImGui::Text("Visible Blocks: %zu", cachedDebugStats.cubes);
+                        ImGui::Text("Draw Calls: %zu", cachedDebugStats.terrainDrawCalls);
+                    }
 
                     ImGui::Separator();
 
-                    // if (ImGui::CollapsingHeader("Teleportation")) {
-                    //     // Teleport player
-                    //     ImGui::Text("Teleport Player");
-                    //     static float tmpX = 0;
-                    //     static float tmpY = 100;
-                    //     static float tmpZ = 0;
-                    //     ImGui::InputFloat("X", &tmpX);
-                    //     ImGui::InputFloat("Y", &tmpY);
-                    //     ImGui::InputFloat("Z", &tmpZ);
-                    //     if (ImGui::Button("Teleport")) {
-                    //         camera->getPlayer()->setPosition(glm::vec3(tmpX, tmpY, tmpZ));
-                    //     }
-                    // }
-
-                    // ImGui::Separator();
-
-                    // Need to expose terrainParams from the server to the client..
-                    // ImGui::Checkbox("Debug: Ores Only", &terrainParams.debugOresOnly);
-
-                    ImGui::Separator();
-
+                    // Heightmap generator
                     if (ImGui::CollapsingHeader("Heightmap")) {
                         ImGui::Text("Heightmap Generation (server-side)");
                         ImGui::InputInt("Size ([1-1024])", &debugTerrainParams.genSize);
                         ImGui::InputInt("Downsample ([1-256])", &debugTerrainParams.downsample);
-
-                        debugTerrainParams.genSize = std::max(1, debugTerrainParams.genSize);
+                        debugTerrainParams.genSize    = std::max(1, debugTerrainParams.genSize);
                         debugTerrainParams.downsample = std::max(1, debugTerrainParams.downsample);
-
+                        
                         auto sendDumpCommand = [&](const char* mode) {
                             if (!udpClient) return;
                             NetMessage cmd;
@@ -1180,504 +1271,419 @@ void App::debugWindow() {
                                           std::to_string(debugTerrainParams.downsample);
                             udpClient->sendPacket(cmd);
                         };
-
-                        if (ImGui::Button("Generate Hydros")) {
-                            sendDumpCommand("hydro");
-                        }
-
-                        if (ImGui::Button("Generate Noises")) {
-                            sendDumpCommand("noises");
-                        }
-                        if (ImGui::Button("Generate Heightmaps")) {
-                            sendDumpCommand("heightmap");
-                        }
-                        if (ImGui::Button("Generate Biome Map")) {
-                            sendDumpCommand("biome");
-                        }
+                        if (ImGui::Button("Generate Hydros"))     sendDumpCommand("hydro");
+                        if (ImGui::Button("Generate Noises"))     sendDumpCommand("noises");
+                        if (ImGui::Button("Generate Heightmaps")) sendDumpCommand("heightmap");
+                        if (ImGui::Button("Generate Biome Map"))  sendDumpCommand("biome");
                     }
-
-                    ImGui::Separator();
-
-                    if (ImGui::CollapsingHeader("Rendering")) {
-                        if (ImGui::BeginTabBar("Rendering", tab_bar_flags))
-                        {
-                            if (ImGui::BeginTabItem("Options"))
-                            {
-                                if (ImGui::Checkbox("V-Sync", &vsync)) {
-                                    glfwSwapInterval(vsync ? 1 : 0);
-                                }
-                                // Wireframe toggle
-                                if (ImGui::Checkbox("Wireframe", &wireframe)) {
-                                    glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-                                }
-                                // Shader toggle (texture vs gradient).  We update activeShader accordingly.
-                                if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader)) {
-                                    activeShader = useGradientShader ? gradientShader : textureShader;
-                                }
-                                ImGui::RadioButton("Lighting render", &selectedRenderType, 0); ImGui::SameLine();
-                                ImGui::RadioButton("Normals render",  &selectedRenderType, 1); ImGui::SameLine();
-                                ImGui::RadioButton("Depth render",    &selectedRenderType, 2);
-
-                                // Ensure the uniform is applied to the intended program(s),
-                                // not whatever was last bound (e.g., selected-face wireframe).
-                                auto applyRenderType = [&](const std::shared_ptr<Shader>& s) {
-                                    if (!s) return;
-                                    s->use();
-                                    s->setInt("renderType", selectedRenderType);
-                                };
-                                applyRenderType(textureShader);
-
-                                static bool useBlinnPhong = true;
-                                if (ImGui::Checkbox("Blinn-Phong", &useBlinnPhong)) {
-                                    textureShader->use();
-                                    textureShader->setInt("blinn", useBlinnPhong);
-                                }
-                                bool shadowsEnabled = lighting->isShadowsEnabled();
-                                if (ImGui::Checkbox("Shadows", &shadowsEnabled))
-                                    lighting->setShadowsEnabled(shadowsEnabled);
-
-                                bool ssaoEnabled = ssao->isEnabled();
-                                if (ImGui::Checkbox("SSAO", &ssaoEnabled))
-                                    ssao->setEnabled(ssaoEnabled);
-
-                                // Changing this will update the far clipping plane.
-                                ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
-
-								// Adjust the chunk loading radius.  Casting to int and back avoids
-								// accidental type issues in the setter.  We clamp the range to a
-								// reasonable minimum and maximum.
-								if (renderer) {
-									int radius = camera->getPlayer()->getLoadRadius();
-									if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32)) {
-										camera->getPlayer()->setLoadRadius(radius);
-                                    }
-                                }
-
-                                // Adjust the maximum number of chunks being generated at the same time.
-                                // Lower values produce smoother frame rates but slower world loading.
-                                // if (world) {
-                                //     int maxGen = static_cast<int>(world->getMaxConcurrentGeneration());
-                                //     if (ImGui::SliderInt("Generation Concurrency", &maxGen, 1, 8)) {
-                                //         world->setMaxConcurrentGeneration(static_cast<std::size_t>(maxGen));
-                                //     }
-                                // }
-
-                                // Chunk boundary viewer
-                                {
-                                    bool cb = chunkBoundaryRenderer->isEnabled();
-                                    if (ImGui::Checkbox("Show Chunk Boundary", &cb))
-                                        chunkBoundaryRenderer->setEnabled(cb);
-                                }
-
-                                ImGui::EndTabItem();
-                            }
-                            if (ImGui::BeginTabItem("SSAO"))
-                            {
-                                bool ssaoEnabled = ssao->isEnabled();
-                                if (ImGui::Checkbox("Enable SSAO", &ssaoEnabled))
-                                    ssao->setEnabled(ssaoEnabled);
-
-                                bool blurEnabled = ssao->isBlurEnabled();
-                                if (ImGui::Checkbox("Enable Blur", &blurEnabled))
-                                    ssao->setBlurEnabled(blurEnabled);
-
-                                bool halfRes = ssao->isHalfResolution();
-                                if (ImGui::Checkbox("Half Resolution", &halfRes))
-                                    ssao->setHalfResolution(halfRes);
-                                ImGui::SameLine();
-                                ImGui::TextDisabled("(?)");
-                                if (ImGui::IsItemHovered())
-                                    ImGui::SetTooltip("Render SSAO at half resolution");
-
-                                ImGui::Separator();
-                                ImGui::Text("Parameters");
-
-                                float radius = ssao->getRadius();
-                                if (ImGui::SliderFloat("Radius", &radius, 0.01f, 5.0f, "%.3f"))
-                                    ssao->setRadius(radius);
-
-                                float bias = ssao->getBias();
-                                if (ImGui::SliderFloat("Bias", &bias, 0.0f, 0.2f, "%.4f"))
-                                    ssao->setBias(bias);
-
-                                float power = ssao->getPower();
-                                if (ImGui::SliderFloat("Power", &power, 0.1f, 10.0f, "%.2f"))
-                                    ssao->setPower(power);
-
-                                int kernelSize = ssao->getKernelSize();
-                                if (ImGui::SliderInt("Kernel Size", &kernelSize, 4, 64))
-                                    ssao->setKernelSize(kernelSize);
-
-                                ImGui::EndTabItem();
-                            }
-                            if (ImGui::BeginTabItem("Framebuffers"))
-                            {
-                                ImGui::Separator();
-                                ImGui::Text("Water");
-                                ImGui::Checkbox("Show Reflection Texture", &showReflectionTexture);
-                                ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
-                                ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
-                                
-
-                                ImGui::Separator();
-                                ImGui::Text("Render Type");
-                                ImGui::Checkbox("Show Normals View", &showNormalsTexture);
-                                ImGui::Checkbox("Show Depth View", &showDepthTexture);
-
-                                ImGui::Separator();
-                                ImGui::Text("SSAO");
-                                ImGui::Checkbox("Preview SSAO Texture", &showSSAOTexture);
-                                ImGui::Checkbox("Preview Raw SSAO (No Blur)", &showSSAORawTexture);
-                                ImGui::Checkbox("Preview GBuffer Position", &showGBufferPositionTexture);
-                                ImGui::Checkbox("Preview GBuffer Normal", &showGBufferNormalTexture);
-
-                                ImGui::EndTabItem();
-                            }
-                        }
-                        ImGui::EndTabBar();
-                    }
-
-                    // Lighting controls: direction and colours.  The direction vector
-                    // components are clamped to [-1,1]; colours use a colour picker.
-                    ImGui::Separator();
-                    if (ImGui::CollapsingHeader("Lighting")) {
-                        if (ImGui::BeginTabBar("Lighting", tab_bar_flags))
-                        {
-                            if (ImGui::BeginTabItem("Shadows"))
-                            {
-                                float shadowMinBias = lighting->getShadowMapMinBias();
-                                float shadowMaxBias = lighting->getShadowMapMaxBias();
-
-                            	ImGui::Text("Shadow Controls");
-                                ImGui::Checkbox("Debug Cascades", &lighting->debugCascades);
-                                ImGui::Checkbox("CSM Debug View (All Cascades)", &lighting->showCSMDebugView);
-                                ImGui::Checkbox("Frustum Culling Radar", &showFrustumCullingDebug);
-                                {
-                                    bool fc = renderer->isFrustumCullingEnabled();
-                                    if (ImGui::Checkbox("Enable Frustum Culling", &fc))
-                                        renderer->setFrustumCullingEnabled(fc);
-                                }
-
-                                if (ImGui::SliderFloat("Shadow min Bias", &shadowMinBias, -0.005f, 0.001f, "%.5f"))
-                                	lighting->setShadowMapMinBias(shadowMinBias);
-                                if (ImGui::SliderFloat("Shadow max Bias", &shadowMaxBias, -0.005f, 0.005f, "%.5f"))
-                                	lighting->setShadowMapMaxBias(shadowMaxBias);
-
-                                ImGui::EndTabItem();
-                            }
-                            if (ImGui::BeginTabItem("Directional Light"))
-                            {
-                            	bool directionalLightOn = lighting->isDirectionalLightOn();
-                            	glm::vec3 directionalLightDir = lighting->getDirectionalLightDirection();
-                            	glm::vec3 directionalDiffuseColor = lighting->getDirectionalDiffuseColor();
-                            	glm::vec3 directionalAmbientColor = lighting->getDirectionalAmbientColor();
-                            	glm::vec3 directionalSpecularColor = lighting->getDirectionalSpecularColor();
-                            	float materialShininess = lighting->getMaterialShininess();
-
-                                ImGui::Text("Directional Light Controls");
-                                if (ImGui::Checkbox("Light On", &directionalLightOn))
-                                	lighting->setDirectionalLightEnabled(directionalLightOn);
-                                if (ImGui::SliderFloat3("Light Direction", &directionalLightDir.x, -1.0f, 1.0f))
-                                	lighting->setDirectionalLightDirection(directionalLightDir);
-                                if (ImGui::ColorEdit3("Light Colour", &directionalDiffuseColor.x))
-                                	lighting->setDirectionalDiffuseColor(directionalDiffuseColor);
-                                if (ImGui::ColorEdit3("Ambient Colour", &directionalAmbientColor.x))
-                                	lighting->setDirectionalAmbientColor(directionalAmbientColor);
-                                if (ImGui::ColorEdit3("Specular Colour", &directionalSpecularColor.x))
-                                	lighting->setDirectionalSpecularColor(directionalSpecularColor);
-                                if (ImGui::SliderFloat("Material Shininess", &materialShininess, 1.0f, 256.0f))
-                                	lighting->setMaterialShininess(materialShininess);
-                                ImGui::EndTabItem();
-                            }
-                            if (ImGui::BeginTabItem("Point Lights"))
-                            {
-                                ImGui::Text("Point Light Controls");
-                                for (int i = 0; i < lighting->getNumPointLights(); ++i)
-                                {
-                                    bool enabled = lighting->isPointLightOn(i);
-                                	glm::vec3 pointLightPosition = lighting->getPointLightPosition(i);
-                                	glm::vec3 pointLightAmbient = lighting->getPointLightAmbient(i);
-                                	glm::vec3 pointLightDiffuse = lighting->getPointLightDiffuse(i);
-                                	glm::vec3 pointLightSpecular = lighting->getPointLightSpecular(i);
-                                	float pointLightConstant = lighting->getPointLightConstant(i);
-                                	float pointLightLinear = lighting->getPointLightLinear(i);
-                                	float pointLightQuadratic = lighting->getPointLightQuadratic(i);
-
-                                    if (ImGui::Checkbox(("Light " + std::to_string(i)).c_str(), &enabled))
-                                        lighting->setPointLightEnabled(i, enabled);
-                                    if (ImGui::SliderFloat3(("Light " + std::to_string(i) + " Position").c_str(), &pointLightPosition.x, 0.0f, 90.0f))
-                                    	lighting->setPointLightPosition(i, pointLightPosition);
-                                    if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Constant").c_str(), &pointLightConstant, 0.0f, 2.0f))
-                                    	lighting->setPointLightConstant(i, pointLightConstant);
-                                    if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Linear").c_str(), &pointLightLinear, 0.0f, 0.2f))
-                                    	lighting->setPointLightLinear(i, pointLightLinear);
-                                    if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Quadratic").c_str(), &pointLightQuadratic, 0.0f, 0.1f))
-                                    	lighting->setPointLightQuadratic(i, pointLightQuadratic);
-                                    if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Ambient").c_str(), &pointLightAmbient.x))
-                                    	lighting->setPointLightAmbient(i, pointLightAmbient);
-                                    if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Diffuse").c_str(), &pointLightDiffuse.x))
-                                    	lighting->setPointLightDiffuse(i, pointLightDiffuse);
-                                    if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Specular").c_str(), &pointLightSpecular.x))
-                                    	lighting->setPointLightSpecular(i, pointLightSpecular);
-                                }
-                                ImGui::EndTabItem();
-                            }
-                            if (ImGui::BeginTabItem("Flashlight"))
-                            {
-                            	bool flashlightOn = lighting->isFlashlightOn();
-                            	float flashlightCutoff = lighting->getFlashlightCutoffAngle();
-                            	float flashlightOuterCutoff = lighting->getFlashlightOuterCutoffAngle();
-
-                                ImGui::Text("Flashlight Controls");
-                                if (ImGui::Checkbox("Flashlight On", &flashlightOn))
-                                	lighting->setSpotLightOn(flashlightOn);
-                                // ImGui::ColorEdit3("Flashlight Colour", &spotlightColor.x);
-                                // ImGui::SliderFloat("Flashlight Intensity", &spotlightIntensity, 0.0f, 5.0f);
-                                if (ImGui::SliderFloat("Flashlight Cutoff", &flashlightCutoff, 1.0f, 90.0f))
-									lighting->setFlashlightCutoffAngle(flashlightCutoff);
-                                if (ImGui::SliderFloat("Flashlight Outer Cutoff", &flashlightOuterCutoff, 1.0f, 90.0f))
-                                	lighting->setFlashlightOuterCutoffAngle(flashlightOuterCutoff);
-                                ImGui::EndTabItem();
-                            }
-                        }
-                        ImGui::EndTabBar();
-                    }
-
-                    ImGui::Separator();
-                    if (ImGui::CollapsingHeader("Sky / Atmosphere")) {
-                        bool skyTimePaused = lighting->isSkyTimePaused();
-                        int skyMode = static_cast<int>(lighting->getSkyMode());
-                        float skyTimeSpeed = lighting->getSkyTimeSpeed();
-                    	float skyTimeOffset = lighting->getSkyTimeOffset();
-                    	float sunYawDeg = lighting->getSunYawDeg();
-                    	float skyExposure = lighting->getSkyExposure();
-                    	float skyAtmDensity = lighting->getSkyAtmDensity();
-                    	float skyAtmThickness = lighting->getSkyAtmThickness();
-                    	float planetScale = lighting->getPlanetScale();
-
-                        bool cloudsEnabled = lighting->isCloudsEnabled();
-                        float cloudDensity = lighting->getCloudDensity();
-                        float cloudSigmaT = lighting->getCloudSigmaT();
-                        glm::vec3 cloudAlbedo = lighting->getCloudAlbedo();
-                        float cloudStepCount = lighting->getCloudStepCount();
-                        float cloudSigmaS = lighting->getCloudSigmaS();
-                        float cloudPhaseG = lighting->getCloudPhaseG();
-
-                        
-                        if (ImGui::BeginTabBar("Sky / Atmosphere", tab_bar_flags))
-                        {
-                            if (ImGui::BeginTabItem("Atmosphere controls"))
-                            {
-                                bool skyLUTEnabled = lighting->isSkyLUTEnabled();
-                                if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
-                                    lighting->setSkyLUTEnabled(skyLUTEnabled);
-                                // Mode selector
-                                {
-                                    bool modeChanged = ImGui::RadioButton("Skyrim (pause/step)", &skyMode, 0);
-                                    ImGui::SameLine();
-                                    modeChanged |= ImGui::RadioButton("Smooth (linear)", &skyMode, 1);
-                                    if (modeChanged) {
-                                        lighting->setSkyMode(static_cast<uint8_t>(skyMode));
-                                        NetSkyTime pkt;
-                                        pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
-                                        pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
-                                        pkt.skyTimeSpeed  = skyTimeSpeed;
-                                        pkt.sunStepping   = lighting->getSunStepping();
-                                        pkt.sunPauseTimer = lighting->getSunPauseTimer();
-                                        pkt.sunStepTimer  = lighting->getSunStepTimer();
-                                        udpClient->sendPacket(pkt);
-                                    }
-                                }
-                                if (ImGui::SliderFloat("Time Speed", &skyTimeSpeed, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
-                                    lighting->setSkyTimeSpeed(skyTimeSpeed);
-                                    NetSkyTime pkt;
-                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
-                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
-                                    pkt.skyTimeSpeed  = skyTimeSpeed;
-                                    pkt.sunStepping   = lighting->getSunStepping();
-                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
-                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
-                                    udpClient->sendPacket(pkt);
-                                }
-
-                                ImGui::Separator();
-                                if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused)) {
-                                    lighting->setSkyTimePaused(skyTimePaused);
-                                    NetSkyTime pkt;
-                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
-                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
-                                    pkt.skyTimeSpeed  = skyTimeSpeed;
-                                    pkt.sunStepping   = lighting->getSunStepping();
-                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
-                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
-                                    udpClient->sendPacket(pkt);
-                                }
-                                if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f")) {
-                                    lighting->setSkyTimeOffset(skyTimeOffset);
-                                    NetSkyTime pkt;
-                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
-                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
-                                    pkt.skyTimeSpeed  = skyTimeSpeed;
-                                    pkt.sunStepping = false; pkt.sunPauseTimer = 0.0f; pkt.sunStepTimer = 0.0f;
-                                    udpClient->sendPacket(pkt);
-                                }
-                                if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f")) {
-                                    lighting->setSunYawDeg(sunYawDeg);
-                                    NetSkyTime pkt;
-                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
-                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
-                                    pkt.skyTimeSpeed  = skyTimeSpeed;
-                                    pkt.sunStepping   = lighting->getSunStepping();
-                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
-                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
-                                    udpClient->sendPacket(pkt);
-                                }
-                                if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
-                                    lighting->setSkyExposure(skyExposure);
-                                if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))
-                                    lighting->setSkyAtmDensity(skyAtmDensity);
-                                if (ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f"))
-                                    lighting->setSkyAtmThickness(skyAtmThickness);
-                                if (ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f"))
-                                    lighting->setPlanetScale(planetScale);
-                                ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
-                                ImGui::EndTabItem();
-                            }
-
-                            if (ImGui::BeginTabItem("Fog")) {
-                                ImGui::Text("Distance Fog");
-                                ImGui::Checkbox("Fog Enabled", &fogEnabled);
-                                if (fogEnabled) {
-                                    ImGui::SliderFloat("Fog Start (fraction of chunk radius)", &fogStartFraction, 0.0f, 0.95f, "%.2f");
-                                    ImGui::SliderFloat("Fog Strength", &fogStrength, 0.1f, 10.0f, "%.1f");
-                                    ImGui::Text("Fog range: %.0f - %.0f blocks", renderer->getMaxRenderedChunkDist() * fogStartFraction, renderer->getMaxRenderedChunkDist());
-                                }
-                                ImGui::EndTabItem();
-                            }
-
-                            if (ImGui::BeginTabItem("Clouds"))
-                            {
-                                if (ImGui::Checkbox("Clouds Enabled", &cloudsEnabled))
-                                lighting->setCloudsEnabled(cloudsEnabled);
-                                if (ImGui::SliderFloat("Cloud Density", &cloudDensity, 0.02f, 0.2f, "%.3f"))
-                                    lighting->setCloudDensity(cloudDensity);
-                                if (ImGui::SliderFloat("Cloud Sigma T", &cloudSigmaT, 1.0f, 10.0f, "%.1f"))
-                                    lighting->setCloudSigmaT(cloudSigmaT);
-                                if (ImGui::ColorEdit3("Cloud Albedo", &cloudAlbedo.x))
-                                    lighting->setCloudAlbedo(cloudAlbedo);
-                                if (ImGui::SliderFloat("Cloud Step Count", &cloudStepCount, 32.0f, 96.0f, "%.1f"))
-                                    lighting->setCloudStepCount(cloudStepCount);
-                                    
-                                if (ImGui::SliderFloat("Cloud Sigma S", &cloudSigmaS, 1.0f, 10.0f, "%.1f"))
-                                    lighting->setCloudSigmaS(cloudSigmaS);
-                                if (ImGui::SliderFloat("Cloud Phase G", &cloudPhaseG, 0.0f, 1.0f, "%.1f"))
-                                    lighting->setCloudPhaseG(cloudPhaseG);
-
-                                ImGui::Separator();
-
-                                ImGui::Text("Cloud Shape & Movement");
-                                float cloudEdgeFeather = lighting->getCloudEdgeFeather();
-                                float cloudNoiseScale = lighting->getCloudNoiseScale();
-                                float cloudNoiseContrastLo = lighting->getCloudNoiseContrastLo();
-                                float cloudNoiseContrastHi = lighting->getCloudNoiseContrastHi();
-                                float cloudWindSpeed = lighting->getCloudWindSpeed();
-                                glm::vec2 cloudWindDir = lighting->getCloudWindDir();
-
-                                if (ImGui::SliderFloat("Cloud Edge Feather", &cloudEdgeFeather, 1.0f, 30.0f, "%.1f"))
-                                    lighting->setCloudEdgeFeather(cloudEdgeFeather);
-                                if (ImGui::SliderFloat("Cloud Noise Scale", &cloudNoiseScale, 0.005f, 0.05f, "%.3f"))
-                                    lighting->setCloudNoiseScale(cloudNoiseScale);
-                                if (ImGui::SliderFloat("Cloud Contrast Lo", &cloudNoiseContrastLo, 0.0f, 1.0f, "%.2f"))
-                                    lighting->setCloudNoiseContrastLo(cloudNoiseContrastLo);
-                                if (ImGui::SliderFloat("Cloud Contrast Hi", &cloudNoiseContrastHi, 0.0f, 1.0f, "%.2f"))
-                                    lighting->setCloudNoiseContrastHi(cloudNoiseContrastHi);
-                                if (ImGui::SliderFloat("Cloud Wind Speed", &cloudWindSpeed, 0.0f, 100.0f, "%.1f"))
-                                    lighting->setCloudWindSpeed(cloudWindSpeed);
-                                if (ImGui::SliderFloat2("Cloud Wind Direction", &cloudWindDir.x, -1.0f, 1.0f, "%.2f"))
-                                    lighting->setCloudWindDir(cloudWindDir);
-                                ImGui::EndTabItem();
-                            }
-                        }
-                        ImGui::EndTabBar();
-                    	
-                    }
-
-                	ImGui::Separator();
-                	if (ImGui::CollapsingHeader("Water")) {
-                		ImGui::SliderFloat("Water wave strength", &waterRenderer->waveStrength, 0.000f, 0.09f, "%.3f");
-                		ImGui::SliderFloat("Water dudv tiling", &waterRenderer->dudvTiling, 0.000f, 0.09f, "%.2f");
-
-                		glm::vec3 underwaterTint = lighting->getUnderwaterTintColor();
-                		if (ImGui::ColorEdit3("Underwater Tint", &underwaterTint.x))
-                			lighting->setUnderwaterTintColor(underwaterTint);
-
-                		glm::vec3 underwaterFogColor = lighting->getUnderwaterFogColor();
-                		if (ImGui::ColorEdit3("Underwater Fog Color", &underwaterFogColor.x))
-                			lighting->setUnderwaterFogColor(underwaterFogColor);
-
-                		float underwaterFogDensity = lighting->getUnderwaterFogDensity();
-                		if (ImGui::SliderFloat("Underwater Fog Density", &underwaterFogDensity, 0.00f, 0.5f, "%.2f"))
-                			lighting->setUnderwaterFogDensity(underwaterFogDensity);
-                	}
-
-					ImGui::Separator();
-					if (ImGui::CollapsingHeader("Network Debug")) {
-                        auto netStats = camera->getReconcileDebugStats();
-                        ImGui::Text("Client Tick: %d", clientTick);
-                        ImGui::Text("Last Ack Tick: %d", camera->getLastAppliedAckTick());
-                        ImGui::Text("Pending Snapshot Tick: %d", camera->getPendingCorrectionTick());
-                     ImGui::Text("Last effective ack tick: %d", netStats.lastEffectiveAckTick);
-                        ImGui::Text("Predicted States: %zu", camera->getPredictedStateCount());
-                        ImGui::Text("Pending Inputs: %zu", camera->getPendingInputCount());
-                        ImGui::Text("Corrections total/applied/ignored: %llu / %llu / %llu",
-                            static_cast<unsigned long long>(netStats.totalCorrections),
-                            static_cast<unsigned long long>(netStats.appliedCorrections),
-                            static_cast<unsigned long long>(netStats.ignoredCorrections));
-                        ImGui::Text("Suspected 1-tick phase mismatch count: %llu",
-                            static_cast<unsigned long long>(netStats.suspectedOffByOneCorrections));
-                        ImGui::Text("Last errors: pos=%.6f vel=%.6f horiz=%.6f vert=%.6f",
-                            netStats.lastPosErr,
-                            netStats.lastVelErr,
-                            netStats.lastHorizontalErr,
-                            netStats.lastVerticalErr);
-                        ImGui::Text("Ack match check: err(ack)=%.6f err(ack-1)=%.6f",
-                            netStats.lastErrAtAckTick,
-                            netStats.lastErrAtAckMinusOneTick);
-
-						if (uiInteractive) {
-							float simLatMs = udpClient->getSimulatedLatency();
-							if (ImGui::SliderFloat("Sim Latency (ms)", &simLatMs, 0.0f, 500.0f, "%.0f ms"))
-								udpClient->setSimulatedLatency(simLatMs);
-
-                            float posThreshold = camera->getReconcilePosErrorThreshold();
-                            if (ImGui::SliderFloat("Reconcile Pos Threshold", &posThreshold, 0.01f, 0.5f, "%.3f"))
-                                camera->setReconcilePosErrorThreshold(posThreshold);
-
-                            float velThreshold = camera->getReconcileVelErrorThreshold();
-                            if (ImGui::SliderFloat("Reconcile Vel Threshold", &velThreshold, 0.001f, 0.5f, "%.3f"))
-                                camera->setReconcileVelErrorThreshold(velThreshold);
-
-                            bool reconcileLogEnabled = camera->isReconcileLogEnabled();
-                            if (ImGui::Checkbox("Verbose Reconcile Logs", &reconcileLogEnabled))
-                                camera->setReconcileLogEnabled(reconcileLogEnabled);
-
-                            bool reconcileAutoPhaseAdjust = camera->isReconcileAutoPhaseAdjustEnabled();
-                            if (ImGui::Checkbox("Auto Ack Phase Adjust", &reconcileAutoPhaseAdjust))
-                                camera->setReconcileAutoPhaseAdjustEnabled(reconcileAutoPhaseAdjust);
-
-							ImGui::TextDisabled("Simulates S->C receive delay for reconciliation testing.");
-						} else {
-							ImGui::Text("Sim Latency: %.0f ms", udpClient->getSimulatedLatency());
-						}
-					}
 
                     ImGui::EndTabItem();
                 }
-                if (ImGui::BeginTabItem("Settings")) {
-	                if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
-	                	style._NextFrameFontSizeBase = style.FontSizeBase;
 
-                	ImGui::EndTabItem();
+                // ── Rendering ────────────────────────────────────────────
+                if (ImGui::BeginTabItem("Rendering"))
+                {
+                    if (ImGui::BeginTabBar("Rendering", tab_bar_flags))
+                    {
+                        if (ImGui::BeginTabItem("Options"))
+                        {
+                            if (ImGui::Checkbox("V-Sync", &vsync))
+                                glfwSwapInterval(vsync ? 1 : 0);
+                            if (ImGui::Checkbox("Wireframe", &wireframe))
+                                glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
+                            if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader))
+                                activeShader = useGradientShader ? gradientShader : textureShader;
+                            ImGui::RadioButton("Lighting render", &selectedRenderType, 0); ImGui::SameLine();
+                            ImGui::RadioButton("Normals render",  &selectedRenderType, 1); ImGui::SameLine();
+                            ImGui::RadioButton("Depth render",    &selectedRenderType, 2);
+                            auto applyRenderType = [&](const std::shared_ptr<Shader>& s) {
+                                if (!s) return;
+                                s->use();
+                                s->setInt("renderType", selectedRenderType);
+                            };
+                            applyRenderType(textureShader);
+                            
+                            static bool useBlinnPhong = true;
+                            if (ImGui::Checkbox("Blinn-Phong", &useBlinnPhong)) {
+                                textureShader->use();
+                                textureShader->setInt("blinn", useBlinnPhong);
+                            }
+                            bool shadowsEnabled = lighting->isShadowsEnabled();
+                            if (ImGui::Checkbox("Shadows", &shadowsEnabled))
+                                lighting->setShadowsEnabled(shadowsEnabled);
+                            
+                            bool ssaoEnabled = ssao->isEnabled();
+                            if (ImGui::Checkbox("SSAO", &ssaoEnabled))
+                                ssao->setEnabled(ssaoEnabled);
+                            
+                            ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
+                            
+                            if (renderer) {
+                                int radius = camera->getPlayer()->getLoadRadius();
+                                if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32))
+                                    camera->getPlayer()->setLoadRadius(radius);
+                            }
+                            {
+                                bool cb = chunkBoundaryRenderer->isEnabled();
+                                if (ImGui::Checkbox("Show Chunk Boundary", &cb))
+                                    chunkBoundaryRenderer->setEnabled(cb);
+                            }
+                            
+                            ImGui::EndTabItem();
+                        }
+                        if (ImGui::BeginTabItem("SSAO"))
+                        {
+                            bool ssaoEnabled = ssao->isEnabled();
+                            if (ImGui::Checkbox("Enable SSAO", &ssaoEnabled))
+                                ssao->setEnabled(ssaoEnabled);
+                            
+                            bool blurEnabled = ssao->isBlurEnabled();
+                            if (ImGui::Checkbox("Enable Blur", &blurEnabled))
+                                ssao->setBlurEnabled(blurEnabled);
+                            
+                            bool halfRes = ssao->isHalfResolution();
+                            if (ImGui::Checkbox("Half Resolution", &halfRes))
+                                ssao->setHalfResolution(halfRes);
+                            ImGui::SameLine();
+                            ImGui::TextDisabled("(?)");
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip("Render SSAO at half resolution");
+                            
+                            ImGui::Separator();
+                            ImGui::Text("Parameters");
+                            
+                            float radius = ssao->getRadius();
+                            if (ImGui::SliderFloat("Radius", &radius, 0.01f, 5.0f, "%.3f"))
+                                ssao->setRadius(radius);
+                            
+                            float bias = ssao->getBias();
+                            if (ImGui::SliderFloat("Bias", &bias, 0.0f, 0.2f, "%.4f"))
+                                ssao->setBias(bias);
+                            
+                            float power = ssao->getPower();
+                            if (ImGui::SliderFloat("Power", &power, 0.1f, 10.0f, "%.2f"))
+                                ssao->setPower(power);
+                            
+                            int kernelSize = ssao->getKernelSize();
+                            if (ImGui::SliderInt("Kernel Size", &kernelSize, 4, 64))
+                                ssao->setKernelSize(kernelSize);
+                            
+                            ImGui::EndTabItem();
+                        }
+                        if (ImGui::BeginTabItem("Framebuffers"))
+                        {
+                            ImGui::Separator();
+                            ImGui::Text("Water");
+                            ImGui::Checkbox("Show Reflection Texture", &showReflectionTexture);
+                            ImGui::Checkbox("Show Refraction Texture", &showRefractionTexture);
+                            ImGui::Checkbox("Show Refraction Depth", &showRefractionDepthTexture);
+                            
+                            ImGui::Separator();
+                            ImGui::Text("Render Type");
+                            ImGui::Checkbox("Show Normals View", &showNormalsTexture);
+                            ImGui::Checkbox("Show Depth View", &showDepthTexture);
+
+                            ImGui::Separator();
+                            ImGui::Text("SSAO");
+                            ImGui::Checkbox("Preview SSAO Texture", &showSSAOTexture);
+                            ImGui::Checkbox("Preview Raw SSAO (No Blur)", &showSSAORawTexture);
+                            ImGui::Checkbox("Preview GBuffer Position", &showGBufferPositionTexture);
+                            ImGui::Checkbox("Preview GBuffer Normal", &showGBufferNormalTexture);
+                            
+                            ImGui::EndTabItem();
+                        }
+                    }
+                    ImGui::EndTabBar();
+                    ImGui::EndTabItem();
+                }
+
+                // ── Lighting ─────────────────────────────────────────────
+                if (ImGui::BeginTabItem("Lighting"))
+                {
+                    if (ImGui::BeginTabBar("Lighting", tab_bar_flags))
+                    {
+                        if (ImGui::BeginTabItem("Shadows"))
+                        {
+                            float shadowMinBias = lighting->getShadowMapMinBias();
+                            float shadowMaxBias = lighting->getShadowMapMaxBias();
+                            ImGui::Text("Shadow Controls");
+                            ImGui::Checkbox("Debug Cascades", &lighting->debugCascades);
+                            ImGui::Checkbox("CSM Debug View (All Cascades)", &lighting->showCSMDebugView);
+                            ImGui::Checkbox("Frustum Culling Radar", &showFrustumCullingDebug);
+                            {
+                                bool fc = renderer->isFrustumCullingEnabled();
+                                if (ImGui::Checkbox("Enable Frustum Culling", &fc))
+                                    renderer->setFrustumCullingEnabled(fc);
+                            }
+                            if (ImGui::SliderFloat("Shadow min Bias", &shadowMinBias, -0.005f, 0.001f, "%.5f"))
+                                lighting->setShadowMapMinBias(shadowMinBias);
+                            if (ImGui::SliderFloat("Shadow max Bias", &shadowMaxBias, -0.005f, 0.005f, "%.5f"))
+                                lighting->setShadowMapMaxBias(shadowMaxBias);
+                            ImGui::EndTabItem();
+                        }
+                        if (ImGui::BeginTabItem("Directional Light"))
+                        {
+                            bool directionalLightOn = lighting->isDirectionalLightOn();
+                            glm::vec3 directionalLightDir     = lighting->getDirectionalLightDirection();
+                            glm::vec3 directionalDiffuseColor = lighting->getDirectionalDiffuseColor();
+                            glm::vec3 directionalAmbientColor = lighting->getDirectionalAmbientColor();
+                            glm::vec3 directionalSpecularColor = lighting->getDirectionalSpecularColor();
+                            float materialShininess = lighting->getMaterialShininess();
+                            ImGui::Text("Directional Light Controls");
+                            if (ImGui::Checkbox("Light On", &directionalLightOn))
+                                lighting->setDirectionalLightEnabled(directionalLightOn);
+                            if (ImGui::SliderFloat3("Light Direction", &directionalLightDir.x, -1.0f, 1.0f))
+                                lighting->setDirectionalLightDirection(directionalLightDir);
+                            if (ImGui::ColorEdit3("Light Colour", &directionalDiffuseColor.x))
+                                lighting->setDirectionalDiffuseColor(directionalDiffuseColor);
+                            if (ImGui::ColorEdit3("Ambient Colour", &directionalAmbientColor.x))
+                                lighting->setDirectionalAmbientColor(directionalAmbientColor);
+                            if (ImGui::ColorEdit3("Specular Colour", &directionalSpecularColor.x))
+                                lighting->setDirectionalSpecularColor(directionalSpecularColor);
+                            if (ImGui::SliderFloat("Material Shininess", &materialShininess, 1.0f, 256.0f))
+                                lighting->setMaterialShininess(materialShininess);
+                            ImGui::EndTabItem();
+                        }
+                        if (ImGui::BeginTabItem("Point Lights"))
+                        {
+                            ImGui::Text("Point Light Controls");
+                            for (int i = 0; i < lighting->getNumPointLights(); ++i)
+                            {
+                                bool enabled = lighting->isPointLightOn(i);
+                                glm::vec3 pointLightPosition  = lighting->getPointLightPosition(i);
+                                glm::vec3 pointLightAmbient   = lighting->getPointLightAmbient(i);
+                                glm::vec3 pointLightDiffuse   = lighting->getPointLightDiffuse(i);
+                                glm::vec3 pointLightSpecular  = lighting->getPointLightSpecular(i);
+                                float pointLightConstant      = lighting->getPointLightConstant(i);
+                                float pointLightLinear        = lighting->getPointLightLinear(i);
+                                float pointLightQuadratic     = lighting->getPointLightQuadratic(i);
+                                if (ImGui::Checkbox(("Light " + std::to_string(i)).c_str(), &enabled))
+                                    lighting->setPointLightEnabled(i, enabled);
+                                if (ImGui::SliderFloat3(("Light " + std::to_string(i) + " Position").c_str(), &pointLightPosition.x, 0.0f, 90.0f))
+                                    lighting->setPointLightPosition(i, pointLightPosition);
+                                if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Constant").c_str(), &pointLightConstant, 0.0f, 2.0f))
+                                    lighting->setPointLightConstant(i, pointLightConstant);
+                                if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Linear").c_str(), &pointLightLinear, 0.0f, 0.2f))
+                                    lighting->setPointLightLinear(i, pointLightLinear);
+                                if (ImGui::SliderFloat(("Light " + std::to_string(i) + " Quadratic").c_str(), &pointLightQuadratic, 0.0f, 0.1f))
+                                    lighting->setPointLightQuadratic(i, pointLightQuadratic);
+                                if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Ambient").c_str(), &pointLightAmbient.x))
+                                    lighting->setPointLightAmbient(i, pointLightAmbient);
+                                if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Diffuse").c_str(), &pointLightDiffuse.x))
+                                    lighting->setPointLightDiffuse(i, pointLightDiffuse);
+                                if (ImGui::ColorEdit3(("Light " + std::to_string(i) + " Specular").c_str(), &pointLightSpecular.x))
+                                    lighting->setPointLightSpecular(i, pointLightSpecular);
+                            }
+                            ImGui::EndTabItem();
+                        }
+                        if (ImGui::BeginTabItem("Flashlight"))
+                        {
+                            bool flashlightOn = lighting->isFlashlightOn();
+                            float flashlightCutoff = lighting->getFlashlightCutoffAngle();
+                            float flashlightOuterCutoff = lighting->getFlashlightOuterCutoffAngle();
+                            ImGui::Text("Flashlight Controls");
+                            if (ImGui::Checkbox("Flashlight On", &flashlightOn))
+                                lighting->setSpotLightOn(flashlightOn);
+                            if (ImGui::SliderFloat("Flashlight Cutoff", &flashlightCutoff, 1.0f, 90.0f))
+                                lighting->setFlashlightCutoffAngle(flashlightCutoff);
+                            if (ImGui::SliderFloat("Flashlight Outer Cutoff", &flashlightOuterCutoff, 1.0f, 90.0f))
+                                lighting->setFlashlightOuterCutoffAngle(flashlightOuterCutoff);
+                            ImGui::EndTabItem();
+                        }
+                    }
+                    ImGui::EndTabBar();
+                    ImGui::EndTabItem();
+                }
+
+                // ── Sky & Water ───────────────────────────────────────────
+                if (ImGui::BeginTabItem("Sky & Water"))
+                {
+                    bool skyTimePaused = lighting->isSkyTimePaused();
+                    int skyMode = static_cast<int>(lighting->getSkyMode());
+                    float skyTimeSpeed = lighting->getSkyTimeSpeed();
+                    float skyTimeOffset = lighting->getSkyTimeOffset();
+                    float sunYawDeg = lighting->getSunYawDeg();
+                    float skyExposure = lighting->getSkyExposure();
+                    float skyAtmDensity = lighting->getSkyAtmDensity();
+                    float skyAtmThickness = lighting->getSkyAtmThickness();
+                    float planetScale = lighting->getPlanetScale();
+                    
+                    bool cloudsEnabled = lighting->isCloudsEnabled();
+                    float cloudDensity = lighting->getCloudDensity();
+                    float cloudSigmaT = lighting->getCloudSigmaT();
+                    glm::vec3 cloudAlbedo = lighting->getCloudAlbedo();
+                    float cloudStepCount = lighting->getCloudStepCount();
+                    float cloudSigmaS = lighting->getCloudSigmaS();
+                    float cloudPhaseG = lighting->getCloudPhaseG();
+
+                    if (ImGui::BeginTabBar("Sky / Atmosphere", tab_bar_flags))
+                    {
+                        if (ImGui::BeginTabItem("Atmosphere controls"))
+                        {
+                            bool skyLUTEnabled = lighting->isSkyLUTEnabled();
+                            if (ImGui::Checkbox("Use Precomputed LUT (fast)", &skyLUTEnabled))
+                                lighting->setSkyLUTEnabled(skyLUTEnabled);
+                            {
+                                bool modeChanged = ImGui::RadioButton("Skyrim (pause/step)", &skyMode, 0);
+                                ImGui::SameLine();
+                                modeChanged |= ImGui::RadioButton("Smooth (linear)", &skyMode, 1);
+                                if (modeChanged) {
+                                    lighting->setSkyMode(static_cast<uint8_t>(skyMode));
+                                    NetSkyTime pkt;
+                                    pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                    pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                    pkt.skyTimeSpeed  = skyTimeSpeed;
+                                    pkt.sunStepping   = lighting->getSunStepping();
+                                    pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                    pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                    udpClient->sendPacket(pkt);
+                                }
+                            }
+                            if (ImGui::SliderFloat("Time Speed", &skyTimeSpeed, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
+                                lighting->setSkyTimeSpeed(skyTimeSpeed);
+                                NetSkyTime pkt;
+                                pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                pkt.skyTimeSpeed  = skyTimeSpeed;
+                                pkt.sunStepping   = lighting->getSunStepping();
+                                pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                udpClient->sendPacket(pkt);
+                            }
+
+                            ImGui::Separator();
+                            if (ImGui::Checkbox("Pause Sun Animation", &skyTimePaused)) {
+                                lighting->setSkyTimePaused(skyTimePaused);
+                                NetSkyTime pkt;
+                                pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                pkt.skyTimeSpeed  = skyTimeSpeed;
+                                pkt.sunStepping   = lighting->getSunStepping();
+                                pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                udpClient->sendPacket(pkt);
+                            }
+                            if (ImGui::SliderFloat("Sun Time Offset (s)", &skyTimeOffset, 0.0f, 60.0f, "%.1f")) {
+                                lighting->setSkyTimeOffset(skyTimeOffset);
+                                NetSkyTime pkt;
+                                pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                pkt.skyTimeSpeed  = skyTimeSpeed;
+                                pkt.sunStepping = false; pkt.sunPauseTimer = 0.0f; pkt.sunStepTimer = 0.0f;
+                                udpClient->sendPacket(pkt);
+                            }
+                            if (ImGui::SliderFloat("Sun Yaw (degrees)", &sunYawDeg, 0.0f, 360.0f, "%.1f")) {
+                                lighting->setSunYawDeg(sunYawDeg);
+                                NetSkyTime pkt;
+                                pkt.skyTimeOffset = skyTimeOffset; pkt.sunYawDeg = sunYawDeg;
+                                pkt.skyTimePaused = skyTimePaused; pkt.skyMode = static_cast<uint8_t>(skyMode);
+                                pkt.skyTimeSpeed  = skyTimeSpeed;
+                                pkt.sunStepping   = lighting->getSunStepping();
+                                pkt.sunPauseTimer = lighting->getSunPauseTimer();
+                                pkt.sunStepTimer  = lighting->getSunStepTimer();
+                                udpClient->sendPacket(pkt);
+                            }
+                            if (ImGui::SliderFloat("Exposure", &skyExposure, 0.1f, 4.0f, "%.2f"))
+                                lighting->setSkyExposure(skyExposure);
+                            if (ImGui::SliderFloat("Atmos Density", &skyAtmDensity, 0.0f, 100.0f, "%.2f"))
+                                lighting->setSkyAtmDensity(skyAtmDensity);
+                            if (ImGui::SliderFloat("Atmos Thickness", &skyAtmThickness, 0.0f, 1.0f, "%.2f"))
+                                lighting->setSkyAtmThickness(skyAtmThickness);
+                            if (ImGui::SliderFloat("Planet Scale", &planetScale, 5000.0f, 15000.0f, "%.2f"))
+                                lighting->setPlanetScale(planetScale);
+                            ImGui::TextDisabled("Lower density/thickness to feel higher altitude.");
+                            ImGui::EndTabItem();
+                        }
+                        
+                        if (ImGui::BeginTabItem("Fog")) {
+                            ImGui::Text("Distance Fog");
+                            ImGui::Checkbox("Fog Enabled", &fogEnabled);
+                            if (fogEnabled) {
+                                ImGui::SliderFloat("Fog Start (fraction of chunk radius)", &fogStartFraction, 0.0f, 0.95f, "%.2f");
+                                ImGui::SliderFloat("Fog Strength", &fogStrength, 0.1f, 10.0f, "%.1f");
+                                ImGui::Text("Fog range: %.0f - %.0f blocks", renderer->getMaxRenderedChunkDist() * fogStartFraction, renderer->getMaxRenderedChunkDist());
+                            }
+                            ImGui::EndTabItem();
+                        }
+                        
+                        if (ImGui::BeginTabItem("Clouds"))
+                        {
+                            if (ImGui::Checkbox("Clouds Enabled", &cloudsEnabled))
+                                lighting->setCloudsEnabled(cloudsEnabled);
+                            if (ImGui::SliderFloat("Cloud Density", &cloudDensity, 0.02f, 0.2f, "%.3f"))
+                                lighting->setCloudDensity(cloudDensity);
+                            if (ImGui::SliderFloat("Cloud Sigma T", &cloudSigmaT, 1.0f, 10.0f, "%.1f"))
+                                lighting->setCloudSigmaT(cloudSigmaT);
+                            if (ImGui::ColorEdit3("Cloud Albedo", &cloudAlbedo.x))
+                                lighting->setCloudAlbedo(cloudAlbedo);
+                            if (ImGui::SliderFloat("Cloud Step Count", &cloudStepCount, 32.0f, 96.0f, "%.1f"))
+                                lighting->setCloudStepCount(cloudStepCount);
+                            
+                            if (ImGui::SliderFloat("Cloud Sigma S", &cloudSigmaS, 1.0f, 10.0f, "%.1f"))
+                                lighting->setCloudSigmaS(cloudSigmaS);
+                            if (ImGui::SliderFloat("Cloud Phase G", &cloudPhaseG, 0.0f, 1.0f, "%.1f"))
+                                lighting->setCloudPhaseG(cloudPhaseG);
+                            
+                            ImGui::Separator();
+                            
+                            ImGui::Text("Cloud Shape & Movement");
+                            float cloudEdgeFeather = lighting->getCloudEdgeFeather();
+                            float cloudNoiseScale = lighting->getCloudNoiseScale();
+                            float cloudNoiseContrastLo = lighting->getCloudNoiseContrastLo();
+                            float cloudNoiseContrastHi = lighting->getCloudNoiseContrastHi();
+                            float cloudWindSpeed = lighting->getCloudWindSpeed();
+                            glm::vec2 cloudWindDir = lighting->getCloudWindDir();
+                            
+                            if (ImGui::SliderFloat("Cloud Edge Feather", &cloudEdgeFeather, 1.0f, 30.0f, "%.1f"))
+                                lighting->setCloudEdgeFeather(cloudEdgeFeather);
+                            if (ImGui::SliderFloat("Cloud Noise Scale", &cloudNoiseScale, 0.005f, 0.05f, "%.3f"))
+                                lighting->setCloudNoiseScale(cloudNoiseScale);
+                            if (ImGui::SliderFloat("Cloud Contrast Lo", &cloudNoiseContrastLo, 0.0f, 1.0f, "%.2f"))
+                                lighting->setCloudNoiseContrastLo(cloudNoiseContrastLo);
+                            if (ImGui::SliderFloat("Cloud Contrast Hi", &cloudNoiseContrastHi, 0.0f, 1.0f, "%.2f"))
+                                lighting->setCloudNoiseContrastHi(cloudNoiseContrastHi);
+                            if (ImGui::SliderFloat("Cloud Wind Speed", &cloudWindSpeed, 0.0f, 100.0f, "%.1f"))
+                                lighting->setCloudWindSpeed(cloudWindSpeed);
+                            if (ImGui::SliderFloat2("Cloud Wind Direction", &cloudWindDir.x, -1.0f, 1.0f, "%.2f"))
+                                lighting->setCloudWindDir(cloudWindDir);
+                            ImGui::EndTabItem();
+                        }
+                        if (ImGui::BeginTabItem("Water"))
+                        {
+                            ImGui::SliderFloat("Water wave strength", &waterRenderer->waveStrength, 0.000f, 0.09f, "%.3f");
+                            ImGui::SliderFloat("Water dudv tiling",   &waterRenderer->dudvTiling,   0.000f, 0.09f, "%.2f");
+                            
+                            glm::vec3 underwaterTint = lighting->getUnderwaterTintColor();
+                            if (ImGui::ColorEdit3("Underwater Tint", &underwaterTint.x))
+                                lighting->setUnderwaterTintColor(underwaterTint);
+                            
+                            glm::vec3 underwaterFogColor = lighting->getUnderwaterFogColor();
+                            if (ImGui::ColorEdit3("Underwater Fog Color", &underwaterFogColor.x))
+                                lighting->setUnderwaterFogColor(underwaterFogColor);
+                            
+                            float underwaterFogDensity = lighting->getUnderwaterFogDensity();
+                            if (ImGui::SliderFloat("Underwater Fog Density", &underwaterFogDensity, 0.00f, 0.5f, "%.2f"))
+                                lighting->setUnderwaterFogDensity(underwaterFogDensity);
+                            ImGui::EndTabItem();
+                        }
+                    }
+                    ImGui::EndTabBar();
+                    ImGui::EndTabItem();
+                }
+
+                // ── Settings ─────────────────────────────────────────────
+                if (ImGui::BeginTabItem("Settings")) {
+                    if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
+                        style._NextFrameFontSizeBase = style.FontSizeBase;
+                    ImGui::Separator();
+                    static bool spectator = false;
+                    if (ImGui::Checkbox("Survival", &spectator))
+                    {
+                        NetMessage pkt;
+                        pkt.message = spectator ? "/gamemode survival" : "/gamemode spectator";
+                        udpClient->sendPacket(pkt);
+                    }
+                    ImGui::EndTabItem();
                 }
                 if (ImGui::BeginTabItem("Profiler")) {
                     ImGui::Checkbox("Open Profiler Window", &showProfilerWindow);
@@ -1688,25 +1694,6 @@ void App::debugWindow() {
                 }
                 ImGui::EndTabBar();
             }
-
-			static bool spectator = false;
-			ImGui::Separator();
-			if (ImGui::Checkbox("Survival", &spectator))
-			{
-				if (spectator)
-				{
-					NetMessage pkt;
-					pkt.message = "/gamemode survival";
-					udpClient->sendPacket(pkt);
-				}
-				else
-				{
-					NetMessage pkt;
-					pkt.message = "/gamemode spectator";
-					udpClient->sendPacket(pkt);
-				}
-			}
-
 
             ImGui::End();
             if (!uiInteractive) {
@@ -2014,6 +2001,7 @@ void App::processInput() {
     static bool f11Held = false;
     static bool f1Held  = false;
     static bool f2Held  = false;
+    static bool f3Held  = false;
     static bool f4Held  = false;
 	static bool ThirdPersonCameraKeyActive = false;
     static bool tabHeld = false;
@@ -2028,6 +2016,16 @@ void App::processInput() {
 		}
 		return;
 	}
+
+    // Toggle debug HUD (F3)
+    if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS && !f3Held &&
+        glfwGetKey(window, GLFW_KEY_A) != GLFW_PRESS) {
+        showHUD = !showHUD;
+        f3Held = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_RELEASE) {
+        f3Held = false;
+    }
 
     // Show/Hide debug window
     if (glfwGetKey(window, controlsArray[TOGGLE_DEBUG]) == GLFW_PRESS && !tabHeld) {

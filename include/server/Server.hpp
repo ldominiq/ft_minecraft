@@ -19,6 +19,8 @@
 #include <zstd.h>
 
 #include <mutex>
+#include <condition_variable>
+#include <queue>
 
 #include "Protocol.hpp"
 #include "World.hpp"
@@ -37,7 +39,7 @@ private:
 	std::deque<std::string> messages;
 	std::unique_ptr<World> world;
 
-	bool running = false;
+	std::atomic<bool> running = false;
 
 	int32_t tick = 0;
 	float deltaTime;
@@ -47,6 +49,17 @@ private:
 
 	std::vector<std::thread> dumpThreads;
 	std::mutex dumpThreadsMutex;
+
+	struct PingJob {
+		sockaddr_in addr;
+		uint64_t timestamp;
+	};
+	std::queue<PingJob> pingQueue;
+	std::mutex pingMutex;
+	std::condition_variable pingCV;
+	std::thread pingThread;
+
+	void pingLoop();
 
 	void gameTick();
 

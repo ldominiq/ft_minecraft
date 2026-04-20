@@ -62,6 +62,7 @@
 
 #include "GuiRenderer.hpp"
 #include "ChunkBoundaryRenderer.hpp"
+#include "DebugHUD.hpp"
 
 #define CONTROL_LIST 		\
     X(FORWARD)       		\
@@ -131,6 +132,7 @@ private:
 	void loadControlsFromFile(const char* filename = "controls.cfg");
 
     void debugWindow();
+    void computeDebugStats();
 
 
 
@@ -172,6 +174,9 @@ private:
 	std::weak_ptr<Menu> menuManager;
 	std::shared_ptr<Chat> chat;
 	std::shared_ptr<InventoryUI> inventoryUI;
+	std::unique_ptr<DebugHUD> debugHUD;
+	bool showHUD = false;
+	DebugStats cachedDebugStats{};
 
 	std::shared_ptr<Loader> loader;
 	// GUI
@@ -325,6 +330,12 @@ private:
     double measuredAverageMsDrawEntities = 0.0;
     double measuredAverageMsSSAO = 0.0;
     double measuredAverageMsGBuffer = 0.0;
+
+	// Ping measurement
+    float pingMs = -1.0f;
+    float pingEMASmoothing = 1.0f;
+    float lastPingSentTime = -999.0f;
+	uint64_t lastPingTimestamp = 0;
 };
 
 #endif //APP_HPP
