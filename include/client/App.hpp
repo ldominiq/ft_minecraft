@@ -133,7 +133,6 @@ private:
     void loadResources();
     void render();
 	void renderScene(const glm::mat4 &view, const glm::mat4 &projection, glm::vec4 clipPlane) const;
-	void gameTick();
 
     void cleanup();
     void setUdpClientPacketCallback();
@@ -162,7 +161,6 @@ private:
     bool keyPressedRecently = false;
 	bool mouseMovedRecently = false;
 	float lastMouseMoveTime = 0;
-	float glfwTickTime = 0;
 
     TextureManager textureManager;
 
@@ -204,8 +202,10 @@ private:
 
 	std::unique_ptr<PlayerListHUD> playerListHUD;
 	bool     playerListVisible = false;
-	uint32_t localClientId     = 0;
-	std::unordered_map<uint32_t, float> remotePings; // entityId -> pingMs
+	uint32_t localClientId      = 0;
+	uint32_t localPlayerListId  = 0;
+	std::unordered_map<uint32_t, float>    remotePings;          // entityId -> pingMs
+	std::unordered_map<uint32_t, uint32_t> entityToPlayerListId; // entityId -> playerListId
 	DebugStats cachedDebugStats{};
 
 	std::shared_ptr<Loader> loader;
@@ -251,8 +251,12 @@ private:
 
     float lastX = 400, lastY = 300;
     bool firstMouse = true;
+	float currentFrame;
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
+	int32_t clientTick = 0;
+	double clientTime = 0.0;
+	float clientTickChangedTime = 0.0f;
 
 	bool clientConnected = false;
 

@@ -87,17 +87,20 @@ inline AutoRegister<NetDisconnect> _reg_NetDisconnect;
 
 struct NetAccept final : public Packet {
     static constexpr PacketType ID = PacketType::NET_ACCEPT;
-    uint32_t clientId = 0;
+    uint32_t clientId     = 0;
+    uint32_t playerListId = 0;
 
     NetAccept() : Packet(ID) {}
 
-    void encode(BufferWriter& w) const override { w.write_u32(clientId); }
-    void decode(BufferReader& r) override { clientId = r.read_u32(); }
+    void encode(BufferWriter& w) const override { w.write_u32(clientId); w.write_u32(playerListId); }
+    void decode(BufferReader& r) override { clientId = r.read_u32(); playerListId = r.read_u32(); }
 };
 inline AutoRegister<NetAccept> _reg_NetAccept;
 
 struct NetPlayerInputs final : public Packet {
     static constexpr PacketType ID = PacketType::PLAYER_INPUT;
+
+	int32_t serverClientReconciliationTick = -1; //for client reconciliation.
 
 	uint16_t keys = 0;	// bitfield
 	uint8_t activeHotbarSlot = -1;
@@ -108,6 +111,7 @@ struct NetPlayerInputs final : public Packet {
     NetPlayerInputs() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
+		w.write_i32(serverClientReconciliationTick);
         w.write_u16(keys);
 		w.write_u8(activeHotbarSlot);
         w.write_f32(pitch);
@@ -116,6 +120,7 @@ struct NetPlayerInputs final : public Packet {
     }
 
     void decode(BufferReader& r) override {
+        serverClientReconciliationTick = r.read_i32();
         keys = r.read_u16();
 		activeHotbarSlot = r.read_u8();
         pitch = r.read_f32();
@@ -143,10 +148,10 @@ struct NetPlayerMouseInputs final : public Packet {
 };
 inline AutoRegister<NetPlayerMouseInputs> _reg_NetPlayerMouseInput;
 
-// TODO : add delta compression & put inside of a new Snapshot packet
+// TODO : add delta compression & put inside of a new Snapshot packet sometimeTM
 struct NetPlayerMove final : public Packet {
 	static constexpr PacketType ID = PacketType::PLAYER_MOVE;
-	int32_t serverTick; // TODO : move to snapshot packet
+	int32_t serverClientReconciliationTick = 0; //server tick at which the client has done his inputs/prediction corresponding to this packet.
 
 	float positionX;
 	float positionY;
@@ -156,29 +161,84 @@ struct NetPlayerMove final : public Packet {
 	float velocityY;
 	float velocityZ;
 
+	float yaw;
+	float pitch;
+
+	float health;
+	float slipperinessPrev;
+	float accumulatedFallDistance;
+	uint8_t onGround = 0;
+	uint8_t jumpBoostApplied = 0;
 
 	NetPlayerMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
-		w.write_i32(serverTick);
+		w.write_i32(serverClientReconciliationTick);
 		w.write_f32(positionX);
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
 		w.write_f32(velocityX);
-		w.write_f32(velocityZ);
 		w.write_f32(velocityY);
+		w.write_f32(velocityZ);
+		w.write_f32(yaw);
+		w.write_f32(pitch);
+		w.write_f32(health);
+       w.write_f32(slipperinessPrev);
+		w.write_f32(accumulatedFallDistance);
+		w.write_u8(onGround);
+		w.write_u8(jumpBoostApplied);
     }
     void decode(BufferReader& r) override {
-		serverTick = r.read_i32();
+		serverClientReconciliationTick = r.read_i32();
 		positionX = r.read_f32();
 		positionY = r.read_f32();
 		positionZ = r.read_f32();
 		velocityX = r.read_f32();
-		velocityZ = r.read_f32();
 		velocityY = r.read_f32();
+		velocityZ = r.read_f32();
+		yaw = r.read_f32();
+		pitch = r.read_f32();
+		health = r.read_f32();
+     slipperinessPrev = r.read_f32();
+		accumulatedFallDistance = r.read_f32();
+		onGround = r.read_u8();
+		jumpBoostApplied = r.read_u8();
     }
 };
 inline AutoRegister<NetPlayerMove> _reg_NetPlayerMove;
+
+struct NetPlayerGameMode final : public Packet {
+	static constexpr PacketType ID = PacketType::PLAYER_GAMEMODE;
+	uint8_t gamemode = 0; // 0 = survival, 1 = creative, 2 = adventure, 3 = spectator
+
+	NetPlayerGameMode() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+		w.write_u8(gamemode);
+    }
+    void decode(BufferReader& r) override {
+		gamemode = r.read_u8();
+    }
+};
+inline AutoRegister<NetPlayerGameMode> _reg_NetPlayerGameMode;
+
+
+// TODO : add delta compression & put inside of a new Snapshot packet
+// struct NetOnHit final : public Packet {
+// 	static constexpr PacketType ID = PacketType::NET_ON_HIT;
+
+// 	float health;
+
+// 	NetOnHit() : Packet(ID) {}
+
+//     void encode(BufferWriter& w) const override {
+// 		w.write_f32(health);
+//     }
+//     void decode(BufferReader& r) override {
+// 		health = r.read_f32();
+//     }
+// };
+// inline AutoRegister<NetOnHit> _reg_NetOnHit;
 
 struct NetEntityMove final : public Packet {
 	static constexpr PacketType ID = PacketType::NET_ENTITY_MOVE;
@@ -194,6 +254,9 @@ struct NetEntityMove final : public Packet {
 
 	float yaw;
 
+	// bit 0 = hasHorizontalInput, bit 1 = onGround
+	uint8_t positionFlags = 0;
+
 	NetEntityMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
@@ -204,6 +267,7 @@ struct NetEntityMove final : public Packet {
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
 		w.write_f32(yaw);
+		w.write_u8(positionFlags);
     }
     void decode(BufferReader& r) override {
 		eEntityType = static_cast<EEntityTypes>(r.read_u8());
@@ -213,6 +277,7 @@ struct NetEntityMove final : public Packet {
 		positionY = r.read_f32();
 		positionZ = r.read_f32();
 		yaw = r.read_f32();
+		positionFlags = r.read_u8();
     }
 };
 inline AutoRegister<NetEntityMove> _reg_NetEntityMove;
@@ -764,13 +829,14 @@ inline AutoRegister<NetPlayerPing> _reg_NetPlayerPing;
 // Server → all clients: list of (entityID, pingMs) for every connected player
 struct NetPingList final : public Packet {
     static constexpr PacketType ID = PacketType::NET_PING_LIST;
-    struct Entry { uint32_t entityId; float pingMs; };
+    struct Entry { uint32_t entityId; uint32_t playerListId; float pingMs; };
     std::vector<Entry> entries;
     NetPingList() : Packet(ID) {}
     void encode(BufferWriter& w) const override {
         w.write_u8(static_cast<uint8_t>(entries.size()));
         for (const auto& e : entries) {
             w.write_u32(e.entityId);
+            w.write_u32(e.playerListId);
             w.write_f32(e.pingMs);
         }
     }
@@ -778,8 +844,9 @@ struct NetPingList final : public Packet {
         uint8_t count = r.read_u8();
         entries.resize(count);
         for (auto& e : entries) {
-            e.entityId = r.read_u32();
-            e.pingMs   = r.read_f32();
+            e.entityId    = r.read_u32();
+            e.playerListId = r.read_u32();
+            e.pingMs      = r.read_f32();
         }
     }
 };

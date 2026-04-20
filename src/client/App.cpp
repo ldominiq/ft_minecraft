@@ -411,7 +411,8 @@ void App::setUdpClientPacketCallback()
 				auto& p = static_cast<NetAccept&>(*pkt);
 				std::cout << "Client accepted! id=" << p.clientId << "\n";
 				clientConnected = true;
-				localClientId = p.clientId;
+				localClientId     = p.clientId;
+				localPlayerListId = p.playerListId;
 				break;
 			}
 
@@ -431,14 +432,20 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::PLAYER_MOVE: {
 				auto& p = static_cast<NetPlayerMove&>(*pkt);
-				glfwTickTime = glfwGetTime();
-				camera->onSnapshot(p, *renderer);
+				// snapshotReceivedTime = glfwGetTime();
+				camera->onSnapshot(p);
+				break;
+			}
+
+			case PacketType::PLAYER_GAMEMODE: {
+				auto& p = static_cast<NetPlayerGameMode&>(*pkt);
+				camera->getPlayer()->gamemode = static_cast<GAMEMODES>(p.gamemode);
 				break;
 			}
 
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
-				renderer->onEntity(p, glfwTickTime);
+				renderer->onEntity(p, clientTime);
 				break;
 			}
 
@@ -518,8 +525,11 @@ void App::setUdpClientPacketCallback()
 			case PacketType::NET_PING_LIST: {
 				auto& p = static_cast<NetPingList&>(*pkt);
                 remotePings.clear();
-				for (const auto& e : p.entries)
-					remotePings[e.entityId] = e.pingMs;
+				entityToPlayerListId.clear();
+				for (const auto& e : p.entries) {
+					remotePings[e.entityId]          = e.pingMs;
+					entityToPlayerListId[e.entityId] = e.playerListId;
+				}
 				break;
 			}
 
@@ -560,52 +570,12 @@ void App::loadResources() {
     renderer->getVegetationShader()->setInt("blockTextures", 0);
 }
 
-void App::gameTick() {
-	if (!udpClient) return;
-	// sending/receiving packets and stuff
-
-	udpClient->receivePacket();
-
-    if (clientConnected && udpClient) {
-		float now = static_cast<float>(glfwGetTime());
-        if (now - lastPingSentTime >= 2.0f) {
-            lastPingSentTime = now;
-			if (serverIp == "127.0.0.1" || serverIp == "localhost") {
-                // Localhost: skip RTT measurement, set to 0 and report to server
-                pingMs = 0.0f;
-                NetPlayerPing report;
-                report.pingMs = 0.0f;
-                udpClient->sendPacket(report);
-            }
-            else {
-                auto ts = static_cast<uint64_t>(
-                    std::chrono::duration_cast<std::chrono::microseconds>(
-                        std::chrono::steady_clock::now().time_since_epoch()).count());
-			    lastPingTimestamp = ts;
-                NetPing ping;
-			    ping.timestamp = ts;
-			    udpClient->sendPacket(ping);
-            }
-        }
-    }
-
-	auto manager = menuManager.lock();
-	if ((keyPressedRecently || mouseMovedRecently) && !manager)
-	{
-		NetPlayerInputs inputs = buildPlayerInputsPacket();
-		udpClient->sendPacket(inputs);
-	}
-
-	static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
-	static float waveSpeed = waterRenderer->waveStrength;
-	waterMoveOffset += waveSpeed * deltaTime;
-	if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
-	waterRenderer->setWaterMoveFactor(waterMoveOffset);
-}
 
 void App::render() {
 
-    while (!glfwWindowShouldClose(window)) {
+	while (!glfwWindowShouldClose(window)) {
+		// Rotate query index each frame
+		currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
 
         // Skip rendering if window is minimized
         if (screenWidth == 0 || screenHeight == 0) {
@@ -651,24 +621,92 @@ void App::render() {
 			continue;
 		}
 
-        // Rotate query index each frame
-        currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
-
         if (renderer) renderer->resetDrawCallCount();
+
+		if (camera)
+			camera->updateSmoothing(deltaTime);
+
+		NetPlayerInputs inputs = buildPlayerInputsPacket();
+		auto manager = menuManager.lock();
 
 		//Tick logic
 		float tickDuration = 1.0f / TPS; // 0.05s per tick
 		static float accumulator = 0.0f;
 		accumulator += deltaTime;
 
-		while (accumulator >= tickDuration) //should never be more than 1 tick...
-		{
-			// Advance one tick
-			gameTick();
-			accumulator -= tickDuration;
-		}
+        int simulatedTicksThisFrame = 0;
+        constexpr int kMaxSimulatedTicksPerFrame = 6;
+        std::vector<NetPlayerInputs> frameInputs;
+        frameInputs.reserve(kMaxSimulatedTicksPerFrame);
+        while (accumulator >= tickDuration && simulatedTicksThisFrame < kMaxSimulatedTicksPerFrame)
+        {
+            NetPlayerInputs tickInputs = inputs;
+            if (manager)
+                tickInputs.keys = 0;
 
-		camera->lerpToNextPosition(glfwGetTime() - glfwTickTime);
+            tickInputs.serverClientReconciliationTick = clientTick;
+            camera->queueInput(tickInputs, clientTick);
+
+            // Collect every tick's input; all will be sent as a batch so the
+            // server can run one physics step per entry during catch-up.
+            frameInputs.push_back(tickInputs);
+
+            camera->predict(*renderer, clientTick);
+
+            clientTime = clientTick * tickDuration;
+            accumulator -= tickDuration;
+            clientTickChangedTime = glfwGetTime();
+            clientTick++;
+            simulatedTicksThisFrame++;
+        }
+
+        // Send all inputs for this frame in one datagram.
+        if (!frameInputs.empty()) {
+            if (frameInputs.size() == 1) {
+                udpClient->sendPacket(frameInputs[0]);
+            } else {
+                NetPacketGroup group;
+                for (auto& inp : frameInputs)
+                    group.add(inp);
+                udpClient->sendPacket(group);
+            }
+        }
+
+        if (simulatedTicksThisFrame == kMaxSimulatedTicksPerFrame && accumulator > tickDuration * 2.0f)
+            accumulator = tickDuration * 2.0f;
+
+        camera->setRenderTickAlpha(accumulator / tickDuration);
+		udpClient->receivePacket();
+        camera->flushPendingSnapshot(*renderer, clientTick);
+
+        if (clientConnected && udpClient) {
+            float now = static_cast<float>(glfwGetTime());
+            if (now - lastPingSentTime >= 2.0f) {
+                lastPingSentTime = now;
+                if (serverIp == "127.0.0.1" || serverIp == "localhost") {
+                    // Localhost: skip RTT measurement, set to 0 and report to server
+                    pingMs = 0.0f;
+                    NetPlayerPing report;
+                    report.pingMs = 0.0f;
+                    udpClient->sendPacket(report);
+                }
+                else {
+                    auto ts = static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count());
+                    lastPingTimestamp = ts;
+                    NetPing ping;
+                    ping.timestamp = ts;
+                    udpClient->sendPacket(ping);
+                }
+            }
+        }
+
+		//for some reason mouse needs a little delay to be put to false otherwise it glitches.
+		if ((glfwGetTime() - lastMouseMoveTime) > tickDuration * 2)
+			mouseMovedRecently = false;
+
+     // Local player must be rendered from current predicted state (present time), not interpolated in the past.
 
 		// const double mouseIdleThreshold = 0.2; // seconds
 		// if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
@@ -705,7 +743,7 @@ void App::render() {
 
         updateWindowTitle();
 
-		auto manager = menuManager.lock();
+		// auto manager = menuManager.lock();
 		if (manager != chat)
         	processInput();
 
@@ -811,6 +849,12 @@ void App::render() {
         } else {
             ssaoQueryIssuedThisFrame[currentQueryIndex] = false;
         }
+
+		static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
+		static float waveSpeed = waterRenderer->waveStrength;
+		waterMoveOffset += waveSpeed * deltaTime;
+		if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
+		waterRenderer->setWaterMoveFactor(waterMoveOffset);
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
@@ -927,6 +971,7 @@ void App::render() {
 		else
 		{
 			inventoryUI->drawHotbar();
+			inventoryUI->drawHealth(camera->getPlayer()->health);
 			chat->renderRecentMessages();
 		}
 
@@ -937,7 +982,7 @@ void App::render() {
 
 		if (playerListVisible && clientConnected) {
 			std::vector<PlayerEntry> entries;
-			entries.push_back({ localClientId, true, pingMs });
+			entries.push_back({ localPlayerListId, true, pingMs });
 			for (auto& le : renderer->livingEntities) {
 				if (!le || le->getLivingEntityType() != PLAYER) continue;
 				if (le->getID() == localClientId) continue;
@@ -945,7 +990,11 @@ void App::render() {
 				auto it = remotePings.find(le->getID());
 				if (it != remotePings.end())
 					remPing = it->second;
-				entries.push_back({ le->getID(), false, remPing });
+				uint32_t plId = 0;
+				auto pit = entityToPlayerListId.find(le->getID());
+				if (pit != entityToPlayerListId.end())
+					plId = pit->second;
+				entries.push_back({ plId, false, remPing });
 			}
 			playerListHUD->update(entries);
 			playerListHUD->render();
@@ -1112,27 +1161,63 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 
     lighting->drawLightCubes(view, projection);
 
-	//THIS CODE IS AWFULLY BAD
+	// Check if the entity is within the player's load radius
+	auto updateDrawState = [&](auto &entity)
+	{
+		glm::vec3 playerPos = camera->getPlayer()->getPosition();
+		glm::vec3 entityPos = entity->getPosition();
+
+		glm::vec2 diff(playerPos.x - entityPos.x, playerPos.z - entityPos.z);
+
+		float distSq = glm::dot(diff, diff);
+		float radius = camera->getPlayer()->getLoadRadius() * Chunk::WIDTH;
+
+		entity->setDoDraw(distSq <= radius * radius);
+	};
+
+	//this code is mehhhh
+	double intraTick = (glfwGetTime() - clientTickChangedTime);
+	double delay = (1.0/TPS) * 1;
 	//items
 	for (auto &entity : renderer->itemEntities)
 	{
 		if (!entity->positionUpdated) continue ;
-		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - glfwTickTime, entity->prevPosition, entity->nextPosition);
-		entity->setPosition(newEntityPos);
+		entity->lerp(clientTime + intraTick - delay);
 	}
     glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
 	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
-	for (auto &entity : renderer->itemEntities)
-		if (entity->glfwTickTime < glfwTickTime) entity->positionUpdated = false;
 	glEndQuery(GL_TIME_ELAPSED);
 
 	//mobs
 	for (auto &entity : renderer->livingEntities)
 	{
-		if (!entity->positionUpdated) continue ;
-		glm::vec3 newEntityPos = camera->lerpEntityToNextPosition(glfwGetTime() - glfwTickTime, entity->prevPosition, entity->nextPosition);
-		entity->setPosition(newEntityPos);
-		// if (entity->glfwTickTime < glfwTickTime) entity->positionUpdated = false;
+		updateDrawState(entity);
+
+		entity->lerp(clientTime + intraTick - delay);
+
+		// firstFrame = false;
+	}
+
+	for (auto &entity : renderer->itemEntities)
+	{
+		updateDrawState(entity);
+
+		static bool firstFrame = true;
+		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) { 
+            entity->positionUpdated = false; 
+        }
+		firstFrame = false;
+	}
+
+	// Sync the local player's mesh position with the interpolated camera target
+	// so the character doesn't shake in third-person due to the prediction/
+	// reconciliation cycle updating the raw physics position mid-frame.
+	auto &localPlayer = *camera->getPlayer();
+	if (camera->isThirdPersonCameraActive()) {
+		localPlayer.renderPos = camera->getInterpolatedPlayerPos();
+		localPlayer.hasRenderPos = true;
+	} else {
+		localPlayer.hasRenderPos = false;
 	}
 
 	renderer->drawCharacters(projection, view, deltaTime);
@@ -2060,8 +2145,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	inputs.yaw = camera->getPlayer()->getYaw();
 	inputs.loadRadius = camera->getPlayer()->getLoadRadius();
 	inputs.activeHotbarSlot = activeHotbarSlot;
-
-	camera->inputsList.push_back(inputs);
+	inputs.serverClientReconciliationTick = clientTick;
 
 	return inputs;
 }
@@ -2101,6 +2185,7 @@ void App::processInputMenus(int key, int action) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 
+	//TODO : Change gamemode for player on chat too so prediction works on other modes other than spectator when changing gamemode by chat.
 	if (manager == chat)
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
