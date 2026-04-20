@@ -5,12 +5,14 @@
 #include <vector>
 
 #include "IClientEntity.hpp"
+#include "HitboxRenderer.hpp"
 
 //actual manager and completely different from ItemPropEntityManager... ff
 class LivingEntitiesManager
 {
 	Shader characterShader; // Should probably reuse another one but it is what it is
 	std::vector<std::weak_ptr<IClientEntity>> characters;
+	HitboxRenderer hbRenderer;
 
 	public:
 

@@ -895,28 +895,33 @@ void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 	currChunk->setBlock(x, y, z, type);
 }
 
-bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t serverTick)
+bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t clientTick)
 {
-	//Repetition. Not clean. And not performance friendly either.
+	LivingEntity* livingEntity = nullptr;
 	glm::ivec3 blockPos, faceNormal;
-	getTargetedBlock(player.movement->getPosition(), player.movement->getCameraDir(), blockPos, faceNormal);
-	BlockType dropped = getBlockWorld(blockPos);
+	TargetType target = getTarget(*player.movement, blockPos, faceNormal, livingEntity);
 
 	ItemType item = player.movement->inventory.getItemAtSlot(player.movement->inventory.activeHotbarSlot);
 
 	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
 	{
-		if (setTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir(), std::get<BlockType>(item)))
+		if (target == TargetType::Block)
 		{
-			player.movement->inventory.removeItemsFromSlot(player.movement->inventory.activeHotbarSlot, 1);
-			return true;
+			for (const auto &entity : livingEntities)
+				if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
+			if (setBlockWorld(blockPos, faceNormal, std::get<BlockType>(item)))
+			{
+				player.movement->inventory.removeItemsFromSlot(player.movement->inventory.activeHotbarSlot, 1);
+				return true;
+			}
 		}
-		return false;
 	}
-	if (pkt.mouseButtons & IN_LEFT_CLICK)
+	else if (pkt.mouseButtons & IN_LEFT_CLICK)
 	{
-		if (removeTargettedBlock(player.movement->getPosition(), player.movement->getCameraDir()) && player.movement->gamemode == GAMEMODES::SURVIVAL)
+		if (target == TargetType::Block && player.movement->gamemode == GAMEMODES::SURVIVAL)
 		{
+			BlockType dropped = getBlockWorld(blockPos);
+
 			// random generator
 			static std::mt19937 rng(std::random_device{}());
 			std::uniform_real_distribution<float> angleDist(0.0f, 360.0f);
@@ -939,13 +944,21 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			// spawn the entity at block center + offset
 			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
 
-			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, serverTick));
+			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, clientTick));
 		}
+		else if (target == TargetType::LivingEntity && livingEntity)
+		{
+			player.movement->attack(*livingEntity);
+		}
+
+		if (target == TargetType::Block)
+			if (setBlockWorld(blockPos, std::nullopt, BlockType::AIR))
+				return false;
 	}
 	return false;
 }
 
-void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t serverTick)
+void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t clientTick)
 {
 	for (auto &entity : livingEntities)
 		entity->calculateNewPosition(*this);
@@ -953,7 +966,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{
 		//Checks for every prop if there's a player nearby that can pick it up. TODO: if this is too expensive do it every n ticks instead.
-		if (entityIt->get()->getSpawnTick() + TPS * 1.5 < serverTick)
+		if (entityIt->get()->getSpawnTick() + TPS * 1.5 < clientTick)
 		{
 			bool itemErased = false;
 			for (auto &player : players)
@@ -976,7 +989,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					pkt.type = -1;
 
 					pkt.positionX = player.movement->getPosition().x;
-					pkt.positionY = player.movement->getPosition().y;
+					pkt.positionY = player.movement->getPosition().y + player.movement->getEyesHeight();
 					pkt.positionZ = player.movement->getPosition().z;
 					pkt.yaw = entityIt->get()->yaw;
 

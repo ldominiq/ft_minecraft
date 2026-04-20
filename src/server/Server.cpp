@@ -54,7 +54,9 @@ void Server::run(std::optional<int> &seed) {
 
 	glm::vec3 startingPos = glm::vec3(0,200, 0);
 	std::shared_ptr<Creeper> crep = std::make_shared<Creeper>(startingPos);
+	std::shared_ptr<Creeper> crep2 = std::make_shared<Creeper>(glm::vec3(0,90,0));
 	world->livingEntities.push_back(crep);
+	world->livingEntities.push_back(crep2);
 
 	running = true;
 
@@ -182,9 +184,8 @@ void Server::loop() {
 	}
 }
 
-void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
+void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 {
-    auto pkt = decodePacket(data, n); // now returns unique_ptr<Packet>
     switch (pkt->type) {
 		case PacketType::NET_CONNECT: {
 			auto& p = static_cast<NetConnect&>(*pkt);
@@ -222,6 +223,12 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 			break;
 		}
 
+		case PacketType::GROUP: {
+			auto& group = static_cast<NetPacketGroup&>(*pkt);
+			for (auto& inner : group.unpack())
+				dispatchPacket(inner, cliaddr);
+		}
+
 		case PacketType::NET_SKY_TIME: {
 			// Only allow if player is connected
 			if (NetUtils::findPlayerByAddr(players, cliaddr) == players.end())
@@ -246,7 +253,14 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
             break;
-    }
+
+	}
+}
+
+void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
+{
+    auto pkt = decodePacket(data, n);
+    dispatchPacket(pkt, cliaddr);
 }
 
 void Server::gameTick()
@@ -358,6 +372,10 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (player == players.end())
 		return ;
 
+ 	// Discard outdated or duplicate packets
+	if (pkt.serverClientReconciliationTick <= player->serverClientReconciliationTick)
+		return;
+
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
 		player->movement->inventory.activeHotbarSlot = pkt.activeHotbarSlot;
 
@@ -366,7 +384,8 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		ItemType type = player->movement->inventory.getItemAtSlot(player->movement->inventory.activeHotbarSlot);
 		if (player->movement->inventory.removeItemsFromSlot(player->movement->inventory.activeHotbarSlot, 1))
 		{
-			glm::vec3 itemPos = player->movement->getPosition() - glm::vec3(0.0f, 0.5f, 0.0f);
+			//instead of player->movement->getEntityHeight() * 0.6f should be some hand/waist height
+			glm::vec3 itemPos = player->movement->getPosition() + glm::vec3(0, player->movement->getEntityHeight() * 0.6f, 0) + player->movement->getCameraDir() * 0.2f;
 
 			world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), type, tick, true));
 
@@ -381,10 +400,20 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		}
 	}
 
-	if (pkt.yaw != player->movement->yaw) player->movement->positionUpdated = true;
+	if (pkt.yaw != player->movement->yaw) player->movement->rotationUpdated = true;
 
+	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
-	
+
+	// Queue this input for physics processing.  The queue is drained in
+	// calculateNewPosition (one physics step per entry), so when the client
+	// sends several inputs in rapid succession (low-FPS catch-up) the server
+	// runs the matching number of physics steps instead of just one.
+	constexpr int kMaxQueuedInputs = 20;
+	if (static_cast<int>(player->movement->pendingInputs.size()) >= kMaxQueuedInputs)
+		player->movement->pendingInputs.pop_front(); // drop oldest to keep ack/queue consistent
+	player->movement->pendingInputs.push_back(pkt);
+
 	if (pkt.loadRadius > 32)
 		pkt.loadRadius = 32;
 	else if (pkt.loadRadius < 4)
@@ -402,12 +431,7 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 
 	if (world->processPlayerMouseInputs(*player, pkt, tick))
 	{
-		NetInventory dropItem;
-		int slot = player->movement->inventory.activeHotbarSlot;
-		dropItem.type = player->movement->inventory.getActiveItemID();
-		dropItem.amount = player->movement->inventory.getSlot(slot).second;
-		dropItem.slot = slot;
-		sendPacketTo(dropItem, cliaddr);
+		sendInventorySlot(player->movement->inventory.activeHotbarSlot, cliaddr);
 	}
 }
 
@@ -430,6 +454,14 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
 			{
 				auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 				player->movement->setGamemode(itMode->second);
+
+				glm::vec3 vel = player->movement->getVelocity();
+				player->movement->setVelocity(glm::vec3(vel.x, 0.0f, vel.z));
+				player->movement->accumulatedFallDistance = 0.0f;
+
+				NetPlayerGameMode pkt;
+				pkt.gamemode = static_cast<uint8_t>(itMode->second);
+				sendPacketTo(pkt, cliaddr);
 			}
 		}
         else if (pkt.message.starts_with("dump "))
@@ -566,6 +598,7 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 void Server::sendAll()
 {
 	world->amountOfChunksSentThisTick = 0;
+	sendDeaths();
 	world->updateRdyChunks();
 	for (CPlayerInfo &p : players)
 	{
@@ -585,6 +618,41 @@ void Server::sendAll()
 		messages.pop_front();
 	
 	world->rdyChunks.clear();
+}
+
+void Server::sendDeaths()
+{
+	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end();)
+	{
+		if (le->get()->health <= 0)
+		{
+			le->get()->onDeath();
+			messages.push_back("Someone has died miserably");
+
+			if (le->get()->getLivingEntityType() != PLAYER)
+			{
+				NetEntityMove pkt;
+
+				pkt.eEntityType = le->get()->getEntityType();
+				pkt.entityID = le->get()->getID();
+				pkt.type = -1;
+
+				pkt.positionX = le->get()->getPosition().x;
+				pkt.positionY = le->get()->getPosition().y;
+				pkt.positionZ = le->get()->getPosition().z;
+
+				pkt.yaw = le->get()->yaw;
+
+				le = world->livingEntities.erase(le);
+
+				for (const auto player : players)
+					sendPacketTo(pkt, player.addr);
+				
+				continue ;
+			}
+		}
+		le++;
+	}
 }
 
 void Server::sendImGuiData(CPlayerInfo &player) {
@@ -681,7 +749,8 @@ void Server::sendChunk(CPlayerInfo &player)
 void Server::sendPositionDeltas(CPlayerInfo &player)
 {
 	NetPlayerMove pkt;
-	pkt.serverTick = tick;
+
+ 	pkt.serverClientReconciliationTick = player.movement->getLastAppliedServerClientReconciliationTick();
 
 	pkt.positionX = player.movement->getPosition().x;
 	pkt.positionY = player.movement->getPosition().y;
@@ -690,6 +759,24 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 	pkt.velocityX = player.movement->getVelocity().x;
 	pkt.velocityY = player.movement->getVelocity().y;
 	pkt.velocityZ = player.movement->getVelocity().z;
+
+	pkt.yaw = player.movement->yaw;
+	pkt.pitch = player.movement->pitch;
+
+	pkt.health = player.movement->health;
+	pkt.slipperinessPrev = player.movement->getSlipperinessPrev();
+	pkt.accumulatedFallDistance = player.movement->getAccumulatedFallDistance();
+	pkt.onGround = player.movement->isOnGround() ? 1 : 0;
+	pkt.jumpBoostApplied = player.movement->getJumpBoostApplied() ? 1 : 0;
+
+	//std::cout << "tick: " << pkt.serverClientReconciliationTick << "\n" <<
+	//"pos: (" << pkt.positionX << ", " << pkt.positionY << ", " << pkt.positionZ << ")\n" <<
+	//"vel: (" << pkt.velocityX << ", " << pkt.velocityY << ", " << pkt.velocityZ << ")\n" <<
+	//"splitPrev: (" << player.movement->getSlipperinessPrev() << ")\n" <<
+	//"onGround: (" << player.movement->isOnGround() << ")\n" <<
+	//"fallDistance: (" << player.movement->getAccumulatedFallDistance() << ")\n" <<
+	//"jumpBoost: (" << player.movement->getJumpBoostApplied() << ")\n";
+	//std::cout << "------------------\n\n";
 
 	sendPacketTo(pkt, player.addr);
 }
@@ -702,7 +789,7 @@ void Server::sendEntitiesPositionDeltas()
 	{
 		for (CPlayerInfo &p : players)
 		{
-			if (entity == p.movement || !entity->positionUpdated) continue;
+			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated)) continue;
 
 			NetEntityMove pkt;
 
@@ -715,11 +802,13 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.positionZ = entity->getPosition().z;
 
 			pkt.yaw = entity->yaw;
+			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u) | (entity->isOnGround() ? 0x02u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}
 
 		entity->positionUpdated = false;
+		entity->rotationUpdated = false;
 	}
 
 	for (auto &entity : world->itemEntities)

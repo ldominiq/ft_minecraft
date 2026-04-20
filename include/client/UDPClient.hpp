@@ -18,6 +18,8 @@ typedef int socklen_t;
 #include <vector>
 #include <functional>
 
+#include <chrono>
+#include <deque>
 #include <fcntl.h>
 #include <zstd.h>
 #include <glm/glm.hpp>
@@ -33,12 +35,26 @@ private:
     char buffer[MAXLINE];
     struct sockaddr_in servaddr;
 
+    struct DelayedPacket {
+        std::chrono::steady_clock::time_point dispatchAt;
+        std::vector<uint8_t> data;
+    };
+    float m_simLatencyMs = 0.0f;
+    std::deque<DelayedPacket> m_receiveDelayQueue;
+
 public:
     UDPClient(const char* server_ip); // Constructor to set server IP
     ~UDPClient(); // Destructor to close socket
 
 	std::function<void(const PacketPtr&)> onPacket;
 	void setCallback(std::function<void(const PacketPtr&)> cb) { onPacket = std::move(cb); }
+
+	void setSimulatedLatency(float ms) {
+        if (ms <= 0.0f && m_simLatencyMs > 0.0f)
+            m_receiveDelayQueue.clear(); // discard stale delayed packets
+        m_simLatencyMs = ms;
+    }
+	float getSimulatedLatency() const  { return m_simLatencyMs; }
 
 	void sendPacket(const Packet &pkt);
 	void sendConnect();

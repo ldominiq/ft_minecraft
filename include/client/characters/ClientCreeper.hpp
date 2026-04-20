@@ -7,15 +7,10 @@
 
 class ClientCreeper : public Creeper, public IClientEntity
 {
-	void createCharacterAt(const glm::vec3 &pos, float characterScale) override;
-
 		public :
 
 		ClientCreeper(const glm::vec3 &position, float yaw, entityID ID);
 		~ClientCreeper() = default;
-		
-		// void walkAnimation(float deltaTime) override;
-		// void jumpAnimation(float currentFrame) override;
 };
 
 #endif

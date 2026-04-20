@@ -105,7 +105,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		float getMaxRenderedChunkDist() const { return maxRenderedChunkDist; }
 
 		LivingEntitiesManager livingEntitiesManager;
-		void onEntity(NetEntityMove &pkt, const float &glfwTickTime);	// handles NetEntityMove packet
+		void onEntity(NetEntityMove &pkt, double serverTime);	// handles NetEntityMove packet
 		void drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime);
 
 		size_t getDrawCallCount() const { return m_drawCallCount; }

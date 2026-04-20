@@ -2,9 +2,11 @@
 #define ENTITY_HPP
 
 #include <glm/glm.hpp>
+#include <algorithm>
 #include <cmath>
 #include <queue>
 #include <iostream>
+#include <deque>
 #include <algorithm>
 
 #include "Network.hpp" // For inputs. Maybe should do it in some other way
@@ -71,6 +73,14 @@ class ItemEntityIDManager {
 
 class TextureManager;
 
+//only used in client.
+struct Snapshot
+{
+	glm::vec3 position;
+	glm::vec3 velocity;
+	double time;
+};
+
 class Entity {
 
 	static ItemEntityIDManager idManager;
@@ -85,14 +95,14 @@ class Entity {
 
 		glm::vec3 position{};
 
+		float slipperiness_prev = SM_AIRBORNE;
 		bool onGround = false;
 
-		AABB constructAABB(const glm::vec3 &pos);
 		bool aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world);
 
 		virtual glm::vec3 getDesiredMove() = 0;
 		void calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove);
-		void calculateNewYPosition(const ICommonWorld &world);
+		virtual void calculateNewYPosition(const ICommonWorld &world);
 
 	public:
 		Entity(const glm::vec3 &position);
@@ -102,10 +112,23 @@ class Entity {
 		float yaw = 0;
 		float pitch = 0;
 
+		AABB constructAABB(const glm::vec3 &pos);
 		bool entityCollidesWithBlock(const glm::vec3 blockPos);
+
 		// position has been changed since last check.
 		bool positionUpdated = true;
+		// true when movement keys are actively pressed (set by PlayerMovement; defaults true for remote entities)
+		bool hasHorizontalInput = true;
+		// yaw/rotation has changed since last check (without a position change).
+		bool rotationUpdated = false;
+		// timestamp of the last network position update (glfwGetTime / serverTime scale)
+		double lastNetUpdateTime = -1.0;
 
+		// unused. Supposed to be for prediction
+		inline float getSlipperinessPrev() const { return slipperiness_prev; }
+		inline bool isOnGround() const { return onGround; }
+
+		void applyImpulse(const glm::vec3& impulse) { velocity += impulse; }
 		inline virtual EEntityTypes getEntityType() const = 0;
 		virtual void calculateNewPosition(const ICommonWorld &world);
 		inline const glm::vec3 getPosition() const { return position; }
@@ -113,6 +136,8 @@ class Entity {
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const entityID getID() const { return ID; }
 
+		inline void setSlipperinessPrev(float slipperiness) { this->slipperiness_prev = slipperiness; }
+		inline void setOnGround(bool value) { this->onGround = value; }
 		bool isUnderwater(const ICommonWorld &world) const;
 		float getDepthUnderwater() const;
 
@@ -128,14 +153,45 @@ class Entity {
 		}
 
 		//ONLY USED IN CLIENT :
-		//TODO move all of this and get a normal tick on client.
-		glm::vec3 prevPosition{};
-		glm::vec3 nextPosition{};
-		float glfwTickTime = 0;
+		//TODO move all of this.
+		std::deque<Snapshot> snapshots;
 		
 		bool removed = false; //item entities only
+		
+		virtual void lerp(double glfwTime)
+		{
+			if (snapshots.size() < 2) return;
+			while (snapshots.size() > 2 && snapshots[1].time <= glfwTime) {
+				snapshots.pop_front();
+			}
+
+			// std::cout << "Lerping entity " << ID << " with " << snapshots.size() << " snapshots\n";
+
+			auto& start = snapshots[0];
+			auto& end   = snapshots[1];
+
+			double duration = end.time - start.time;
+			if (duration <= 0.0) {
+				setPosition(end.position);
+				snapshots.pop_front();
+				return;
+			}
+			double t = (glfwTime - start.time) / duration;
+			t = std::clamp(t, 0.0, 1.0);
+
+			glm::vec3 interpolatedPosition = glm::mix(start.position, end.position, t);
+			setPosition(interpolatedPosition);
+		};
+		//virtual void predict();
+
 		virtual void createMesh(std::vector<float> &meshVertices, const TextureManager* texMgr = nullptr) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
 		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //living entities only
+
+		//the not yet Implemented is a lie. Those are only client functions defined in the client.
+
+		bool doDraw = true; //this should kinda be private
+		inline void setDoDraw(bool value) {doDraw = value;}
+		inline bool DoDraw() const {return doDraw;}
 };
 
 #endif

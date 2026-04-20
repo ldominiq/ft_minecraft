@@ -246,6 +246,44 @@ void InventoryUI::drawHotbar()
     glEnable(GL_DEPTH_TEST);
 }
 
+void InventoryUI::drawHealth(float health) const
+{
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	float offset = hotbarSlots[0].width / (MAX_SLOTS + 1);
+	float HPBarLenght = (health / 20.0f) * (hotbar.width) - offset * 2;
+	drawSimpleQuad(hotbar.x + offset, hotbar.y + hotbar.height + 10, HPBarLenght, hotbar.height / 5.0f,
+		glm::vec4(
+			210/255.0f,
+			35/255.0f,
+			25/255.0f,
+			1.0f
+		));
+
+	drawSimpleQuad(hotbar.x + offset, hotbar.y + hotbar.height + 10, hotbar.width - offset * 2, hotbar.height / 5.0f, glm::vec4(0,0,0,0.4f));
+
+	// draw cross hair. Eventually might want to be a texture. And not in "drawHealth"
+	drawSimpleQuad(
+		fullscreenWidth / 2.0f - 10,
+		fullscreenHeight / 2.0f - 1,
+		20,
+		2,
+		glm::vec4(60/255.0f,60/255.0f,60/255.0f,0.6)
+	);
+	drawSimpleQuad(
+		fullscreenWidth / 2.0f - 1,
+		fullscreenHeight / 2.0f - 10,
+		2,
+		20,
+		glm::vec4(60/255.0f,60/255.0f,60/255.0f,0.6)
+	);
+
+	glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+}
+
 int InventoryUI::getSlotAt(double mouseX, double mouseY) const
 {
 	mouseY = fullscreenHeight - mouseY;
