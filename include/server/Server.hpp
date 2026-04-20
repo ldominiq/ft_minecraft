@@ -36,6 +36,9 @@ private:
 	std::chrono::steady_clock::time_point currTick;
 
 	std::vector<CPlayerInfo> players;
+	// Monotonic counter for player ids. Never reused, so a reconnecting
+	// client can't collide with another player's PlayerKnownChunks entry.
+	int32_t nextPlayerId = 0;
 	std::deque<std::string> messages;
 	std::unique_ptr<World> world;
 

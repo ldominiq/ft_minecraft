@@ -340,7 +340,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	std::cout << "New client connecting from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << "...\n";
 
     CPlayerInfo p; //deserializePlayerInfo(pkt.payload);
-	p.id = players.size();
+	p.id = nextPlayerId++;
 	p.addr = cliaddr;
 	p.connected = true;
 	p.computeSpawnPosition(world->getTerrainParams());
@@ -381,7 +381,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		sendPacketTo(pkt, p.addr);
 	}
 
-	world->PlayerKnownChunks[player->id].clear();
+	// Erase rather than clear: ids are never reused, so the entry stays dead.
+	world->PlayerKnownChunks.erase(player->id);
 	world->livingEntities.erase(ent);
 	players.erase(player);
 }
