@@ -201,7 +201,7 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 	// apply gravity
 	velocity.y -= GRAVITY; //gravity
 	velocity.y *= DRAG;
-	if (std::abs(velocity.y) < 0.003 || onGround) velocity.y = 0;
+	if (std::abs(velocity.y) < 0.003) velocity.y = 0;
 
 	// Apply final position
 	setPosition(newPos);

@@ -50,6 +50,9 @@ class ChunkGeneration : public Chunk {
 
 		static float surfaceNoiseTransformation(float noise, int splineIndex);
 
+		// TODO: check if surfaceY is below seaLevel and if so, set starting Y to seaLevel + 1 to avoid drowning spawn
+		// (when water physics is implemented) -> max(surfaceY, seaLevel) + offset)
+		/// Set the starting position to the top of the terrain at the given spawn point.
 		static int computeTerrainHeight(const TerrainGenerationParams& terrainParams, float worldX, float worldZ);
 		static BiomeType computeBiome(const TerrainGenerationParams& terrainParams, float worldX, float worldZ, int height);
 

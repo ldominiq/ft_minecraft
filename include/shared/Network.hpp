@@ -22,6 +22,7 @@ enum class PacketType : uint8_t {
 	PLAYER_INPUT,			// C2S
 	PLAYER_MOUSE_INPUT,		// C2S
 	PLAYER_MOVE,			// S2C
+	PLAYER_GAMEMODE,		// S2C
 	NET_ENTITY_MOVE,		// S2C TODO : put it inside a group and send multiple at once.
 	NET_INVENTORY,			// S2C
 	NET_INVENTORY_ACTION,	// C2S

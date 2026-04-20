@@ -27,6 +27,7 @@ void Shape::drawScene(const Shader &shader, const glm::mat4& proj, const glm::ma
 void Shape::compute(const glm::mat4 &parentTransform, const glm::mat4& proj, const glm::mat4& view, const Shader &shader)
 {
 	transform = parentTransform * extractScaleInverse(totalScale) * rotation * totalScale * scale * translation;
+
 	glm::mat4 pvm = proj * view * transform;
 	draw(pvm, shader);
 

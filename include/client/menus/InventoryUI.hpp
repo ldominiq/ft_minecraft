@@ -132,6 +132,7 @@ class InventoryUI : public Inventory, public Menu
 		~InventoryUI();
 
 		void drawHotbar();
+		void drawHealth(float health) const;
 		void drawInventory() const;
 
 		std::optional<std::pair<int, InventoryActionType>> lastAction; //awful solution
