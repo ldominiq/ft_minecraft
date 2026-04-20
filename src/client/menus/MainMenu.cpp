@@ -101,18 +101,18 @@ void MainMenu::drawTitle()
 	}
 
 	// Fallback: render as text if PNG is missing
-	float savedScale = textRenderer.getScale();
-	float titleScale = 1.8f * menuScale;
-	textRenderer.setScale(titleScale);
-	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+	float savedScale = titleRenderer.getScale();
+	float titleScale = 0.8f * menuScale;
+	titleRenderer.setScale(titleScale);
+	titleRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
 	std::string title = "FT_MINECRAFT";
-	float titleWidth = textRenderer.getPixelSizeOfString(title);
+	float titleWidth = titleRenderer.getPixelSizeOfString(title);
 	float titleX = (fullscreenWidth - titleWidth) / 2.0f;
 	float titleY = fullscreenHeight - 120.0f * menuScale;
 
-	textRenderer.renderText(title, titleX, titleY, glm::vec3(1.0f, 1.0f, 1.0f));
-	textRenderer.setScale(savedScale);
+	titleRenderer.renderText(title, titleX, titleY, glm::vec3(1.0f, 1.0f, 1.0f));
+	titleRenderer.setScale(savedScale);
 }
 
 void MainMenu::drawSplashText()

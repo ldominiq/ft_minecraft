@@ -110,6 +110,7 @@ uint Typer::getPixelSizeOfString(const std::string &str) const
     return static_cast<uint>(len * scale);
 }
 
+// Get the ascent (distance from baseline to top) of the font in pixels, scaled by the current scale factor
 float Typer::getAscent() const
 {
     auto it = Characters.find('A');
@@ -149,6 +150,7 @@ void Typer::renderText(const std::string &text, float x, float y, const glm::vec
         float w = ch.Size.x * scale;
         float h = ch.Size.y * scale;
 
+        // calculate the four corners of the character quad, applying rotation if needed
         float tlX, tlY, blX, blY, brX, brY, trX, trY;
         if (rotated) {
             auto rot = [&](float px, float py, float& ox, float& oy) {
@@ -177,13 +179,17 @@ void Typer::renderText(const std::string &text, float x, float y, const glm::vec
             { brX, brY, 1.0f, 1.0f },
             { trX, trY, 1.0f, 0.0f }
         };
+        // render glyph texture over quad
         glBindTexture(GL_TEXTURE_2D, ch.TextureID);
+        // update content of VBO memory
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // be sure to use glBufferSubData and not glBufferData
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
+        // render quad
         glDrawArrays(GL_TRIANGLES, 0, 6);
-        penOffset += (ch.Advance >> 6) * scale;
+        // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+        penOffset += (ch.Advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
     }
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
