@@ -76,6 +76,7 @@ void MainMenu::build()
 		buttons[i].w = btnW;
 		buttons[i].h = btnH;
 		buttons[i].x = centerX - btnW / 2.0f;
+		// OpenGL Y is bottom-up, so i=0 (top button visually) needs the highest Y
 		buttons[i].y = startY + (3 - i) * (btnH + spacing); // bottom-up in OpenGL coords
 	}
 }
@@ -119,6 +120,7 @@ void MainMenu::drawSplashText()
 {
 	float savedScale = textRenderer.getScale();
 
+	// Oscillates between 0.92× and 1.08× scale at ~0.5Hz
 	float pulse = 1.0f + 0.08f * std::sin(glfwGetTime() * 3.0f);
 	float splashScale = 0.35f * menuScale * pulse;
 	textRenderer.setScale(splashScale);
@@ -160,10 +162,10 @@ void MainMenu::onRender()
 	textRenderer.setScale(smallScale);
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
-	textRenderer.renderText("ft_minecraft v0.1", 10.0f * menuScale, 10.0f * menuScale, glm::vec3(0.7f));
+	textRenderer.renderText("pre-pre-pre-alpha", 10.0f * menuScale, 10.0f * menuScale, glm::vec3(0.7f));
 
 	// Credits (bottom-right)
-	std::string credits = "ldominiq, lskraber";
+	std::string credits = "Created by ldominiq & lskraber";
 	float creditsWidth = textRenderer.getPixelSizeOfString(credits);
 	textRenderer.renderText(credits, fullscreenWidth - creditsWidth - 10.0f * menuScale, 10.0f * menuScale, glm::vec3(0.7f));
 
@@ -195,6 +197,7 @@ void MainMenu::handleMouseClick(double mouseX, double mouseY, int button, int ac
 		if (!buttons[i].enabled) continue;
 		if (glX >= buttons[i].x && glX <= buttons[i].x + buttons[i].w &&
 			glY >= buttons[i].y && glY <= buttons[i].y + buttons[i].h) {
+			// MainMenu doesn't know about game state - App registers this callback to handle navigation
 			if (onButtonClick) onButtonClick(i);
 			return;
 		}

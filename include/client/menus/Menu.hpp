@@ -49,6 +49,7 @@ class Menu {
 	protected:
 
 		virtual void onRender() = 0;
+		// Called on construction and on every window resize - recalculate pixel positions here
 		virtual void build() {};
 
 	public:
