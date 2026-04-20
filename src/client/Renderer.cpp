@@ -331,7 +331,7 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 	}
 }
 
-void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
+void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 {
 	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
 	entityID ID = pkt.entityID;
@@ -342,11 +342,26 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 	{
 		auto ent = entity->second.lock();
 		if (ent) {
-			ent->prevPosition = ent->nextPosition;
-			ent->nextPosition = position;
+			const double oneTick = 1.0 / TPS;
+			bool stale = ent->snapshots.empty()
+			          || ent->lastNetUpdateTime < 0.0
+			          || ent->snapshots.back().time < serverTime - 2.0 * oneTick;
+			if (stale) {
+				ent->snapshots.clear();
+				ent->snapshots.emplace_back(Snapshot{ent->getPosition(), glm::vec3(0.0f), serverTime - oneTick});
+			}
+			bool actuallyMoved = !ent->snapshots.empty() &&
+				glm::length(position - ent->snapshots.back().position) > 0.001f;
+			ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			ent->yaw = yaw;
-			ent->positionUpdated = true;
-			ent->glfwTickTime = glfwTickTime;
+			if (actuallyMoved)
+				ent->positionUpdated = true;
+			else
+				ent->rotationUpdated = true;
+			ent->hasHorizontalInput = (pkt.positionFlags & 0x01) != 0;
+			ent->setOnGround((pkt.positionFlags & 0x02) != 0);
+			ent->lastNetUpdateTime = serverTime;
+
 			if (pkt.type == static_cast<uint16_t>(-1))
 			{
 				ent->removed = true;
@@ -367,7 +382,6 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 		{
 			ItemType type = itemIDToItemType(pkt.type);
 			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
-			entityPtr->glfwTickTime = glfwTickTime;
 			itemEntities.push_back(entityPtr);
 			entitiesMap[ID] = entityPtr;
 		}
@@ -388,10 +402,8 @@ void Renderer::onEntity(NetEntityMove &pkt, const float &glfwTickTime)
 					return;
 			}
 
-			entityPtr->prevPosition = position;
-			entityPtr->nextPosition = position;
 			entityPtr->positionUpdated = true;
-			entityPtr->glfwTickTime = glfwTickTime;
+			entityPtr->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			livingEntitiesManager.add(entityPtr);
 
 			// Convert to shared_ptr<LivingEntity> safely
