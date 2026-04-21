@@ -19,7 +19,7 @@ Inventory<ROWS, COLS, N>::Inventory(std::shared_ptr<InventoryExternalVariablesRe
 template<int ROWS, int COLS, int N>
 std::pair<ItemType, itemStackSize_t> Inventory<ROWS, COLS, N>::getSlot(int slot)
 {
-	if (slot >= grid.size() || slot < 0) return {BlockType::BEGIN, 0};
+	if (std::cmp_greater_equal(slot, grid.size()) || slot < 0) return {BlockType::BEGIN, 0};
 	return grid.at(slot);
 }
 
@@ -518,13 +518,20 @@ bool Inventory<ROWS, COLS, N>::takeOneItemFromSlot(int slotSrc, std::optional<in
 template<int ROWS, int COLS, int N>
 bool Inventory<ROWS, COLS, N>::takeFromSlotToSlot(ItemType itemType, int slotSrc, int slotDest, int &amount)
 {
-	if (insertItemsToSlot(itemType, slotDest, amount))
-	{
-		if (removeItemsFromSlot(slotSrc, amount))
-			return true;
-		else //rollback. Hopefully this does not get triggered.
-			removeItemsFromSlot(slotDest, amount);
-	}
+ 	int requested = amount;
+ 	int remaining = amount;
+ 	if (insertItemsToSlot(itemType, slotDest, remaining))
+ 	{
+ 		int inserted = requested - remaining;
+ 		amount = remaining;
+ 		if (removeItemsFromSlot(slotSrc, inserted))
+ 			return true;
+ 		else //rollback. Hopefully this does not get triggered.
+ 			removeItemsFromSlot(slotDest, inserted);
+ 	}
+ 	else
+ 		amount = remaining;
+
 	return false;
 }
 

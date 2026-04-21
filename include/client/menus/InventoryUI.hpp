@@ -14,7 +14,7 @@
 
 class InventoryUI : public Menu
 {
-int MAX_BUFFER_SIZE = 0;
+	int MAX_BUFFER_SIZE = 0;
 	std::unique_ptr<Shader> shader;
 	const TextureManager* textureManager = nullptr;
 	uint texture;
@@ -135,7 +135,7 @@ int MAX_BUFFER_SIZE = 0;
 	int getSlotAt(double mouseX, double mouseY) const;
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
 	void handleMouseMove(double mouseX, double mouseY) override;
-	void handleInventoryModifiers(NetInventoryAction &pkt, int button, int action);
+	void handleInventoryModifiers(NetInventoryAction &pkt, int action, int button);
 
 	double mouseX = 0;
 	double mouseY = 0;

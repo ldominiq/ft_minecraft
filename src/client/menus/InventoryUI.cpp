@@ -19,12 +19,12 @@ InventoryUI::InventoryUI(int width,
 	if (inventoryExternalVarsRefs)
 		handPtr = inventoryExternalVarsRefs->hand;
 
-	inventoryRows = playerInv ? playerInv->getRows() : 9;
-	inventoryCols = playerInv ? playerInv->getCols() : 4;
+	inventoryRows = playerInv ? playerInv->getRows() : 4;
+	inventoryCols = playerInv ? playerInv->getCols() : 9;
 	craftingStationRows = craftingStation ? craftingStation->getRows() : 3;
 	craftingStationCols = craftingStation ? craftingStation->getCols() : 3;
 
-	MAX_BUFFER_SIZE = sizeof(float) * (inventoryRows * inventoryCols + 1) * (2 + 2 + 1) * 3 * 6; //2 coords, 2 uvs, 1 texLayer. 3 faces, 6 vertices
+	MAX_BUFFER_SIZE = sizeof(float) * (inventoryRows * inventoryCols + craftingStationRows * craftingStationCols + 1 + 1) * (2 + 2 + 1) * 3 * 6; //2 coords, 2 uvs, 1 texLayer. 3 faces, 6 vertices. rows * cols + craftRows * craftCols + Hand + Result
 
 	hotbarSlots.resize(inventoryCols);
 	inventorySlots.resize(inventoryRows * inventoryCols);

@@ -156,12 +156,20 @@ void App::init(const std::string& serverIp) {
         // (e.g. hovering/clicking in a window), do not rotate the camera.
         ImGuiIO& io = ImGui::GetIO();
 
+		//scale back down values to counteract wayland bugs
+		float xscale, yscale;
+		glfwGetWindowContentScale(w, &xscale, &yscale);
+
+		double mouseX, mouseY;
+		mouseX = xpos * xscale;
+		mouseY = ypos * yscale;
+
 		auto menuManagerPtr = app->menuManager.lock();
 		if (menuManagerPtr)
 		{
-			menuManagerPtr->handleMouseMove(xpos, ypos);
-            app->lastX = xpos;
-            app->lastY = ypos;
+			menuManagerPtr->handleMouseMove(mouseX, mouseY);
+            app->lastX = mouseX;
+            app->lastY = mouseY;
 			return ;
 		}
 
@@ -169,14 +177,14 @@ void App::init(const std::string& serverIp) {
             return;
         }
         if (app->firstMouse) {
-            app->lastX = xpos;
-            app->lastY = ypos;
+            app->lastX = mouseX;
+            app->lastY = mouseY;
             app->firstMouse = false;
         }
-        const float xoffset = static_cast<float>(xpos - app->lastX);
-        const float yoffset = static_cast<float>(app->lastY - ypos); // Reversed: y-coordinates go from bottom to top
-        app->lastX = xpos;
-        app->lastY = ypos;
+        const float xoffset = static_cast<float>(mouseX - app->lastX);
+        const float yoffset = static_cast<float>(app->lastY - mouseY); // Reversed: y-coordinates go from bottom to top
+        app->lastX = mouseX;
+        app->lastY = mouseY;
         app->camera->processMouseMovement(xoffset, yoffset);
 
 		app->mouseMovedRecently = true;
@@ -251,6 +259,13 @@ void App::init(const std::string& serverIp) {
 		{
 			double mouseX, mouseY;
     		glfwGetCursorPos(w, &mouseX, &mouseY);
+			
+			//scale back down values to counteract wayland bugs
+			float xscale, yscale;
+			glfwGetWindowContentScale(w, &xscale, &yscale);
+
+			mouseX = mouseX * xscale;
+			mouseY = mouseY * yscale;
 
 			if (manager == app->inventoryUI)
 			{

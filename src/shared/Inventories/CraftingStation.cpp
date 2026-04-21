@@ -48,6 +48,8 @@ void CraftingStation::setSlot(int slot, itemStackSize_t amount, ItemType type)
 
 void CraftingStation::setSlot(int slot, itemStackSize_t amount, ItemID t)
 {
+	grid[RESULT_SLOT_ID] = {};
+
 	Inventory::setSlot(slot, amount, t);
 }
 

@@ -227,6 +227,7 @@ void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 			auto& group = static_cast<NetPacketGroup&>(*pkt);
 			for (auto& inner : group.unpack())
 				dispatchPacket(inner, cliaddr);
+			break;
 		}
 
 		case PacketType::NET_SKY_TIME: {
@@ -555,6 +556,8 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 		inv = player->movement->inventory;
 	else if (static_cast<InventoryType>(pkt.inventoryTypeID) == InventoryType::CRAFTING_STATION)
 		inv = player->movement->craftingStation;
+	else
+		return ;
 
 	std::vector<PacketPtr> pktsToSend;
 
