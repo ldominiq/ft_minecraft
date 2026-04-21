@@ -1271,6 +1271,39 @@ void App::debugWindow() {
                         ImGui::Text("Biome: %s", biomeName);
                     }
 
+                    // Teleport (collapsible)
+                    if (ImGui::CollapsingHeader("Teleport")) {
+                        static int tpX = 0;
+                        static int tpY = 100;
+                        static int tpZ = 0;
+
+                        // Negative width = "extend to N pixels from the right edge",
+                        // so the field grows/shrinks with the window while leaving
+                        // room for the label and the +/- steppers.
+                        const float tpFieldTrailing = -60.0f;
+                        ImGui::SetNextItemWidth(tpFieldTrailing);
+                        ImGui::InputInt("X##tp", &tpX);
+                        ImGui::SetNextItemWidth(tpFieldTrailing);
+                        ImGui::InputInt("Y##tp", &tpY);
+                        ImGui::SetNextItemWidth(tpFieldTrailing);
+                        ImGui::InputInt("Z##tp", &tpZ);
+
+                        if (ImGui::Button("Copy current")) {
+                            tpX = wx; tpY = wy; tpZ = wz;
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Teleport##tp")) {
+                            if (udpClient) {
+                                NetMessage cmd;
+                                cmd.message = "/tp " +
+                                              std::to_string(tpX) + " " +
+                                              std::to_string(tpY) + " " +
+                                              std::to_string(tpZ);
+                                udpClient->sendPacket(cmd);
+                            }
+                        }
+                    }
+
                     // Noise Values (collapsible)
                     if (ImGui::CollapsingHeader("Noise Values", ImGuiTreeNodeFlags_DefaultOpen)) {
                         static const char* contBucketNames[]    = { "MUSHROOM", "OCEAN", "COAST", "NEAR_INLAND", "MID_INLAND", "FAR_INLAND" };
