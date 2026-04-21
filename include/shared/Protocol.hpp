@@ -59,7 +59,7 @@ struct NetConnect final : public Packet {
     static constexpr PacketType ID = PacketType::NET_CONNECT;
     std::string username;
 
-    NetConnect() : Packet(ID) {}
+    NetConnect() : Packet(ID) { flags = PacketFlags::Reliable; }
 
     void encode(BufferWriter& w) const override {
         w.write_string(username);
@@ -74,7 +74,7 @@ struct NetDisconnect final : public Packet {
     static constexpr PacketType ID = PacketType::NET_DISCONNECT;
     std::string username;
 
-    NetDisconnect() : Packet(ID) {}
+    NetDisconnect() : Packet(ID) { flags = PacketFlags::Reliable; }
 
     void encode(BufferWriter& w) const override {
         w.write_string(username);
@@ -90,7 +90,7 @@ struct NetAccept final : public Packet {
     uint32_t clientId     = 0;
     uint32_t playerListId = 0;
 
-    NetAccept() : Packet(ID) {}
+    NetAccept() : Packet(ID) { flags = PacketFlags::Reliable; }
 
     void encode(BufferWriter& w) const override { w.write_u32(clientId); w.write_u32(playerListId); }
     void decode(BufferReader& r) override { clientId = r.read_u32(); playerListId = r.read_u32(); }
@@ -211,7 +211,7 @@ struct NetPlayerGameMode final : public Packet {
 	static constexpr PacketType ID = PacketType::PLAYER_GAMEMODE;
 	uint8_t gamemode = 0; // 0 = survival, 1 = creative, 2 = adventure, 3 = spectator
 
-	NetPlayerGameMode() : Packet(ID) {}
+	NetPlayerGameMode() : Packet(ID) { flags = PacketFlags::Reliable; }
 
     void encode(BufferWriter& w) const override {
 		w.write_u8(gamemode);
@@ -289,7 +289,7 @@ struct NetInventory final : public Packet {
 	uint8_t amount = 0;
 	uint8_t slot = 0;	// HAND_ID for hand (37)
 
-	NetInventory() : Packet(ID) {}
+	NetInventory() : Packet(ID) { flags = PacketFlags::Reliable; }
 
 	void encode(BufferWriter& w) const override {
 		w.write_u16(type);
@@ -311,7 +311,7 @@ struct NetInventoryAction final : public Packet {
     uint8_t actionType = 0;
     uint8_t slot = 0;
 
-    NetInventoryAction() : Packet(ID) {}
+    NetInventoryAction() : Packet(ID) { flags = PacketFlags::Reliable; }
 
     void encode(BufferWriter& w) const override {
         w.write_u8(actionType);
@@ -332,7 +332,7 @@ struct NetChunkHeader final : public Packet {
     uint32_t uncompressedSize = 0;
     uint32_t compressedSize   = 0;
 
-    NetChunkHeader() : Packet(ID) {}
+    NetChunkHeader() : Packet(ID) { flags = PacketFlags::Reliable; }
 
     void encode(BufferWriter& w) const override {
 		w.write_i32(X);
@@ -356,7 +356,7 @@ struct NetChunkData final : public Packet {
 	int32_t Z = 0;
     std::vector<uint8_t> data;
 
-    NetChunkData() : Packet(ID) {}
+    NetChunkData() : Packet(ID) { flags = PacketFlags::Reliable; }
 
     void encode(BufferWriter& w) const override {
 		w.write_i32(X);
@@ -381,7 +381,7 @@ struct NetModifiedBlockData final : public Packet {
 	int32_t z = 0;
 	uint8_t blockType;
 	
-	NetModifiedBlockData() : Packet(ID) {}
+	NetModifiedBlockData() : Packet(ID) { flags = PacketFlags::Reliable; }
 
     void encode(BufferWriter& w) const override {
 		w.write_i32(x);
@@ -403,7 +403,7 @@ struct NetMessage final : public Packet {
 	static constexpr PacketType ID = PacketType::NET_MESSAGE;
 	std::string message;
 	
-	NetMessage() : Packet(ID) {}
+	NetMessage() : Packet(ID) { flags = PacketFlags::Reliable; }
 
     void encode(BufferWriter& w) const override {
 		w.write_string(message);
@@ -633,6 +633,7 @@ struct NetTerrainParams final : public Packet {
     }
 
     explicit NetTerrainParams(const TerrainGenerationParams& p) : Packet(ID) {
+        flags = PacketFlags::Reliable;
         seed = p.seed; seaLevel = p.seaLevel; bedrockLevel = p.bedrockLevel;
         riverFrequency = p.riverFrequency; riverOctaves = p.riverOctaves;
         riverPersistence = p.riverPersistence; riverLacunarity = p.riverLacunarity;
@@ -851,5 +852,26 @@ struct NetPingList final : public Packet {
     }
 };
 inline AutoRegister<NetPingList> _reg_NetPingList;
+
+// Receiver-driven retransmit request for the reliability layer.
+// Means: "resend packets with reliableSeq in [fromSeq, toSeq] inclusive."
+// Not itself flagged Reliable (meta).
+struct NetReliableNack final : public Packet {
+    static constexpr PacketType ID = PacketType::RELIABLE_NACK;
+    uint32_t fromSeq = 0;
+    uint32_t toSeq   = 0;
+
+    NetReliableNack() : Packet(ID) {}
+
+    void encode(BufferWriter& w) const override {
+        w.write_u32(fromSeq);
+        w.write_u32(toSeq);
+    }
+    void decode(BufferReader& r) override {
+        fromSeq = r.read_u32();
+        toSeq   = r.read_u32();
+    }
+};
+inline AutoRegister<NetReliableNack> _reg_NetReliableNack;
 
 #endif

@@ -269,8 +269,49 @@ void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 
 void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 {
-    auto pkt = decodePacket(data, n);
-    dispatchPacket(pkt, cliaddr);
+    PacketPtr pkt;
+    try {
+        pkt = decodePacket(data, n);
+    } catch (const std::exception& e) {
+        std::cerr << "[Network] decode failed: " << e.what() << "\n";
+        return;
+    }
+    if (!pkt) return;
+
+    // Unknown peer: only NET_CONNECT is allowed. Dispatch it, then bootstrap the
+    // receiver's expectedSeq past this packet (its seq=0 is already consumed).
+    auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+    if (player == players.end()) {
+        if (pkt->type == PacketType::NET_CONNECT) {
+            dispatchPacket(pkt, cliaddr);
+            auto p = NetUtils::findPlayerByAddr(players, cliaddr);
+            if (p != players.end()) {
+                p->recvRel.expectedSeq    = 1;
+                p->recvRel.lastProgressAt = currTick;
+            }
+        }
+        return;
+    }
+
+    // Known peer: route through the reliability layer.
+    auto result = reliabilityIngest(player->recvRel, std::move(pkt), currTick);
+    if (result.nack) {
+        NetReliableNack nack;
+        nack.fromSeq = result.nack->first;
+        nack.toSeq   = result.nack->second;
+        sendPacketTo(nack, cliaddr);
+    }
+    for (auto& ready : result.ready) {
+        if (ready->type == PacketType::RELIABLE_NACK) {
+            auto& nack = static_cast<NetReliableNack&>(*ready);
+            auto bytesList = reliabilityOnNack(player->sendRel, nack.fromSeq, nack.toSeq);
+            for (const auto* b : bytesList) {
+                sendRawBytesTo(*b, cliaddr);
+            }
+            continue;
+        }
+        dispatchPacket(ready, cliaddr);
+    }
 }
 
 void Server::gameTick()
@@ -292,6 +333,9 @@ void Server::gameTick()
 		broadcastSkyTime();
 	if (tick % static_cast<int>(TPS * 2) == 0)
 		broadcastPingList();
+
+	reliabilityKeepalive();
+
 	sendAll();
 }
 
@@ -345,8 +389,9 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.connected = true;
 	p.computeSpawnPosition(world->getTerrainParams());
 
-	players.push_back(p);
-	world->livingEntities.push_back(p.movement);
+	auto movement = p.movement;
+	players.push_back(std::move(p));
+	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
 	
 	sendAccept(cliaddr);
@@ -666,7 +711,7 @@ void Server::sendDeaths()
 
 				le = world->livingEntities.erase(le);
 
-				for (const auto player : players)
+				for (const auto& player : players)
 					sendPacketTo(pkt, player.addr);
 				
 				continue ;
@@ -740,13 +785,13 @@ void Server::sendChunk(CPlayerInfo &player)
 		CH.Z = chunkPos.second;
 		CH.compressedSize = static_cast<uint32_t>(compressed.size());
 		CH.uncompressedSize = static_cast<uint32_t>(chunkData.size());
-		CH.flags = PacketFlags::Compressed;
+		CH.flags = CH.flags | PacketFlags::Compressed;
 		sendPacketTo(CH, player.addr);
 
-        // 3. Split into packets , not really needed for now as data will be smaller than MAXLINE but oh well!
-        // Account for packet encoding overhead: 1 (type) + 2 (seq) + 1 (flags) + 4 (X) + 4 (Z) + 4 (data len) = 16 bytes
-        size_t payloadCapacity = MAXLINE - 16;
-        uint16_t sequence = 0;
+        // 3. Split into packets. Each CHUNK_DATA is Reliable, so the layer
+        //    guarantees in-order delivery — no per-fragment sequence needed.
+        //    Account for packet encoding overhead: 1(type)+4(seq)+1(flags)+4(X)+4(Z)+4(len) = 18 bytes
+        size_t payloadCapacity = MAXLINE - 18;
 
         for (size_t offset = 0; offset < compressed.size(); offset += payloadCapacity) {
             size_t chunkSize = std::min(payloadCapacity, compressed.size() - offset);
@@ -754,12 +799,10 @@ void Server::sendChunk(CPlayerInfo &player)
             NetChunkData CD;
 			CD.X = chunkPos.first;
 			CD.Z = chunkPos.second;
-			CD.sequence = sequence++;
 			CD.data.assign(compressed.begin() + offset, compressed.begin() + offset + chunkSize);
-			// CD.data.assign(compressed.begin(), compressed.end());
 
 			if (compressed.size() - offset <= payloadCapacity)
-            	CD.flags = PacketFlags::FinalChunk; // could mark as compressed & vital
+            	CD.flags = CD.flags | PacketFlags::FinalChunk;
 
             sendPacketTo(CD, player.addr);
         }
@@ -897,8 +940,13 @@ void Server::sendMessage(CPlayerInfo &player)
 
 void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_in& cliaddr)
 {
+    // Groups carry state that's always reliable-worthy today (modified blocks,
+    // connect handshake batches). Mark the outer envelope reliable so the
+    // whole batch is delivered in order. Inner packets are unpacked after
+    // ingest and bypass the reliability layer — their own flags are ignored.
     NetPacketGroup group;
-    int currSize = 6; // 6 bytes because technically it's 2 bytes of group packet u16 "count" + 4bytes of outer layer header (u8+u16+u8). probably.
+    group.flags = group.flags | PacketFlags::Reliable;
+    int currSize = 8; // header (6) + u16 group count (2)
 
     auto it = pkts.begin();
     while (it != pkts.end()) {
@@ -910,7 +958,8 @@ void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_i
             if (!group.rawPackets.empty()) {
                 sendPacketTo(group, cliaddr);
                 group = NetPacketGroup();
-                currSize = 6; // reset
+                group.flags = group.flags | PacketFlags::Reliable;
+                currSize = 8;
             }
             continue; // retry current packet
         }
@@ -949,8 +998,20 @@ void Server::pingLoop() {
 	}
 }
 
-void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
-	auto bytes = encodePacket(pkt);
+void Server::sendPacketTo(Packet& pkt, const sockaddr_in &cliaddr) {
+	std::vector<uint8_t> bytes;
+	if (hasFlag(pkt.flags, PacketFlags::Reliable)) {
+		auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+		if (player != players.end()) {
+			bytes = reliabilityStamp(player->sendRel, pkt);
+		} else {
+			// No per-peer state yet (e.g., pre-accept). Send raw; unrecoverable if lost.
+			bytes = encodePacket(pkt);
+		}
+	} else {
+		bytes = encodePacket(pkt);
+	}
+
 	int n = sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
     if (n < 0) {
 #ifdef _WIN32
@@ -965,6 +1026,21 @@ void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
             std::cout << "[Network] Sent NET_ACCEPT to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << " (" << n << " bytes)\n";
         }
     }
+}
+
+void Server::sendRawBytesTo(const std::vector<uint8_t>& bytes, const sockaddr_in &cliaddr) {
+	sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
+}
+
+void Server::reliabilityKeepalive() {
+	for (auto& p : players) {
+		if (reliabilityShouldKeepalive(p.recvRel, currTick)) {
+			NetReliableNack nack;
+			nack.fromSeq = p.recvRel.expectedSeq;
+			nack.toSeq   = p.recvRel.expectedSeq;
+			sendPacketTo(nack, p.addr);
+		}
+	}
 }
 
 void Server::sendAccept(const sockaddr_in &cliaddr)

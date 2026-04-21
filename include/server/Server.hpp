@@ -85,7 +85,9 @@ private:
 
 	void sendAll();
 	void sendNewGroupPacketTo(std::vector<PacketPtr> &pkts, const sockaddr_in &cliaddr);
-	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
+	void sendPacketTo(Packet& pkt, const sockaddr_in &cliaddr);
+	void sendRawBytesTo(const std::vector<uint8_t>& bytes, const sockaddr_in &cliaddr);
+	void reliabilityKeepalive();
 	void sendAccept(const sockaddr_in &cliaddr);
 	
 	void sendDeaths();
