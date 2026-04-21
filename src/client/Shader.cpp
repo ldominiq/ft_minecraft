@@ -1,4 +1,5 @@
 #include "Shader.hpp"
+#include <unordered_set>
 #ifdef _WIN32
 #include <direct.h>
 #define getcwd _getcwd
@@ -6,29 +7,85 @@
 #include <unistd.h> // getcwd
 #endif
 
-static std::string resolveIncludes(const std::string& src, const std::filesystem::path& shaderDir) {
+static std::string resolveIncludes(
+    const std::string& src,
+    const std::filesystem::path& shaderDir,
+    const std::filesystem::path& shaderRoot,
+    std::unordered_set<std::string>& visited);
+
+static bool parseIncludeDirective(const std::string& line, std::string& rel) {
+    size_t first = line.find_first_not_of(" \t");
+    if (first == std::string::npos || line.compare(first, 10, "#include \"") != 0)
+        return false;
+
+    size_t openQuote = line.find('"', first);
+    size_t closeQuote = (openQuote == std::string::npos) ? std::string::npos : line.find('"', openQuote + 1);
+    if (openQuote == std::string::npos || closeQuote == std::string::npos || closeQuote <= openQuote + 1)
+        return false;
+
+    rel = line.substr(openQuote + 1, closeQuote - openQuote - 1);
+    return true;
+}
+
+static std::string expandInclude(
+    const std::string& rel,
+    const std::filesystem::path& shaderDir,
+    const std::filesystem::path& shaderRoot,
+    std::unordered_set<std::string>& visited)
+{
+    if (std::filesystem::path(rel).is_absolute()) {
+        std::cerr << "ERROR::SHADER::INCLUDE_ABSOLUTE_PATH: " << rel << "\n";
+        return "// REJECTED INCLUDE (absolute path): " + rel + '\n';
+    }
+
+    std::filesystem::path includePath = (shaderDir / rel).lexically_normal();
+    std::string relStr = includePath.lexically_relative(shaderRoot).string();
+    if (relStr.empty() || relStr.rfind("..", 0) == 0) {
+        std::cerr << "ERROR::SHADER::INCLUDE_PATH_ESCAPE: " << includePath << "\n";
+        return "// REJECTED INCLUDE (path escape): " + rel + '\n';
+    }
+
+    std::string normalStr = includePath.string();
+    if (visited.count(normalStr)) {
+        std::cerr << "ERROR::SHADER::INCLUDE_CYCLE: " << includePath << "\n";
+        return "// SKIPPED INCLUDE (cycle): " + rel + '\n';
+    }
+
+    std::ifstream inclFile(includePath, std::ios::in | std::ios::binary);
+    if (!inclFile.is_open()) {
+        std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath << "\n";
+        return "// MISSING INCLUDE: " + rel + '\n';
+    }
+
+    std::stringstream s;
+    s << inclFile.rdbuf();
+    visited.insert(normalStr);
+    std::string expanded = resolveIncludes(s.str(), includePath.parent_path(), shaderRoot, visited) + '\n';
+    visited.erase(normalStr); // allow re-inclusion from other non-cyclic paths
+    return expanded;
+}
+
+static std::string resolveIncludes(
+    const std::string& src,
+    const std::filesystem::path& shaderDir,
+    const std::filesystem::path& shaderRoot,
+    std::unordered_set<std::string>& visited)
+{
     std::string result;
     std::istringstream stream(src);
     std::string line;
 
     while (std::getline(stream, line)) {
-        if (line.rfind("#include \"", 0) == 0 && line.back() == '"') {
-            std::string rel = line.substr(10, line.size() - 11); // Extract path between quotes
-            std::filesystem::path includePath = shaderDir / rel;
-            std::ifstream inclFile(includePath);
-            if (!inclFile.is_open()) {
-                std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath << "\n";
-                result += "// MISSING INCLUDE: " + rel + '\n';
-            } else {
-                std::stringstream s;
-                s << inclFile.rdbuf();
-                result += s.str() + '\n';
-            }
-        }
-        else {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+
+        std::string rel;
+        if (parseIncludeDirective(line, rel))
+            result += expandInclude(rel, shaderDir, shaderRoot, visited);
+        else
             result += line + '\n';
-        }
     }
+
     return result;
 }
 
@@ -69,8 +126,11 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
         }
     }
 
-    vCode = resolveIncludes(vCode, std::filesystem::path(vertexPath).parent_path());
-    fCode = resolveIncludes(fCode, std::filesystem::path(fragmentPath).parent_path());
+    std::filesystem::path vRoot = std::filesystem::path(vertexPath).parent_path().lexically_normal();
+    std::filesystem::path fRoot = std::filesystem::path(fragmentPath).parent_path().lexically_normal();
+    std::unordered_set<std::string> vVisited, fVisited;
+    vCode = resolveIncludes(vCode, vRoot, vRoot, vVisited);
+    fCode = resolveIncludes(fCode, fRoot, fRoot, fVisited);
 
     const char* vShaderCode = vCode.c_str();
     const char* fShaderCode = fCode.c_str();

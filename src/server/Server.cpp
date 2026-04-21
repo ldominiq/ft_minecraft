@@ -18,6 +18,18 @@ Server::Server() {
 }
 
 Server::~Server() {
+
+	// Stop the ping thread
+	{
+		std::lock_guard<std::mutex> lock(pingMutex);
+		running = false;
+	}
+	pingCV.notify_one();
+	if (pingThread.joinable()) {
+		// Blocks the current thread until the thread identified by *this finishes its execution. 
+		pingThread.join();
+	}
+
 	{
 		std::lock_guard<std::mutex> lock(dumpThreadsMutex);
 		for (auto& thread : dumpThreads) {
@@ -47,6 +59,9 @@ void Server::run(std::optional<int> &seed) {
 	world->livingEntities.push_back(crep2);
 
 	running = true;
+
+	// Start the ping processing thread
+	pingThread = std::thread(&Server::pingLoop, this);
 
     loop();
 }
@@ -132,7 +147,24 @@ void Server::loop() {
 #endif
 				break;
 			}
-			dispatch(buffer, n, cliaddr);
+			if (n > 0 && buffer[0] == static_cast<uint8_t>(PacketType::NET_PING)) {
+				try {
+					auto pkt = decodePacket(buffer, n);
+					auto& ping = static_cast<NetPing&>(*pkt);
+					// send data to the worker thread
+					{
+						std::lock_guard<std::mutex> lock(pingMutex);
+						pingQueue.push({ cliaddr, ping.timestamp });
+					}
+					pingCV.notify_one();
+				}
+				catch (const std::exception& e) {
+					std::cerr << "[Server] Failed to decode ping packet: " << e.what() << "\n";
+				}
+			}
+			else {
+				dispatch(buffer, n, cliaddr);
+			}
 		}
 
 	    deltaTime = std::chrono::duration<float>(currTick - lastTick).count();
@@ -215,6 +247,8 @@ void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 			receiveTerrainParams(p, cliaddr);
 			break;
 		}
+
+		// NET_PING is handled by pingThread before dispatch() is called
 
         default:
             std::cout << "Unknown packet type! id=" << (int)pkt->type << "\n";
@@ -919,6 +953,30 @@ void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_i
 	}
 }
 
+void Server::pingLoop() {
+	while (true) {
+		// wait until server::loop() sends data
+		std::unique_lock<std::mutex> lock(pingMutex);
+		pingCV.wait(lock, [this] {return !pingQueue.empty() || !running; });
+
+		if (!running && pingQueue.empty())
+			return;
+
+		while (!pingQueue.empty()) {
+			// after the wait, we own the lock
+			PingJob job = pingQueue.front();
+			pingQueue.pop();
+			lock.unlock(); // release lock while processing to allow main thread to enqueue more jobs
+
+			NetPong pong;
+			pong.timestamp = job.timestamp;
+			sendPacketTo(pong, job.addr);  // unicast back to this client only
+
+			lock.lock(); // re-acquire lock before checking queue again
+		}
+	}
+}
+
 void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
 	auto bytes = encodePacket(pkt);
 	int n = sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
@@ -1009,7 +1067,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);
 
 		auto pkt4 = std::make_unique<NetInventory>();
-		pkt3->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
+		pkt4->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 		pkt4->amount = 200;
 		pkt4->slot = 2;
 		pkt4->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::CACTUS);

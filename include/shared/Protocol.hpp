@@ -800,4 +800,30 @@ struct NetTerrainParams final : public Packet {
 };
 inline AutoRegister<NetTerrainParams> _reg_NetTerrainParams;
 
+struct NetPing final : public Packet {
+    static constexpr PacketType ID = PacketType::NET_PING;
+	uint64_t timestamp = 0; // client timestamp when ping was sent
+	NetPing() : Packet(ID) {}
+    void encode(BufferWriter& w) const override {
+        w.write_u64(timestamp);
+    }
+    void decode(BufferReader& r) override {
+        timestamp = r.read_u64();
+	}
+};
+inline AutoRegister<NetPing> _reg_NetPing;
+
+struct NetPong final : public Packet {
+	static constexpr PacketType ID = PacketType::NET_PONG;
+	uint64_t timestamp = 0; // copy of client timestamp from ping
+	NetPong() : Packet(ID) {}
+    void encode(BufferWriter& w) const override {
+        w.write_u64(timestamp);
+	}
+    void decode(BufferReader& r) override {
+        timestamp = r.read_u64();
+	}
+};
+inline AutoRegister<NetPong> _reg_NetPong;
+
 #endif
