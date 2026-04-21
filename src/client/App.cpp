@@ -157,12 +157,14 @@ void App::init(const std::string& serverIp) {
         ImGuiIO& io = ImGui::GetIO();
 
 		//scale back down values to counteract wayland bugs
-		float xscale, yscale;
-		glfwGetWindowContentScale(w, &xscale, &yscale);
+		// float xscale, yscale;
+		// glfwGetWindowContentScale(w, &xscale, &yscale);
 
 		double mouseX, mouseY;
-		mouseX = xpos * xscale;
-		mouseY = ypos * yscale;
+		mouseX = xpos;
+		mouseY = ypos;
+		// mouseX = xpos * xscale;
+		// mouseY = ypos * yscale;
 
 		auto menuManagerPtr = app->menuManager.lock();
 		if (menuManagerPtr)
@@ -261,11 +263,11 @@ void App::init(const std::string& serverIp) {
     		glfwGetCursorPos(w, &mouseX, &mouseY);
 			
 			//scale back down values to counteract wayland bugs
-			float xscale, yscale;
-			glfwGetWindowContentScale(w, &xscale, &yscale);
+			// float xscale, yscale;
+			// glfwGetWindowContentScale(w, &xscale, &yscale);
 
-			mouseX = mouseX * xscale;
-			mouseY = mouseY * yscale;
+			// mouseX = mouseX * xscale;
+			// mouseY = mouseY * yscale;
 
 			if (manager == app->inventoryUI)
 			{
