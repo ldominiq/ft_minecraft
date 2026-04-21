@@ -2,7 +2,9 @@
 #include "Menu.hpp"
 
 Menu::Menu(float width, float height)
-: DESIGN_WIDTH(width), DESIGN_HEIGHT(height), textRenderer("fonts/Roboto-Regular.ttf")
+: DESIGN_WIDTH(width), DESIGN_HEIGHT(height),
+  textRenderer("fonts/upheavtt.ttf"),
+  titleRenderer("fonts/upheavtt.ttf", 128)
 {
     resize(width, height);
 
@@ -47,9 +49,9 @@ Menu::~Menu()
 	if (glfwGetCurrentContext()) {
 		glDeleteVertexArrays(1, &VAO);
 		glDeleteBuffers(1, &VBO);
-	
-		glDeleteTextures(1, &textureVAO);
-		glDeleteTextures(1, &textureVBO);
+
+		glDeleteVertexArrays(1, &textureVAO);
+		glDeleteBuffers(1, &textureVBO);
 	} else {
 		VAO = 0;
 		VBO = 0;
@@ -118,6 +120,109 @@ void Menu::drawTexturedQuad(float x, float y, float w, float h, unsigned int tex
     texturedQuadShader->setInt("uTexture", 0);
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+void Menu::drawTiledTexturedQuad(float x, float y, float w, float h, unsigned int textureID, float tileSize)
+{
+    float tilesX = w / tileSize;
+    float tilesY = h / tileSize;
+
+    float verts[] = {
+        x,     y,     0.0f,   0.0f,
+        x + w, y,     tilesX, 0.0f,
+        x + w, y + h, tilesX, tilesY,
+
+        x,     y,     0.0f,   0.0f,
+        x + w, y + h, tilesX, tilesY,
+        x,     y + h, 0.0f,   tilesY
+    };
+
+    glBindVertexArray(textureVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, textureVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+
+    texturedQuadShader->use();
+    texturedQuadShader->setMat4("uProjection", glm::ortho(0.0f, static_cast<float>(fullscreenWidth),
+                                                         0.0f, static_cast<float>(fullscreenHeight),
+                                                         -1.0f, 1.0f));
+    texturedQuadShader->setFloat("uAlpha", 1.0f);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    texturedQuadShader->setInt("uTexture", 0);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+void Menu::drawTiledBackground(GLuint &texture)
+{
+	float tileSize = 64.0f * menuScale;
+	drawTiledTexturedQuad(0, 0, fullscreenWidth, fullscreenHeight, texture, tileSize);
+
+	// Darken overlay
+	drawSimpleQuad(0, 0, fullscreenWidth, fullscreenHeight, glm::vec4(0.0f, 0.0f, 0.0f, 0.4f));
+}
+
+void Menu::drawButton(float x, float y, float w, float h, const std::string& label, bool hovered, bool enabled)
+{
+	glm::vec4 bgColor;
+	if (!enabled)
+		bgColor = glm::vec4(0.2f, 0.2f, 0.2f, 0.8f);
+	else if (hovered)
+		bgColor = glm::vec4(0.4f, 0.4f, 0.5f, 0.9f);
+	else
+		bgColor = glm::vec4(0.25f, 0.25f, 0.3f, 0.85f);
+
+	float border = 2.0f * menuScale;
+	glm::vec4 borderColor = (hovered && enabled)
+		? glm::vec4(0.7f, 0.7f, 0.8f, 1.0f)
+		: glm::vec4(0.4f, 0.4f, 0.4f, 1.0f);
+
+	drawSimpleQuad(x - border, y - border, w + 2 * border, h + 2 * border, borderColor);
+	drawSimpleQuad(x, y, w, h, bgColor);
+
+	float savedScale = textRenderer.getScale();
+	float labelScale = 0.5f * menuScale;
+	textRenderer.setScale(labelScale);
+	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+
+	float labelWidth = textRenderer.getPixelSizeOfString(label);
+	float ascent = textRenderer.getAscent();
+	float labelX = x + (w - labelWidth) / 2.0f;
+	float labelY = y + (h - ascent) / 2.0f;
+
+	glm::vec3 textColor = enabled ? glm::vec3(1.0f) : glm::vec3(0.5f);
+	textRenderer.renderText(label, labelX, labelY, textColor);
+	textRenderer.setScale(savedScale);
+}
+
+GLuint Menu::loadTexture2D(const char* path, bool pixelated, int* outWidth, int* outHeight)
+{
+    int width, height, channels;
+    unsigned char* data = stbi_load(path, &width, &height, &channels, 4);
+    if (!data) {
+        std::cerr << "Failed to load texture: " << path << std::endl;
+        if (outWidth)  *outWidth = 0;
+        if (outHeight) *outHeight = 0;
+        return 0;
+    }
+
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    GLint filter = pixelated ? GL_NEAREST : GL_LINEAR;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+
+    stbi_image_free(data);
+    if (outWidth)  *outWidth = width;
+    if (outHeight) *outHeight = height;
+    return texture;
 }
 
 void Menu::resize(float width, float height)

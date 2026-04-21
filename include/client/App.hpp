@@ -65,6 +65,9 @@
 #include "ChunkBoundaryRenderer.hpp"
 #include "DebugHUD.hpp"
 #include "PlayerListHUD.hpp"
+#include "MainMenu.hpp"
+#include "MultiplayerMenu.hpp"
+#include "SettingsMenu.hpp"
 
 #define CONTROL_LIST 		\
     X(FORWARD)       		\
@@ -106,6 +109,13 @@ bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha);
 
 class App {
 public:
+    enum class GameState {
+        MainMenu,
+        Multiplayer,
+        Settings,
+        Playing
+    };
+
     struct TerrainDebugUIParams {
         int genSize = 1000;
         int downsample = 16;
@@ -115,6 +125,8 @@ public:
     ~App();
 
     void run();
+
+    GameState gameState = GameState::MainMenu;
 
 private:
     void init(const std::string& serverIp);
@@ -127,6 +139,8 @@ private:
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
 	void processInputMenus(int key, int action);
+	bool connectToServer(const std::string& ip);
+	void transitionTo(GameState newState);
     void updateWindowTitle();
     void toggleDisplayMode();
 
@@ -179,6 +193,12 @@ private:
 	std::shared_ptr<InventoryUI> inventoryUI;
 	std::unique_ptr<DebugHUD> debugHUD;
 	bool showHUD = false;
+
+	// Main menu screens
+	std::shared_ptr<MainMenu> mainMenu;
+	std::shared_ptr<MultiplayerMenu> multiplayerMenu;
+	std::shared_ptr<SettingsMenu> settingsMenu;
+	GLuint menuDirtTex = 0;
 
 	std::unique_ptr<PlayerListHUD> playerListHUD;
 	bool     playerListVisible = false;
@@ -239,6 +259,10 @@ private:
 	float clientTickChangedTime = 0.0f;
 
 	bool clientConnected = false;
+
+	bool connectPending = false;
+	float connectStartTime = 0.0f;
+	static constexpr float connectTimeoutSec = 5.0f;
 
     bool wireframe = false;
 

@@ -1,6 +1,7 @@
 #include "Typer.hpp"
+#include <cmath>
 
-Typer::Typer(const std::string& fontPath) : shader("shaders/freetype.vert", "shaders/freetype.frag") {
+Typer::Typer(const std::string& fontPath, unsigned int pixelSize) : shader("shaders/freetype.vert", "shaders/freetype.frag") {
     // Initialize FreeType
 	FT_Library ft;
 	if (FT_Init_FreeType(&ft))
@@ -16,7 +17,7 @@ Typer::Typer(const std::string& fontPath) : shader("shaders/freetype.vert", "sha
     }
     else {
         // set size to load glyphs as
-        FT_Set_Pixel_Sizes(face, 0, 48);
+        FT_Set_Pixel_Sizes(face, 0, pixelSize);
 
         // disable byte-alignment restriction
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -97,47 +98,86 @@ void Typer::setProjection(int width, int height) {
 	shader.setMat4("projection", projection);
 }
 
-uint Typer::getPixelSizeOfString(const std::string &str)
+uint Typer::getPixelSizeOfString(const std::string &str) const
 {
     uint len = 0;
     for (auto &c : str)
     {
-        TypingCharacter ch = Characters[c];
-        len += (ch.Advance >> 6);
+        auto it = Characters.find(c);
+        if (it == Characters.end()) continue;
+        len += (it->second.Advance >> 6);
     }
     return static_cast<uint>(len * scale);
 }
 
-// render line of text
-void Typer::renderText(const std::string &text, float x, float y, const glm::vec3 &color, const float alpha /* = 1.0f */)
+// Get the ascent (distance from baseline to top) of the font in pixels, scaled by the current scale factor
+float Typer::getAscent() const
 {
-    // activate corresponding render state	
+    auto it = Characters.find('A');
+    if (it == Characters.end()) return 0.0f;
+    return it->second.Bearing.y * scale;
+}
+
+// render line of text (rotationDeg rotates around the starting anchor x,y)
+void Typer::renderText(const std::string &text, float x, float y, const glm::vec3 &color, const float alpha /* = 1.0f */, float rotationDeg /* = 0.0f */)
+{
+    // activate corresponding render state
     shader.use();
 	shader.setVec4("textColor", glm::vec4(color.x, color.y, color.z, alpha));
 
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(VAO);
 
-    // iterate through all characters
-    std::string::const_iterator c;
-    for (c = text.begin(); c != text.end(); c++) 
-    {
-        TypingCharacter ch = Characters[*c];
+    const bool rotated = rotationDeg != 0.0f;
+    const float rad = rotated ? rotationDeg * 3.14159265358979323846f / 180.0f : 0.0f;
+    const float cs = rotated ? std::cos(rad) : 1.0f;
+    const float sn = rotated ? std::sin(rad) : 0.0f;
+    const float anchorX = x;
+    const float anchorY = y;
+    float penOffset = 0.0f; // offset along the (rotated) baseline
 
-        float xpos = x + ch.Bearing.x * scale;
-        float ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
+    // iterate through all characters
+    for (auto c = text.begin(); c != text.end(); ++c)
+    {
+        auto charIt = Characters.find(*c);
+        if (charIt == Characters.end()) continue;
+        const TypingCharacter& ch = charIt->second;
+
+        // position relative to anchor in un-rotated space
+        float baseX = anchorX + penOffset + ch.Bearing.x * scale;
+        float baseY = anchorY - (ch.Size.y - ch.Bearing.y) * scale;
 
         float w = ch.Size.x * scale;
         float h = ch.Size.y * scale;
-        // update VBO for each character
-        float vertices[6][4] = {
-            { xpos,     ypos + h,   0.0f, 0.0f },            
-            { xpos,     ypos,       0.0f, 1.0f },
-            { xpos + w, ypos,       1.0f, 1.0f },
 
-            { xpos,     ypos + h,   0.0f, 0.0f },
-            { xpos + w, ypos,       1.0f, 1.0f },
-            { xpos + w, ypos + h,   1.0f, 0.0f }           
+        // calculate the four corners of the character quad, applying rotation if needed
+        float tlX, tlY, blX, blY, brX, brY, trX, trY;
+        if (rotated) {
+            auto rot = [&](float px, float py, float& ox, float& oy) {
+                float dx = px - anchorX;
+                float dy = py - anchorY;
+                ox = anchorX + dx * cs - dy * sn;
+                oy = anchorY + dx * sn + dy * cs;
+            };
+            rot(baseX,     baseY + h, tlX, tlY);
+            rot(baseX,     baseY,     blX, blY);
+            rot(baseX + w, baseY,     brX, brY);
+            rot(baseX + w, baseY + h, trX, trY);
+        } else {
+            tlX = baseX;     tlY = baseY + h;
+            blX = baseX;     blY = baseY;
+            brX = baseX + w; brY = baseY;
+            trX = baseX + w; trY = baseY + h;
+        }
+
+        float vertices[6][4] = {
+            { tlX, tlY, 0.0f, 0.0f },
+            { blX, blY, 0.0f, 1.0f },
+            { brX, brY, 1.0f, 1.0f },
+
+            { tlX, tlY, 0.0f, 0.0f },
+            { brX, brY, 1.0f, 1.0f },
+            { trX, trY, 1.0f, 0.0f }
         };
         // render glyph texture over quad
         glBindTexture(GL_TEXTURE_2D, ch.TextureID);
@@ -149,7 +189,7 @@ void Typer::renderText(const std::string &text, float x, float y, const glm::vec
         // render quad
         glDrawArrays(GL_TRIANGLES, 0, 6);
         // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
-        x += (ch.Advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+        penOffset += (ch.Advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
     }
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
