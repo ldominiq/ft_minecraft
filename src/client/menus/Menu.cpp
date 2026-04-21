@@ -154,6 +154,15 @@ void Menu::drawTiledTexturedQuad(float x, float y, float w, float h, unsigned in
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
+void Menu::drawTiledBackground(GLuint &texture)
+{
+	float tileSize = 64.0f * menuScale;
+	drawTiledTexturedQuad(0, 0, fullscreenWidth, fullscreenHeight, texture, tileSize);
+
+	// Darken overlay
+	drawSimpleQuad(0, 0, fullscreenWidth, fullscreenHeight, glm::vec4(0.0f, 0.0f, 0.0f, 0.4f));
+}
+
 void Menu::drawButton(float x, float y, float w, float h, const std::string& label, bool hovered, bool enabled)
 {
 	glm::vec4 bgColor;

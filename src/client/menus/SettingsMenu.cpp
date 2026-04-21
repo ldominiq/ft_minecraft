@@ -27,16 +27,9 @@ void SettingsMenu::build()
 	doneButton.y = 60.0f * menuScale;
 }
 
-void SettingsMenu::drawTiledBackground()
-{
-	float tileSize = 64.0f * menuScale;
-	drawTiledTexturedQuad(0, 0, fullscreenWidth, fullscreenHeight, dirtTexture, tileSize);
-	drawSimpleQuad(0, 0, fullscreenWidth, fullscreenHeight, glm::vec4(0.0f, 0.0f, 0.0f, 0.4f));
-}
-
 void SettingsMenu::onRender()
 {
-	drawTiledBackground();
+	drawTiledBackground(dirtTexture);
 
 	float savedScale = textRenderer.getScale();
 

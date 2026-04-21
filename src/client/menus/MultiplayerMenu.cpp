@@ -46,13 +46,6 @@ void MultiplayerMenu::build()
 	cancelButton.y = centerY - btnH - 20.0f * menuScale;
 }
 
-void MultiplayerMenu::drawTiledBackground()
-{
-	float tileSize = 64.0f * menuScale;
-	drawTiledTexturedQuad(0, 0, fullscreenWidth, fullscreenHeight, dirtTexture, tileSize);
-	drawSimpleQuad(0, 0, fullscreenWidth, fullscreenHeight, glm::vec4(0.0f, 0.0f, 0.0f, 0.4f));
-}
-
 void MultiplayerMenu::addChar(char c)
 {
 	if (ipAddress.size() >= 45) return;
@@ -72,7 +65,7 @@ void MultiplayerMenu::removeChar()
 
 void MultiplayerMenu::onRender()
 {
-	drawTiledBackground();
+	drawTiledBackground(dirtTexture);
 
 	// Title (high-resolution Typer for crisp rendering)
 	float savedScale = textRenderer.getScale();

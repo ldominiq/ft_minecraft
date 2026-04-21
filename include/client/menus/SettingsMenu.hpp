@@ -14,16 +14,8 @@ public:
 	void handleMouseMove(double mouseX, double mouseY) override;
 
 private:
-	struct Button {
-		float x = 0, y = 0, w = 0, h = 0;
-		std::string label;
-		bool hovered = false;
-	};
-
 	void onRender() override;
 	void build() override;
-
-	void drawTiledBackground();
 
 	std::function<void()> onDone;
 

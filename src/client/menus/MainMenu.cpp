@@ -84,15 +84,6 @@ void MainMenu::build()
 	}
 }
 
-void MainMenu::drawTiledBackground()
-{
-	float tileSize = 64.0f * menuScale;
-	drawTiledTexturedQuad(0, 0, fullscreenWidth, fullscreenHeight, dirtTexture, tileSize);
-
-	// Darken overlay
-	drawSimpleQuad(0, 0, fullscreenWidth, fullscreenHeight, glm::vec4(0.0f, 0.0f, 0.0f, 0.4f));
-}
-
 void MainMenu::drawTitle()
 {
 	if (titleTexture) {
@@ -151,7 +142,7 @@ void MainMenu::drawSplashText()
 
 void MainMenu::onRender()
 {
-	drawTiledBackground();
+	drawTiledBackground(dirtTexture);
 	drawTitle();
 
 	for (auto& btn : buttons)

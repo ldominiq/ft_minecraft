@@ -18,6 +18,13 @@
 class Menu {
 
 	protected:
+		struct Button {
+			float x = 0, y = 0, w = 0, h = 0;
+			std::string label;
+			bool hovered = false;
+			bool enabled = true;
+		};
+		
 		int DESIGN_WIDTH = 0;
 		int DESIGN_HEIGHT = 0;
 
@@ -41,6 +48,7 @@ class Menu {
 		void drawSimpleQuad(float x, float y, float w, float h, const glm::vec4 &color) const;
 		void drawTexturedQuad(float x, float y, float w, float h, unsigned int textureID, float alpha = 1.0f);
 		void drawTiledTexturedQuad(float x, float y, float w, float h, unsigned int textureID, float tileSize);
+		void drawTiledBackground(GLuint &texture);
 		void drawButton(float x, float y, float w, float h, const std::string& label, bool hovered, bool enabled = true);
 
 	public:
