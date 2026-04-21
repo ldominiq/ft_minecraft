@@ -1320,7 +1320,7 @@ void App::debugWindow() {
                     }
 
                     if (ImGui::CollapsingHeader("Network Debug")) {
-                        auto netStats = camera->getReconcileDebugStats();
+                        const auto& netStats = camera->getReconcileDebugStats();
                         ImGui::Text("Client Tick: %d", clientTick);
                         ImGui::Text("Last Ack Tick: %d", camera->getLastAppliedAckTick());
                         ImGui::Text("Pending Snapshot Tick: %d", camera->getPendingCorrectionTick());
