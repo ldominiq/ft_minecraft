@@ -1992,6 +1992,13 @@ void App::processInputMenus(int key, int action) {
 		if (!uiInteractive)
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
+	//close inventory with E too.
+	if (manager && manager == inventoryUI && key == GLFW_KEY_E && action == GLFW_PRESS)
+	{
+		menuManager.reset();
+		if (!uiInteractive)
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	}
 
 	//TODO : Change gamemode for player on chat too so prediction works on other modes other than spectator when changing gamemode by chat.
 	if (manager == chat)
