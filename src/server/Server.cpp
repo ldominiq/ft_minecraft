@@ -581,6 +581,21 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
                 messages.push_back("[server] Unknown dump mode. Use: noises | hydro | heightmap | biome");
             }
         }
+        else if (pkt.message.starts_with("tp "))
+        {
+            auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+            if (player == players.end()) return;
+
+            std::istringstream iss(pkt.message.substr(strlen("tp ")));
+            float x, y, z;
+            if (iss >> x >> y >> z) {
+                player->movement->setPosition(glm::vec3(x, y, z));
+                player->movement->setVelocity(glm::vec3(0.0f));
+                player->movement->accumulatedFallDistance = 0.0f;
+            } else {
+                messages.push_back("[server] Usage: /tp <x> <y> <z>");
+            }
+        }
 	}
 	else
 		messages.push_back(pkt.message);

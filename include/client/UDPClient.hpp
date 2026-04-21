@@ -17,6 +17,7 @@ typedef int socklen_t;
 #include <iostream>
 #include <vector>
 #include <functional>
+#include <stdexcept>
 
 #include <chrono>
 #include <deque>

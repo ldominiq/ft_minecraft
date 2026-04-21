@@ -80,12 +80,15 @@ void App::init(const std::string& serverIp) {
 		auto manager = app->menuManager.lock();
 		if (manager)
 			manager->resize(width, height);
-		if (manager != app->inventoryUI)
+		if (app->inventoryUI && manager != app->inventoryUI)
 			app->inventoryUI->resize(width, height);
-		if (manager != app->chat)
+		if (app->chat && manager != app->chat)
 			app->chat->resize(width, height);
-		app->debugHUD->resize(width, height);
-		app->playerListHUD->resize(width, height);
+		if (app->debugHUD) app->debugHUD->resize(width, height);
+		if (app->playerListHUD) app->playerListHUD->resize(width, height);
+		if (app->mainMenu) app->mainMenu->resize(width, height);
+		if (app->multiplayerMenu) app->multiplayerMenu->resize(width, height);
+		if (app->settingsMenu) app->settingsMenu->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -93,9 +96,6 @@ void App::init(const std::string& serverIp) {
 
     glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
     glViewport(0, 0, screenWidth, screenHeight);
-
-	udpClient = std::make_unique<UDPClient>(targetIp.c_str());
-	setUdpClientPacketCallback();
 
 	renderer = std::make_unique<Renderer>();
 
@@ -151,6 +151,15 @@ void App::init(const std::string& serverIp) {
     glfwSetCursorPosCallback(window, [](GLFWwindow* w, const double xpos, const double ypos) {
         static App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
         if (!app) return;
+
+		// In non-Playing states, forward to menu and skip camera
+		if (app->gameState != GameState::Playing) {
+			auto menuManagerPtr = app->menuManager.lock();
+			if (menuManagerPtr)
+				menuManagerPtr->handleMouseMove(xpos, ypos);
+			return;
+		}
+
         // Honour ImGui’s mouse capture: if the UI is being interacted with
         // (e.g. hovering/clicking in a window), do not rotate the camera.
         ImGuiIO& io = ImGui::GetIO();
@@ -179,11 +188,16 @@ void App::init(const std::string& serverIp) {
 		app->mouseMovedRecently = true;
 		app->lastMouseMoveTime = glfwGetTime();
     });
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int codepoint) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		if (app->gameState == GameState::Multiplayer) {
+			app->multiplayerMenu->addChar(static_cast<char>(codepoint));
+			return;
+		}
+
 		auto manager = app->menuManager.lock();
 		if (manager != app->chat) return ;
 
@@ -193,6 +207,18 @@ void App::init(const std::string& serverIp) {
 	glfwSetKeyCallback(window, [](GLFWwindow* w, int key, int scancode, int action, int mods) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;
+
+		// In non-Playing states, handle ESC to go back / don't close window
+		if (app->gameState != GameState::Playing) {
+			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+				if (app->gameState == GameState::Multiplayer || app->gameState == GameState::Settings)
+					app->transitionTo(GameState::MainMenu);
+			}
+			if (key == app->controlsArray[TOGGLE_FULLSCREEN] && action == GLFW_PRESS)
+				app->toggleDisplayMode();
+			app->processInputMenus(key, action);
+			return;
+		}
 
 		auto manager = app->menuManager.lock();
 
@@ -249,10 +275,15 @@ void App::init(const std::string& serverIp) {
 			double mouseX, mouseY;
     		glfwGetCursorPos(w, &mouseX, &mouseY);
 
+			if (app->gameState != GameState::Playing) {
+				manager->handleMouseClick(mouseX, mouseY, button, action);
+				return;
+			}
+
 			if (manager == app->inventoryUI)
 			{
 				manager->handleMouseClick(mouseX, mouseY, button, action);
-				if (app->inventoryUI->lastAction.has_value())
+				if (app->inventoryUI->lastAction.has_value() && app->udpClient)
 				{
 					auto [slot, type] = *app->inventoryUI->lastAction;
 					NetInventoryAction pkt;
@@ -264,6 +295,8 @@ void App::init(const std::string& serverIp) {
 			}
 			return ;
 		}
+
+		if (app->gameState != GameState::Playing || !app->udpClient) return;
 
 		//kinda weird way to do it.
 		uint8_t mouseButtons = 0;
@@ -317,6 +350,47 @@ void App::init(const std::string& serverIp) {
     glGenQueries(QUERY_POOL_SIZE, queryRenderWaterPool);
     glGenQueries(QUERY_POOL_SIZE, queryDrawEntities);
     glGenQueries(QUERY_POOL_SIZE, querySSAOPool);
+
+	// Create main menu screens
+	menuDirtTex = Menu::loadTexture2D("assets/textures/block/dirt.png");
+	mainMenu = std::make_shared<MainMenu>(screenWidth, screenHeight, menuDirtTex);
+	multiplayerMenu = std::make_shared<MultiplayerMenu>(screenWidth, screenHeight, menuDirtTex);
+	settingsMenu = std::make_shared<SettingsMenu>(screenWidth, screenHeight, menuDirtTex);
+
+	mainMenu->setButtonCallback([this](int btn) {
+		switch (btn) {
+			case 0: break; // Singleplayer - disabled
+			case 1: transitionTo(GameState::Multiplayer); break;
+			case 2: transitionTo(GameState::Settings); break;
+			case 3: glfwSetWindowShouldClose(window, true); break;
+		}
+	});
+
+	multiplayerMenu->setConnectCallback([this](const std::string& ip) {
+		if (ip.empty()) {
+			multiplayerMenu->setErrorMessage("Please enter a server address.");
+			return;
+		}
+		if (!connectToServer(ip))
+			return;
+		multiplayerMenu->setErrorMessage("Connecting...");
+		connectPending = true;
+		connectStartTime = static_cast<float>(glfwGetTime());
+	});
+	multiplayerMenu->setCancelCallback([this]() {
+		if (connectPending) {
+			connectPending = false;
+			udpClient.reset();
+			clientConnected = false;
+		}
+		transitionTo(GameState::MainMenu);
+	});
+
+	settingsMenu->setDoneCallback([this]() {
+		transitionTo(GameState::MainMenu);
+	});
+
+	transitionTo(GameState::MainMenu);
 }
 
 void App::setUdpClientPacketCallback()
@@ -497,6 +571,7 @@ void App::loadResources() {
     renderer->getVegetationShader()->setInt("blockTextures", 0);
 }
 
+
 void App::render() {
 
 	while (!glfwWindowShouldClose(window)) {
@@ -509,15 +584,45 @@ void App::render() {
             continue;
         }
 
-        // Rotate query index each frame
-        currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
-
-        if (renderer) renderer->resetDrawCallCount();
-    
         // Calculate delta time for frame rate
         const float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+		// Menu rendering path (non-Playing states)
+		if (gameState != GameState::Playing) {
+			if (connectPending && udpClient) {
+				udpClient->receivePacket();
+				if (clientConnected) {
+					connectPending = false;
+					multiplayerMenu->clearError();
+					transitionTo(GameState::Playing);
+				} else if (glfwGetTime() - connectStartTime > connectTimeoutSec) {
+					connectPending = false;
+					udpClient.reset();
+					clientConnected = false;
+					multiplayerMenu->setErrorMessage("Connection timed out.");
+				}
+			}
+
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			ImGui_ImplOpenGL3_NewFrame();
+			ImGui_ImplGlfw_NewFrame();
+			ImGui::NewFrame();
+			ImGui::Render();
+			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+			auto manager = menuManager.lock();
+			if (manager) manager->render();
+
+			glfwSwapBuffers(window);
+			glfwPollEvents();
+			continue;
+		}
+
+        if (renderer) renderer->resetDrawCallCount();
 
 		if (camera)
 			camera->updateSmoothing(deltaTime);
@@ -1273,6 +1378,39 @@ void App::debugWindow() {
                         ImGui::Text("Biome: %s", biomeName);
                     }
 
+                    // Teleport (collapsible)
+                    if (ImGui::CollapsingHeader("Teleport")) {
+                        static int tpX = 0;
+                        static int tpY = 100;
+                        static int tpZ = 0;
+
+                        // Negative width = "extend to N pixels from the right edge",
+                        // so the field grows/shrinks with the window while leaving
+                        // room for the label and the +/- steppers.
+                        const float tpFieldTrailing = -60.0f;
+                        ImGui::SetNextItemWidth(tpFieldTrailing);
+                        ImGui::InputInt("X##tp", &tpX);
+                        ImGui::SetNextItemWidth(tpFieldTrailing);
+                        ImGui::InputInt("Y##tp", &tpY);
+                        ImGui::SetNextItemWidth(tpFieldTrailing);
+                        ImGui::InputInt("Z##tp", &tpZ);
+
+                        if (ImGui::Button("Copy current")) {
+                            tpX = wx; tpY = wy; tpZ = wz;
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Teleport##tp")) {
+                            if (udpClient) {
+                                NetMessage cmd;
+                                cmd.message = "/tp " +
+                                              std::to_string(tpX) + " " +
+                                              std::to_string(tpY) + " " +
+                                              std::to_string(tpZ);
+                                udpClient->sendPacket(cmd);
+                            }
+                        }
+                    }
+
                     // Noise Values (collapsible)
                     if (ImGui::CollapsingHeader("Noise Values", ImGuiTreeNodeFlags_DefaultOpen)) {
                         static const char* contBucketNames[]    = { "MUSHROOM", "OCEAN", "COAST", "NEAR_INLAND", "MID_INLAND", "FAR_INLAND" };
@@ -1319,6 +1457,57 @@ void App::debugWindow() {
                         if (ImGui::Button("Generate Noises"))     sendDumpCommand("noises");
                         if (ImGui::Button("Generate Heightmaps")) sendDumpCommand("heightmap");
                         if (ImGui::Button("Generate Biome Map"))  sendDumpCommand("biome");
+                    }
+
+                    if (ImGui::CollapsingHeader("Network Debug")) {
+                        const auto& netStats = camera->getReconcileDebugStats();
+                        ImGui::Text("Client Tick: %d", clientTick);
+                        ImGui::Text("Last Ack Tick: %d", camera->getLastAppliedAckTick());
+                        ImGui::Text("Pending Snapshot Tick: %d", camera->getPendingCorrectionTick());
+                        ImGui::Text("Last effective ack tick: %d", netStats.lastEffectiveAckTick);
+                        ImGui::Text("Predicted States: %zu", camera->getPredictedStateCount());
+                        ImGui::Text("Pending Inputs: %zu", camera->getPendingInputCount());
+                        ImGui::Text("Corrections total/applied/ignored: %llu / %llu / %llu",
+                            static_cast<unsigned long long>(netStats.totalCorrections),
+                            static_cast<unsigned long long>(netStats.appliedCorrections),
+                            static_cast<unsigned long long>(netStats.ignoredCorrections));
+                        ImGui::Text("Suspected 1-tick phase mismatch count: %llu",
+                            static_cast<unsigned long long>(netStats.suspectedOffByOneCorrections));
+                        ImGui::Text("Last errors: pos=%.6f vel=%.6f horiz=%.6f vert=%.6f",
+                            netStats.lastPosErr,
+                            netStats.lastVelErr,
+                            netStats.lastHorizontalErr,
+                            netStats.lastVerticalErr);
+                        ImGui::Text("Ack match check: err(ack)=%.6f err(ack-1)=%.6f",
+                            netStats.lastErrAtAckTick,
+                            netStats.lastErrAtAckMinusOneTick);
+
+                        if (uiInteractive) {
+                            float simLatMs = udpClient->getSimulatedLatency();
+                            if (ImGui::SliderFloat("Sim Latency (ms)", &simLatMs, 0.0f, 500.0f, "%.0f ms"))
+                                udpClient->setSimulatedLatency(simLatMs);
+
+                            float posThreshold = camera->getReconcilePosErrorThreshold();
+                            if (ImGui::SliderFloat("Reconcile Pos Threshold", &posThreshold, 0.01f, 0.5f, "%.3f"))
+                                camera->setReconcilePosErrorThreshold(posThreshold);
+
+                            float velThreshold = camera->getReconcileVelErrorThreshold();
+                            if (ImGui::SliderFloat("Reconcile Vel Threshold", &velThreshold, 0.001f, 0.5f, "%.3f"))
+                                camera->setReconcileVelErrorThreshold(velThreshold);
+
+                            bool reconcileLogEnabled = camera->isReconcileLogEnabled();
+                            if (ImGui::Checkbox("Verbose Reconcile Logs", &reconcileLogEnabled))
+                                camera->setReconcileLogEnabled(reconcileLogEnabled);
+
+                            bool reconcileAutoPhaseAdjust = camera->isReconcileAutoPhaseAdjustEnabled();
+                            if (ImGui::Checkbox("Auto Ack Phase Adjust", &reconcileAutoPhaseAdjust))
+                                camera->setReconcileAutoPhaseAdjustEnabled(reconcileAutoPhaseAdjust);
+
+                            ImGui::TextDisabled("Simulates S->C receive delay for reconciliation testing.");
+                        }
+                        else {
+                            ImGui::Text("Sim Latency: %.0f ms", udpClient->getSimulatedLatency());
+                        }
                     }
 
                     ImGui::EndTabItem();
@@ -1856,6 +2045,45 @@ void App::run() {
     render();
 }
 
+bool App::connectToServer(const std::string& ip) {
+	try {
+		udpClient = std::make_unique<UDPClient>(ip.c_str());
+	} catch (const std::exception& e) {
+		std::cerr << "[Network] Failed to connect: " << e.what() << std::endl;
+		udpClient.reset();
+		if (multiplayerMenu)
+			multiplayerMenu->setErrorMessage(std::string("Could not connect: ") + e.what());
+		return false;
+	}
+	serverIp = ip;
+	setUdpClientPacketCallback();
+	return true;
+}
+
+void App::transitionTo(GameState newState) {
+	gameState = newState;
+	switch (newState) {
+		case GameState::MainMenu:
+			menuManager = mainMenu;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			firstMouse = true;
+			break;
+		case GameState::Multiplayer:
+			menuManager = multiplayerMenu;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
+		case GameState::Settings:
+			menuManager = settingsMenu;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
+		case GameState::Playing:
+			menuManager.reset();
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			firstMouse = true;
+			break;
+	}
+}
+
 void App::cleanup() {
 
     // Shutdown ImGui before terminating GLFW
@@ -1874,9 +2102,21 @@ void App::cleanup() {
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
 
-	NetDisconnect pkt;
-	pkt.username = "Steve";
-	udpClient->sendPacket(pkt);
+	if (udpClient) {
+		NetDisconnect pkt;
+		pkt.username = "Steve";
+		udpClient->sendPacket(pkt);
+	}
+
+	// Release GL resources owned via menus (and the shared dirt texture) while
+	// the GL context is still current
+	mainMenu.reset();
+	multiplayerMenu.reset();
+	settingsMenu.reset();
+	if (menuDirtTex) {
+		glDeleteTextures(1, &menuDirtTex);
+		menuDirtTex = 0;
+	}
 
     glfwTerminate();
     saveControls();
@@ -1998,6 +2238,28 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 
 void App::processInputMenus(int key, int action) {
 
+	// Handle input for non-Playing menu states
+	if (gameState == GameState::Multiplayer) {
+		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
+			multiplayerMenu->removeChar();
+		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
+			if (multiplayerMenu->getIpAddress().empty()) {
+				multiplayerMenu->setErrorMessage("Please enter a server address.");
+				return;
+			}
+			if (connectPending) return;
+			if (!connectToServer(multiplayerMenu->getIpAddress()))
+				return;
+			multiplayerMenu->setErrorMessage("Connecting...");
+			connectPending = true;
+			connectStartTime = static_cast<float>(glfwGetTime());
+		}
+		return;
+	}
+
+	if (gameState != GameState::Playing) return;
+
+	// Playing state menu handling below
 	auto manager = menuManager.lock();
 
 	// HANDLE EVENTS WHEN CHAT OPEN
@@ -2017,7 +2279,7 @@ void App::processInputMenus(int key, int action) {
 			if (chat->currMsg.empty()) return ; //will this return be safe in the future?
 			NetMessage pkt;
 			pkt.message = chat->currMsg;
-			udpClient->sendPacket(pkt);
+			if (udpClient) udpClient->sendPacket(pkt);
 
 			chat->cleanMsgSent();
 		}
