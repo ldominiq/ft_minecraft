@@ -416,10 +416,28 @@ void World::updateRdyChunks()
 
 void World::updatePlayerRdyChunks(CPlayerInfo &player)
 {
+	const int baseChunkX = static_cast<int>(std::floor(player.movement->getPosition().x / Chunk::WIDTH));
+	const int baseChunkZ = static_cast<int>(std::floor(player.movement->getPosition().z / Chunk::DEPTH));
+	const int r2 = player.movement->loadRadius * player.movement->loadRadius;
+	auto& known = PlayerKnownChunks[player.id];
+
 	for (const auto& chunkPos : rdyChunks)
 	{
-		if (PlayerKnownChunks[player.id].find(chunkPos) != PlayerKnownChunks[player.id].end())
+		if (known.find(chunkPos) != known.end())
+		{
 			player.rdyChunks.push_back(chunkPos);
+			continue;
+		}
+
+		// Recover chunks orphaned by a radius shrink that happened while they were being generated:
+		// they finished after we removed them from PlayerKnownChunks, so findNextChunk never re-requested them.
+		const int dx = chunkPos.first - baseChunkX;
+		const int dz = chunkPos.second - baseChunkZ;
+		if (dx * dx + dz * dz <= r2)
+		{
+			known.insert(chunkPos);
+			player.rdyChunks.push_back(chunkPos);
+		}
 	}
 }
 
