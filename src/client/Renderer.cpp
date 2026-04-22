@@ -338,97 +338,104 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 	float yaw = pkt.yaw;
 
 	auto entity = entitiesMap.find(ID);
-	if (entity != entitiesMap.end())
-	{
-		auto ent = entity->second.lock();
-		if (ent) {
-			const double oneTick = 1.0 / TPS;
-			bool stale = ent->snapshots.empty()
-			          || ent->lastNetUpdateTime < 0.0
-			          || ent->snapshots.back().time < serverTime - 2.0 * oneTick;
-			if (stale) {
-				ent->snapshots.clear();
-				ent->snapshots.emplace_back(Snapshot{ent->getPosition(), glm::vec3(0.0f), serverTime - oneTick});
-			}
-			bool actuallyMoved = !ent->snapshots.empty() &&
-				glm::length(position - ent->snapshots.back().position) > 0.001f;
-			ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
-			ent->yaw = yaw;
-			ent->pitch = pkt.pitch;
-			if (actuallyMoved)
-				ent->positionUpdated = true;
-			else
-				ent->rotationUpdated = true;
-			ent->hasHorizontalInput = (pkt.positionFlags & 0x01) != 0;
-			ent->setOnGround((pkt.positionFlags & 0x02) != 0);
-			if ((pkt.positionFlags & 0x04) != 0) {
+    std::shared_ptr<Entity> ent;
+
+    // Resolve existing entity (or clear stale weak entry)
+    if (entity != entitiesMap.end())
+    {
+        ent = entity->second.lock();
+        if (!ent)
+            entitiesMap.erase(entity);
+    }
+
+    // Update existing entity
+	if (ent) {
+		const double oneTick = 1.0 / TPS;
+		bool stale = ent->snapshots.empty()
+			        || ent->lastNetUpdateTime < 0.0
+			        || ent->snapshots.back().time < serverTime - 2.0 * oneTick;
+		if (stale) {
+			ent->snapshots.clear();
+			ent->snapshots.emplace_back(Snapshot{ent->getPosition(), glm::vec3(0.0f), serverTime - oneTick});
+		}
+		bool actuallyMoved = !ent->snapshots.empty() &&
+			glm::length(position - ent->snapshots.back().position) > 0.001f;
+		ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
+		ent->yaw = yaw;
+		ent->pitch = pkt.pitch;
+		if (actuallyMoved)
+			ent->positionUpdated = true;
+		else
+			ent->rotationUpdated = true;
+		ent->hasHorizontalInput = (pkt.positionFlags & 0x01) != 0;
+		ent->setOnGround((pkt.positionFlags & 0x02) != 0);
+		if ((pkt.positionFlags & 0x04) != 0) {
+			if (auto ice = std::dynamic_pointer_cast<IClientEntity>(ent))
+				ice->triggerArmSwing();
+		}
+		if (auto cc = std::dynamic_pointer_cast<ClientCreeper>(ent))
+			cc->clientPrimed = (pkt.positionFlags & 0x08) != 0;
+		ent->lastNetUpdateTime = serverTime;
+
+		if (pkt.type == static_cast<uint16_t>(-1))
+		{
+			if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
+			{
+				// Start the fall-over death animation instead of erasing immediately.
+				// The LivingEntitiesManager flips `removed` once dyingDone, and
+				// Renderer::drawCharacters sweeps removed entries afterwards.
 				if (auto ice = std::dynamic_pointer_cast<IClientEntity>(ent))
-					ice->triggerArmSwing();
-			}
-			if (auto cc = std::dynamic_pointer_cast<ClientCreeper>(ent))
-				cc->clientPrimed = (pkt.positionFlags & 0x08) != 0;
-			ent->lastNetUpdateTime = serverTime;
-
-			if (pkt.type == static_cast<uint16_t>(-1))
-			{
-				if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
-				{
-					// Start the fall-over death animation instead of erasing immediately.
-					// The LivingEntitiesManager flips `removed` once dyingDone, and
-					// Renderer::drawCharacters sweeps removed entries afterwards.
-					if (auto ice = std::dynamic_pointer_cast<IClientEntity>(ent))
-						ice->triggerDeath();
-					else
-						ent->removed = true;
-				}
+					ice->triggerDeath();
 				else
-				{
 					ent->removed = true;
-				}
 			}
-		}
-		else if (entity->second.expired()) {
-			entitiesMap.erase(ID);
-		}
-	}
-	else
-	{
-		if (pkt.eEntityType == EEntityTypes::ITEMS)
-		{
-			ItemType type = itemIDToItemType(pkt.type);
-			auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
-			itemEntities.push_back(entityPtr);
-			entitiesMap[ID] = entityPtr;
-		}
-		else if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
-		{
-			LivingEntityType type = static_cast<LivingEntityType>(pkt.type);
-			std::shared_ptr<IClientEntity> entityPtr;
-			switch (type)
+			else
 			{
-				case PLAYER:
-					entityPtr = std::make_shared<ClientPlayer>(position, yaw, ID);
-					break;
-				case CREEPER:
-					entityPtr = std::make_shared<ClientCreeper>(position, yaw, ID);
-					break;
-				case ZOMBIE:
-					entityPtr = std::make_shared<ClientZombie>(position, yaw, ID);
-					break;
-				default:
-					std::cout << "ERROR ERROR MAYDAY WE GOT A PROBLEM" << std::endl;
-					return;
+				ent->removed = true;
 			}
-
-			entityPtr->positionUpdated = true;
-			entityPtr->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
-			livingEntitiesManager.add(entityPtr);
-
-			// Convert to shared_ptr<LivingEntity> safely
-			std::shared_ptr<LivingEntity> le = static_cast<std::shared_ptr<LivingEntity>>(entityPtr);
-			livingEntities.push_back(le);
-			entitiesMap[ID] = le;
 		}
+        return;
+	}
+
+	if (pkt.type == static_cast<uint16_t>(-1))  
+        return; // New entity with type -1 means it's already dead, so ignore.
+
+    // Create missing entity immediately (fixes player appearing only after moving)
+	if (pkt.eEntityType == EEntityTypes::ITEMS)
+	{
+		ItemType type = itemIDToItemType(pkt.type);
+		auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
+		itemEntities.push_back(entityPtr);
+		entitiesMap[ID] = entityPtr;
+	}
+	else if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
+	{
+		LivingEntityType type = static_cast<LivingEntityType>(pkt.type);
+		std::shared_ptr<IClientEntity> entityPtr;
+		switch (type)
+		{
+			case PLAYER:
+				entityPtr = std::make_shared<ClientPlayer>(position, yaw, ID);
+				break;
+			case CREEPER:
+				entityPtr = std::make_shared<ClientCreeper>(position, yaw, ID);
+				break;
+			case ZOMBIE:
+				entityPtr = std::make_shared<ClientZombie>(position, yaw, ID);
+				break;
+			default:
+				std::cout << "ERROR ERROR MAYDAY WE GOT A PROBLEM" << std::endl;
+				return;
+		}
+
+		entityPtr->positionUpdated = true;
+		entityPtr->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
+		livingEntitiesManager.add(entityPtr);
+
+		// Convert to shared_ptr<LivingEntity> safely
+		std::shared_ptr<LivingEntity> le = static_cast<std::shared_ptr<LivingEntity>>(entityPtr);
+		livingEntities.push_back(le);
+		entitiesMap[ID] = le;
 	}
 }
 
