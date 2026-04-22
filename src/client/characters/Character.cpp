@@ -168,20 +168,20 @@ void Character::walkAnimation(float deltaTime)
 	float angle = sin(characterBodyParts.walkPhase * 2.0f * M_PI) * walkAmplitude;
 
 	// ---- Arms ----
-	float pivotY = +armScaleY * 0.5f;
+	float pivotY = torsoScaleY / 2.0f;
 
 	rotateBodyPart(characterBodyParts.leftArm, pivotY, angle);
 	if (!characterBodyParts.onArmSwingAnimation)
 		rotateBodyPart(characterBodyParts.rightArm, pivotY, -angle);
 
 	if (angle >= 0)
-		rotateBodyPart(characterBodyParts.leftForearm, -1.5f, angle * 1.2f);
+		rotateBodyPart(characterBodyParts.leftForearm, -armScaleY * 0.5f, angle * 1.2f);
 
 	if (angle <= 0 && !characterBodyParts.onArmSwingAnimation)
-		rotateBodyPart(characterBodyParts.rightForearm, -1.5f, angle * -1.2f);
+		rotateBodyPart(characterBodyParts.rightForearm, -armScaleY * 0.5f, angle * -1.2f);
 
 	// ---- Legs ----
-	float legPivotY = -legScaleY * 0.5f;
+	float legPivotY = -torsoScaleY / 2.0f;
 
 	rotateBodyPart(characterBodyParts.leftLeg, legPivotY, -angle * 0.8f);
 	rotateBodyPart(characterBodyParts.rightLeg, legPivotY, angle * 0.8f);
