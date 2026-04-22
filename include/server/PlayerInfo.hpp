@@ -17,6 +17,7 @@
 
 #include "ChunkGeneration.hpp"
 #include "PlayerMovement.hpp"
+#include "Network.hpp"
 
 class CPlayerInfo
 {
@@ -59,6 +60,11 @@ class CPlayerInfo
 		}
 
 		std::vector<ChunkPos> rdyChunks;
+
+		// Per-direction reliability state (seq counters + retransmit buffers).
+		// One pair per player; peer is identified by addr.
+		ReliabilitySender   sendRel;  // server -> this client
+		ReliabilityReceiver recvRel;  // this client -> server
 
 		bool connected; //unused
 		float pingMs = -1.0f;

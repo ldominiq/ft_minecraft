@@ -2,9 +2,33 @@
 
 constexpr float textScale = 0.3f;
 
-InventoryUI::InventoryUI(int width, int height, const TextureManager* texMgr): Inventory(), Menu(width, height), textureManager(texMgr)
+InventoryUI::InventoryUI(int width,
+						int height,
+						const TextureManager* texMgr,
+						std::shared_ptr<PlayerInventory> playerInv,
+						std::shared_ptr<CraftingStation> craftingStation,
+						std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs) :
+
+						Menu(width, height),
+						textureManager(texMgr),
+						playerInventory(playerInv),
+						craftingStationInv(craftingStation)
 {
 	shader = std::make_unique<Shader>("shaders/InventoryCube.vert", "shaders/InventoryCube.frag"); //should probably reuse cubePropShader.frag
+
+	if (inventoryExternalVarsRefs)
+		handPtr = inventoryExternalVarsRefs->hand;
+
+	inventoryRows = playerInv ? playerInv->getRows() : 4;
+	inventoryCols = playerInv ? playerInv->getCols() : 9;
+	craftingStationRows = craftingStation ? craftingStation->getRows() : 3;
+	craftingStationCols = craftingStation ? craftingStation->getCols() : 3;
+
+	MAX_BUFFER_SIZE = sizeof(float) * (inventoryRows * inventoryCols + craftingStationRows * craftingStationCols + 1 + 1) * (2 + 2 + 1) * 3 * 6; //2 coords, 2 uvs, 1 texLayer. 3 faces, 6 vertices. rows * cols + craftRows * craftCols + Hand + Result
+
+	hotbarSlots.resize(inventoryCols);
+	inventorySlots.resize(inventoryRows * inventoryCols);
+	craftingStationSlots.resize(craftingStationRows * craftingStationCols);
 
 	build();
 
@@ -34,26 +58,26 @@ void InventoryUI::build()
 	hotbar.width = inventoryLayout.width;
 	hotbar.height = inventory.height / 4.4f;
 
-	for (int i = 0; i < MAX_SLOTS ; i++)
+	for (int i = 0; i < inventoryCols ; i++)
 	{
-		hotbarSlots[i].width = hotbar.width / (MAX_SLOTS + 1);
+		hotbarSlots[i].width = hotbar.width / (inventoryCols + 1);
 		hotbarSlots[i].height = hotbar.height - hotbar.height / 10.f;
 
-		hotbarSlots[i].x = hotbar.x + (hotbarSlots[i].width / (MAX_SLOTS + 1)) * (i + 1) + hotbarSlots[i].width * i;
+		hotbarSlots[i].x = hotbar.x + (hotbarSlots[i].width / (inventoryCols + 1)) * (i + 1) + hotbarSlots[i].width * i;
 		hotbarSlots[i].y = hotbar.y + (hotbar.height  - hotbarSlots[i].height) / 2.0f;
 	}
 
-	for (int i = 0; i < rows; i++)
+	for (int i = 0; i < inventoryRows; i++)
 	{
-		for (int j = 0; j < cols; j++)
+		for (int j = 0; j < inventoryCols; j++)
 		{
-			inventorySlots[i * cols + j].width = inventory.width / (cols + 1);
-			inventorySlots[i * cols + j].height = inventory.height / (rows + 1);
+			inventorySlots[i * inventoryCols + j].width = inventory.width / (inventoryCols + 1);
+			inventorySlots[i * inventoryCols + j].height = inventory.height / (inventoryRows + 1);
 
-			inventorySlots[i * cols + j].x = inventory.x + (inventorySlots[i * cols + j].width / (cols + 1)) * (j + 1) + inventorySlots[i * cols + j].width * j;
-			inventorySlots[i * cols + j].y = inventory.y + (inventory.height / rows) * i + inventorySlots[i * cols + j].height / rows;
+			inventorySlots[i * inventoryCols + j].x = inventory.x + (inventorySlots[i * inventoryCols + j].width / (inventoryCols + 1)) * (j + 1) + inventorySlots[i * inventoryCols + j].width * j;
+			inventorySlots[i * inventoryCols + j].y = inventory.y + (inventory.height / inventoryRows) * i + inventorySlots[i * inventoryCols + j].height / inventoryRows;
 			if (i > 0)
-				inventorySlots[i * cols + j].y += inventory.height / 15.0f;
+				inventorySlots[i * inventoryCols + j].y += inventory.height / 15.0f;
 		}
 	}
 
@@ -69,22 +93,22 @@ void InventoryUI::build()
 	craftingStation.height = blackApple.height;
 	craftingStation.width = blackApple.height; // make it square
 
-	for (int i = 0; i < MAX_CRAFTING_SLOTS; i++)
+	for (int i = 0; i < craftingStationRows; i++)
 	{
-		for (int j = 0; j < MAX_CRAFTING_SLOTS; j++)
+		for (int j = 0; j < craftingStationCols; j++)
 		{
-			int idx = i * MAX_CRAFTING_SLOTS + j;
+			int idx = i * craftingStationCols + j;
 
-			float slotW = craftingStation.width  / (MAX_CRAFTING_SLOTS + 1);
-			float slotH = craftingStation.height / (MAX_CRAFTING_SLOTS + 1);
+			float slotW = craftingStation.width  / (craftingStationCols + 1);
+			float slotH = craftingStation.height / (craftingStationRows + 1);
 
 			float gapX =
-				(craftingStation.width - MAX_CRAFTING_SLOTS * slotW)
-				/ (MAX_CRAFTING_SLOTS + 1);
+				(craftingStation.width - craftingStationCols * slotW)
+				/ (craftingStationCols + 1);
 
 			float gapY =
-				(craftingStation.height - MAX_CRAFTING_SLOTS * slotH)
-				/ (MAX_CRAFTING_SLOTS + 1);
+				(craftingStation.height - craftingStationRows * slotH)
+				/ (craftingStationRows + 1);
 
 			craftingStationSlots[idx].width  = slotW;
 			craftingStationSlots[idx].height = slotH;
@@ -209,12 +233,16 @@ void InventoryUI::drawHotbar()
 
 	std::vector<float> meshVertices;
 
+	std::shared_ptr<PlayerInventory> inv = playerInventory.lock();
+	if (!inv)
+		return ;
+
 	// drawSimpleQuad(hotbar.x, hotbar.y, hotbar.width, hotbar.height, glm::vec4(0,0,0,0.5));
 	uint8_t i = 0;
 	for (auto &hotbarSlotCoord : hotbarSlots)
 	{
 		drawSimpleQuad(hotbarSlotCoord.x, hotbarSlotCoord.y, hotbarSlotCoord.width, hotbarSlotCoord.height, hotbarColor);
-		if (i == activeHotbarSlot)
+		if (i == inv->activeHotbarSlot)
 			drawSimpleQuad(hotbarSlotCoord.x, hotbarSlotCoord.y, hotbarSlotCoord.width, hotbarSlotCoord.height, glm::vec4(0,0,0,0.4f));
 
 		i++;
@@ -223,7 +251,7 @@ void InventoryUI::drawHotbar()
 	i = 0;
 	for (auto &hotbarSlotCoord : hotbarSlots)
 	{
-		textRenderer.renderText(std::to_string(getSlot(i).second), hotbarSlotCoord.x, hotbarSlotCoord.y + hotbar.height * 0.7, glm::vec3(1.0f));
+		textRenderer.renderText(std::to_string(inv->getSlot(i).second), hotbarSlotCoord.x, hotbarSlotCoord.y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
 		std::visit([&](const auto& value) {
@@ -236,7 +264,7 @@ void InventoryUI::drawHotbar()
 			} else {
 				// handle MiscType
 			}
-		}, getItemAtSlot(i));
+		}, inv->getItemAtSlot(i));
 		i++;
 	}
 
@@ -246,13 +274,48 @@ void InventoryUI::drawHotbar()
     glEnable(GL_DEPTH_TEST);
 }
 
+InventoryType InventoryUI::getCurrentInventoryType(double mouseX, double mouseY) const
+{
+	mouseY = fullscreenHeight - mouseY;
+	//Crafting Station is inside of InventoryLayout so it should go first
+	if (mouseX >= craftingStation.x && mouseX <= craftingStation.x + craftingStation.width &&
+		mouseY >= craftingStation.y && mouseY <= craftingStation.y + craftingStation.height)
+		return InventoryType::CRAFTING_STATION;
+	//Result slot is outside of the station layout but it's still part of it
+	if (mouseX >= craftingResultSlot.x && mouseX <= craftingResultSlot.x + craftingResultSlot.width &&
+		mouseY >= craftingResultSlot.y && mouseY <= craftingResultSlot.y + craftingResultSlot.height)
+		return InventoryType::CRAFTING_STATION;
+
+	if (mouseX >= inventoryLayout.x && mouseX <= inventoryLayout.x + inventoryLayout.width &&
+		mouseY >= inventoryLayout.y && mouseY <= inventoryLayout.y + inventoryLayout.height)
+		return InventoryType::PLAYER;
+	return InventoryType::NONE;
+}
+
+int InventoryUI::getCraftingSlotAt(double mouseX, double mouseY) const
+{
+	mouseY = fullscreenHeight - mouseY;
+	for (int i = 0; i < craftingStationRows * craftingStationCols; ++i)
+	{
+		const auto& s = craftingStationSlots[i];
+		if (mouseX >= s.x && mouseX <= s.x + s.width &&
+			mouseY >= s.y && mouseY <= s.y + s.height)
+			return i;
+	}
+	if (mouseX >= craftingResultSlot.x && mouseX <= craftingResultSlot.x + craftingResultSlot.width &&
+		mouseY >= craftingResultSlot.y && mouseY <= craftingResultSlot.y + craftingResultSlot.height)
+		return craftingStationInv.lock() ? craftingStationInv.lock()->getResultSlotID() : -1;
+
+	return -1;
+}
+
 void InventoryUI::drawHealth(float health) const
 {
 	glDisable(GL_DEPTH_TEST);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	float offset = hotbarSlots[0].width / (MAX_SLOTS + 1);
+	float offset = hotbarSlots[0].width / (inventoryCols + 1);
 	float HPBarLenght = (health / 20.0f) * (hotbar.width) - offset * 2;
 	drawSimpleQuad(hotbar.x + offset, hotbar.y + hotbar.height + 10, HPBarLenght, hotbar.height / 5.0f,
 		glm::vec4(
@@ -287,36 +350,145 @@ void InventoryUI::drawHealth(float health) const
 int InventoryUI::getSlotAt(double mouseX, double mouseY) const
 {
 	mouseY = fullscreenHeight - mouseY;
-    for (int i = 0; i < rows * cols; ++i)
+    for (int i = 0; i < inventoryRows * inventoryCols; ++i)
     {
         const auto& s = inventorySlots[i];
         if (mouseX >= s.x && mouseX <= s.x + s.width &&
             mouseY >= s.y && mouseY <= s.y + s.height)
             return i;
     }
-    return -1;
+	return -1;
+}
+
+//add a slot to the drag if mouse is on a different slot
+bool InventoryUI::checkInventoryDrag(NetInventoryAction &pkt)
+{
+	if (!dragging)
+		return false;
+
+	int currHoveredSlot = -1;
+	InventoryType inventoryType = getCurrentInventoryType(mouseX, mouseY);
+
+	if (inventoryType == InventoryType::PLAYER)
+	{
+		int slot = getSlotAt(mouseX, mouseY);
+		if (slot != -1)
+			currHoveredSlot = slot;
+	}
+	else if (inventoryType == InventoryType::CRAFTING_STATION)
+	{
+		int slot = getCraftingSlotAt(mouseX, mouseY);
+		if (slot != -1)
+			currHoveredSlot = slot;
+	}
+
+	if (currHoveredSlot != -1 && currHoveredSlot != lastHoveredSlot)
+	{
+		pkt.actionType = dragButton;
+		pkt.inventoryTypeID = static_cast<uint8_t>(inventoryType);
+		pkt.modifier = InventoryModifiers::INV_DRAG_ADD;
+		pkt.slot = currHoveredSlot;
+
+		lastHoveredSlot = currHoveredSlot;
+		return true;
+	}
+
+	return false;
+}
+
+void InventoryUI::handleInventoryModifiers(NetInventoryAction &pkt, int action, int button)
+{
+	static float lastClickTime = -1.0f;
+
+	auto setDragToFalse = [this]()
+	{
+		dragging = false;
+		dragButton = -1;
+	};
+
+	if (action == GLFW_PRESS && button == GLFW_MOUSE_BUTTON_LEFT) //if we double clicked in less than 0.5 seconds
+	{
+		float prevLastClickTime = lastClickTime;
+		lastClickTime = glfwGetTime();
+
+		if (lastClickTime - prevLastClickTime <= 0.2) //double click triggers with 2 clicks in less than 0.2 seconds
+		{
+			pkt.modifier = InventoryModifiers::INV_DOUBLE_CLICK;
+			setDragToFalse();
+			return ;
+		}
+	}
+
+	if (dragging && action == GLFW_PRESS && button != dragButton)
+	{
+		pkt.modifier = InventoryModifiers::INV_DRAG_CANCEL;
+		setDragToFalse();
+		return ;
+	}
+
+	// we start dragging
+	if (handPtr.lock() && handPtr.lock()->second != 0 && action == GLFW_PRESS && !dragging)
+	{
+		pkt.modifier = InventoryModifiers::INV_DRAG_BEGIN;
+		dragging = true;
+		dragButton = button;
+	}
+	// we add to the drag selection
+	else if (handPtr.lock() && handPtr.lock()->second == 0 && action == GLFW_PRESS && dragging)
+	{
+		pkt.modifier = InventoryModifiers::INV_DRAG_ADD;
+	}
+	// we end dragging
+	else if (button == dragButton && dragging && action == GLFW_RELEASE)
+	{
+		pkt.modifier = InventoryModifiers::INV_DRAG_END;
+		pkt.actionType = button == GLFW_MOUSE_BUTTON_LEFT ? InventoryActionType::INV_LEFT_CLICK : InventoryActionType::INV_RIGHT_CLICK;
+		setDragToFalse();
+	}
 }
 
 void InventoryUI::handleMouseClick(double mouseX, double mouseY, int button, int action)
 {
-	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+	InventoryType inventoryType = getCurrentInventoryType(mouseX, mouseY);
+	if (inventoryType == InventoryType::NONE)
+		return ;
+    if (action != GLFW_PRESS && action != GLFW_RELEASE) return ;
+
+	this->mouseX = mouseX;
+	this->mouseY = mouseY;
+
+	NetInventoryAction pkt;
+
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) //left click
+		pkt.actionType = InventoryActionType::INV_LEFT_CLICK;
+	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) //right click
+		pkt.actionType = InventoryActionType::INV_RIGHT_CLICK;
+	pkt.inventoryTypeID = static_cast<uint8_t>(inventoryType);
+
+	handleInventoryModifiers(pkt, action, button);
+
+	if (inventoryType == InventoryType::PLAYER)
 	{
 		int slot = getSlotAt(mouseX, mouseY);
 		if (slot != -1)
 		{
-			this->mouseX = mouseX;
-			this->mouseY = mouseY;
-			lastAction = {slot, InventoryActionType::INV_LEFT_CLICK};
+			pkt.slot = slot;
+			lastAction.emplace(pkt);
+			lastHoveredSlot = slot;
 		}
 	}
-	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+
+	else if (inventoryType == InventoryType::CRAFTING_STATION)
 	{
-		int slot = getSlotAt(mouseX, mouseY);
+		int slot = getCraftingSlotAt(mouseX, mouseY);
+		if (!craftingStationInv.lock()) return ;
+		if (slot == craftingStationInv.lock()->getResultSlotID() && action == GLFW_RELEASE) return ;
+
 		if (slot != -1)
 		{
-			this->mouseX = mouseX;
-			this->mouseY = mouseY;
-			lastAction = {slot, InventoryActionType::INV_RIGHT_CLICK};
+			pkt.slot = slot;
+			lastAction.emplace(pkt);
+			lastHoveredSlot = slot;
 		}
 	}
 }
@@ -338,7 +510,7 @@ void InventoryUI::drawEveryInventoryQuad()
 	);
 
 	// "inventory.height / 15.0f" is the padding between rows. Used as if it was a scalar
-	for (int i = 0; i < rows * cols; i++)
+	for (int i = 0; i < inventoryRows * inventoryCols; i++)
 	{
 		drawSimpleQuad(
 			inventorySlots[i].x,
@@ -376,7 +548,7 @@ void InventoryUI::drawEveryInventoryQuad()
 	);
 
 	//crafting station UI, those 3 should be replaced when the crafting staion class gets created
-	for (int i = 0; i < MAX_CRAFTING_SLOTS * MAX_CRAFTING_SLOTS; i++)
+	for (int i = 0; i < craftingStationRows * craftingStationCols; i++)
 	{
 		drawSimpleQuad(
 			craftingStationSlots[i].x,
@@ -409,10 +581,16 @@ void InventoryUI::onRender()
 	drawEveryInventoryQuad();
 	std::vector<float> meshVertices;
 
-	for (int i = 0; i < rows * cols; i++)
+	//inventory cubes/text
+	for (int i = 0; i < inventoryRows * inventoryCols; i++)
 	{
-		textRenderer.renderText(std::to_string(getSlot(i).second), inventorySlots[i].x, inventorySlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
-		
+		std::shared_ptr<PlayerInventory> inv = playerInventory.lock();
+		if (!inv)
+			return ;
+
+		if (inv->getSlot(i).second)
+			textRenderer.renderText(std::to_string(inv->getSlot(i).second), inventorySlots[i].x, inventorySlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
+
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
 		std::visit([&](const auto& value) {
 			using T = std::decay_t<decltype(value)>;
@@ -424,25 +602,72 @@ void InventoryUI::onRender()
 				} else {
 					// handle MiscType
 				}
-			}, getItemAtSlot(i));
+			}, inv->getItemAtSlot(i));
 	}
 
-	if (getHand().second != 0)
+	//crafting station cubes/text
+	for (int i = 0; i < craftingStationRows * craftingStationCols; i++)
 	{
-		textRenderer.renderText(std::to_string(getHand().second), mouseX, fullscreenHeight - mouseY, glm::vec3(1.0f));
+		std::shared_ptr<CraftingStation> inv = craftingStationInv.lock();
+		if (!inv)
+			return ;
 
+		if (inv->getSlot(i).second)
+			textRenderer.renderText(std::to_string(inv->getSlot(i).second), craftingStationSlots[i].x, craftingStationSlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
+
+		//could optimize and only redo if inventory/hotbar has changed. TODO ?
+		std::visit([&](const auto& value) {
+			using T = std::decay_t<decltype(value)>;
+				if constexpr (std::is_same_v<T, BlockType>) {
+					if (value != BlockType::BEGIN)
+						build2DInventoryCube(meshVertices, glm::vec2(craftingStationSlots[i].x + 11 * menuScale, craftingStationSlots[i].y + 5 * menuScale), 40 * menuScale, value, textureManager);
+				} else if constexpr (std::is_same_v<T, WeaponType>) {
+					// handle WeaponType
+				} else {
+					// handle MiscType
+				}
+			}, inv->getItemAtSlot(i));
+	}
+
+	if (craftingStationInv.lock())
+	{
+		std::shared_ptr<CraftingStation> inv = craftingStationInv.lock();
+		if (!inv)
+			return ;
+
+		std::visit([&](const auto& value) {
+			using T = std::decay_t<decltype(value)>;
+				if constexpr (std::is_same_v<T, BlockType>) {
+					if (value != BlockType::BEGIN)
+						build2DInventoryCube(meshVertices, glm::vec2(craftingResultSlot.x + 18 * menuScale, craftingResultSlot.y + 5 * menuScale), 40 * menuScale, value, textureManager);
+				} else if constexpr (std::is_same_v<T, WeaponType>) {
+					// handle WeaponType
+				} else {
+					// handle MiscType
+				}
+			}, craftingStationInv.lock()->getSlot(craftingStationInv.lock()->getResultSlotID()).first);
+	}
+
+	//cube in hand
+	if (handPtr.lock() && handPtr.lock()->second != 0)
+	{
 		std::visit([&](const auto& value) {
 			using T = std::decay_t<decltype(value)>;
 			if constexpr (std::is_same_v<T, BlockType>) {
 				if (value != BlockType::BEGIN)
-					build2DInventoryCube(meshVertices, glm::vec2(mouseX, fullscreenHeight - mouseY), 40 * menuScale, value, textureManager);
+					build2DInventoryCube(meshVertices, glm::vec2(mouseX - 10 * menuScale, fullscreenHeight - mouseY - 10 * menuScale), 40 * menuScale, value, textureManager);
 			} else if constexpr (std::is_same_v<T, WeaponType>) {
 				// handle WeaponType
 			} else {
 				// handle MiscType
 			}
-		}, getHand().first);
+		}, handPtr.lock()->first);
 	}
 
 	setupCubes(meshVertices);
+
+	//text in hand
+	//Text needs to go after setupCubes so it renders in front of the cube in hand.
+	if (handPtr.lock() && handPtr.lock()->second != 0)
+		textRenderer.renderText(std::to_string(handPtr.lock()->second), mouseX, fullscreenHeight - mouseY, glm::vec3(1.0f));
 }

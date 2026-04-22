@@ -36,6 +36,9 @@ private:
 	std::chrono::steady_clock::time_point currTick;
 
 	std::vector<CPlayerInfo> players;
+	// Monotonic counter for player ids. Never reused, so a reconnecting
+	// client can't collide with another player's PlayerKnownChunks entry.
+	int32_t nextPlayerId = 0;
 	std::deque<std::string> messages;
 	std::unique_ptr<World> world;
 
@@ -78,11 +81,13 @@ private:
 	void receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr);
 	void receiveTerrainParams(NetTerrainParams &pkt, const sockaddr_in &cliaddr);
 	void receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &cliaddr);
-	void sendInventorySlot(int slot, const sockaddr_in &cliaddr);
+	// void sendInventorySlot(int slot, NetInventoryAction &pkt, const sockaddr_in &cliaddr);
 
 	void sendAll();
 	void sendNewGroupPacketTo(std::vector<PacketPtr> &pkts, const sockaddr_in &cliaddr);
-	void sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr);
+	void sendPacketTo(Packet& pkt, const sockaddr_in &cliaddr);
+	void sendRawBytesTo(const std::vector<uint8_t>& bytes, const sockaddr_in &cliaddr);
+	void reliabilityKeepalive();
 	void sendAccept(const sockaddr_in &cliaddr);
 	
 	void sendDeaths();

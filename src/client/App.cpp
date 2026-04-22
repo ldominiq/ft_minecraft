@@ -117,7 +117,6 @@ void App::init(const std::string& serverIp) {
     lighting = std::make_unique<Lighting>(screenWidth, screenHeight);
 
 	chat = std::make_shared<Chat>(screenWidth, screenHeight);
-	inventoryUI = std::make_shared<InventoryUI>(screenWidth, screenHeight, &textureManager);
 	debugHUD = std::make_unique<DebugHUD>(screenWidth, screenHeight);
 	playerListHUD = std::make_unique<PlayerListHUD>(screenWidth, screenHeight);
 
@@ -128,7 +127,8 @@ void App::init(const std::string& serverIp) {
     // Set callback to send terrain params to server when changed
     terrainDebugWindow->setSendParamsCallback([this](const NetTerrainParams& pkt) {
         if (udpClient) {
-            udpClient->sendPacket(pkt);
+            NetTerrainParams copy = pkt;
+            udpClient->sendPacket(copy);
         }
     });
 
@@ -147,6 +147,11 @@ void App::init(const std::string& serverIp) {
 
     // Mouse movement event handling
     camera = std::make_unique<Camera>(glm::vec3(0.0f, 128.0f, 0.0f));
+
+	std::shared_ptr<PlayerInventory> inv = camera->getPlayer()->inventory;
+	std::shared_ptr<CraftingStation> craft = camera->getPlayer()->craftingStation;
+	inventoryUI = std::make_shared<InventoryUI>(windowedWidth, windowedHeight, &textureManager, inv, craft, camera->getPlayer()->inventoryExternalVarsRefs);
+
     glfwSetCursorPosCallback(window, [](GLFWwindow* w, const double xpos, const double ypos) {
         static App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
         if (!app) return;
@@ -163,10 +168,22 @@ void App::init(const std::string& serverIp) {
         // (e.g. hovering/clicking in a window), do not rotate the camera.
         ImGuiIO& io = ImGui::GetIO();
 
+		//scale back down values to counteract wayland bugs
+		// float xscale, yscale;
+		// glfwGetWindowContentScale(w, &xscale, &yscale);
+
+		double mouseX, mouseY;
+		mouseX = xpos;
+		mouseY = ypos;
+		// mouseX = xpos * xscale;
+		// mouseY = ypos * yscale;
+
 		auto menuManagerPtr = app->menuManager.lock();
 		if (menuManagerPtr)
 		{
-			menuManagerPtr->handleMouseMove(xpos, ypos);
+			menuManagerPtr->handleMouseMove(mouseX, mouseY);
+            app->lastX = mouseX;
+            app->lastY = mouseY;
 			return ;
 		}
 
@@ -174,14 +191,14 @@ void App::init(const std::string& serverIp) {
             return;
         }
         if (app->firstMouse) {
-            app->lastX = xpos;
-            app->lastY = ypos;
+            app->lastX = mouseX;
+            app->lastY = mouseY;
             app->firstMouse = false;
         }
-        const float xoffset = static_cast<float>(xpos - app->lastX);
-        const float yoffset = static_cast<float>(app->lastY - ypos); // Reversed: y-coordinates go from bottom to top
-        app->lastX = xpos;
-        app->lastY = ypos;
+        const float xoffset = static_cast<float>(mouseX - app->lastX);
+        const float yoffset = static_cast<float>(app->lastY - mouseY); // Reversed: y-coordinates go from bottom to top
+        app->lastX = mouseX;
+        app->lastY = mouseY;
         app->camera->processMouseMovement(xoffset, yoffset);
 
 		app->mouseMovedRecently = true;
@@ -273,6 +290,13 @@ void App::init(const std::string& serverIp) {
 		{
 			double mouseX, mouseY;
     		glfwGetCursorPos(w, &mouseX, &mouseY);
+			
+			//scale back down values to counteract wayland bugs
+			// float xscale, yscale;
+			// glfwGetWindowContentScale(w, &xscale, &yscale);
+
+			// mouseX = mouseX * xscale;
+			// mouseY = mouseY * yscale;
 
 			if (app->gameState != GameState::Playing) {
 				manager->handleMouseClick(mouseX, mouseY, button, action);
@@ -284,10 +308,7 @@ void App::init(const std::string& serverIp) {
 				manager->handleMouseClick(mouseX, mouseY, button, action);
 				if (app->inventoryUI->lastAction.has_value() && app->udpClient)
 				{
-					auto [slot, type] = *app->inventoryUI->lastAction;
-					NetInventoryAction pkt;
-					pkt.actionType = type;
-					pkt.slot = slot;
+					auto& pkt = *app->inventoryUI->lastAction;
 					app->udpClient->sendPacket(pkt);
 					app->inventoryUI->lastAction.reset();
 				}
@@ -454,7 +475,11 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::NET_INVENTORY: {
 				auto& p = static_cast<NetInventory&>(*pkt);
-				inventoryUI->setSlot(p.slot, p.amount, p.type);
+				if (static_cast<InventoryType>(p.inventoryTypeID) == InventoryType::PLAYER)
+					camera->getPlayer()->inventory->setSlot(p.slot, p.amount, p.type);
+				else if (static_cast<InventoryType>(p.inventoryTypeID) == InventoryType::CRAFTING_STATION)
+					camera->getPlayer()->craftingStation->setSlot(p.slot, p.amount, p.type);
+
 				break;
 			}
 
@@ -679,6 +704,7 @@ void App::render() {
             accumulator = tickDuration * 2.0f;
 
         camera->setRenderTickAlpha(accumulator / tickDuration);
+		udpClient->reliabilityKeepalive();
 		udpClient->receivePacket();
         camera->flushPendingSnapshot(*renderer, clientTick);
 
@@ -749,6 +775,13 @@ void App::render() {
 		// auto manager = menuManager.lock();
 		if (manager != chat)
         	processInput();
+
+		if (manager == inventoryUI)
+		{
+			NetInventoryAction pkt;
+			if (inventoryUI->checkInventoryDrag(pkt))
+				udpClient->sendPacket(pkt);
+		}
 
         // window aspect / uniforms
         const float aspect = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
@@ -2225,7 +2258,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	if (glfwGetKey(window, controlsArray[HOTBAR_8]) == GLFW_PRESS) activeHotbarSlot = 7;
 	if (glfwGetKey(window, controlsArray[HOTBAR_9]) == GLFW_PRESS) activeHotbarSlot = 8;
 
-	if (activeHotbarSlot != (uint8_t)-1) inventoryUI->activeHotbarSlot = activeHotbarSlot;
+	if (activeHotbarSlot != (uint8_t)-1) camera->getPlayer()->inventory->activeHotbarSlot = activeHotbarSlot;
 
 	inputs.keys = keys;
 	inputs.pitch = camera->getPlayer()->getPitch();
@@ -2266,6 +2299,13 @@ void App::processInputMenus(int key, int action) {
 	// HANDLE EVENTS WHEN CHAT OPEN
 
 	if (manager && key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+	{
+		menuManager.reset();
+		if (!uiInteractive)
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	}
+	//close inventory with E too.
+	if (manager && manager == inventoryUI && key == GLFW_KEY_E && action == GLFW_PRESS)
 	{
 		menuManager.reset();
 		if (!uiInteractive)

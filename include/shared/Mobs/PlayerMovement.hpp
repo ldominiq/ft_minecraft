@@ -4,6 +4,8 @@
 
 #include "LivingEntity.hpp"
 #include "Protocol.hpp"
+#include "PlayerInventory.hpp"
+#include "CraftingStation.hpp"
 #include "Inventory.hpp"
 #include <deque>
 
@@ -19,7 +21,9 @@ struct PlayerMovement : public virtual LivingEntity {
 
 	NetPlayerInputs lastInputsPktRecvd = {};
 
-	Inventory inventory;
+	std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs = std::make_shared<InventoryExternalVariablesRefs>();
+	std::shared_ptr<PlayerInventory> inventory = std::make_shared<PlayerInventory>(inventoryExternalVarsRefs);
+	std::shared_ptr<CraftingStation> craftingStation = std::make_shared<CraftingStation>(inventoryExternalVarsRefs);
 
 	bool jumpBoostApplied = false;
     int32_t lastAppliedServerClientReconciliationTick = -1; // -1 is the default "no input yet" client tick
@@ -46,6 +50,9 @@ struct PlayerMovement : public virtual LivingEntity {
 	inline const float getYaw() const { return yaw; }
 	inline const float getPitch() const { return pitch; }
 	inline const uint8_t getLoadRadius() const { return loadRadius; }
+
+	inline const std::shared_ptr<std::vector<draggedSlotInfo>> getDraggedSlots() const { return inventoryExternalVarsRefs->draggedSlots; }
+
 	inline bool getJumpBoostApplied() const { return jumpBoostApplied; }
 	inline int32_t getLastAppliedServerClientReconciliationTick() const { return lastAppliedServerClientReconciliationTick; }
 
