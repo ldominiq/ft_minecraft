@@ -811,10 +811,15 @@ void Server::sendDeaths()
 		if (ent->pendingDeathRemovalTicks > 0)
 		{
 			ent->pendingDeathRemovalTicks--;
-			if (ent->pendingDeathRemovalTicks == 0 && ent->getLivingEntityType() != PLAYER)
+			if (ent->pendingDeathRemovalTicks == 0)
 			{
-				le = world->livingEntities.erase(le);
-				continue;
+				if (ent->getLivingEntityType() != PLAYER) {
+					le = world->livingEntities.erase(le);
+					continue;
+				}
+
+				ent->deathBroadcast = false; // reset for potential respawn
+				ent->diedByExplosion = false;
 			}
 			le++;
 			continue;
