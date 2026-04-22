@@ -665,9 +665,11 @@ void Server::sendAll()
 
 void Server::trySpawnNightMobs()
 {
-	// Night-time check:
+	// Night-time check: sun elevation is cos(skyTimeOffset * 0.1) (see Lighting.cpp).
+	// Negative elevation means the sun is below the horizon — i.e. night.
+	// Using this formulation avoids wrap-around issues as skyTimeOffset accumulates.
 	const float skyT = world->getSkyTimeState().skyTimeOffset;
-	if (skyT <= 0.5f || skyT >= 1.0f)
+	if (std::cos(skyT * 0.1f) >= 0.0f)
 		return;
 	if (players.empty())
 		return;
