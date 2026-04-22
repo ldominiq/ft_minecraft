@@ -1,4 +1,3 @@
-
 #include "Character.hpp"
 #include <cmath>
 #include <algorithm>
@@ -13,47 +12,54 @@ Character::Character()
 
 void Character::setPartsDimensions()
 {
-	// Minecraft reference model (in pixels): head 8x8x8, torso 8 wide x 12 tall x 4 deep,
-	// arms & legs 4 wide x 12 tall x 4 deep. Total height = 32, total arm-span = 16.
-	torsoScaleX = 4.0f;
-	torsoScaleY = 12.0f;
-	torsoScaleZ = 8.0f;
+    torsoScaleX = 4.0f;   // depth
+    torsoScaleY = 12.0f;
+    torsoScaleZ = 8.0f;   // width
 
-	headScaleX = 8.0f;
-	headScaleY = 10.0f;
-	headScaleZ = 8.0f;
-	headTransY = (torsoScaleY * 0.5f + headScaleY * 0.5f) / headScaleY;
+    headScaleX = 7.0f;
+    headScaleY = 7.0f;
+    headScaleZ = 7.0f;
+    headTransY = (torsoScaleY * 0.5f + headScaleY * 0.5f) / headScaleY;
 
-	armScaleX = 4.0f;
-	armScaleY = 6.0f;
-	armScaleZ = 4.0f;
-	armTransZ = (torsoScaleZ * 0.5f + armScaleZ * 0.5f) / armScaleZ;
-	armTransY = ((torsoScaleY - armScaleY) * 0.5f) / armScaleY;
+    // Split limbs: 6 + 6
+    armScaleX = 4.0f;
+    armScaleY = 6.0f;
+    armScaleZ = 4.0f;
 
-	legScaleX = 4.0f;
-	legScaleY = 6.0f;
-	legScaleZ = 4.0f;
-	legTransZ = (legScaleZ * 0.5f) / legScaleZ; // keep legs just inside the torso edges
-	legTransY = -((torsoScaleY * 0.5f + legScaleY * 0.5f) / legScaleY);
+    armTransZ = (torsoScaleZ * 0.5f + armScaleZ * 0.5f) / armScaleZ;
 
-	characterYScaleNorm = 1.0f / (torsoScaleY + headScaleY + legScaleY * 2.0f); // = 1/32
-	characterZScaleNorm = 1.0f / torsoScaleZ;                                   // torso Z matches hitbox
-	characterXScaleNorm = 1.0f / torsoScaleZ;                                   // same scale on X so head is a cube
+    armTransY = ((torsoScaleY - armScaleY) * 0.5f) / armScaleY;
 
-	feetPositionY = torsoScaleY * 0.5f + legScaleY * 2.0f;
-	YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm, 0);
+    legScaleX = 4.0f;
+    legScaleY = 6.0f;
+    legScaleZ = 4.0f;
+    legTransZ = (legScaleZ * 0.5f) / legScaleZ; // keep legs just inside the torso edges
+    legTransY = -((torsoScaleY * 0.5f + legScaleY * 0.5f) / legScaleY);
+
+    // Total height = 7 + 12 + 12 = 31
+    characterYScaleNorm = 1.0f / (torsoScaleY + headScaleY + legScaleY * 2.0f);
+
+    // Keep X/Z isotropic so cubes stay cubes in horizontal plane
+    characterXScaleNorm = 1.0f / headScaleX; // 1/7
+    characterZScaleNorm = 1.0f / headScaleZ; // 1/7
+
+    feetPositionY = torsoScaleY * 0.5f + legScaleY * 2.0f;
+    YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm, 0);
 }
 
 void Character::createCharacterAt(const glm::vec3 &pos, float width, float height)
 {
     Space character;
 
-	character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(
-		width * characterXScaleNorm,
-		height * characterYScaleNorm,
-		width * characterZScaleNorm));
-	YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm * height, 0);
-	character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
+    float targetHorizontal = height * (headScaleY * characterYScaleNorm);
+    float horizontal = std::min(width, targetHorizontal);
+
+    character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(
+        horizontal * characterXScaleNorm,
+        height * characterYScaleNorm,
+        horizontal * characterZScaleNorm));
+    YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm * height, 0);
+    character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
 
     // Torso
     auto torso = std::make_shared<Shape>(glm::vec3(1,0,0));
