@@ -901,7 +901,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 	glm::ivec3 blockPos, faceNormal;
 	TargetType target = getTarget(*player.movement, blockPos, faceNormal, livingEntity);
 
-	ItemType item = player.movement->inventory.getItemAtSlot(player.movement->inventory.activeHotbarSlot);
+	ItemType item = player.movement->inventory->getItemAtSlot(player.movement->inventory->activeHotbarSlot);
 
 	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
 	{
@@ -911,7 +911,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 				if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
 			if (setBlockWorld(blockPos, faceNormal, std::get<BlockType>(item)))
 			{
-				player.movement->inventory.removeItemsFromSlot(player.movement->inventory.activeHotbarSlot, 1);
+				player.movement->inventory->removeItemsFromSlot(player.movement->inventory->activeHotbarSlot, 1);
 				return true;
 			}
 		}
@@ -980,7 +980,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					std::abs(diff.z) < 2)
 				{
 					int one = 1;
-					int slotUsed = player.movement->inventory.insertItems(entityIt->get()->getItemType(), one);
+					int slotUsed = player.movement->inventory->insertItems(entityIt->get()->getItemType(), one);
 					if (slotUsed == INVALID_SLOT) continue ;
 
 					NetEntityMove pkt;
@@ -996,8 +996,9 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 					deletedEntitiesPkts.push_back(pkt);
 
 					NetInventory pickedUpItem;
+					pickedUpItem.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 					pickedUpItem.type = entityIt->get()->getItemID();
-					pickedUpItem.amount = player.movement->inventory.getSlot(slotUsed).second;
+					pickedUpItem.amount = player.movement->inventory->getSlot(slotUsed).second;
 					pickedUpItem.slot = slotUsed;
 					pickedUpItems.push_back({player.addr, pickedUpItem});
 

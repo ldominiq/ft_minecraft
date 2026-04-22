@@ -18,9 +18,7 @@ class ItemEntity : public Entity
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::ITEMS; }
 		ItemType inline getItemType() const { return type; }
 		ItemID getItemID() const {
-			return std::visit([](auto& value) -> ItemID {
-				return static_cast<ItemID>(value);
-			}, type);
+			return itemTypeToItemID(type);
 		}
 
 		inline const int getSpawnTick() const {return spawnTick;}

@@ -285,6 +285,8 @@ inline AutoRegister<NetEntityMove> _reg_NetEntityMove;
 struct NetInventory final : public Packet {
 	static constexpr PacketType ID = PacketType::NET_INVENTORY;
 
+	uint8_t inventoryTypeID = 0;
+
 	uint16_t type = 0;
 	uint8_t amount = 0;
 	uint8_t slot = 0;	// HAND_ID for hand (37)
@@ -292,12 +294,14 @@ struct NetInventory final : public Packet {
 	NetInventory() : Packet(ID) {}
 
 	void encode(BufferWriter& w) const override {
+		w.write_u8(inventoryTypeID);
 		w.write_u16(type);
 		w.write_u8(amount);
 		w.write_u8(slot);
     }
 
 	void decode(BufferReader& r) override {
+		inventoryTypeID = r.read_u8();
 		type = r.read_u16();
 		amount = r.read_u8();
 		slot = r.read_u8();
@@ -308,18 +312,25 @@ inline AutoRegister<NetInventory> _reg_NetInventory;
 struct NetInventoryAction final : public Packet {
     static constexpr PacketType ID = PacketType::NET_INVENTORY_ACTION;
 
-    uint8_t actionType = 0;
-    uint8_t slot = 0;
+	uint8_t inventoryTypeID = 0;
+
+	uint8_t actionType = -1; // right click, left click
+	uint8_t modifier = -1;	// shift, ctrl, alt, drag, drop, etc...
+	uint8_t slot = -1;
 
     NetInventoryAction() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
+		w.write_u8(inventoryTypeID);
         w.write_u8(actionType);
+        w.write_u8(modifier);
         w.write_u8(slot);
     }
 
     void decode(BufferReader& r) override {
+        inventoryTypeID = r.read_u8();
         actionType = r.read_u8();
+        modifier = r.read_u8();
         slot = r.read_u8();
     }
 };
