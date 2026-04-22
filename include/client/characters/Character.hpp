@@ -35,6 +35,12 @@ class Character
 
 		bool onArmSwingAnimation = false;
 		float armSwingPhase = 0.0f;
+
+		// Death animation: linear Z-axis tilt from 0 -> pi/2 over DEATH_DURATION.
+		// Set `dying` on receipt of the death packet; manager reads `dyingDone` to evict.
+		bool dying = false;
+		bool dyingDone = false;
+		float dyingPhase = 0.0f;
 	};
 
 	protected:
@@ -86,6 +92,8 @@ class Character
 		virtual void jumpAnimation(float currentFrame);
 		virtual void applyHeadPitch(float pitchDegrees);
 		virtual void swingArmAnimation(float deltaTime);
+		virtual void deathAnimation(float deltaTime);
+		void triggerDeath();
 		void triggerArmSwing();
 
 };

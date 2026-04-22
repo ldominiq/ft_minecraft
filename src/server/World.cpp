@@ -3,6 +3,7 @@
 //
 
 #include "World.hpp"
+#include "Mobs/Creeper.hpp"
 
 World::World() {
     std::mt19937 rng(time(nullptr));
@@ -960,11 +961,25 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 
 void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t clientTick)
 {
+	// Snapshot pending creeper explosions: we apply them after the tickAI/move pass so we
+	// don't mutate livingEntities health mid-iteration in unexpected ways.
+	std::vector<Creeper *> exploding;
 	for (auto &entity : livingEntities)
 	{
+		// Freeze AI while the fall-over death animation plays out server-side.
+		if (entity->pendingDeathRemovalTicks > 0 || entity->health <= 0)
+			continue;
 		entity->tickAI(*this, livingEntities, clientTick);
 		entity->calculateNewPosition(*this);
+		if (auto *creeper = dynamic_cast<Creeper *>(entity.get())) {
+			if (creeper->wantsExplode) {
+				creeper->wantsExplode = false;
+				exploding.push_back(creeper);
+			}
+		}
 	}
+	for (Creeper *creeper : exploding)
+		explodeAt(creeper->getPosition(), creeper->explodeRadius, creeper->explodeDamage, creeper);
 
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{
@@ -1066,4 +1081,47 @@ void World::setSkyTime(const SkyTimeState &newState) {
     skyTimeState.sunStepping   = false;
     skyTimeState.sunPauseTimer = 0.0f;
     skyTimeState.sunStepTimer  = 0.0f;
+}
+
+void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage, LivingEntity *source)
+{
+    const float r2 = radius * radius;
+    const int r = static_cast<int>(std::ceil(radius));
+
+    const int cx = static_cast<int>(std::floor(center.x));
+    const int cy = static_cast<int>(std::floor(center.y));
+    const int cz = static_cast<int>(std::floor(center.z));
+
+    // Carve a rough sphere of blocks to air. setBlockWorld pushes to updatedBlocks,
+    // which the existing block-sync pipeline streams to every client.
+    for (int dx = -r; dx <= r; ++dx) {
+        for (int dy = -r; dy <= r; ++dy) {
+            for (int dz = -r; dz <= r; ++dz) {
+                const float d2 = float(dx*dx + dy*dy + dz*dz);
+                if (d2 > r2) continue;
+                const glm::ivec3 bpos{cx + dx, cy + dy, cz + dz};
+                const BlockType b = getBlockWorld(bpos);
+                if (b == BlockType::AIR || b == BlockType::BEDROCK || b == BlockType::END)
+                    continue;
+                setBlockWorld(bpos, std::nullopt, BlockType::AIR);
+            }
+        }
+    }
+
+    // Distance-falloff damage + knockback for every living entity inside the sphere.
+    for (auto &entity : livingEntities) {
+        if (!entity) continue;
+        glm::vec3 diff = entity->getPosition() - center;
+        float dist = glm::length(diff);
+        if (dist > radius) continue;
+        float falloff = 1.0f - (dist / radius);
+        if (falloff <= 0.0f) continue;
+
+        entity->health -= maxDamage * falloff;
+        if (entity.get() == source)
+            entity->diedByExplosion = true;
+
+        glm::vec3 knockDir = dist > EPS ? diff / dist : glm::vec3(0, 1, 0);
+        entity->applyImpulse(knockDir * (falloff * 10.0f) + glm::vec3(0.0f, 0.3f * falloff, 0.0f));
+    }
 }

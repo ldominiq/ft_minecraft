@@ -35,6 +35,8 @@ void PlayerMovement::onDeath()
 {
 	position = spawnPosition;
 	health = 20;
+	velocity = glm::vec3(0.0f);
+	pendingInputs.clear();
 }
 
 //for creative

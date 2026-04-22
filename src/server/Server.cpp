@@ -674,69 +674,88 @@ void Server::trySpawnNightMobs()
 	if (players.empty())
 		return;
 
-	constexpr int MAX_ZOMBIES_PER_PLAYER = 10;
+	constexpr int MAX_ZOMBIES_PER_PLAYER  = 10;
+	constexpr int MAX_CREEPERS_PER_PLAYER = 50;
 	constexpr int MIN_SPAWN_DIST = 40;
 	constexpr int MAX_SPAWN_DIST = 80;
 	constexpr int SCAN_TOP_Y = 200;
 	constexpr int SCAN_BOTTOM_Y = 4;
 
-	// Count current zombies.
-	int zombieCount = 0;
-	for (auto &e : world->livingEntities)
-		if (e && e->getLivingEntityType() == ZOMBIE) zombieCount++;
+	// Count current hostile mobs.
+	int zombieCount  = 0;
+	int creeperCount = 0;
+	for (auto &e : world->livingEntities) {
+		if (!e) continue;
+		if (e->getLivingEntityType() == ZOMBIE)  zombieCount++;
+		if (e->getLivingEntityType() == CREEPER) creeperCount++;
+	}
+
+	auto findGroundSpawn = [&](const glm::vec3 &ppos, glm::vec3 &out) -> bool {
+		float angle = glm::radians(static_cast<float>(std::rand() % 360));
+		int dist = MIN_SPAWN_DIST + (std::rand() % (MAX_SPAWN_DIST - MIN_SPAWN_DIST));
+		int sx = static_cast<int>(std::floor(ppos.x + std::cos(angle) * dist));
+		int sz = static_cast<int>(std::floor(ppos.z + std::sin(angle) * dist));
+
+		auto isAir = [&](int y) {
+			BlockType b = world->getBlockWorld({sx, y, sz});
+			return b == BlockType::AIR;
+		};
+		auto isSpawnableGround = [&](int y) {
+			BlockType b = world->getBlockWorld({sx, y, sz});
+			return b != BlockType::END && isBlockSolid(b);
+		};
+
+		int groundY = -1;
+		bool airAbove1 = isAir(SCAN_TOP_Y + 1);
+		bool airAbove2 = isAir(SCAN_TOP_Y);
+		for (int y = SCAN_TOP_Y; y >= SCAN_BOTTOM_Y; --y) {
+			if (isSpawnableGround(y) && airAbove1 && airAbove2) {
+				groundY = y;
+				break;
+			}
+			airAbove2 = airAbove1;
+			airAbove1 = isAir(y);
+		}
+		if (groundY < 0) return false;
+
+		glm::vec3 spawnPos(sx + 0.5f, static_cast<float>(groundY + 1), sz + 0.5f);
+		glm::vec3 d = spawnPos - ppos;
+		if (d.x * d.x + d.z * d.z < float(MIN_SPAWN_DIST * MIN_SPAWN_DIST) * 0.25f) return false;
+		out = spawnPos;
+		return true;
+	};
 
 	for (auto &player : players) {
 		if (!player.movement) continue;
-		// DEBUG: spawn around all players regardless of gamemode. AI only chases survival players.
-		//if (player.movement->gamemode != GAMEMODES::SURVIVAL) continue;
 
-		if (zombieCount >= MAX_ZOMBIES_PER_PLAYER * static_cast<int>(players.size()))
-			break;
-
-		// Try a few candidate spawn positions around the player.
-		for (int attempt = 0; attempt < 5; ++attempt) {
-			float angle = glm::radians(static_cast<float>(std::rand() % 360));
-			int dist = MIN_SPAWN_DIST + (std::rand() % (MAX_SPAWN_DIST - MIN_SPAWN_DIST));
-			glm::vec3 ppos = player.movement->getPosition();
-			int sx = static_cast<int>(std::floor(ppos.x + std::cos(angle) * dist));
-			int sz = static_cast<int>(std::floor(ppos.z + std::sin(angle) * dist));
-
-			// Find ground: scan from SCAN_TOP_Y downward for first solid block
-			// with 2 blocks of air above. Reject if the chunk isn't loaded
-			// (getBlockWorld returns BlockType::END for unloaded coords).
-			auto isAir = [&](int y) {
-				BlockType b = world->getBlockWorld({sx, y, sz});
-				return b == BlockType::AIR;
-			};
-			auto isSpawnableGround = [&](int y) {
-				BlockType b = world->getBlockWorld({sx, y, sz});
-				return b != BlockType::END && isBlockSolid(b);
-			};
-
-			int groundY = -1;
-			bool airAbove1 = isAir(SCAN_TOP_Y + 1);
-			bool airAbove2 = isAir(SCAN_TOP_Y);
-			for (int y = SCAN_TOP_Y; y >= SCAN_BOTTOM_Y; --y) {
-				if (isSpawnableGround(y) && airAbove1 && airAbove2) {
-					groundY = y;
-					break;
-				}
-				airAbove2 = airAbove1;
-				airAbove1 = isAir(y);
+		// Zombies: unchanged rate.
+		if (zombieCount < MAX_ZOMBIES_PER_PLAYER * static_cast<int>(players.size())) {
+			for (int attempt = 0; attempt < 5; ++attempt) {
+				glm::vec3 spawnPos;
+				if (!findGroundSpawn(player.movement->getPosition(), spawnPos)) continue;
+				auto zombie = std::make_shared<Zombie>(spawnPos);
+				world->livingEntities.push_back(zombie);
+				zombieCount++;
+				std::cout << "Spawned zombie at " << spawnPos.x << ", " << spawnPos.y << ", " << spawnPos.z << "\n";
+				break;
 			}
-			if (groundY < 0) continue;
+		}
 
-			glm::vec3 spawnPos(sx + 0.5f, static_cast<float>(groundY + 1), sz + 0.5f);
-
-			// Don't spawn too close (player could have moved chunks while we scanned).
-			glm::vec3 d = spawnPos - ppos;
-			if (d.x * d.x + d.z * d.z < float(MIN_SPAWN_DIST * MIN_SPAWN_DIST) * 0.25f) continue;
-
-			auto zombie = std::make_shared<Zombie>(spawnPos);
-			world->livingEntities.push_back(zombie);
-			zombieCount++;
-			std::cout << "Spawned zombie at " << spawnPos.x << ", " << spawnPos.y << ", " << spawnPos.z << "\n";
-			break; // one successful spawn per player per attempt cycle
+		// Creepers: lower cap AND a probability gate — only ~25% of attempts are allowed
+		// to actually result in a spawn, so creepers are clearly rarer than zombies.
+		if (creeperCount < MAX_CREEPERS_PER_PLAYER * static_cast<int>(players.size()) &&
+			(std::rand() % 4) == 0)
+		{
+			for (int attempt = 0; attempt < 5; ++attempt) {
+				glm::vec3 spawnPos;
+				if (!findGroundSpawn(player.movement->getPosition(), spawnPos)) continue;
+				auto creeper = std::make_shared<Creeper>(spawnPos);
+				world->livingEntities.push_back(creeper);
+				creeperCount++;
+				std::cout << "Spawned creeper at " << spawnPos.x << ", " << spawnPos.y << ", " << spawnPos.z << "\n";
+				//TODO: uncomment
+				//break;
+			}
 		}
 	}
 }
@@ -781,34 +800,61 @@ void Server::despawnDistantMobs()
 
 void Server::sendDeaths()
 {
+	// How many server ticks the body lingers so clients can play the fall-over animation.
+	constexpr int32_t DEATH_ANIMATION_TICKS = 20; // ~1s at 20 TPS
+
 	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end();)
 	{
-		if (le->get()->health <= 0)
+		LivingEntity *ent = le->get();
+
+		// Countdown path: already broadcast the death; waiting for the animation window.
+		if (ent->pendingDeathRemovalTicks > 0)
 		{
-			le->get()->onDeath();
-			messages.push_back("Someone has died miserably");
-
-			if (le->get()->getLivingEntityType() != PLAYER)
+			ent->pendingDeathRemovalTicks--;
+			if (ent->pendingDeathRemovalTicks == 0)
 			{
-				NetEntityMove pkt;
-
-				pkt.eEntityType = le->get()->getEntityType();
-				pkt.entityID = le->get()->getID();
-				pkt.type = -1;
-
-				pkt.positionX = le->get()->getPosition().x;
-				pkt.positionY = le->get()->getPosition().y;
-				pkt.positionZ = le->get()->getPosition().z;
-
-				pkt.yaw = le->get()->yaw;
-
-				le = world->livingEntities.erase(le);
-
-				for (const auto player : players)
-					sendPacketTo(pkt, player.addr);
-				
-				continue ;
+				if (ent->getLivingEntityType() == PLAYER)
+				{
+					// Player: run the respawn flow now that the fall-over has played out.
+					ent->onDeath();
+					ent->deathBroadcast = false;
+				}
+				else
+				{
+					le = world->livingEntities.erase(le);
+					continue;
+				}
 			}
+			le++;
+			continue;
+		}
+
+		if (ent->health <= 0 && !ent->deathBroadcast)
+		{
+			messages.push_back("Someone has died miserably");
+			ent->deathBroadcast = true;
+
+			NetEntityMove pkt;
+			pkt.eEntityType = ent->getEntityType();
+			pkt.entityID    = ent->getID();
+			pkt.type        = -1;
+			pkt.positionX   = ent->getPosition().x;
+			pkt.positionY   = ent->getPosition().y;
+			pkt.positionZ   = ent->getPosition().z;
+			pkt.yaw         = ent->yaw;
+
+			for (const auto player : players)
+				sendPacketTo(pkt, player.addr);
+
+			if (ent->getLivingEntityType() != PLAYER && ent->diedByExplosion)
+			{
+				// No body left — creepers that self-detonate vanish immediately.
+				le = world->livingEntities.erase(le);
+				continue;
+			}
+			// Linger so clients can animate the fall-over. Players respawn when the
+			// countdown hits 0 (above); mobs get erased.
+			ent->pendingDeathRemovalTicks = DEATH_ANIMATION_TICKS;
 		}
 		le++;
 	}
@@ -964,7 +1010,8 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.pitch = entity->pitch;
 			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
 			                  | (entity->isOnGround() ? 0x02u : 0u)
-			                  | (entity->pendingArmSwing ? 0x04u : 0u);
+			                  | (entity->pendingArmSwing ? 0x04u : 0u)
+			                  | (entity->networkedPrimed ? 0x08u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}

@@ -47,6 +47,18 @@ class LivingEntity : public Entity
 		float damage = 5;
 		float accumulatedFallDistance = 0.0f;
 
+		// Death-animation bookkeeping (server-authoritative).
+		// When health hits 0, sendDeaths broadcasts the death packet once and sets
+		// pendingDeathRemovalTicks > 0 so the entity lingers for the fall-over animation.
+		// `diedByExplosion` skips the delay (the body physically vanishes in the blast).
+		bool deathBroadcast = false;
+		bool diedByExplosion = false;
+		int32_t pendingDeathRemovalTicks = 0;
+
+		// Generic "fused"/priming flag sent to clients in NetEntityMove::positionFlags bit 0x08.
+		// Currently only creepers set this.
+		bool networkedPrimed = false;
+
 		LivingEntity(const glm::vec3 &position);
 		LivingEntity(const glm::vec3 &position, float yaw, entityID ID);
 		virtual ~LivingEntity() = 0;

@@ -231,6 +231,41 @@ void Character::swingArmAnimation(float deltaTime)
 	rotateBodyPartAxis(characterBodyParts.rightForearm, -1.5f, elbowAngle, glm::vec3(0,0,1), 1.0f);
 }
 
+void Character::triggerDeath()
+{
+    if (characterBodyParts.dying)
+        return;
+    characterBodyParts.dying = true;
+    characterBodyParts.dyingDone = false;
+    characterBodyParts.dyingPhase = 0.0f;
+}
+
+void Character::deathAnimation(float deltaTime)
+{
+    constexpr float DEATH_DURATION = 1.0f;
+    if (characterBodyParts.dyingDone)
+        return;
+    characterBodyParts.dyingPhase += deltaTime / DEATH_DURATION;
+    if (characterBodyParts.dyingPhase >= 1.0f)
+    {
+        characterBodyParts.dyingPhase = 1.0f;
+        characterBodyParts.dyingDone = true;
+    }
+    float angle = static_cast<float>(M_PI) * 0.5f * characterBodyParts.dyingPhase;
+    // Root Space transform is translation * rotation * scale, so rotation pivots at
+    // the character's local origin (torso center). We want the pivot at the feet so
+    // the body topples onto the ground. Feet sit at y = -YPositionOffset.y in
+    // post-scale local space.
+    const float pivotY = YPositionOffset.y;
+    glm::mat4 fallAroundFeet =
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -pivotY, 0.0f)) *
+        glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 0.0f, 1.0f)) *
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f,  pivotY, 0.0f));
+    // Compose on top of the yaw rotation the manager just wrote.
+    characterBodyParts.character.rotation =
+        characterBodyParts.character.rotation * fallAroundFeet;
+}
+
 void Character::jumpAnimation(float dt)
 {
     float jumpHeight = 2.0f;

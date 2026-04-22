@@ -365,15 +365,25 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 				if (auto ice = std::dynamic_pointer_cast<IClientEntity>(ent))
 					ice->triggerArmSwing();
 			}
+			if (auto cc = std::dynamic_pointer_cast<ClientCreeper>(ent))
+				cc->clientPrimed = (pkt.positionFlags & 0x08) != 0;
 			ent->lastNetUpdateTime = serverTime;
 
 			if (pkt.type == static_cast<uint16_t>(-1))
 			{
-				ent->removed = true;
 				if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
 				{
-					std::erase_if(livingEntities,
-					              [ID](const std::shared_ptr<Entity>& e){ return e->getID() == ID; });
+					// Start the fall-over death animation instead of erasing immediately.
+					// The LivingEntitiesManager flips `removed` once dyingDone, and
+					// Renderer::drawCharacters sweeps removed entries afterwards.
+					if (auto ice = std::dynamic_pointer_cast<IClientEntity>(ent))
+						ice->triggerDeath();
+					else
+						ent->removed = true;
+				}
+				else
+				{
+					ent->removed = true;
 				}
 			}
 		}
@@ -425,6 +435,9 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime)
 {
 	livingEntitiesManager.draw(projection, view, deltatime);
+	// Drop entities whose death animation completed (LivingEntitiesManager marks them).
+	std::erase_if(livingEntities,
+	              [](const std::shared_ptr<Entity>& e){ return !e || e->removed; });
 }
 
 void Renderer::renderWater() const {
