@@ -453,6 +453,9 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	{
 		sendInventorySlot(player->movement->inventory.activeHotbarSlot, cliaddr);
 	}
+
+	if (pkt.mouseButtons & (IN_LEFT_CLICK | IN_RIGHT_CLICK))
+		player->movement->pendingArmSwing = true;
 }
 
 void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
@@ -824,7 +827,7 @@ void Server::sendEntitiesPositionDeltas()
 	{
 		for (CPlayerInfo &p : players)
 		{
-			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated)) continue;
+			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated && !entity->pendingArmSwing)) continue;
 
 			NetEntityMove pkt;
 
@@ -837,13 +840,17 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.positionZ = entity->getPosition().z;
 
 			pkt.yaw = entity->yaw;
-			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u) | (entity->isOnGround() ? 0x02u : 0u);
+			pkt.pitch = entity->pitch;
+			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
+			                  | (entity->isOnGround() ? 0x02u : 0u)
+			                  | (entity->pendingArmSwing ? 0x04u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}
 
 		entity->positionUpdated = false;
 		entity->rotationUpdated = false;
+		entity->pendingArmSwing = false;
 	}
 
 	for (auto &entity : world->itemEntities)

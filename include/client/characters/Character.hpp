@@ -32,23 +32,33 @@ class Character
 		bool onJumpAnimation = false;
 		float jumpPhase = 0;
 		float jumpOffset = 0;
+
+		bool onArmSwingAnimation = false;
+		float armSwingPhase = 0.0f;
 	};
 
 	protected:
-		float torsoScaleZ{0};
+		// Minecraft-style dimensions in "pixel" units (8 px per block).
+		// Axis mapping in this engine: X = depth (front/back), Y = up, Z = side-to-side.
+		float torsoScaleX{0};
 		float torsoScaleY{0};
+		float torsoScaleZ{0};
 
-		float headScaleZ{0};
+		float headScaleX{0};
 		float headScaleY{0};
+		float headScaleZ{0};
 		float headTransY{0};
 
-		float armScaleZ{0};
+		// arm/leg Y is half of total arm/leg length (upper arm + forearm = full arm).
+		float armScaleX{0};
 		float armScaleY{0};
+		float armScaleZ{0};
 		float armTransZ{0};
 		float armTransY{0};
 
-		float legScaleZ{0};
+		float legScaleX{0};
 		float legScaleY{0};
+		float legScaleZ{0};
 		float legTransZ{0};
 		float legTransY{0};
 
@@ -57,9 +67,12 @@ class Character
 		float characterZScaleNorm{0};
 		float feetPositionY{0};
 
+		float armSwingDuration{0.3f};
+
 	virtual void setPartsDimensions();
 	virtual void createCharacterAt(const glm::vec3 &pos, float width, float height);
 	void rotateBodyPart(const std::shared_ptr<Shape>& bodyPart, float pivot, float angle) const;
+	void rotateBodyPartAxis(const std::shared_ptr<Shape>& bodyPart, float pivot, float angle, const glm::vec3 &axis, float multiplier) const;
 
 	public:
 		s_character characterBodyParts;
@@ -71,6 +84,9 @@ class Character
 
 		virtual void walkAnimation(float deltaTime);
 		virtual void jumpAnimation(float currentFrame);
+		virtual void applyHeadPitch(float pitchDegrees);
+		virtual void swingArmAnimation(float deltaTime);
+		void triggerArmSwing();
 
 };
 

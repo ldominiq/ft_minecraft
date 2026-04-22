@@ -1,6 +1,7 @@
 
 #include "Character.hpp"
 #include <cmath>
+#include <algorithm>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -12,65 +13,71 @@ Character::Character()
 
 void Character::setPartsDimensions()
 {
-	torsoScaleZ = 2.4f;
-	torsoScaleY = 5.0f;
+	// Minecraft reference model (in pixels): head 8x8x8, torso 8 wide x 12 tall x 4 deep,
+	// arms & legs 4 wide x 12 tall x 4 deep. Total height = 32, total arm-span = 16.
+	torsoScaleX = 4.0f;
+	torsoScaleY = 12.0f;
+	torsoScaleZ = 8.0f;
 
-	headScaleZ = torsoScaleZ*1.2f;
-	headScaleY = headScaleZ;
-	headTransY = (torsoScaleY/2.0f + headScaleY/2.0f) / headScaleY;
+	headScaleX = 8.0f;
+	headScaleY = 8.0f;
+	headScaleZ = 8.0f;
+	headTransY = (torsoScaleY * 0.5f + headScaleY * 0.5f) / headScaleY;
 
-	armScaleZ = torsoScaleZ/2.0f;
-	armScaleY = (torsoScaleY*7.0f)/11.0f;
-	armTransZ = (torsoScaleZ/2.0f + armScaleZ/2.0f) / armScaleZ;
-	armTransY = ((torsoScaleY - armScaleY)/2.0f) / armScaleY;
+	armScaleX = 4.0f;
+	armScaleY = 6.0f;
+	armScaleZ = 4.0f;
+	armTransZ = (torsoScaleZ * 0.5f + armScaleZ * 0.5f) / armScaleZ;
+	armTransY = ((torsoScaleY - armScaleY) * 0.5f) / armScaleY;
 
-	legScaleZ = torsoScaleZ/2.0f;
-	legScaleY = torsoScaleY*0.6f;
-	legTransZ = 0.5f;
-	legTransY = -((torsoScaleY/2.0f + legScaleY/2.0f) / legScaleY); // 0.875 = 3 (torso Y scale) / 2 (Y negative/positive) = 1.5, 4 (rightLeg Y scale) / 2 (Y negative/positive). 1.5+2 / 4 (rightleg Y scale as translation goes scale times fast)
+	legScaleX = 4.0f;
+	legScaleY = 6.0f;
+	legScaleZ = 4.0f;
+	legTransZ = (legScaleZ * 0.5f) / legScaleZ; // keep legs just inside the torso edges
+	legTransY = -((torsoScaleY * 0.5f + legScaleY * 0.5f) / legScaleY);
 
-	characterYScaleNorm = 1.0f / (torsoScaleY + headScaleY + legScaleY * 2.0f);
-	characterZScaleNorm = 1.0f / (torsoScaleZ + armScaleZ * 2.0f);
-	characterXScaleNorm = 1.0f;
+	characterYScaleNorm = 1.0f / (torsoScaleY + headScaleY + legScaleY * 2.0f); // = 1/32
+	characterZScaleNorm = 1.0f / torsoScaleZ;                                   // torso Z matches hitbox
+	characterXScaleNorm = 1.0f / torsoScaleZ;                                   // same scale on X so head is a cube
 
-	feetPositionY = torsoScaleY/2.0f + legScaleY * 2.0f;
+	feetPositionY = torsoScaleY * 0.5f + legScaleY * 2.0f;
 	YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm, 0);
 }
 
-// ...existing code...
 void Character::createCharacterAt(const glm::vec3 &pos, float width, float height)
 {
     Space character;
 
-	width = width * 1.5f;
-	characterXScaleNorm = (width / 2.0f);
-	character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(characterXScaleNorm, height * characterYScaleNorm, width * characterZScaleNorm));
+	character.scale = glm::scale(glm::mat4(1.0f), glm::vec3(
+		width * characterXScaleNorm,
+		height * characterYScaleNorm,
+		width * characterZScaleNorm));
 	YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm * height, 0);
 	character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
 
     // Torso
     auto torso = std::make_shared<Shape>(glm::vec3(1,0,0));
-    torso->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, torsoScaleY, torsoScaleZ));
+    torso->scale = glm::scale(glm::mat4(1.0f), glm::vec3(torsoScaleX, torsoScaleY, torsoScaleZ));
     character.addChild(torso);
 
     // Head
     auto head = std::make_shared<Shape>(glm::vec3(0,1,0));
-    head->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, headScaleY, headScaleZ));
+    head->scale = glm::scale(glm::mat4(1.0f), glm::vec3(headScaleX, headScaleY, headScaleZ));
     head->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, headTransY, 0));
     character.addChild(head);
 
-    // Arms
+    // Arms (upper)
     auto rightArm = std::make_shared<Shape>(glm::vec3(0,0,1));
-    rightArm->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, armScaleY, armScaleZ));
+    rightArm->scale = glm::scale(glm::mat4(1.0f), glm::vec3(armScaleX, armScaleY, armScaleZ));
     rightArm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, armTransY, armTransZ));
     character.addChild(rightArm);
 
     auto leftArm = std::make_shared<Shape>(glm::vec3(0,0,1));
-    leftArm->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, armScaleY, armScaleZ));
+    leftArm->scale = glm::scale(glm::mat4(1.0f), glm::vec3(armScaleX, armScaleY, armScaleZ));
     leftArm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, armTransY, -armTransZ));
     character.addChild(leftArm);
 
-    // Forearms
+    // Forearms (lower arm, hanging below upper arm)
     auto rightForearm = std::make_shared<Shape>(glm::vec3(0.5f,0,1));
     rightForearm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
     rightArm->addChild(rightForearm);
@@ -79,14 +86,14 @@ void Character::createCharacterAt(const glm::vec3 &pos, float width, float heigh
     leftForearm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
     leftArm->addChild(leftForearm);
 
-    // Legs
+    // Legs (upper)
     auto rightLeg = std::make_shared<Shape>(glm::vec3(1,1,0));
-    rightLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, legScaleY, legScaleZ));
+    rightLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(legScaleX, legScaleY, legScaleZ));
     rightLeg->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, legTransY, legTransZ));
     character.addChild(rightLeg);
 
     auto leftLeg = std::make_shared<Shape>(glm::vec3(1,1,0));
-    leftLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, legScaleY, legScaleZ));
+    leftLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(legScaleX, legScaleY, legScaleZ));
     leftLeg->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, legTransY, -legTransZ));
     character.addChild(leftLeg);
 
@@ -114,16 +121,23 @@ void Character::createCharacterAt(const glm::vec3 &pos, float width, float heigh
 
 void Character::rotateBodyPart(const std::shared_ptr<Shape>& bodyPart, float pivot, float angle) const
 {
+	rotateBodyPartAxis(bodyPart, pivot, angle, glm::vec3(0,0,1), 0.8f);
+}
+
+void Character::rotateBodyPartAxis(const std::shared_ptr<Shape>& bodyPart, float pivot, float angle, const glm::vec3 &axis, float multiplier) const
+{
 	bodyPart->rotation =
 		glm::translate(glm::mat4(1.0f), glm::vec3(0, pivot, 0)) *
 		extractScaleInverse(characterBodyParts.character.scale) *
-		glm::rotate(glm::mat4(1.0f), angle * 0.8f, glm::vec3(0,0,1)) *
+		glm::rotate(glm::mat4(1.0f), angle * multiplier, axis) *
 		characterBodyParts.character.scale *
 		glm::translate(glm::mat4(1.0f), glm::vec3(0, -pivot, 0));
 }
 
 void Character::walkAnimation(float deltaTime)
 {
+	// Skip the walking arm swing on the right arm while a punch/swing animation is playing,
+	// so the two don't fight each other.
 	characterBodyParts.onWalkAnimation = true;
 	float walkAmplitude = 1.0f;
 	float oldPhase = characterBodyParts.walkPhase;
@@ -151,12 +165,13 @@ void Character::walkAnimation(float deltaTime)
 	float pivotY = +armScaleY * 0.5f;
 
 	rotateBodyPart(characterBodyParts.leftArm, pivotY, angle);
-	rotateBodyPart(characterBodyParts.rightArm, pivotY, -angle);
+	if (!characterBodyParts.onArmSwingAnimation)
+		rotateBodyPart(characterBodyParts.rightArm, pivotY, -angle);
 
 	if (angle >= 0)
 		rotateBodyPart(characterBodyParts.leftForearm, -1.5f, angle * 1.2f);
 
-	if (angle <= 0)
+	if (angle <= 0 && !characterBodyParts.onArmSwingAnimation)
 		rotateBodyPart(characterBodyParts.rightForearm, -1.5f, angle * -1.2f);
 
 	// ---- Legs ----
@@ -164,6 +179,50 @@ void Character::walkAnimation(float deltaTime)
 
 	rotateBodyPart(characterBodyParts.leftLeg, legPivotY, -angle * 0.8f);
 	rotateBodyPart(characterBodyParts.rightLeg, legPivotY, angle * 0.8f);
+}
+
+void Character::applyHeadPitch(float pitchDegrees)
+{
+	// Head neck pivot is at its bottom (Y = -headScaleY/2 in head-local space).
+	// Positive pitch (looking up) tilts the head back around the side (Z) axis.
+	float angle = glm::radians(pitchDegrees);
+	rotateBodyPartAxis(characterBodyParts.head, -headScaleY * 0.5f, angle, glm::vec3(0,0,1), 1.0f);
+}
+
+void Character::triggerArmSwing()
+{
+	characterBodyParts.onArmSwingAnimation = true;
+	characterBodyParts.armSwingPhase = 0.0f;
+}
+
+void Character::swingArmAnimation(float deltaTime)
+{
+	if (!characterBodyParts.onArmSwingAnimation)
+		return;
+
+	characterBodyParts.armSwingPhase += deltaTime / armSwingDuration;
+	if (characterBodyParts.armSwingPhase >= 1.0f)
+	{
+		characterBodyParts.onArmSwingAnimation = false;
+		characterBodyParts.armSwingPhase = 0.0f;
+		// Reset the right arm/forearm to rest — walking animation will take over if needed.
+		characterBodyParts.rightArm->rotation = glm::mat4(1.0f);
+		characterBodyParts.rightForearm->rotation = glm::mat4(1.0f);
+		return;
+	}
+
+	// A single forward-down-backward punch. Peaks around the middle of the swing.
+	float t = characterBodyParts.armSwingPhase;
+	float curve = sin(t * M_PI); // 0 → 1 → 0
+
+	// Arm rotates forward (bringing the forearm down in front of the body) and the
+	// forearm bends a bit extra — mimics a simple overhead-ish punch/break motion.
+	float shoulderAngle = curve * 1.6f;          // swing forward/down
+	float elbowAngle    = curve * 0.6f;          // slight forearm bend
+
+	float pivotY = +armScaleY * 0.5f;
+	rotateBodyPartAxis(characterBodyParts.rightArm, pivotY, shoulderAngle, glm::vec3(0,0,1), 1.0f);
+	rotateBodyPartAxis(characterBodyParts.rightForearm, -1.5f, elbowAngle, glm::vec3(0,0,1), 1.0f);
 }
 
 void Character::jumpAnimation(float dt)
