@@ -199,6 +199,9 @@ void App::init(const std::string& serverIp) {
         const float yoffset = static_cast<float>(app->lastY - mouseY); // Reversed: y-coordinates go from bottom to top
         app->lastX = mouseX;
         app->lastY = mouseY;
+
+        if (!app->camera || !app->camera->getPlayer() || app->camera->getPlayer()->health <= 0) return; // don't allow clicking if player is dead or camera not initialized
+
         app->camera->processMouseMovement(xoffset, yoffset);
 
 		app->mouseMovedRecently = true;
@@ -674,19 +677,15 @@ void App::render() {
             if (manager)
                 tickInputs.keys = 0;
 
-			const bool localDead = camera && camera->getPlayer() && camera->getPlayer()->health <= 0.0f;
 
             tickInputs.serverClientReconciliationTick = clientTick;
+            camera->queueInput(tickInputs, clientTick);
 
-            if (!localDead) {
-                camera->queueInput(tickInputs, clientTick);
+            // Collect every tick's input; all will be sent as a batch so the
+            // server can run one physics step per entry during catch-up.
+            frameInputs.push_back(tickInputs);
 
-                // Collect every tick's input; all will be sent as a batch so the
-                // server can run one physics step per entry during catch-up.
-                frameInputs.push_back(tickInputs);
-
-                camera->predict(*renderer, clientTick);
-            }
+            camera->predict(*renderer, clientTick);
 
             clientTime = clientTick * tickDuration;
             accumulator -= tickDuration;
