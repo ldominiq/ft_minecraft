@@ -600,7 +600,8 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 			else if (slotInv == InventoryType::CRAFTING_STATION)
 				player->movement->craftingStation->setSlot(slot.slotIndex.slotIndex, slot.originalValue.second, slot.originalValue.first);
 
-			if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL)
+			int handId = player->movement->inventory->getHandID();
+			if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL || (pkt.modifier == InventoryModifiers::INV_DRAG_ADD && slot.slotIndex.slotIndex != handId))
 			{
 				auto pkt = std::make_unique<NetInventory>();
 				pkt->inventoryTypeID = static_cast<uint8_t>(slot.slotIndex.inventoryType);

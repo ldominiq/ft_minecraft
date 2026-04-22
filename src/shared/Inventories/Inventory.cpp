@@ -432,6 +432,7 @@ bool Inventory<ROWS, COLS, N>::canInsertItemsToSlot(ItemType item, int slotNumbe
 template<int ROWS, int COLS, int N>
 bool Inventory<ROWS, COLS, N>::insertItemsToSlot(ItemType item, int slotNumber, int &amount)
 {
+	if (amount == 0 ) return false;
 	if (slotNumber >= grid.size() || slotNumber < 0) return false;
 	if (grid[slotNumber].second > 0 && grid[slotNumber].first != item) return false; //not same type
 
