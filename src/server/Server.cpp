@@ -227,6 +227,7 @@ void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 			auto& group = static_cast<NetPacketGroup&>(*pkt);
 			for (auto& inner : group.unpack())
 				dispatchPacket(inner, cliaddr);
+			break;
 		}
 
 		case PacketType::NET_SKY_TIME: {

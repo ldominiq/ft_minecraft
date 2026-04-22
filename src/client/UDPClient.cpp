@@ -147,7 +147,13 @@ void UDPClient::receivePacket() {
 
 void UDPClient::dispatch(const uint8_t* data, size_t n)
 {
-    auto pkt = decodePacket(data, n);
+    PacketPtr pkt;
+    try {
+        pkt = decodePacket(data, n);
+    } catch (const std::exception& e) {
+        std::cerr << "[Network] decode failed: " << e.what() << "\n";
+        return;
+    }
     if (!pkt) {
         std::cerr << "[Network] Failed to decode packet of " << n << " bytes. First byte: " << (n > 0 ? (int)data[0] : -1) << "\n";
         return;

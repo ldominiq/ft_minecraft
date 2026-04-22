@@ -1,6 +1,8 @@
 #ifndef PROTOCOL_HPP
 #define PROTOCOL_HPP
 
+#include <iostream>
+
 #include "Network.hpp"
 #include "TerrainParams.hpp"
 
@@ -43,12 +45,19 @@ struct NetPacketGroup final : public Packet {
 		}
 	}
 
-	// Utility: decode inner packets
+	// Utility: decode inner packets. A single malformed inner packet must not
+	// kill the whole group (or the process), so failures are logged and
+	// skipped; callers only see the packets that decoded successfully.
 	std::vector<PacketPtr> unpack() const {
 		std::vector<PacketPtr> result;
 		result.reserve(rawPackets.size());
 		for (auto& raw : rawPackets) {
-			result.push_back(decodePacket(raw.data(), raw.size()));
+			try {
+				auto pkt = decodePacket(raw.data(), raw.size());
+				if (pkt) result.push_back(std::move(pkt));
+			} catch (const std::exception& e) {
+				std::cerr << "[Network] group inner decode failed: " << e.what() << "\n";
+			}
 		}
 		return result;
 	}

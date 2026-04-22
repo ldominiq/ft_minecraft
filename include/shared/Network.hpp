@@ -296,6 +296,13 @@ struct ReliabilitySender {
 };
 
 struct ReliabilityReceiver {
+    // Bounds on the reorder buffer: a peer can't make us hold more than
+    // kMaxReorderBuffered out-of-order packets, and can't queue a packet
+    // more than kMaxReorderWindow seqs past what we're waiting for.
+    // Without these, a peer can force unbounded memory growth (DoS).
+    static constexpr size_t kMaxReorderBuffered = 512;
+    static constexpr uint32_t kMaxReorderWindow = 4096;
+
     uint32_t expectedSeq = 0;
     std::map<uint32_t, PacketPtr> reorderBuffer;
     std::chrono::steady_clock::time_point lastNackSent{};
@@ -333,7 +340,8 @@ struct ReliabilityIngest {
 
 // Absorb a decoded incoming packet. Returns which packets are ready for
 // dispatch (one or more, in order) and optionally a NACK range to send back.
-// RELIABLE_NACK is filtered out here (caller handles via reliabilityOnNack).
+// Type filtering (e.g. RELIABLE_NACK) is the caller's responsibility: this
+// function passes packets through once they are in order.
 inline ReliabilityIngest reliabilityIngest(
     ReliabilityReceiver& r,
     PacketPtr pkt,
@@ -362,8 +370,17 @@ inline ReliabilityIngest reliabilityIngest(
         }
         return out;
     }
-    // seq > expected: hole detected
+    // seq > expected: hole detected. Drop packets wildly past the window so a
+    // peer can't waste a slot with a giant seq, then evict from the tail if
+    // the buffer would overflow — packets near expectedSeq are what unblocks
+    // the stream, so we keep those and shed the furthest-ahead ones.
+    if (seq - r.expectedSeq > ReliabilityReceiver::kMaxReorderWindow) {
+        return out;
+    }
     r.reorderBuffer[seq] = std::move(pkt);
+    while (r.reorderBuffer.size() > ReliabilityReceiver::kMaxReorderBuffered) {
+        r.reorderBuffer.erase(std::prev(r.reorderBuffer.end()));
+    }
     constexpr auto kNackRateLimit = std::chrono::milliseconds(100);
     if (now - r.lastNackSent >= kNackRateLimit) {
         out.nack = std::make_pair(r.expectedSeq, seq - 1);
