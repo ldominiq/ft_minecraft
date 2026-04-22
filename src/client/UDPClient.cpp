@@ -66,9 +66,18 @@ UDPClient::~UDPClient() {
 #endif
 }
 
-void UDPClient::sendPacket(const Packet &pkt) {
-	auto bytes = encodePacket(pkt);
+void UDPClient::sendRawBytes(const std::vector<uint8_t>& bytes) {
 	sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&servaddr, sizeof(servaddr));
+}
+
+void UDPClient::sendPacket(Packet &pkt) {
+	std::vector<uint8_t> bytes;
+	if (hasFlag(pkt.flags, PacketFlags::Reliable)) {
+		bytes = reliabilityStamp(sendRel, pkt);
+	} else {
+		bytes = encodePacket(pkt);
+	}
+	sendRawBytes(bytes);
 }
 
 void UDPClient::sendConnect() {
@@ -138,15 +147,51 @@ void UDPClient::receivePacket() {
 
 void UDPClient::dispatch(const uint8_t* data, size_t n)
 {
-    // 1. Decode packet from buffer (returns unique_ptr<Packet>)
-    auto pkt = decodePacket(data, n);
-    if (pkt) {
-        if (pkt->type == PacketType::NET_ACCEPT) {
-            std::cout << "[Network] Successfully decoded NET_ACCEPT packet\n";
-        }
-		if (onPacket) onPacket({ std::move(pkt) });
-	} else {
+    PacketPtr pkt;
+    try {
+        pkt = decodePacket(data, n);
+    } catch (const std::exception& e) {
+        std::cerr << "[Network] decode failed: " << e.what() << "\n";
+        return;
+    }
+    if (!pkt) {
         std::cerr << "[Network] Failed to decode packet of " << n << " bytes. First byte: " << (n > 0 ? (int)data[0] : -1) << "\n";
+        return;
+    }
+    if (pkt->type == PacketType::NET_ACCEPT) {
+        std::cout << "[Network] Successfully decoded NET_ACCEPT packet\n";
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    auto result = reliabilityIngest(recvRel, std::move(pkt), now);
+
+    if (result.nack) {
+        NetReliableNack nack;
+        nack.fromSeq = result.nack->first;
+        nack.toSeq   = result.nack->second;
+        auto bytes = encodePacket(nack);
+        sendRawBytes(bytes);
+    }
+
+    for (auto& ready : result.ready) {
+        if (ready->type == PacketType::RELIABLE_NACK) {
+            auto& nack = static_cast<NetReliableNack&>(*ready);
+            auto bytesList = reliabilityOnNack(sendRel, nack.fromSeq, nack.toSeq);
+            for (const auto* b : bytesList) sendRawBytes(*b);
+            continue;
+        }
+        if (onPacket) onPacket({ std::move(ready) });
+    }
+}
+
+void UDPClient::reliabilityKeepalive() {
+    auto now = std::chrono::steady_clock::now();
+    if (reliabilityShouldKeepalive(recvRel, now)) {
+        NetReliableNack nack;
+        nack.fromSeq = recvRel.expectedSeq;
+        nack.toSeq   = recvRel.expectedSeq;
+        auto bytes = encodePacket(nack);
+        sendRawBytes(bytes);
     }
 }
 

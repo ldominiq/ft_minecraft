@@ -127,7 +127,8 @@ void App::init(const std::string& serverIp) {
     // Set callback to send terrain params to server when changed
     terrainDebugWindow->setSendParamsCallback([this](const NetTerrainParams& pkt) {
         if (udpClient) {
-            udpClient->sendPacket(pkt);
+            NetTerrainParams copy = pkt;
+            udpClient->sendPacket(copy);
         }
     });
 
@@ -700,6 +701,7 @@ void App::render() {
             accumulator = tickDuration * 2.0f;
 
         camera->setRenderTickAlpha(accumulator / tickDuration);
+		udpClient->reliabilityKeepalive();
 		udpClient->receivePacket();
         camera->flushPendingSnapshot(*renderer, clientTick);
 

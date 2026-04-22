@@ -28,6 +28,7 @@ typedef int socklen_t;
 #include <sstream>
 
 #include "Protocol.hpp"
+#include "Network.hpp"
 #include "ChunkRenderer.hpp"
 
 class UDPClient {
@@ -43,6 +44,11 @@ private:
     float m_simLatencyMs = 0.0f;
     std::deque<DelayedPacket> m_receiveDelayQueue;
 
+    ReliabilitySender   sendRel;  // client -> server
+    ReliabilityReceiver recvRel;  // server -> client
+
+    void sendRawBytes(const std::vector<uint8_t>& bytes);
+
 public:
     UDPClient(const char* server_ip); // Constructor to set server IP
     ~UDPClient(); // Destructor to close socket
@@ -57,11 +63,13 @@ public:
     }
 	float getSimulatedLatency() const  { return m_simLatencyMs; }
 
-	void sendPacket(const Packet &pkt);
+	void sendPacket(Packet &pkt);
 	void sendConnect();
 
 	void receivePacket();
 	void dispatch(const uint8_t* data, size_t n);
+
+	void reliabilityKeepalive();
 };
 
 #endif
