@@ -20,7 +20,7 @@ void Character::setPartsDimensions()
 	torsoScaleZ = 8.0f;
 
 	headScaleX = 8.0f;
-	headScaleY = 8.0f;
+	headScaleY = 10.0f;
 	headScaleZ = 8.0f;
 	headTransY = (torsoScaleY * 0.5f + headScaleY * 0.5f) / headScaleY;
 
@@ -186,7 +186,7 @@ void Character::applyHeadPitch(float pitchDegrees)
 	// Head neck pivot is at its bottom (Y = -headScaleY/2 in head-local space).
 	// Positive pitch (looking up) tilts the head back around the side (Z) axis.
 	float angle = glm::radians(pitchDegrees);
-	rotateBodyPartAxis(characterBodyParts.head, -headScaleY * 0.5f, angle, glm::vec3(0,0,1), 1.0f);
+	rotateBodyPartAxis(characterBodyParts.head, headScaleY * 0.5f, angle, glm::vec3(0,0,1), 1.0f);
 }
 
 void Character::triggerArmSwing()
