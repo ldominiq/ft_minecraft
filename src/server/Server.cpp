@@ -1,8 +1,11 @@
 #include "Server.hpp"
 
 #include "Creeper.hpp"
+#include "Zombie.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <limits>
 #include <sstream>
 Server::Server() {
 #ifdef _WIN32
@@ -51,12 +54,6 @@ void Server::run(std::optional<int> &seed) {
 		world = std::make_unique<World>(seed.value());
 	else
 		world = std::make_unique<World>();
-
-	glm::vec3 startingPos = glm::vec3(0,200, 0);
-	std::shared_ptr<Creeper> crep = std::make_shared<Creeper>(startingPos);
-	std::shared_ptr<Creeper> crep2 = std::make_shared<Creeper>(glm::vec3(0,90,0));
-	world->livingEntities.push_back(crep);
-	world->livingEntities.push_back(crep2);
 
 	running = true;
 
@@ -286,6 +283,14 @@ void Server::gameTick()
 		world->updateRegionStreaming(players);
 
 	world->advanceSkyTime();
+
+	// Attempt mob spawning every 5 seconds
+	if (tick > 0 && tick % (static_cast<int>(TPS) * 5) == 0)
+		trySpawnNightMobs();
+
+	// Despawn mobs with no player nearby once per second.
+	if (tick > 0 && tick % static_cast<int>(TPS) == 0)
+		despawnDistantMobs();
 
 	// Broadcast every 20 ticks (~1s)
 	if (tick % static_cast<int>(TPS) == 0)
@@ -656,6 +661,120 @@ void Server::sendAll()
 		messages.pop_front();
 	
 	world->rdyChunks.clear();
+}
+
+void Server::trySpawnNightMobs()
+{
+	// Night-time check:
+	const float skyT = world->getSkyTimeState().skyTimeOffset;
+	if (skyT <= 0.5f || skyT >= 1.0f)
+		return;
+	if (players.empty())
+		return;
+
+	constexpr int MAX_ZOMBIES_PER_PLAYER = 10;
+	constexpr int MIN_SPAWN_DIST = 40;
+	constexpr int MAX_SPAWN_DIST = 80;
+	constexpr int SCAN_TOP_Y = 200;
+	constexpr int SCAN_BOTTOM_Y = 4;
+
+	// Count current zombies.
+	int zombieCount = 0;
+	for (auto &e : world->livingEntities)
+		if (e && e->getLivingEntityType() == ZOMBIE) zombieCount++;
+
+	for (auto &player : players) {
+		if (!player.movement) continue;
+		// DEBUG: spawn around all players regardless of gamemode. AI only chases survival players.
+		//if (player.movement->gamemode != GAMEMODES::SURVIVAL) continue;
+
+		if (zombieCount >= MAX_ZOMBIES_PER_PLAYER * static_cast<int>(players.size()))
+			break;
+
+		// Try a few candidate spawn positions around the player.
+		for (int attempt = 0; attempt < 5; ++attempt) {
+			float angle = glm::radians(static_cast<float>(std::rand() % 360));
+			int dist = MIN_SPAWN_DIST + (std::rand() % (MAX_SPAWN_DIST - MIN_SPAWN_DIST));
+			glm::vec3 ppos = player.movement->getPosition();
+			int sx = static_cast<int>(std::floor(ppos.x + std::cos(angle) * dist));
+			int sz = static_cast<int>(std::floor(ppos.z + std::sin(angle) * dist));
+
+			// Find ground: scan from SCAN_TOP_Y downward for first solid block
+			// with 2 blocks of air above. Reject if the chunk isn't loaded
+			// (getBlockWorld returns BlockType::END for unloaded coords).
+			auto isAir = [&](int y) {
+				BlockType b = world->getBlockWorld({sx, y, sz});
+				return b == BlockType::AIR;
+			};
+			auto isSpawnableGround = [&](int y) {
+				BlockType b = world->getBlockWorld({sx, y, sz});
+				return b != BlockType::END && isBlockSolid(b);
+			};
+
+			int groundY = -1;
+			bool airAbove1 = isAir(SCAN_TOP_Y + 1);
+			bool airAbove2 = isAir(SCAN_TOP_Y);
+			for (int y = SCAN_TOP_Y; y >= SCAN_BOTTOM_Y; --y) {
+				if (isSpawnableGround(y) && airAbove1 && airAbove2) {
+					groundY = y;
+					break;
+				}
+				airAbove2 = airAbove1;
+				airAbove1 = isAir(y);
+			}
+			if (groundY < 0) continue;
+
+			glm::vec3 spawnPos(sx + 0.5f, static_cast<float>(groundY + 1), sz + 0.5f);
+
+			// Don't spawn too close (player could have moved chunks while we scanned).
+			glm::vec3 d = spawnPos - ppos;
+			if (d.x * d.x + d.z * d.z < float(MIN_SPAWN_DIST * MIN_SPAWN_DIST) * 0.25f) continue;
+
+			auto zombie = std::make_shared<Zombie>(spawnPos);
+			world->livingEntities.push_back(zombie);
+			zombieCount++;
+			std::cout << "Spawned zombie at " << spawnPos.x << ", " << spawnPos.y << ", " << spawnPos.z << "\n";
+			break; // one successful spawn per player per attempt cycle
+		}
+	}
+}
+
+void Server::despawnDistantMobs()
+{
+	// Remove any non-player living entity that has no player within DESPAWN_RADIUS (horizontal).
+	// Frees up the spawn cap so new mobs appear as players move around the world.
+	constexpr float DESPAWN_RADIUS = 200.0f;
+	constexpr float DESPAWN_RADIUS_SQ = DESPAWN_RADIUS * DESPAWN_RADIUS;
+
+	for (auto it = world->livingEntities.begin(); it != world->livingEntities.end();) {
+		auto &e = *it;
+		if (!e || e->getLivingEntityType() == PLAYER) { ++it; continue; }
+
+		float nearestSq = std::numeric_limits<float>::infinity();
+		for (auto &p : players) {
+			if (!p.movement) continue;
+			glm::vec3 d = p.movement->getPosition() - e->getPosition();
+			float dsq = d.x * d.x + d.z * d.z;
+			if (dsq < nearestSq) nearestSq = dsq;
+		}
+
+		if (nearestSq > DESPAWN_RADIUS_SQ) {
+			NetEntityMove pkt;
+			pkt.eEntityType = e->getEntityType();
+			pkt.entityID = e->getID();
+			pkt.type = -1;
+			pkt.positionX = e->getPosition().x;
+			pkt.positionY = e->getPosition().y;
+			pkt.positionZ = e->getPosition().z;
+			pkt.yaw = e->yaw;
+			for (const auto &p : players)
+				sendPacketTo(pkt, p.addr);
+
+			it = world->livingEntities.erase(it);
+		} else {
+			++it;
+		}
+	}
 }
 
 void Server::sendDeaths()

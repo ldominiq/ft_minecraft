@@ -961,7 +961,10 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t clientTick)
 {
 	for (auto &entity : livingEntities)
+	{
+		entity->tickAI(*this, livingEntities, clientTick);
 		entity->calculateNewPosition(*this);
+	}
 
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{

@@ -22,6 +22,7 @@ enum LivingEntityType : uint16_t
 {
 	PLAYER = 0,
 	CREEPER = 4,
+	ZOMBIE = 5,
 };
 
 class LivingEntity : public Entity
@@ -56,6 +57,7 @@ class LivingEntity : public Entity
 		virtual void attack(LivingEntity &victim);
 		virtual void onDeath();
 		virtual void applyFallDamage();
+		virtual void tickAI(const ICommonWorld &world, const std::vector<std::shared_ptr<LivingEntity>> &entities, int32_t tick) { (void)world; (void)entities; (void)tick; }
 		void calculateNewYPosition(const ICommonWorld &world) override;
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::LIVING_ENTITIES; }
 		inline LivingEntityType getLivingEntityType() const { return type; }
