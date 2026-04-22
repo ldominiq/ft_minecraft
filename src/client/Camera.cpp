@@ -79,6 +79,15 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 	if (!startPrediction)
 		return ;
 
+	// freeze local simulation while dead
+	if (player->health <= 0) {
+		player->setVelocity(glm::vec3(0.0f));
+		renderPrevPosition = player->getPosition();
+		renderCurrPosition = player->getPosition();
+		renderPositionInitialized = true;
+		return;
+	}
+
 	float clientTime = clientTick * (1.0f / TPS);
 
 	//make sure we start from the last state. (so lerp doesn't mess with the prediction)
