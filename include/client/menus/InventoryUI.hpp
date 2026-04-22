@@ -1,27 +1,38 @@
 #ifndef INVENTORY_UI
 #define INVENTORY_UI
 
-#include "Inventory.hpp"
+#include "PlayerInventory.hpp"
+#include "CraftingStation.hpp"
+
 #include "Menu.hpp"
 #include "blockRenderingHelperFunctions.hpp"
 #include "TextureManager.hpp"
 #include "Network.hpp"
 #include <optional>
 #include <filesystem>
+#include "Protocol.hpp"
 
-#include "VideoPlayer.hpp"
-
-int constexpr MAX_SLOTS = 9;
-int constexpr MAX_CRAFTING_SLOTS = 3; //3x3 but whatever
-
-class InventoryUI : public Inventory, public Menu
+class InventoryUI : public Menu
 {
-	int MAX_BUFFER_SIZE = sizeof(float) * (rows * cols + 1) * (2 + 2 + 1) * 3 * 6; //2 coords, 2 uvs, 1 texLayer. 3 faces, 6 vertices
+	int MAX_BUFFER_SIZE = 0;
 	std::unique_ptr<Shader> shader;
 	const TextureManager* textureManager = nullptr;
 	uint texture;
 	uint badAppleTex;
 	// std::unique_ptr<VideoPlayer> videoPlayer;
+
+	std::weak_ptr<PlayerInventory> playerInventory;
+	std::weak_ptr<CraftingStation> craftingStationInv;
+	std::weak_ptr<std::pair<ItemType, itemStackSize_t>> handPtr;
+
+	bool dragging = false;
+	int dragButton = -1;
+	int lastHoveredSlot = -1;
+
+	int inventoryRows = 0;
+	int inventoryCols = 0;
+	int craftingStationRows = 0;
+	int craftingStationCols = 0;
 
 	// coords of every slot in hotbar
 	struct HotbarSlotCoords
@@ -31,7 +42,7 @@ class InventoryUI : public Inventory, public Menu
 		float width;
 		float height;
 	};
-	HotbarSlotCoords hotbarSlots[MAX_SLOTS];
+	std::vector<HotbarSlotCoords> hotbarSlots; // size is PlayerInventory rows
 
 	// coords of the hotbar
 	struct HotbarCoords
@@ -69,7 +80,7 @@ class InventoryUI : public Inventory, public Menu
 		float width;
 		float height;
 	};
-	InventorySlots inventorySlots[rows * cols];
+	std::vector<InventorySlots> inventorySlots; // size is PlayerInventory rows * cols
 
 	struct BlackApple
 	{
@@ -80,14 +91,14 @@ class InventoryUI : public Inventory, public Menu
 	};
 	BlackApple blackApple;
 
-	struct CraftingStation
+	struct CraftingStationSize
 	{
 		float x;
 		float y;
 		float width;
 		float height;
 	};
-	CraftingStation craftingStation;
+	CraftingStationSize craftingStation;
 
 	struct CraftingStationSlots
 	{
@@ -96,7 +107,7 @@ class InventoryUI : public Inventory, public Menu
 		float width;
 		float height;
 	};
-	CraftingStation craftingStationSlots[MAX_CRAFTING_SLOTS * MAX_CRAFTING_SLOTS];
+	std::vector<CraftingStationSlots> craftingStationSlots; // size is CraftingStation rows * cols
 
 	struct CraftingResultSlot
 	{
@@ -119,23 +130,33 @@ class InventoryUI : public Inventory, public Menu
 	void build() override;
 	void drawEveryInventoryQuad();
 
+	InventoryType getCurrentInventoryType(double mouseX, double mouseY) const;
+	int getCraftingSlotAt(double mouseX, double mouseY) const;
 	int getSlotAt(double mouseX, double mouseY) const;
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
 	void handleMouseMove(double mouseX, double mouseY) override;
+	void handleInventoryModifiers(NetInventoryAction &pkt, int action, int button);
 
 	double mouseX = 0;
 	double mouseY = 0;
 
 	public:
 
-		InventoryUI(int width, int height, const TextureManager* texMgr = nullptr);
+		InventoryUI(int width,
+					int height,
+					const TextureManager* texMgr = nullptr,
+					std::shared_ptr<PlayerInventory> playerInv = nullptr,
+					std::shared_ptr<CraftingStation> craftingStation = nullptr,
+					std::shared_ptr<InventoryExternalVariablesRefs> inventoryExternalVarsRefs = nullptr);
 		~InventoryUI();
 
+		//return value corresponds to where we dragged over a new slot or not.
+		bool checkInventoryDrag(NetInventoryAction &pkt);
 		void drawHotbar();
 		void drawHealth(float health) const;
 		void drawInventory() const;
 
-		std::optional<std::pair<int, InventoryActionType>> lastAction; //awful solution
+		std::optional<NetInventoryAction> lastAction; //awful solution
 };
 
 #endif

@@ -465,6 +465,26 @@ constexpr bool inRange(ItemID id)
     return id > (ItemID)Enum::BEGIN && id < (ItemID)Enum::END;
 }
 
+inline static ItemID itemTypeToItemID(ItemType type) {
+	return std::visit([](auto& value) -> ItemID {
+		return static_cast<ItemID>(value);
+	}, type);
+}
+
+//contexpr alternative to the above function
+// constexpr ItemID itemTypeToItemID(const ItemType& type) {
+//     switch (type.index()) {
+//         case 0: // BlockType
+//             return static_cast<ItemID>(std::get<0>(type));
+// 		case 1: // WeaponType
+// 			return static_cast<ItemID>(std::get<1>(type));
+//         case 2: // MiscType
+//             return static_cast<ItemID>(std::get<2>(type));
+//         default:
+//             return 0; // or assert
+//     }
+// }
+
 inline static ItemType itemIDToItemType(ItemID id)
 {
     if (inRange<BlockType>(id))  return static_cast<BlockType>(id);

@@ -224,6 +224,7 @@ void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 			auto& group = static_cast<NetPacketGroup&>(*pkt);
 			for (auto& inner : group.unpack())
 				dispatchPacket(inner, cliaddr);
+			break;
 		}
 
 		case PacketType::NET_SKY_TIME: {
@@ -266,8 +267,49 @@ void Server::dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr)
 
 void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
 {
-    auto pkt = decodePacket(data, n);
-    dispatchPacket(pkt, cliaddr);
+    PacketPtr pkt;
+    try {
+        pkt = decodePacket(data, n);
+    } catch (const std::exception& e) {
+        std::cerr << "[Network] decode failed: " << e.what() << "\n";
+        return;
+    }
+    if (!pkt) return;
+
+    // Unknown peer: only NET_CONNECT is allowed. Dispatch it, then bootstrap the
+    // receiver's expectedSeq past this packet (its seq=0 is already consumed).
+    auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+    if (player == players.end()) {
+        if (pkt->type == PacketType::NET_CONNECT) {
+            dispatchPacket(pkt, cliaddr);
+            auto p = NetUtils::findPlayerByAddr(players, cliaddr);
+            if (p != players.end()) {
+                p->recvRel.expectedSeq    = 1;
+                p->recvRel.lastProgressAt = currTick;
+            }
+        }
+        return;
+    }
+
+    // Known peer: route through the reliability layer.
+    auto result = reliabilityIngest(player->recvRel, std::move(pkt), currTick);
+    if (result.nack) {
+        NetReliableNack nack;
+        nack.fromSeq = result.nack->first;
+        nack.toSeq   = result.nack->second;
+        sendPacketTo(nack, cliaddr);
+    }
+    for (auto& ready : result.ready) {
+        if (ready->type == PacketType::RELIABLE_NACK) {
+            auto& nack = static_cast<NetReliableNack&>(*ready);
+            auto bytesList = reliabilityOnNack(player->sendRel, nack.fromSeq, nack.toSeq);
+            for (const auto* b : bytesList) {
+                sendRawBytesTo(*b, cliaddr);
+            }
+            continue;
+        }
+        dispatchPacket(ready, cliaddr);
+    }
 }
 
 void Server::gameTick()
@@ -297,6 +339,9 @@ void Server::gameTick()
 		broadcastSkyTime();
 	if (tick % static_cast<int>(TPS * 2) == 0)
 		broadcastPingList();
+
+	reliabilityKeepalive();
+
 	sendAll();
 }
 
@@ -345,13 +390,14 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	std::cout << "New client connecting from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << "...\n";
 
     CPlayerInfo p; //deserializePlayerInfo(pkt.payload);
-	p.id = players.size();
+	p.id = nextPlayerId++;
 	p.addr = cliaddr;
 	p.connected = true;
 	p.computeSpawnPosition(world->getTerrainParams());
 
-	players.push_back(p);
-	world->livingEntities.push_back(p.movement);
+	auto movement = p.movement;
+	players.push_back(std::move(p));
+	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
 	
 	sendAccept(cliaddr);
@@ -386,7 +432,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		sendPacketTo(pkt, p.addr);
 	}
 
-	world->PlayerKnownChunks[player->id].clear();
+	// Erase rather than clear: ids are never reused, so the entry stays dead.
+	world->PlayerKnownChunks.erase(player->id);
 	world->livingEntities.erase(ent);
 	players.erase(player);
 }
@@ -406,12 +453,12 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		return;
 
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
-		player->movement->inventory.activeHotbarSlot = pkt.activeHotbarSlot;
+		player->movement->inventory->activeHotbarSlot = pkt.activeHotbarSlot;
 
 	if (pkt.keys & IN_DROP)
 	{
-		ItemType type = player->movement->inventory.getItemAtSlot(player->movement->inventory.activeHotbarSlot);
-		if (player->movement->inventory.removeItemsFromSlot(player->movement->inventory.activeHotbarSlot, 1))
+		ItemType type = player->movement->inventory->getItemAtSlot(player->movement->inventory->activeHotbarSlot);
+		if (player->movement->inventory->removeItemsFromSlot(player->movement->inventory->activeHotbarSlot, 1))
 		{
 			//instead of player->movement->getEntityHeight() * 0.6f should be some hand/waist height
 			glm::vec3 itemPos = player->movement->getPosition() + glm::vec3(0, player->movement->getEntityHeight() * 0.6f, 0) + player->movement->getCameraDir() * 0.2f;
@@ -419,11 +466,12 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 			world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), type, tick, true));
 
 			NetInventory dropItem;
-			int slot = player->movement->inventory.activeHotbarSlot;
+			int slot = player->movement->inventory->activeHotbarSlot;
+			dropItem.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 			dropItem.type = std::visit([](auto& value) -> ItemID {
 				return static_cast<ItemID>(value);
 			}, type);
-			dropItem.amount = player->movement->inventory.getSlot(slot).second;
+			dropItem.amount = player->movement->inventory->getSlot(slot).second;
 			dropItem.slot = slot;
 			sendPacketTo(dropItem, cliaddr);
 		}
@@ -464,7 +512,13 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 
 	if (world->processPlayerMouseInputs(*player, pkt, tick))
 	{
-		sendInventorySlot(player->movement->inventory.activeHotbarSlot, cliaddr);
+		NetInventory dropItem;
+		int slot = player->movement->inventory->activeHotbarSlot;
+		dropItem.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
+		dropItem.type = player->movement->inventory->getActiveItemID();
+		dropItem.amount = player->movement->inventory->getSlot(slot).second;
+		dropItem.slot = slot;
+		sendPacketTo(dropItem, cliaddr);
 	}
 
 	if (pkt.mouseButtons & (IN_LEFT_CLICK | IN_RIGHT_CLICK))
@@ -586,63 +640,108 @@ void Server::receiveTerrainParams(NetTerrainParams &pkt, const sockaddr_in &clia
 	std::cout << "[Server] Terrain parameters updated by client\n";
 }
 
-void Server::sendInventorySlot(int slot, const sockaddr_in &cliaddr)
-{
-	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
-	if (player == players.end())
-		return;
-
-	Inventory inv = player->movement->inventory;
-	ItemID itemIDAtSlot = inv.getItemIDAtSlot(slot);
-	itemStackSize_t amountAtSlot = inv.getSlot(slot).second;
-
-	NetInventory pkt;
-	pkt.type = itemIDAtSlot;
-	pkt.amount = amountAtSlot;
-	pkt.slot = slot;
-	sendPacketTo(pkt, cliaddr);
-}
-
 void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &cliaddr)
 {
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 	if (player == players.end())
 		return;
 
-	if (pkt.slot > HAND_ID) return;
 	int slot = pkt.slot;
 
-	Inventory &inv = player->movement->inventory;
+	std::shared_ptr<IInventory> inv;
+	if (static_cast<InventoryType>(pkt.inventoryTypeID) == InventoryType::PLAYER)
+		inv = player->movement->inventory;
+	else if (static_cast<InventoryType>(pkt.inventoryTypeID) == InventoryType::CRAFTING_STATION)
+		inv = player->movement->craftingStation;
+	else
+		return ;
 
-	ItemType typeAtSlot = inv.getItemAtSlot(slot);
-	ItemType typeAtHand = inv.getHand().first;
+	std::vector<PacketPtr> pktsToSend;
 
-	int amountAtSlot = inv.getSlot(slot).second;
-	int amountAtHand = inv.getHand().second;
-
-	if (pkt.actionType == InventoryActionType::INV_LEFT_CLICK)
+	//xd?
+	if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL || pkt.modifier == InventoryModifiers::INV_DRAG_END)
 	{
-		if (amountAtHand == 0 || typeAtSlot != typeAtHand)
-			inv.swapSlots(slot, HAND_ID);
-		else
+		player->movement->inventory->hasDraggedSlots = false;
+		player->movement->craftingStation->hasDraggedSlots = false;
+	}
+
+	auto sendHand = [&player, &pktsToSend]()
+	{
+		auto pkt = std::make_unique<NetInventory>();
+		
+		int handId = player->movement->inventory->getHandID();
+		auto hand = player->movement->inventory->getHandPtr();
+		if (!hand)
+			return ;
+			
+		pkt->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
+		pkt->type = itemTypeToItemID(hand->first);
+		pkt->amount = hand->second;
+		pkt->slot = handId;
+		pktsToSend.push_back(std::move(pkt));
+	};
+
+	if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL || pkt.modifier == InventoryModifiers::INV_DRAG_ADD)
+	{
+		auto slots = player->movement->getDraggedSlots();
+		if (slots->empty()) //would be bug
+			return ;
+
+		for (auto &slot : *slots)
 		{
-			inv.mergeSlot(HAND_ID, slot);
+			auto slotInv = slot.slotIndex.inventoryType;
+
+			//reset the inventories to their original values
+			if (slotInv == InventoryType::PLAYER)
+				player->movement->inventory->setSlot(slot.slotIndex.slotIndex, slot.originalValue.second, slot.originalValue.first);
+			else if (slotInv == InventoryType::CRAFTING_STATION)
+				player->movement->craftingStation->setSlot(slot.slotIndex.slotIndex, slot.originalValue.second, slot.originalValue.first);
+
+			int handId = player->movement->inventory->getHandID();
+			if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL || (pkt.modifier == InventoryModifiers::INV_DRAG_ADD && slot.slotIndex.slotIndex != handId))
+			{
+				auto pkt = std::make_unique<NetInventory>();
+				pkt->inventoryTypeID = static_cast<uint8_t>(slot.slotIndex.inventoryType);
+				pkt->type = itemTypeToItemID(slot.originalValue.first);
+				pkt->amount = slot.originalValue.second;
+				pkt->slot = slot.slotIndex.slotIndex;
+				pktsToSend.push_back(std::move(pkt));
+			}
 		}
-	} else if (pkt.actionType == InventoryActionType::INV_RIGHT_CLICK)
-	{
-		if (amountAtHand == 0)
-			inv.takeHalf(slot);
-		else
+
+		player->movement->inventory->setHandPtr(player->movement->getDraggedSlots()->front().originalValue);
+		if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL)
 		{
-			if (amountAtSlot == 0 || typeAtSlot == typeAtHand)
-				inv.takeOneItemFromSlot(HAND_ID, std::optional<int>(slot));
-			else
-				inv.swapSlots(slot, HAND_ID);
+			sendHand();
+			sendNewGroupPacketTo(pktsToSend, cliaddr);
+			slots->clear();
+			return ;
 		}
 	}
 
-	sendInventorySlot(slot, cliaddr);
-	sendInventorySlot(HAND_ID, cliaddr);
+	if (pkt.modifier == InventoryModifiers::INV_DRAG_ADD)
+	{
+		//try to add the new drag slot in both inventories;
+		player->movement->inventory->addDraggedSlot(pkt);
+		player->movement->craftingStation->addDraggedSlot(pkt);
+
+		if (pkt.inventoryTypeID == static_cast<uint8_t>(InventoryType::PLAYER) || player->movement->inventory->hasDraggedSlots == true)
+			player->movement->inventory->handleDragModifier(pkt, pktsToSend);
+		if (pkt.inventoryTypeID == static_cast<uint8_t>(InventoryType::CRAFTING_STATION) || player->movement->craftingStation->hasDraggedSlots == true)
+		{
+			player->movement->craftingStation->handleDragModifier(pkt, pktsToSend);
+			player->movement->craftingStation->checkResult(pktsToSend);
+		}
+
+		sendHand();
+
+		sendNewGroupPacketTo(pktsToSend, cliaddr);
+		return ;
+	}
+
+	if (inv->handleInventoryAction(pkt, pktsToSend))
+		sendNewGroupPacketTo(pktsToSend, cliaddr);
+
 }
 
 // TODO : Multithread
@@ -853,7 +952,7 @@ void Server::sendDeaths()
 			pkt.pitch		= ent->pitch;
 			pkt.positionFlags = 0;
 				
-			for (const auto player : players)
+			for (const auto& player : players)
 				sendPacketTo(pkt, player.addr);
 			
 			if (ent->diedByExplosion && ent->getLivingEntityType() != PLAYER)
@@ -934,13 +1033,13 @@ void Server::sendChunk(CPlayerInfo &player)
 		CH.Z = chunkPos.second;
 		CH.compressedSize = static_cast<uint32_t>(compressed.size());
 		CH.uncompressedSize = static_cast<uint32_t>(chunkData.size());
-		CH.flags = PacketFlags::Compressed;
+		CH.flags = CH.flags | PacketFlags::Compressed;
 		sendPacketTo(CH, player.addr);
 
-        // 3. Split into packets , not really needed for now as data will be smaller than MAXLINE but oh well!
-        // Account for packet encoding overhead: 1 (type) + 2 (seq) + 1 (flags) + 4 (X) + 4 (Z) + 4 (data len) = 16 bytes
-        size_t payloadCapacity = MAXLINE - 16;
-        uint16_t sequence = 0;
+        // 3. Split into packets. Each CHUNK_DATA is Reliable, so the layer
+        //    guarantees in-order delivery — no per-fragment sequence needed.
+        //    Account for packet encoding overhead: 1(type)+4(seq)+1(flags)+4(X)+4(Z)+4(len) = 18 bytes
+        size_t payloadCapacity = MAXLINE - 18;
 
         for (size_t offset = 0; offset < compressed.size(); offset += payloadCapacity) {
             size_t chunkSize = std::min(payloadCapacity, compressed.size() - offset);
@@ -948,12 +1047,10 @@ void Server::sendChunk(CPlayerInfo &player)
             NetChunkData CD;
 			CD.X = chunkPos.first;
 			CD.Z = chunkPos.second;
-			CD.sequence = sequence++;
 			CD.data.assign(compressed.begin() + offset, compressed.begin() + offset + chunkSize);
-			// CD.data.assign(compressed.begin(), compressed.end());
 
 			if (compressed.size() - offset <= payloadCapacity)
-            	CD.flags = PacketFlags::FinalChunk; // could mark as compressed & vital
+            	CD.flags = CD.flags | PacketFlags::FinalChunk;
 
             sendPacketTo(CD, player.addr);
         }
@@ -1096,32 +1193,38 @@ void Server::sendMessage(CPlayerInfo &player)
 
 void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_in& cliaddr)
 {
+    // Groups carry state that's always reliable-worthy today (modified blocks,
+    // connect handshake batches). Mark the outer envelope reliable so the
+    // whole batch is delivered in order. Inner packets are unpacked after
+    // ingest and bypass the reliability layer — their own flags are ignored.
     NetPacketGroup group;
-    int currSize = 6; // 6 bytes because technically it's 2 bytes of group packet u16 "count" + 4bytes of outer layer header (u8+u16+u8). probably.
+    group.flags = group.flags | PacketFlags::Reliable;
+    int currSize = 8; // header (6) + u16 group count (2)
 
-    auto it = pkts.begin();
-    while (it != pkts.end()) {
-        auto buf = encodePacket(**it);
-        int nextSize = currSize + 4 + buf.size(); // 4 bytes for per-packet size header
+	auto it = pkts.begin();
+	while (it != pkts.end()) {
+		auto buf = encodePacket(**it);
+		int nextSize = currSize + 4 + buf.size(); // 4 bytes for per-packet size header
 
         // if next packet would exceed max size -> send current group first
         if (nextSize > MAXLINE) {
             if (!group.rawPackets.empty()) {
                 sendPacketTo(group, cliaddr);
                 group = NetPacketGroup();
-                currSize = 6; // reset
+                group.flags = group.flags | PacketFlags::Reliable;
+                currSize = 8;
             }
             continue; // retry current packet
         }
 
-        group.rawPackets.push_back(std::move(buf)); // use rawPackets directly
-        currSize = nextSize;
-        it = pkts.erase(it);
-    }
+		group.rawPackets.push_back(std::move(buf)); // use rawPackets directly
+		currSize = nextSize;
+		it = pkts.erase(it);
+	}
 
-    if (!group.rawPackets.empty()) {
-        sendPacketTo(group, cliaddr);
-    }
+	if (!group.rawPackets.empty()) {
+		sendPacketTo(group, cliaddr);
+	}
 }
 
 void Server::pingLoop() {
@@ -1148,8 +1251,20 @@ void Server::pingLoop() {
 	}
 }
 
-void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
-	auto bytes = encodePacket(pkt);
+void Server::sendPacketTo(Packet& pkt, const sockaddr_in &cliaddr) {
+	std::vector<uint8_t> bytes;
+	if (hasFlag(pkt.flags, PacketFlags::Reliable)) {
+		auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+		if (player != players.end()) {
+			bytes = reliabilityStamp(player->sendRel, pkt);
+		} else {
+			// No per-peer state yet (e.g., pre-accept). Send raw; unrecoverable if lost.
+			bytes = encodePacket(pkt);
+		}
+	} else {
+		bytes = encodePacket(pkt);
+	}
+
 	int n = sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
     if (n < 0) {
 #ifdef _WIN32
@@ -1164,6 +1279,21 @@ void Server::sendPacketTo(const Packet& pkt, const sockaddr_in &cliaddr) {
             std::cout << "[Network] Sent NET_ACCEPT to " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << " (" << n << " bytes)\n";
         }
     }
+}
+
+void Server::sendRawBytesTo(const std::vector<uint8_t>& bytes, const sockaddr_in &cliaddr) {
+	sendto(sockfd, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0, (sockaddr*)&cliaddr, sizeof(cliaddr));
+}
+
+void Server::reliabilityKeepalive() {
+	for (auto& p : players) {
+		if (reliabilityShouldKeepalive(p.recvRel, currTick)) {
+			NetReliableNack nack;
+			nack.fromSeq = p.recvRel.expectedSeq;
+			nack.toSeq   = p.recvRel.expectedSeq;
+			sendPacketTo(nack, p.addr);
+		}
+	}
 }
 
 void Server::sendAccept(const sockaddr_in &cliaddr)
@@ -1214,27 +1344,31 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		int twohundred1 = 200;
 		int twohundred2 = 200;
 		int twohundred3 = 200;
-		player->movement->inventory.insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
-		player->movement->inventory.insertItemsToSlot(BlockType::WATER, 8, twohundred1);
-		player->movement->inventory.insertItemsToSlot(BlockType::STONE, 1, twohundred2);
-		player->movement->inventory.insertItemsToSlot(BlockType::CACTUS, 2, twohundred3);
+		player->movement->inventory->insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
+		player->movement->inventory->insertItemsToSlot(BlockType::WATER, 8, twohundred1);
+		player->movement->inventory->insertItemsToSlot(BlockType::STONE, 1, twohundred2);
+		player->movement->inventory->insertItemsToSlot(BlockType::CACTUS, 2, twohundred3);
 
 		auto pkt1 = std::make_unique<NetInventory>();
+		pkt1->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 		pkt1->amount = 200;
 		pkt1->slot = 0;
 		pkt1->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::DIRT);
 
 		auto pkt2 = std::make_unique<NetInventory>();
+		pkt2->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 		pkt2->amount = 200;
 		pkt2->slot = 8;
 		pkt2->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::WATER);
 
 		auto pkt3 = std::make_unique<NetInventory>();
+		pkt3->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 		pkt3->amount = 200;
 		pkt3->slot = 1;
 		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);
 
 		auto pkt4 = std::make_unique<NetInventory>();
+		pkt4->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
 		pkt4->amount = 200;
 		pkt4->slot = 2;
 		pkt4->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::CACTUS);
