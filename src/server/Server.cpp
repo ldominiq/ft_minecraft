@@ -811,19 +811,10 @@ void Server::sendDeaths()
 		if (ent->pendingDeathRemovalTicks > 0)
 		{
 			ent->pendingDeathRemovalTicks--;
-			if (ent->pendingDeathRemovalTicks == 0)
+			if (ent->pendingDeathRemovalTicks == 0 && ent->getLivingEntityType() != PLAYER)
 			{
-				if (ent->getLivingEntityType() == PLAYER)
-				{
-					// Player: run the respawn flow now that the fall-over has played out.
-					ent->onDeath();
-					ent->deathBroadcast = false;
-				}
-				else
-				{
-					le = world->livingEntities.erase(le);
-					continue;
-				}
+				le = world->livingEntities.erase(le);
+				continue;
 			}
 			le++;
 			continue;
@@ -831,29 +822,32 @@ void Server::sendDeaths()
 
 		if (ent->health <= 0 && !ent->deathBroadcast)
 		{
+			ent->onDeath();
 			messages.push_back("Someone has died miserably");
 			ent->deathBroadcast = true;
 
-			NetEntityMove pkt;
-			pkt.eEntityType = ent->getEntityType();
-			pkt.entityID    = ent->getID();
-			pkt.type        = -1;
-			pkt.positionX   = ent->getPosition().x;
-			pkt.positionY   = ent->getPosition().y;
-			pkt.positionZ   = ent->getPosition().z;
-			pkt.yaw         = ent->yaw;
+			if (ent->getLivingEntityType() != PLAYER) {
+				NetEntityMove pkt;
+				pkt.eEntityType = ent->getEntityType();
+				pkt.entityID    = ent->getID();
+				pkt.type        = -1;
+				pkt.positionX   = ent->getPosition().x;
+				pkt.positionY   = ent->getPosition().y;
+				pkt.positionZ   = ent->getPosition().z;
+				pkt.yaw         = ent->yaw;
+				
+				for (const auto player : players)
+					sendPacketTo(pkt, player.addr);
+			}
 
-			for (const auto player : players)
-				sendPacketTo(pkt, player.addr);
 
-			if (ent->getLivingEntityType() != PLAYER && ent->diedByExplosion)
+			if (ent->diedByExplosion)
 			{
 				// No body left — creepers that self-detonate vanish immediately.
 				le = world->livingEntities.erase(le);
 				continue;
 			}
-			// Linger so clients can animate the fall-over. Players respawn when the
-			// countdown hits 0 (above); mobs get erased.
+			// Linger so clients can animate the fall-over.
 			ent->pendingDeathRemovalTicks = DEATH_ANIMATION_TICKS;
 		}
 		le++;
