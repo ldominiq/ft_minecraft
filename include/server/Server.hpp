@@ -81,7 +81,7 @@ private:
 	void receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr);
 	void receiveTerrainParams(NetTerrainParams &pkt, const sockaddr_in &cliaddr);
 	void receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &cliaddr);
-	void sendInventorySlot(int slot, const sockaddr_in &cliaddr);
+	// void sendInventorySlot(int slot, NetInventoryAction &pkt, const sockaddr_in &cliaddr);
 
 	void sendAll();
 	void sendNewGroupPacketTo(std::vector<PacketPtr> &pkts, const sockaddr_in &cliaddr);

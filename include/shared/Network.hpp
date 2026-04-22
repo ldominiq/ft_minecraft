@@ -79,16 +79,20 @@ enum MouseInputs : uint8_t {
 	IN_RIGHT_CLICK	= 1 << 1,  // right click
 };
 
+
 enum InventoryActionType : uint8_t {
-	INV_LEFT_CLICK,          // normal click
+	INV_LEFT_CLICK,
 	INV_RIGHT_CLICK,
-	INV_SHIFT_CLICK,
+};
+
+enum InventoryModifiers : uint8_t {
+	INV_DOUBLE_CLICK,
+	INV_SHIFT,
 	INV_DRAG_BEGIN,
 	INV_DRAG_ADD,       // add slot to drag selection
+	INV_DRAG_CANCEL,
 	INV_DRAG_END,
 	INV_DROP_CURSOR,    // click outside inventory
-	//   OPEN_CONTAINER could be useful for other inventories like chests etc...
-	//   CLOSE_CONTAINER 
 };
 
 inline PacketFlags operator|(PacketFlags a, PacketFlags b){

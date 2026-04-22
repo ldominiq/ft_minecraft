@@ -201,6 +201,7 @@ target_include_directories(ft_minecraft PRIVATE
 	${CMAKE_SOURCE_DIR}/include/client/menus
     ${CMAKE_SOURCE_DIR}/include/shared
 	${CMAKE_SOURCE_DIR}/include/shared/Mobs
+	${CMAKE_SOURCE_DIR}/include/shared/Inventories
     ${glm_SOURCE_DIR}
     ${fastnoise_SOURCE_DIR}/Cpp
     ${glad_SOURCE_DIR}/include
@@ -234,6 +235,7 @@ target_include_directories(ft_minecraft_server PRIVATE
     ${CMAKE_SOURCE_DIR}/include/server
     ${CMAKE_SOURCE_DIR}/include/shared
 	${CMAKE_SOURCE_DIR}/include/shared/Mobs
+	${CMAKE_SOURCE_DIR}/include/shared/Inventories
     ${glm_SOURCE_DIR}
     ${fastnoise_SOURCE_DIR}/Cpp
 	${zstd_SOURCE_DIR}/lib
