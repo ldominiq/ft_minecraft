@@ -40,6 +40,7 @@ void PlayerMovement::onDeath()
 	accumulatedFallDistance = 0.0f;
 	jumpBoostApplied = false;
 	pendingInputs.clear();
+	pendingArmSwing = false;
 }
 
 //for creative

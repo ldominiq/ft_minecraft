@@ -395,7 +395,11 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 {
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 	if (player == players.end())
-		return ;
+		return;
+
+	// Dead or waiting to respawn: ignore all movement/keyboard input.
+	if (player->movement->health <= 0.0f || player->movement->pendingDeathRemovalTicks > 0)
+		return;
 
  	// Discard outdated or duplicate packets
 	if (pkt.serverClientReconciliationTick <= player->serverClientReconciliationTick)
@@ -453,6 +457,10 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 	if (player == players.end())
 		return ;
+
+	// Dead or waiting to respawn: ignore all mouse actions.
+	if (player->movement->health <= 0.0f || player->movement->pendingDeathRemovalTicks > 0)
+		return;
 
 	if (world->processPlayerMouseInputs(*player, pkt, tick))
 	{
@@ -801,7 +809,7 @@ void Server::despawnDistantMobs()
 void Server::sendDeaths()
 {
 	// How many server ticks the body lingers so clients can play the fall-over animation.
-	constexpr int32_t DEATH_ANIMATION_TICKS = 20; // ~1s at 20 TPS
+	constexpr int32_t DEATH_ANIMATION_TICKS = static_cast<int32_t>(TPS * 1); // ~1s at 20 TPS
 
 	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end();)
 	{
@@ -813,13 +821,16 @@ void Server::sendDeaths()
 			ent->pendingDeathRemovalTicks--;
 			if (ent->pendingDeathRemovalTicks == 0)
 			{
-				if (ent->getLivingEntityType() != PLAYER) {
+				if (ent->getLivingEntityType() == PLAYER) {
+					ent->onDeath(); // respawn now after animation window
+					ent->deathBroadcast = false; // reset for potential respawn
+					ent->diedByExplosion = false;
+				}
+				else {
 					le = world->livingEntities.erase(le);
 					continue;
 				}
 
-				ent->deathBroadcast = false; // reset for potential respawn
-				ent->diedByExplosion = false;
 			}
 			le++;
 			continue;
@@ -827,32 +838,32 @@ void Server::sendDeaths()
 
 		if (ent->health <= 0 && !ent->deathBroadcast)
 		{
-			ent->onDeath();
 			messages.push_back("Someone has died miserably");
 			ent->deathBroadcast = true;
 
-			if (ent->getLivingEntityType() != PLAYER) {
-				NetEntityMove pkt;
-				pkt.eEntityType = ent->getEntityType();
-				pkt.entityID    = ent->getID();
-				pkt.type        = -1;
-				pkt.positionX   = ent->getPosition().x;
-				pkt.positionY   = ent->getPosition().y;
-				pkt.positionZ   = ent->getPosition().z;
-				pkt.yaw         = ent->yaw;
+			
+			NetEntityMove pkt;
+			pkt.eEntityType = ent->getEntityType();
+			pkt.entityID    = ent->getID();
+			pkt.type        = static_cast<uint16_t>(-1);
+			pkt.positionX   = ent->getPosition().x;
+			pkt.positionY   = ent->getPosition().y;
+			pkt.positionZ   = ent->getPosition().z;
+			pkt.yaw         = ent->yaw;
+			pkt.pitch		= ent->pitch;
+			pkt.positionFlags = 0;
 				
-				for (const auto player : players)
-					sendPacketTo(pkt, player.addr);
-			}
-
-
-			if (ent->diedByExplosion)
+			for (const auto player : players)
+				sendPacketTo(pkt, player.addr);
+			
+			if (ent->diedByExplosion && ent->getLivingEntityType() != PLAYER)
 			{
 				// No body left — creepers that self-detonate vanish immediately.
 				le = world->livingEntities.erase(le);
 				continue;
 			}
-			// Linger so clients can animate the fall-over.
+
+			// start death animation window
 			ent->pendingDeathRemovalTicks = DEATH_ANIMATION_TICKS;
 		}
 		le++;
