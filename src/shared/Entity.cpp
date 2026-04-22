@@ -218,8 +218,11 @@ void Entity::calculateNewPosition(const ICommonWorld &world)
 // Check if camera/player is underwater
 bool Entity::isUnderwater(const ICommonWorld &world) const
 {
-	// Check at camera/view level
-	glm::vec3 checkPos = this->getPosition() + glm::vec3(0.0f, 0.1f, 0.0f);
+	// Position is at feet, so test near eye level.
+	// Player eye level is ~entityHeight - 0.3f (matches forehead offset).
+	const float eyeOffsetY = (entityHeight > 0.3f) ? (entityHeight - 0.3f) : 0.1f;
+	const glm::vec3 checkPos = this->getPosition() + glm::vec3(0.0f, eyeOffsetY, 0.0f);
+
 	// Floor the position to get block coordinates
 	glm::ivec3 blockPos = glm::ivec3(glm::floor(checkPos));
 
