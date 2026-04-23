@@ -12,8 +12,7 @@ void main()
 {
     if (uUseTexture)
     {
-        // Flip V so (0,0) on the PNG (top-left in authoring) maps correctly.
-        vec4 c = texture(uSkin, vec2(vTex.x, 1.0 - vTex.y));
+        vec4 c = texture(uSkin, vTex);
         if (c.a < 0.1) discard;
         FragColor = vec4(c.rgb, 1.0);
     }
