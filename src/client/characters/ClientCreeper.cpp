@@ -1,5 +1,6 @@
 
 #include "ClientCreeper.hpp"
+#include <algorithm>
 #include <cmath>
 
 #ifndef M_PI
@@ -129,23 +130,30 @@ void ClientCreeper::walkAnimation(float deltaTime)
 	rotateBodyPart(backLeftLeg,                  legPivotY,  angle);
 	rotateBodyPart(characterBodyParts.leftLeg,   legPivotY, -angle);
 	rotateBodyPart(backRightLeg,                 legPivotY, -angle);
+}
 
-	// Fuse inflation: once primed, the creeper swells like a balloon, growing steadily
-	// until it pops. Roughly matches the 1.5s server fuse. A small high-frequency
-	// wobble on top makes the buildup feel "alive" and signals urgency.
-	float pulseScale = 1.0f;
-	if (clientPrimed) {
-		primedPhase += deltaTime;
-		constexpr float FUSE_DURATION = 1.5f;
-		float t = std::min(primedPhase / FUSE_DURATION, 1.0f);
-		float growth = 1.0f + 0.9f * t;                    // 1.0 -> 1.9
-		float wobble = 0.08f * std::sin(primedPhase * 18.0f) * t;
-		pulseScale = growth + wobble;
-	} else {
-		primedPhase = 0.0f;
-	}
+void ClientCreeper::tickFuseAnimation(float deltaTime)
+{
+	// Ease inflation toward 1 while triggered, back toward 0 otherwise.
+	constexpr float INFLATE_DURATION = 1.5f;
+	constexpr float DEFLATE_DURATION = 0.5f;
+	constexpr float MAX_GROWTH       = 0.9f;
+
+	if (clientPrimed)
+		inflation += deltaTime / INFLATE_DURATION;
+	else
+		inflation -= deltaTime / DEFLATE_DURATION;
+	inflation = std::clamp(inflation, 0.0f, 1.0f);
+
+	// Wobble amplitude and frequency both scale with inflation^2 so the creeper
+	// visibly strains harder as it nears the pop
+	wobblePhase += deltaTime * (8.0f + 20.0f * inflation);
+	float wobbleAmp = 0.12f * inflation * inflation;
+	float growth    = 1.0f + MAX_GROWTH * inflation;
+	float pulse     = growth + wobbleAmp * std::sin(wobblePhase);
+
 	if (characterBodyParts.torso)
-		characterBodyParts.torso->scale = glm::scale(glm::mat4(1.0f), torsoBaseScale * pulseScale);
+		characterBodyParts.torso->scale = glm::scale(glm::mat4(1.0f), torsoBaseScale * pulse);
 	if (characterBodyParts.head)
-		characterBodyParts.head->scale  = glm::scale(glm::mat4(1.0f), headBaseScale  * pulseScale);
+		characterBodyParts.head->scale  = glm::scale(glm::mat4(1.0f), headBaseScale  * pulse);
 }

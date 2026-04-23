@@ -16,8 +16,15 @@ class ClientCreeper : public Creeper, public IClientEntity
 		void swingArmAnimation(float /*deltaTime*/) override {} // no arms
 		void applyHeadPitch(float /*pitchDegrees*/) override {}  // creeper head is fixed
 
+		// Inflate/deflate the body every frame, independent of movement, so the
+		// fuse animation keeps advancing while the creeper stands still.
+		void tickFuseAnimation(float deltaTime);
+
 		// Visible primed (fused) state — client toggles from packet flag, draw pulses the body.
 		bool clientPrimed = false;
+
+		// Smoothed 0..1 inflation; drives torso/head scale and wobble.
+		float inflation = 0.0f;
 
 	protected:
 		void setPartsDimensions() override;
@@ -32,7 +39,7 @@ class ClientCreeper : public Creeper, public IClientEntity
 		glm::vec3 torsoBaseScale = glm::vec3(1.0f);
 		glm::vec3 headBaseScale  = glm::vec3(1.0f);
 
-		float primedPhase = 0.0f;
+		float wobblePhase = 0.0f;
 };
 
 #endif

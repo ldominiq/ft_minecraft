@@ -1,4 +1,5 @@
 #include "LivingEntitiesManager.hpp"
+#include "ClientCreeper.hpp"
 
 LivingEntitiesManager::LivingEntitiesManager() : characterShader("shaders/characterCube.vert", "shaders/characterCube.frag")
 {
@@ -32,7 +33,14 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 
 		const bool swinging = c->characterBodyParts.onArmSwingAnimation;
 		const bool dying = c->characterBodyParts.dying;
-		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos)
+
+		// Advance creeper inflate/deflate every frame
+		auto cc = std::dynamic_pointer_cast<ClientCreeper>(c);
+		if (cc && !dying)
+			cc->tickFuseAnimation(deltaTime);
+
+		const bool creeperAnimating = cc && (cc->clientPrimed || cc->inflation > 0.0f);
+		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating)
 		{
 			c->characterBodyParts.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));
 			glm::vec3 meshPos = c->hasRenderPos ? c->renderPos : c->getPosition();
