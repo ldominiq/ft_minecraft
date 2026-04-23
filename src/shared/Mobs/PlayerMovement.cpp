@@ -1,5 +1,6 @@
 
 #include "PlayerMovement.hpp"
+#include "CommonWorld.hpp"
 
 PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 {
@@ -169,8 +170,111 @@ glm::vec3 PlayerMovement::getDesiredMove()
 	return glm::vec3(this->velocity.x, 0.0f, this->velocity.z);
 }
 
+void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
+{
+	accumulatedFallDistance = 0.0f;
+
+    NetPlayerInputs inputs = lastInputsPktRecvd;
+
+    float speed = 0.06f;
+    float drag = 0.85f;
+
+    // Build forward vector from camera
+    glm::vec3 forward;
+    forward.x = std::cos(glm::radians(pitch)) * std::cos(glm::radians(yaw));
+    forward.y = std::sin(glm::radians(pitch));
+    forward.z = std::cos(glm::radians(pitch)) * std::sin(glm::radians(yaw));
+    forward = glm::normalize(forward);
+
+    // Right vector (for strafing)
+    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0, 1, 0)));
+
+    glm::vec3 accel(0.0f);
+
+    if (inputs.keys & IN_FORWARD)  accel += forward;
+    if (inputs.keys & IN_BACKWARD) accel -= forward;
+    if (inputs.keys & IN_LEFT)     accel -= right;
+    if (inputs.keys & IN_RIGHT)    accel += right;
+
+    if (glm::length(accel) > 0.0f)
+        accel = glm::normalize(accel) * speed;
+
+    // Apply drag (water resistance)
+    this->velocity *= drag;
+
+    // Apply movement input
+    this->velocity += accel;
+
+    // Idle sinking
+    if (glm::length(accel) == 0.0f)
+    {
+        this->velocity.y -= 0.02f; // slow fall
+    }
+
+	if (inputs.keys & IN_UP)
+		this->velocity.y += 0.045f;
+
+    // Clamp overall speed
+    float maxSpeed = 0.4f;
+    if (glm::length(this->velocity) > maxSpeed)
+        this->velocity = glm::normalize(this->velocity) * maxSpeed;
+
+    // Apply movement directly
+    glm::vec3 newPos = this->position + this->velocity;
+
+	// if (!aabbCollidesWithWorld(this->constructAABB(newPos), world))
+    // 	setPosition(newPos);
+
+	glm::vec3 pos = this->position;
+
+	// --- X axis ---
+	glm::vec3 tryX = pos + glm::vec3(this->velocity.x, 0.0f, 0.0f);
+	if (!aabbCollidesWithWorld(constructAABB(tryX), world)) {
+		pos.x = tryX.x;
+	} else {
+		this->velocity.x = 0.0f;
+	}
+
+	// --- Y axis ---
+	glm::vec3 tryY = pos + glm::vec3(0.0f, this->velocity.y, 0.0f);
+	if (!aabbCollidesWithWorld(constructAABB(tryY), world)) {
+		pos.y = tryY.y;
+	} else {
+		this->velocity.y = 0.0f;
+	}
+
+	// --- Z axis ---
+	glm::vec3 tryZ = pos + glm::vec3(0.0f, 0.0f, this->velocity.z);
+	if (!aabbCollidesWithWorld(constructAABB(tryZ), world)) {
+		pos.z = tryZ.z;
+	} else {
+		this->velocity.z = 0.0f;
+	}
+
+	setPosition(pos);
+}
+
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 {
+
+	auto updatePos = [this, &world]()
+	{
+		if (gamemode == GAMEMODES::SURVIVAL) {
+			if (world.isUnderwater(this->position))
+				calculateUnderwaterPosition(world);
+			else
+			{
+				doJump(world);
+				glm::vec3 desiredMove = getDesiredMove();
+				this->calculateNewXZPosition(world, desiredMove);
+				this->calculateNewYPosition(world);
+			}
+		} else if (gamemode == GAMEMODES::SPECTATOR) {
+			updatePosition();
+		}
+		this->jump = false;
+	};
+
 	if (skipDuplicateInputs) {
 		// Server path: drain the per-player input queue, running one physics step per
 		// queued input.  When the client sends N inputs in a single frame (low FPS
@@ -189,15 +293,8 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 			setYawAndPitch(lastInputsPktRecvd.yaw, lastInputsPktRecvd.pitch);
 			updateCameraVectors();
 
-			if (gamemode == GAMEMODES::SURVIVAL) {
-				doJump(world);
-				glm::vec3 desiredMove = getDesiredMove();
-				this->calculateNewXZPosition(world, desiredMove);
-				this->calculateNewYPosition(world);
-			} else if (gamemode == GAMEMODES::SPECTATOR) {
-				updatePosition();
-			}
-			this->jump = false;
+			updatePos();
+
 			processed++;
 		}
 		this->hasHorizontalInput =
@@ -209,14 +306,6 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 		this->hasHorizontalInput =
 			(lastInputsPktRecvd.keys & (IN_FORWARD | IN_BACKWARD | IN_LEFT | IN_RIGHT)) != 0;
 
-		if (gamemode == GAMEMODES::SURVIVAL) {
-			doJump(world);
-			glm::vec3 desiredMove = getDesiredMove();
-			this->calculateNewXZPosition(world, desiredMove);
-			this->calculateNewYPosition(world);
-		} else if (gamemode == GAMEMODES::SPECTATOR) {
-			updatePosition();
-		}
-		this->jump = false;
+		updatePos();
 	}
 }
