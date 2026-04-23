@@ -60,6 +60,18 @@ void LivingEntity::calculateNewYPosition(const ICommonWorld &world)
 		applyFallDamage();
 		accumulatedFallDistance = 0.0f;
 	}
+
+	static auto lastDamageTime = std::chrono::steady_clock::now();
+	if (this->position.y < 0) // fell into void
+	{
+		auto now = std::chrono::steady_clock::now();
+
+		if (now - lastDamageTime >= std::chrono::seconds(1))
+		{
+			this->health -= 4;
+			lastDamageTime = now;
+		}
+	}
 }
 
 glm::vec3 LivingEntity::getDesiredMove()
