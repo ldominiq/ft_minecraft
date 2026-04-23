@@ -1104,7 +1104,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
     glEndQuery(GL_TIME_ELAPSED);
 
-	glm::vec3 camPos = camera->getViewMatrix()[3]; // Extract camera world position from view matrix
+	glm::vec3 camPos = glm::inverse(camera->getViewMatrix())[3]; // Extract camera world position from view matrix
     const bool cameraUnderwater = renderer->isUnderwater(camPos);
 
     glBeginQuery(GL_TIME_ELAPSED, queryDrawSkyPool[currentQueryIndex]);

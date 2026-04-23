@@ -209,8 +209,8 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 
 void Entity::calculateUnderwaterPosition(const ICommonWorld &world)
 {
-	velocity.y -= GRAVITY * 0.02f; // buoyancy
-	velocity.y = glm::clamp(velocity.y, -0.3f, 0.3f); // clamp vertical speed (prevents crazy acceleration)
+	//placeholder code.
+	velocity.y -= GRAVITY * 0.02f; // sinking
 }
 
 void Entity::calculateNewPosition(const ICommonWorld &world)

@@ -219,12 +219,7 @@ void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
     if (glm::length(this->velocity) > maxSpeed)
         this->velocity = glm::normalize(this->velocity) * maxSpeed;
 
-    // Apply movement directly
-    glm::vec3 newPos = this->position + this->velocity;
-
-	// if (!aabbCollidesWithWorld(this->constructAABB(newPos), world))
-    // 	setPosition(newPos);
-
+    // Check collisions and apply final position
 	glm::vec3 pos = this->position;
 
 	// --- X axis ---
