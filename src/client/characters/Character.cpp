@@ -1,4 +1,5 @@
 #include "Character.hpp"
+#include "SkinBox.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -61,55 +62,76 @@ void Character::createCharacterAt(const glm::vec3 &pos, float width, float heigh
     YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm * height, 0);
     character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
 
+    // Skin UV boxes on the classic 64x32 Steve layout.
+    // Arms/legs on the skin are h=12, but the rig splits each into upper + lower
+    // (each half-height), so we use vertical sub-slices.
+    constexpr int SW = 64, SH = 32;
+    auto headUVs       = boxUVs(0,  0, 8, 8, 8, SW, SH);
+    auto torsoUVs      = boxUVs(16, 16, 8, 12, 4, SW, SH);
+    auto armUpperUVs   = boxUVsSlice(40, 16, 4, 12, 4, SW, SH, 0.0f, 0.5f);
+    auto armLowerUVs   = boxUVsSlice(40, 16, 4, 12, 4, SW, SH, 0.5f, 1.0f);
+    auto legUpperUVs   = boxUVsSlice(0,  16, 4, 12, 4, SW, SH, 0.0f, 0.5f);
+    auto legLowerUVs   = boxUVsSlice(0,  16, 4, 12, 4, SW, SH, 0.5f, 1.0f);
+
     // Torso
     auto torso = std::make_shared<Shape>(glm::vec3(1,0,0));
     torso->scale = glm::scale(glm::mat4(1.0f), glm::vec3(torsoScaleX, torsoScaleY, torsoScaleZ));
+    torso->setSkinBox(torsoUVs);
     character.addChild(torso);
 
     // Head
     auto head = std::make_shared<Shape>(glm::vec3(0,1,0));
     head->scale = glm::scale(glm::mat4(1.0f), glm::vec3(headScaleX, headScaleY, headScaleZ));
     head->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, headTransY, 0));
+    head->setSkinBox(headUVs);
     character.addChild(head);
 
     // Arms (upper)
     auto rightArm = std::make_shared<Shape>(glm::vec3(0,0,1));
     rightArm->scale = glm::scale(glm::mat4(1.0f), glm::vec3(armScaleX, armScaleY, armScaleZ));
     rightArm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, armTransY, armTransZ));
+    rightArm->setSkinBox(armUpperUVs);
     character.addChild(rightArm);
 
     auto leftArm = std::make_shared<Shape>(glm::vec3(0,0,1));
     leftArm->scale = glm::scale(glm::mat4(1.0f), glm::vec3(armScaleX, armScaleY, armScaleZ));
     leftArm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, armTransY, -armTransZ));
+    leftArm->setSkinBox(armUpperUVs);
     character.addChild(leftArm);
 
     // Forearms (lower arm, hanging below upper arm)
     auto rightForearm = std::make_shared<Shape>(glm::vec3(0.5f,0,1));
     rightForearm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
+    rightForearm->setSkinBox(armLowerUVs);
     rightArm->addChild(rightForearm);
 
     auto leftForearm = std::make_shared<Shape>(glm::vec3(0.5f,0,1));
     leftForearm->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
+    leftForearm->setSkinBox(armLowerUVs);
     leftArm->addChild(leftForearm);
 
     // Legs (upper)
     auto rightLeg = std::make_shared<Shape>(glm::vec3(1,1,0));
     rightLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(legScaleX, legScaleY, legScaleZ));
     rightLeg->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, legTransY, legTransZ));
+    rightLeg->setSkinBox(legUpperUVs);
     character.addChild(rightLeg);
 
     auto leftLeg = std::make_shared<Shape>(glm::vec3(1,1,0));
     leftLeg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(legScaleX, legScaleY, legScaleZ));
     leftLeg->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, legTransY, -legTransZ));
+    leftLeg->setSkinBox(legUpperUVs);
     character.addChild(leftLeg);
 
     // Calves
     auto rightCalf = std::make_shared<Shape>(glm::vec3(1,1,0.5f));
     rightCalf->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
+    rightCalf->setSkinBox(legLowerUVs);
     rightLeg->addChild(rightCalf);
 
     auto leftCalf = std::make_shared<Shape>(glm::vec3(1,1,0.5f));
     leftCalf->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
+    leftCalf->setSkinBox(legLowerUVs);
     leftLeg->addChild(leftCalf);
 
     characterBodyParts.character = character;

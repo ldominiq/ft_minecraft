@@ -1,6 +1,8 @@
 #ifndef I_CLIENT_ENTITY_HPP
 #define I_CLIENT_ENTITY_HPP
 
+#include <string>
+
 #include "LivingEntity.hpp"
 #include "Character.hpp"
 
@@ -15,6 +17,11 @@ class IClientEntity : public virtual LivingEntity, public virtual Character {
 		// raw physics position, which prevents the shake.
 		glm::vec3 renderPos;
 		bool hasRenderPos = false;
+
+		// Name of the skin PNG to bind when rendering this entity. Empty string
+		// means "no skin — fall back to per-limb colors"
+		// Resolved against SkinManager at draw time.
+		virtual std::string skinName() const { return ""; }
 };
 
 #endif

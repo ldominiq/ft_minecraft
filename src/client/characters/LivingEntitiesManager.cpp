@@ -5,6 +5,12 @@ LivingEntitiesManager::LivingEntitiesManager() : characterShader("shaders/charac
 {
 	//builds the meshes for the cube (body parts)
 	createCube();
+
+	// Load entity skins. Missing files fall through — manager::get returns 0
+	// and we render with per-limb colors as a fallback.
+	skinManager.load("player",  "assets/skins/steve.png");
+	skinManager.load("creeper", "assets/skins/creeper.png");
+	skinManager.load("zombie", "assets/skins/zombie.png");
 }
 
 LivingEntitiesManager::~LivingEntitiesManager()
@@ -20,6 +26,7 @@ void LivingEntitiesManager::add(std::weak_ptr<IClientEntity> character)
 void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const float deltaTime)
 {
 	characterShader.use();
+	characterShader.setInt("uSkin", 0);
 	auto identity = glm::mat4(1.0f);
 
 	for (const auto &character : characters)
@@ -30,6 +37,19 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 
 		if (!c->DoDraw())
 			continue ;
+
+		// Bind this entity's skin (if any) before issuing its draw calls.
+		GLuint skin = skinManager.get(c->skinName());
+		if (skin)
+		{
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, skin);
+			characterShader.setBool("uUseTexture", true);
+		}
+		else
+		{
+			characterShader.setBool("uUseTexture", false);
+		}
 
 		const bool swinging = c->characterBodyParts.onArmSwingAnimation;
 		const bool dying = c->characterBodyParts.dying;
