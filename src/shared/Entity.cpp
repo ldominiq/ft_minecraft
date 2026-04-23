@@ -49,9 +49,7 @@ bool Entity::aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world) {
 }
 
 bool Entity::entityCollidesWithBlock(const glm::vec3 blockPos) {
-	glm::vec3 tmpPos = position;
-	tmpPos.y = tmpPos.y;
-    AABB box = constructAABB(tmpPos);
+    AABB box = constructAABB(position);
 	float blockPlacementTolerance = entityHeight * 0.1f; // variable used to be able to place blocks under yourself
 
     int minX = static_cast<int>(std::floor(box.min.x + EPS));
