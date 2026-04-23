@@ -21,13 +21,13 @@ void ClientCreeper::setPartsDimensions()
 	// Minecraft-creeper proportions in "pixel" units. X = depth (front/back),
 	// Y = up, Z = width (side-to-side). Legs are thin so four of them can
 	// sit at the four torso corners without overlapping.
-	torsoScaleX = 4.0f;   // depth
+	torsoScaleX = 8.0f;   // depth
 	torsoScaleY = 12.0f;  // height
 	torsoScaleZ = 8.0f;   // width
 
-	headScaleX = 8.0f;
-	headScaleY = 8.0f;
-	headScaleZ = 8.0f;
+	headScaleX = 10.0f;
+	headScaleY = 10.0f;
+	headScaleZ = 10.0f;
 	headTransY = (torsoScaleY * 0.5f + headScaleY * 0.5f) / headScaleY;
 
 	armScaleX = armScaleY = armScaleZ = 0.0f;
