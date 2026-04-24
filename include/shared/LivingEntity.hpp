@@ -3,6 +3,8 @@
 #define LIVING_ENTITY_HPP
 
 #include "Entity.hpp"
+#include <memory>
+#include <vector>
 
 //MOVEMENT MULTIPLIERS
 #define MM_WALKING		1.0f
@@ -27,6 +29,8 @@ enum LivingEntityType : uint16_t
 
 class LivingEntity : public Entity
 {
+	std::chrono::steady_clock::time_point lastVoidDamageTime{};
+
 	protected :
 		bool jump = false;
 		float SAFE_FALL_DISTANCE = 3.0f;
@@ -41,6 +45,23 @@ class LivingEntity : public Entity
 		//used for players
 		const float forehead = 0.3f;
 		float eyesheight = 0.0f;
+
+		// Shared mob-AI state. Populated by subclass tickAI overrides via the
+		// helpers below; consumed by the shared getDesiredMove/calculateNewPosition.
+		glm::vec2 aiMoveDir = glm::vec2(0.0f);
+		bool      aiWantsMove = false;
+		bool      isChasing = false;
+		int32_t   wanderTicksLeft = 0;
+
+		// Shared mob-AI constants (override in subclass if they need different radii).
+		static constexpr float MOB_FOLLOW_RADIUS = 16.0f;
+		static constexpr float MOB_VERTICAL_TOLERANCE = 3.0f;
+
+		LivingEntity *findNearestSurvivalPlayer(const std::vector<std::shared_ptr<LivingEntity>> &entities,
+		                                        float followRadius, float verticalTolerance);
+		void setYawTracked(float newYaw);
+		void wanderStep();
+		void mobAutoJump(const ICommonWorld &world);
 
 	public:
 		float health = 20;
@@ -71,6 +92,7 @@ class LivingEntity : public Entity
 		virtual void applyFallDamage();
 		virtual void tickAI(const ICommonWorld &world, const std::vector<std::shared_ptr<LivingEntity>> &entities, int32_t tick) { (void)world; (void)entities; (void)tick; }
 		void calculateNewYPosition(const ICommonWorld &world) override;
+		void calculateNewPosition(const ICommonWorld &world) override;
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::LIVING_ENTITIES; }
 		inline LivingEntityType getLivingEntityType() const { return type; }
 		inline float getEyesHeight() const { return eyesheight; }

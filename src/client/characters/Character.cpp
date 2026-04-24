@@ -1,7 +1,6 @@
 #include "Character.hpp"
 #include "SkinBox.hpp"
 #include <cmath>
-#include <algorithm>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -251,7 +250,7 @@ void Character::swingArmAnimation(float deltaTime)
 
 	float pivotY = +armScaleY * 0.5f;
 	rotateBodyPartAxis(characterBodyParts.rightArm, pivotY, shoulderAngle, glm::vec3(0,0,1), 1.0f);
-	rotateBodyPartAxis(characterBodyParts.rightForearm, -1.5f, elbowAngle, glm::vec3(0,0,1), 1.0f);
+	rotateBodyPartAxis(characterBodyParts.rightForearm, -armScaleY * 0.5f, elbowAngle, glm::vec3(0,0,1), 1.0f);
 }
 
 void Character::triggerDeath()

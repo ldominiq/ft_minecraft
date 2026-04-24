@@ -4,9 +4,11 @@
 #include "Zombie.hpp"
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <limits>
+#include <random>
 #include <sstream>
+
+static std::mt19937 spawnRng(std::random_device{}());
 Server::Server() {
 #ifdef _WIN32
     WSADATA wsaData;
@@ -428,6 +430,7 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		pkt.positionZ = ent->get()->getPosition().z;
 
 		pkt.yaw = ent->get()->yaw;
+		pkt.pitch = ent->get()->pitch;
 
 		sendPacketTo(pkt, p.addr);
 	}
@@ -477,7 +480,8 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		}
 	}
 
-	if (pkt.yaw != player->movement->yaw) player->movement->rotationUpdated = true;
+	if (pkt.yaw != player->movement->yaw || pkt.pitch != player->movement->pitch)
+    	player->movement->rotationUpdated = true;
 
 	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
@@ -798,8 +802,8 @@ void Server::trySpawnNightMobs()
 	}
 
 	auto findGroundSpawn = [&](const glm::vec3 &ppos, glm::vec3 &out) -> bool {
-		float angle = glm::radians(static_cast<float>(std::rand() % 360));
-		int dist = MIN_SPAWN_DIST + (std::rand() % (MAX_SPAWN_DIST - MIN_SPAWN_DIST));
+		float angle = glm::radians(static_cast<float>(std::uniform_int_distribution<int>(0, 359)(spawnRng)));
+		int dist = std::uniform_int_distribution<int>(MIN_SPAWN_DIST, MAX_SPAWN_DIST - 1)(spawnRng);
 		int sx = static_cast<int>(std::floor(ppos.x + std::cos(angle) * dist));
 		int sz = static_cast<int>(std::floor(ppos.z + std::sin(angle) * dist));
 
@@ -843,7 +847,6 @@ void Server::trySpawnNightMobs()
 				auto zombie = std::make_shared<Zombie>(spawnPos);
 				world->livingEntities.push_back(zombie);
 				zombieCount++;
-				std::cout << "Spawned zombie at " << spawnPos.x << ", " << spawnPos.y << ", " << spawnPos.z << "\n";
 				break;
 			}
 		}
@@ -851,7 +854,7 @@ void Server::trySpawnNightMobs()
 		// Creepers: lower cap AND a probability gate — only ~25% of attempts are allowed
 		// to actually result in a spawn, so creepers are clearly rarer than zombies.
 		if (creeperCount < MAX_CREEPERS_PER_PLAYER * static_cast<int>(players.size()) &&
-			(std::rand() % 4) == 0)
+			std::uniform_int_distribution<int>(0, 3)(spawnRng) == 0)
 		{
 			for (int attempt = 0; attempt < 5; ++attempt) {
 				glm::vec3 spawnPos;
@@ -859,9 +862,7 @@ void Server::trySpawnNightMobs()
 				auto creeper = std::make_shared<Creeper>(spawnPos);
 				world->livingEntities.push_back(creeper);
 				creeperCount++;
-				std::cout << "Spawned creeper at " << spawnPos.x << ", " << spawnPos.y << ", " << spawnPos.z << "\n";
-				//TODO: uncomment
-				//break;
+				break;
 			}
 		}
 	}
@@ -1319,6 +1320,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			pkt->positionZ = entity->getPosition().z;
 
 			pkt->yaw = entity->yaw;
+			pkt->pitch = entity->pitch;
 
 			groupPkt.push_back(std::move(pkt));
 		}
