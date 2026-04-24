@@ -430,6 +430,7 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		pkt.positionZ = ent->get()->getPosition().z;
 
 		pkt.yaw = ent->get()->yaw;
+		pkt.pitch = ent->get()->pitch;
 
 		sendPacketTo(pkt, p.addr);
 	}
@@ -479,7 +480,8 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		}
 	}
 
-	if (pkt.yaw != player->movement->yaw) player->movement->rotationUpdated = true;
+	if (pkt.yaw != player->movement->yaw || pkt.pitch != player->movement->pitch)
+    	player->movement->rotationUpdated = true;
 
 	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
@@ -1318,6 +1320,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			pkt->positionZ = entity->getPosition().z;
 
 			pkt->yaw = entity->yaw;
+			pkt->pitch = entity->pitch;
 
 			groupPkt.push_back(std::move(pkt));
 		}

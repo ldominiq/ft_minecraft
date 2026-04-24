@@ -46,7 +46,7 @@ void Chat::onRender()
 {
 	drawSimpleQuad(x, y, w, h, chatColor);
 	float offset = 10.0f * menuScale;
-	float charHeight = (48+10)*textScale; //48 cause font is 48 and 10 is height offset
+	float charHeight = (48+10)*textScale*menuScale; //48 cause font is 48 and 10 is height offset
 
 	textRenderer.renderText(currMsg, x + offset, y + offset, glm::vec3(0.5, 0.8f, 0.2f));
 
@@ -82,12 +82,12 @@ void Chat::renderRecentMessages()
 			std::clamp(1.0 - age / (MESSAGE_LIFETIME * 1000), 0.0, 1.0)
 		);
 
-		drawSimpleQuad(x + offset, y + currHeight - 4, textRenderer.getPixelSizeOfString(msg->message) + 2, charHeight, glm::vec4(0,0,0,alpha/2.0f));
+		drawSimpleQuad(x + offset, y + (currHeight - 4) * menuScale, textRenderer.getPixelSizeOfString(msg->message) + 2, charHeight, glm::vec4(0,0,0,alpha/2.0f));
 	
 		textRenderer.renderText(
 			msg->message.c_str(),
 			x + offset,
-			y + currHeight,
+			y + currHeight * menuScale,
 			glm::vec3(1.0f),
 			alpha
 		);
