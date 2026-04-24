@@ -26,6 +26,8 @@ enum LivingEntityType : uint16_t
 
 class LivingEntity : public Entity
 {
+	std::chrono::steady_clock::time_point lastVoidDamageTime{};
+
 	protected :
 		bool jump = false;
 		float SAFE_FALL_DISTANCE = 3.0f;

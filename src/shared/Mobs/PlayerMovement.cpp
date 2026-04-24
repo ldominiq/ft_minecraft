@@ -34,6 +34,7 @@ PlayerMovement::~PlayerMovement()
 
 void PlayerMovement::onDeath()
 {
+	accumulatedFallDistance = 0.0f;
 	position = spawnPosition;
 	health = 20;
 }
