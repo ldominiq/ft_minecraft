@@ -182,7 +182,7 @@ void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
     // Build forward vector from camera
     glm::vec3 forward;
     forward.x = std::cos(glm::radians(pitch)) * std::cos(glm::radians(yaw));
-    forward.y = std::sin(glm::radians(pitch));
+    forward.y = inputs.keys & IN_UP ? 0.0f : std::sin(glm::radians(pitch));
     forward.z = std::cos(glm::radians(pitch)) * std::sin(glm::radians(yaw));
     forward = glm::normalize(forward);
 
