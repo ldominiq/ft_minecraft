@@ -1,7 +1,7 @@
 #version 460 core
 
 uniform vec3 uColor;        // fallback color when no skin is bound
-uniform sampler2D uSkin;    // 2D skin texture, authored top-left origin
+uniform sampler2D uSkin;    // 2D skin texture. V=0 is top of image; no V-flip applied — UVs are already in skin-auth space.
 uniform bool uUseTexture;   // when true, sample uSkin; otherwise emit uColor
 
 in vec2 vTex;

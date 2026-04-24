@@ -18,6 +18,7 @@ SkinManager::~SkinManager()
 bool SkinManager::load(const std::string& name, const std::string& path)
 {
 	int w = 0, h = 0, channels = 0;
+	stbi_set_flip_vertically_on_load(false);
 	unsigned char* data = stbi_load(path.c_str(), &w, &h, &channels, 4);
 	if (!data)
 	{
