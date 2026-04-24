@@ -40,6 +40,7 @@ struct PlayerMovement : public virtual LivingEntity {
 
 	void onDeath() override;
 
+	void calculateUnderwaterPosition(const ICommonWorld &world) override;
 	void updatePosition();
 	void updateCameraVectors();
 	void applyFallDamage() override;

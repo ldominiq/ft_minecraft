@@ -181,6 +181,31 @@ TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& h
     return TargetType::None;
 }
 
+// Check if camera/player is underwater
+template <typename ChunkT>
+bool CommonWorld<ChunkT>::isUnderwater(const glm::vec3 &position) const
+{
+	// Floor the position to get block coordinates
+	glm::ivec3 blockPos = glm::ivec3(glm::floor(position));
+
+	const BlockType block = getBlockWorld(blockPos);
+	if (block == BlockType::WATER)
+		return true;
+
+	// Handling surface edge case
+	const glm::ivec3 blockBelow = blockPos - glm::ivec3(0, 1, 0);
+	BlockType blockBelowType = getBlockWorld(blockBelow);
+
+	if (blockBelowType == BlockType::WATER) {
+		float distanceAboveWater = position.y - glm::floor(position.y);
+
+		if (distanceAboveWater < 0.15f)
+			return true;
+	}
+
+	return false;
+}
+
 // template <typename ChunkT>
 // bool CommonWorld<ChunkT>::removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, BlockType &dropped)
 // {

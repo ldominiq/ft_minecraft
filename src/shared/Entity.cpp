@@ -207,38 +207,18 @@ void Entity::calculateNewYPosition(const ICommonWorld &world)
 	setPosition(newPos);
 }
 
+void Entity::calculateUnderwaterPosition(const ICommonWorld &world)
+{
+	//placeholder code.
+	velocity.y -= GRAVITY * 0.02f; // sinking
+}
+
 void Entity::calculateNewPosition(const ICommonWorld &world)
 {
 	// TODO : return early if block stopped. Same as player calculateNewPosition TODO.
 	glm::vec3 desiredPos = getDesiredMove();
 	calculateNewXZPosition(world, desiredPos);
 	calculateNewYPosition(world);
-}
-
-// Check if camera/player is underwater
-bool Entity::isUnderwater(const ICommonWorld &world) const
-{
-	// Check at camera/view level
-	glm::vec3 checkPos = this->getPosition() + glm::vec3(0.0f, 0.1f, 0.0f);
-	// Floor the position to get block coordinates
-	glm::ivec3 blockPos = glm::ivec3(glm::floor(checkPos));
-
-	const BlockType block = world.getBlockWorld(blockPos);
-	if (block == BlockType::WATER)
-		return true;
-
-	// Handling surface edge case
-	const glm::ivec3 blockBelow = blockPos - glm::ivec3(0, 1, 0);
-	BlockType blockBelowType = world.getBlockWorld(blockBelow);
-
-	if (blockBelowType == BlockType::WATER) {
-		float distanceAboveWater = checkPos.y - glm::floor(checkPos.y);
-
-		if (distanceAboveWater < 0.15f)
-			return true;
-	}
-
-	return false;
 }
 
 float Entity::getDepthUnderwater() const
