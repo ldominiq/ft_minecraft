@@ -468,7 +468,8 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		}
 	}
 
-	if (pkt.yaw != player->movement->yaw) player->movement->rotationUpdated = true;
+	if (pkt.yaw != player->movement->yaw || pkt.pitch != player->movement->pitch)
+    	player->movement->rotationUpdated = true;
 
 	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
