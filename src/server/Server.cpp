@@ -423,6 +423,7 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		pkt.positionZ = ent->get()->getPosition().z;
 
 		pkt.yaw = ent->get()->yaw;
+		pkt.pitch = ent->get()->pitch;
 
 		sendPacketTo(pkt, p.addr);
 	}
@@ -1142,6 +1143,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			pkt->positionZ = entity->getPosition().z;
 
 			pkt->yaw = entity->yaw;
+			pkt->pitch = entity->pitch;
 
 			groupPkt.push_back(std::move(pkt));
 		}
