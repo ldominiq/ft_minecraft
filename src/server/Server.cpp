@@ -423,6 +423,7 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		pkt.positionZ = ent->get()->getPosition().z;
 
 		pkt.yaw = ent->get()->yaw;
+		pkt.pitch = ent->get()->pitch;
 
 		sendPacketTo(pkt, p.addr);
 	}
@@ -468,7 +469,8 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		}
 	}
 
-	if (pkt.yaw != player->movement->yaw) player->movement->rotationUpdated = true;
+	if (pkt.yaw != player->movement->yaw || pkt.pitch != player->movement->pitch)
+    	player->movement->rotationUpdated = true;
 
 	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
@@ -507,6 +509,9 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 		dropItem.slot = slot;
 		sendPacketTo(dropItem, cliaddr);
 	}
+
+	if (pkt.mouseButtons & (IN_LEFT_CLICK | IN_RIGHT_CLICK))
+		player->movement->pendingArmSwing = true;
 }
 
 void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
@@ -921,7 +926,7 @@ void Server::sendEntitiesPositionDeltas()
 	{
 		for (CPlayerInfo &p : players)
 		{
-			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated)) continue;
+			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated && !entity->pendingArmSwing)) continue;
 
 			NetEntityMove pkt;
 
@@ -934,13 +939,17 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.positionZ = entity->getPosition().z;
 
 			pkt.yaw = entity->yaw;
-			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u) | (entity->isOnGround() ? 0x02u : 0u);
+			pkt.pitch = entity->pitch;
+			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
+			                  | (entity->isOnGround() ? 0x02u : 0u)
+			                  | (entity->pendingArmSwing ? 0x04u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}
 
 		entity->positionUpdated = false;
 		entity->rotationUpdated = false;
+		entity->pendingArmSwing = false;
 	}
 
 	for (auto &entity : world->itemEntities)
@@ -1134,6 +1143,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			pkt->positionZ = entity->getPosition().z;
 
 			pkt->yaw = entity->yaw;
+			pkt->pitch = entity->pitch;
 
 			groupPkt.push_back(std::move(pkt));
 		}

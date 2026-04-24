@@ -328,6 +328,9 @@ void App::init(const std::string& serverIp) {
 			}
 		}
 
+		if (mouseButtons && app->camera && app->camera->getPlayer())
+			app->camera->getPlayer()->triggerArmSwing();
+
 		NetPlayerMouseInputs pkt;
 		pkt.mouseButtons = mouseButtons;
 		app->udpClient->sendPacket(pkt);

@@ -30,7 +30,8 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 		if (!c->DoDraw())
 			continue ;
 
-		if (c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || c->hasRenderPos)
+		const bool swinging = c->characterBodyParts.onArmSwingAnimation;
+		if (c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos)
 		{
 			c->characterBodyParts.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));
 			glm::vec3 meshPos = c->hasRenderPos ? c->renderPos : c->getPosition();
@@ -39,6 +40,9 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			// hasRenderPos alone (third-person camera) should not drive the animation.
 			if ((c->positionUpdated && c->hasHorizontalInput) || c->characterBodyParts.onWalkAnimation)
 				c->walkAnimation(deltaTime);
+			c->applyHeadPitch(c->pitch);
+			if (swinging)
+				c->swingArmAnimation(deltaTime);
 			c->characterBodyParts.character.compute(identity, projection, view, characterShader);
 			c->positionUpdated = false;
 			c->rotationUpdated = false;

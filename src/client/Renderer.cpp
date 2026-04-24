@@ -354,12 +354,17 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 				glm::length(position - ent->snapshots.back().position) > 0.001f;
 			ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 			ent->yaw = yaw;
+			ent->pitch = pkt.pitch;
 			if (actuallyMoved)
 				ent->positionUpdated = true;
 			else
 				ent->rotationUpdated = true;
 			ent->hasHorizontalInput = (pkt.positionFlags & 0x01) != 0;
 			ent->setOnGround((pkt.positionFlags & 0x02) != 0);
+			if ((pkt.positionFlags & 0x04) != 0) {
+				if (auto ice = std::dynamic_pointer_cast<IClientEntity>(ent))
+					ice->triggerArmSwing();
+			}
 			ent->lastNetUpdateTime = serverTime;
 
 			if (pkt.type == static_cast<uint16_t>(-1))

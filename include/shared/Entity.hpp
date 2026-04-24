@@ -122,6 +122,8 @@ class Entity {
 		bool hasHorizontalInput = true;
 		// yaw/rotation has changed since last check (without a position change).
 		bool rotationUpdated = false;
+		// one-shot flag: player clicked to break/place/attack. Broadcast once then reset.
+		bool pendingArmSwing = false;
 		// timestamp of the last network position update (glfwGetTime / serverTime scale)
 		double lastNetUpdateTime = -1.0;
 
