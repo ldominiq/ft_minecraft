@@ -66,7 +66,6 @@ private:
 	void pingLoop();
 
 	void gameTick();
-	void trySpawnNightMobs();
 	void despawnDistantMobs();
 
     void createSocket();
