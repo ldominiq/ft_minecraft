@@ -62,10 +62,11 @@ void Character::createCharacterAt(const glm::vec3 &pos, float width, float heigh
     YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm * height, 0);
     character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
 
-    // Skin UV boxes on the classic 64x32 Steve layout.
+    // TODO: maybe handle 64x32 directly as well
+    // Skin UV boxes on the 64x64 Steve layout -> would work with a 64x32 layout too
     // Arms/legs on the skin are h=12, but the rig splits each into upper + lower
     // (each half-height), so we use vertical sub-slices.
-    constexpr int SW = 64, SH = 32;
+    constexpr int SW = 64, SH = 64;
     auto headUVs       = boxUVs(0,  0, 8, 8, 8, SW, SH);
     auto torsoUVs      = boxUVs(16, 16, 8, 12, 4, SW, SH);
     auto armUpperUVs   = boxUVsSlice(40, 16, 4, 12, 4, SW, SH, 0.0f, 0.5f);
