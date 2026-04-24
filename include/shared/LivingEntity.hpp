@@ -3,6 +3,8 @@
 #define LIVING_ENTITY_HPP
 
 #include "Entity.hpp"
+#include <memory>
+#include <vector>
 
 //MOVEMENT MULTIPLIERS
 #define MM_WALKING		1.0f

@@ -1,8 +1,10 @@
 
 #include "Creeper.hpp"
 #include "PlayerMovement.hpp"
-#include <cstdlib>
 #include <cmath>
+#include <random>
+
+static std::mt19937 creeperRng(std::random_device{}());
 
 Creeper::Creeper(const glm::vec3 &position):	LivingEntity(position)
 {
@@ -143,17 +145,17 @@ void Creeper::tickAI(const ICommonWorld &world, const std::vector<std::shared_pt
 		if (fuseTicks == 0) isPrimed = false;
 
 		if (wanderTicksLeft <= 0) {
-			int r = std::rand() % 4;
+			int r = std::uniform_int_distribution<int>(0, 3)(creeperRng);
 			if (r == 0) {
 				aiWantsMove = false;
 				aiMoveDir = glm::vec2(0.0f);
 			} else {
-				float wanderYawRad = glm::radians(static_cast<float>(std::rand() % 360));
+				float wanderYawRad = glm::radians(static_cast<float>(std::uniform_int_distribution<int>(0, 359)(creeperRng)));
 				aiMoveDir = glm::vec2(std::cos(wanderYawRad), std::sin(wanderYawRad));
 				aiWantsMove = true;
 				setYaw(glm::degrees(wanderYawRad));
 			}
-			wanderTicksLeft = 40 + (std::rand() % 60);
+			wanderTicksLeft = 40 + std::uniform_int_distribution<int>(0, 59)(creeperRng);
 		}
 		wanderTicksLeft--;
 	}
@@ -162,7 +164,7 @@ void Creeper::tickAI(const ICommonWorld &world, const std::vector<std::shared_pt
 
 	// Always push a packet while primed so clients can render the pulse, even when
 	// the creeper is standing still (otherwise positionUpdated stays false).
-	networkedPrimed = isPrimed;
-	if (isPrimed)
+	if (networkedPrimed != isPrimed)
 		rotationUpdated = true;
+	networkedPrimed = isPrimed;
 }

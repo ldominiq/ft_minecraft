@@ -1,8 +1,10 @@
 
 #include "Zombie.hpp"
 #include "PlayerMovement.hpp"
-#include <cstdlib>
 #include <cmath>
+#include <random>
+
+static std::mt19937 zombieRng(std::random_device{}());
 
 Zombie::Zombie(const glm::vec3 &position) : LivingEntity(position)
 {
@@ -139,17 +141,17 @@ void Zombie::tickAI(const ICommonWorld &world, const std::vector<std::shared_ptr
 	} else {
 		// No target -> wander. Pick a new direction every couple seconds.
 		if (wanderTicksLeft <= 0) {
-			int r = std::rand() % 4;
+			int r = std::uniform_int_distribution<int>(0, 3)(zombieRng);
 			if (r == 0) {
 				aiWantsMove = false;
 				aiMoveDir = glm::vec2(0.0f);
 			} else {
-				float wanderYawRad = glm::radians(static_cast<float>(std::rand() % 360));
+				float wanderYawRad = glm::radians(static_cast<float>(std::uniform_int_distribution<int>(0, 359)(zombieRng)));
 				aiMoveDir = glm::vec2(std::cos(wanderYawRad), std::sin(wanderYawRad));
 				aiWantsMove = true;
 				setYaw(glm::degrees(wanderYawRad));
 			}
-			wanderTicksLeft = 40 + (std::rand() % 60);
+			wanderTicksLeft = 40 + std::uniform_int_distribution<int>(0, 59)(zombieRng);
 		}
 		wanderTicksLeft--;
 	}
