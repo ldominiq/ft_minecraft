@@ -61,15 +61,14 @@ void LivingEntity::calculateNewYPosition(const ICommonWorld &world)
 		accumulatedFallDistance = 0.0f;
 	}
 
-	static auto lastDamageTime = std::chrono::steady_clock::now();
-	if (this->position.y < 0) // fell into void
+	if (this->position.y < 0)
 	{
 		auto now = std::chrono::steady_clock::now();
 
-		if (now - lastDamageTime >= std::chrono::seconds(1))
+		if (now - lastVoidDamageTime >= std::chrono::seconds(1))
 		{
 			this->health -= 4;
-			lastDamageTime = now;
+			lastVoidDamageTime = now;
 		}
 	}
 }
