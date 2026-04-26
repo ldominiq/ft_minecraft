@@ -114,6 +114,14 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius, flo
 	int unloadRadius = loadRadius * 4;
     const int radiusSq = loadRadius * loadRadius;
 
+    // Don't evict chunks that arrived in the last few seconds: the player
+    // position can lag a teleport/respawn by a handful of frames (NetPlayerMove
+    // is unreliable), and during that window freshly-received chunks would be
+    // erased by distance even though the server already marked them sent — so
+    // they'd never be re-streamed and the area would have permanent holes.
+    constexpr auto RECENT_CHUNK_GRACE = std::chrono::seconds(3);
+    const auto now = std::chrono::steady_clock::now();
+
     for (auto it = chunks.begin(); it != chunks.end(); )
     {
         const ChunkPos& chunkPos = it->first;
@@ -132,8 +140,16 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius, flo
         }
         else if (distSq >= unloadRadius * unloadRadius)
         {
-            // Outside unload radius -> remove chunk
+            auto rt = chunkReceiveTime.find(chunkPos);
+            if (rt != chunkReceiveTime.end() && now - rt->second < RECENT_CHUNK_GRACE) {
+                // Recently arrived — keep it; player position may still be
+                // catching up after a teleport/respawn.
+                ++it;
+            } else {
+                // Outside unload radius and old enough -> remove chunk
+                chunkReceiveTime.erase(chunkPos);
             it = chunks.erase(it);
+        }
         }
         else
         {
@@ -220,6 +236,7 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
 		newChunk->computeSkyLight();
 		linkNeighbors(pkt.X, pkt.Z, newChunk);
 		chunks[{pkt.X, pkt.Z}] = newChunk;
+		chunkReceiveTime[{pkt.X, pkt.Z}] = std::chrono::steady_clock::now();
 		// newChunk->buildMesh();
         data->second.chunkBuffer.clear();
     }
