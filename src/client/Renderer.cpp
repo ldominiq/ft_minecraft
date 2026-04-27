@@ -468,6 +468,7 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 	{
 		ItemType type = itemIDToItemType(pkt.type);
      auto entityPtr = std::make_shared<ItemPropEntity>(glm::vec3(position), yaw, type, ID);
+		entityPtr->setPosition(position);
 		itemEntities.push_back(entityPtr);
 		entitiesMap[ID] = entityPtr;
 	}
@@ -491,6 +492,7 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 				return;
 		}
 
+		entityPtr->setPosition(position);
 		entityPtr->positionUpdated = true;
 		entityPtr->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 		livingEntitiesManager.add(entityPtr);

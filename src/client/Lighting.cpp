@@ -289,14 +289,15 @@ void Lighting::updateSunDirection(const float deltaTime) {
     cachedShadowLightDir = -directionalLightDir;
 }
 
-void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cameraPos, const glm::vec3 cameraFront) const {
+void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &eyePos, const glm::vec3 cameraFront) const {
     // 2. Render the scene normally, using the generated shadow map to determine shadowed fragments.
     // The following code implements both steps each frame.
     shader.use();
 
-    // set light uniforms
+    // set light uniforms — subtract in double then narrow, otherwise far-from-origin
+    // coords lose precision via catastrophic cancellation in the f32 difference.
     shader.setVec3("viewPos", glm::vec3(0.0f));
-    shader.setVec3("lightPos", lightPos - cameraPos);
+    shader.setVec3("lightPos", glm::vec3(glm::dvec3(lightPos) - eyePos));
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     shader.setFloat("shadows.MIN_BIAS", MIN_BIAS);
     shader.setFloat("shadows.MAX_BIAS", MAX_BIAS);
@@ -342,7 +343,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
             shader.setVec3("pointLights[" + std::to_string(i) + "].specular", glm::vec3(0.0f));
             continue;
         }
-        shader.setVec3("pointLights[" + std::to_string(i) + "].position", pointLightPositions[i] - cameraPos);
+        shader.setVec3("pointLights[" + std::to_string(i) + "].position", glm::vec3(glm::dvec3(pointLightPositions[i]) - eyePos));
         shader.setVec3("pointLights[" + std::to_string(i) + "].ambient", pointLightAmbient[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].diffuse", pointLightDiffuse[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].specular", pointLightSpecular[i]);

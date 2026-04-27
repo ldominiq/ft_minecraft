@@ -187,9 +187,10 @@ TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& h
 
 // Check if camera/player is underwater
 template <typename ChunkT>
-bool CommonWorld<ChunkT>::isUnderwater(const glm::vec3 &position) const
+bool CommonWorld<ChunkT>::isUnderwater(const glm::dvec3 &position) const
 {
-	// Floor the position to get block coordinates
+	// Floor in double space — at large world coords (~1e6) float can't
+	// represent 1-block increments, which mis-floors near block boundaries.
 	glm::ivec3 blockPos = glm::ivec3(glm::floor(position));
 
 	const BlockType block = getBlockWorld(blockPos);
@@ -201,9 +202,9 @@ bool CommonWorld<ChunkT>::isUnderwater(const glm::vec3 &position) const
 	BlockType blockBelowType = getBlockWorld(blockBelow);
 
 	if (blockBelowType == BlockType::WATER) {
-		float distanceAboveWater = position.y - glm::floor(position.y);
+		double distanceAboveWater = position.y - glm::floor(position.y);
 
-		if (distanceAboveWater < 0.15f)
+		if (distanceAboveWater < 0.15)
 			return true;
 	}
 

@@ -333,7 +333,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 	});
 
 	player->snapshots.emplace_back(Snapshot{
-        glm::vec3(effectiveCorrection.position),
+		effectiveCorrection.position,
 		effectiveCorrection.velocity,
 		effectiveCorrection.serverClientReconciliationTick * (1.0f / TPS)
 	});

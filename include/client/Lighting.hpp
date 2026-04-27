@@ -94,7 +94,7 @@ public:
     /// Only regenerates when atmosphere parameters or camera height change.
     void updateSkyLUT(float cameraPosY);
 
-    void uploadLightingUniforms(const Shader& shader, const glm::vec3& cameraPos, glm::vec3 cameraFront) const;
+    void uploadLightingUniforms(const Shader& shader, const glm::dvec3& eyePos, glm::vec3 cameraFront) const;
     void uploadUnderwaterUniforms(const Shader& shader) const;
     void drawTexturePreviewQuad(unsigned int textureID, bool grayscale = false, glm::vec2 offset = glm::vec2(0.0f));
 

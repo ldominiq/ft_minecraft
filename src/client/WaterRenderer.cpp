@@ -84,7 +84,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     const glm::vec3 originalDir = camera->getPlayer()->getCameraDir();
     const glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
 
-    lighting->uploadLightingUniforms(*sceneShader, reflectCamPos, reflectedDir);
+    lighting->uploadLightingUniforms(*sceneShader, reflectCamPosD, reflectedDir);
     // Skip uploadCSMUniforms: it binds csmDepthMaps which was just written by the shadow pass
     // milliseconds ago — binding it for reading here causes an implicit driver sync stall.
     sceneShader->setInt("ssaoEnabled", 0);
@@ -126,7 +126,7 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     sceneShader->setMat4("projection", projection);
 
     // Render refraction scene
-    lighting->uploadLightingUniforms(*sceneShader, glm::vec3(camera->getEyePosD()), camera->getPlayer()->getCameraDir());
+    lighting->uploadLightingUniforms(*sceneShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
     // Skip uploadCSMUniforms: same shadow texture hazard as reflection — and underwater
     // fragments don't need shadow computation at all.
     sceneShader->setInt("ssaoEnabled", 0);

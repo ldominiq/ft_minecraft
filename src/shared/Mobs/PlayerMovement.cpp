@@ -261,7 +261,7 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 	auto updatePos = [this, &world]()
 	{
 		if (gamemode == GAMEMODES::SURVIVAL) {
-			if (world.isUnderwater(glm::vec3(this->position)))
+			if (world.isUnderwater(this->position))
 				calculateUnderwaterPosition(world);
 			else
 			{

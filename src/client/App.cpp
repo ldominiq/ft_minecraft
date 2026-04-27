@@ -829,7 +829,7 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, glm::vec3(camera->getEyePosD()), camera->getPlayer()->getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
             renderer->render(textureShader, view, camera->getEyePosD());
@@ -844,7 +844,7 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, glm::vec3(camera->getEyePosD()), camera->getPlayer()->getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
             renderer->render(textureShader, view, camera->getEyePosD());
@@ -1132,7 +1132,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     activeShader->setVec4("clipPlane", clipPlane);
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
-   lighting->uploadLightingUniforms(*activeShader, glm::vec3(camera->getEyePosD()), camera->getPlayer()->getCameraDir());
+   lighting->uploadLightingUniforms(*activeShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
     lighting->uploadUnderwaterUniforms(*activeShader);
     activeShader->setBool("cameraUnderwater", cameraUnderwater);
     lighting->uploadCSMUniforms(*activeShader, view);
