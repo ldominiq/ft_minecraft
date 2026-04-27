@@ -297,8 +297,12 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
 			continue;
 
 		// Frustum cull: skip chunks entirely outside the camera view
-		if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
-			continue;
+       if (frustumCullingEnabled) {
+            const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - cameraPos;
+            const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - cameraPos;
+            if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
+                continue;
+        }
 
 		// Per-chunk uniforms for camera-relative rendering.
 		// chunkRel must be computed in double so that large world
@@ -515,8 +519,12 @@ void Renderer::renderWater() const {
                 continue;
 
             // Frustum cull water the same as terrain
-            if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
-                continue;
+           if (frustumCullingEnabled) {
+                const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - frustumEyePos;
+                const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - frustumEyePos;
+                if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
+                    continue;
+            }
 
             glBindVertexArray(chunk->getWaterVao());
             glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);
@@ -531,8 +539,12 @@ bool Renderer::hasVisibleWater() const {
 			if (chunk->getWaterMeshVerticesSize() == 0)
 				continue;
 
-			if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
-				continue;
+           if (frustumCullingEnabled) {
+                const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - frustumEyePos;
+                const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - frustumEyePos;
+                if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
+                    continue;
+            }
 
 			return true; // Found at least one visible water chunk
 		}

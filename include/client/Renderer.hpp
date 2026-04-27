@@ -52,6 +52,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
 	float maxRenderedChunkDist = 0.0f; // world-space distance to edge of farthest rendered chunk
 	Frustum cameraFrustum;
+  glm::dvec3 frustumEyePos = glm::dvec3(0.0);
 	bool frustumCullingEnabled = true;
 	const TextureManager* textureManager = nullptr;
 	std::shared_ptr<Shader> vegetationShader = nullptr;
@@ -64,8 +65,13 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	public:
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
 
-		/// Update the camera frustum for culling. Call once per frame before render().
-		void updateFrustum(const glm::mat4& viewProjection) { cameraFrustum.update(viewProjection); }
+     /// Update the camera frustum for culling. The view-projection should be
+		/// built from a translation-free view matrix (camera at origin), and eyePos
+		/// is used to test world AABBs in camera-relative space.
+		void updateFrustum(const glm::mat4& viewProjection, const glm::dvec3& eyePos) {
+			cameraFrustum.update(viewProjection);
+			frustumEyePos = eyePos;
+		}
 
 		/// Get the current camera frustum (for debug visualization).
 		const Frustum& getFrustum() const { return cameraFrustum; }

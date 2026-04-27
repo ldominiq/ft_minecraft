@@ -105,9 +105,18 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			continue ;
 		if (true)
 		{
-			AABB box = c->constructAABB(c->hasRenderPos ? c->renderPos : c->getPositionD());
+            const glm::dvec3 posD = c->hasRenderPos ? c->renderPos : c->getPositionD();
+			const double halfW = static_cast<double>(c->getEntityWidth()) * 0.5;
+			const double h = static_cast<double>(c->getEntityHeight());
+			const glm::dvec3 minRelD(posD.x - eyePos.x - halfW,
+									 posD.y - eyePos.y,
+									 posD.z - eyePos.z - halfW);
+			const glm::dvec3 maxRelD(posD.x - eyePos.x + halfW,
+									 posD.y - eyePos.y + h,
+									 posD.z - eyePos.z + halfW);
+           AABB box{glm::vec3(minRelD), glm::vec3(maxRelD)};
 			glm::vec3 col(1.0f, 0.0f, 0.0f); // red
-            hbRenderer.drawAABB(box, view, projection, eyePos, col);
+            hbRenderer.drawAABB(box, view, projection, glm::dvec3(0.0), col);
 		}
 	}
 

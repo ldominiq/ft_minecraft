@@ -797,7 +797,9 @@ void App::render() {
 		glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
 
         // Update camera frustum for chunk culling (once per frame, before any render call)
-        renderer->updateFrustum(projection * view);
+     glm::mat4 viewRot = view;
+        viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        renderer->updateFrustum(projection * viewRot, camera->getEyePosD());
 
 
         lighting->setViewportSize(screenWidth, screenHeight);

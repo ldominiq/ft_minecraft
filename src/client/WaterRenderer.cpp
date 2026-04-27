@@ -98,13 +98,18 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     renderer->updateVegetationUniforms(reflectView, projection, clipPlane, reflectCamPos);
     // Use the reflected view-projection for frustum culling so only chunks
     // actually visible in the reflection are submitted, not all main-camera chunks.
-    renderer->updateFrustum(projection * reflectView);
+  glm::mat4 reflectViewRot = reflectView;
+    reflectViewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    renderer->updateFrustum(projection * reflectViewRot, glm::dvec3(reflectCamPos));
     renderer->render(sceneShader, reflectView, glm::dvec3(reflectCamPos), false); // skip vegetation
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();
     // Restore main-camera frustum for all subsequent passes this frame.
-    renderer->updateFrustum(projection * camera->getViewMatrix());
+  glm::mat4 mainView = camera->getViewMatrix();
+    glm::mat4 mainViewRot = mainView;
+    mainViewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    renderer->updateFrustum(projection * mainViewRot, camera->getEyePosD());
 }
 
 void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, const TextureManager& texMgr) {
