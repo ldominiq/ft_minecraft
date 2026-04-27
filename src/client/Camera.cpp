@@ -1,4 +1,5 @@
 #include "Camera.hpp"
+#include <cmath>
 #include <limits>
 
 Camera::Camera(glm::vec3 position)
@@ -96,9 +97,13 @@ glm::dvec3 Camera::getEyePosD() const
 }
 
 void Camera::updateSmoothing(float deltaTime) {
-	if (glm::length(visualOffset) > 0.001f) {
-		float decayRate = 12.0f; // Tune this to make corrections faster or slower
-		visualOffset *= std::max(0.0f, 1.0f - decayRate * deltaTime);
+   const float len2 = glm::dot(visualOffset, visualOffset);
+	if (len2 > 1e-6f) {
+		constexpr float decayRate = 12.0f;
+		const float decay = std::exp(-decayRate * std::max(deltaTime, 0.0f));
+		visualOffset *= decay;
+		if (glm::dot(visualOffset, visualOffset) < 1e-6f)
+			visualOffset = glm::vec3(0.0f);
 	} else {
 		visualOffset = glm::vec3(0.0f);
 	}

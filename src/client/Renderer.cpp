@@ -254,7 +254,10 @@ void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& 
                                         const glm::vec4& clipPlane, const glm::vec3& viewPos) const {
 	if (!vegetationShader) return;
 	vegetationShader->use();
+    glm::mat4 viewRot = view;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 	vegetationShader->setMat4("view", view);
+    vegetationShader->setMat4("viewRot", viewRot);
 	vegetationShader->setMat4("projection", projection);
 	vegetationShader->setVec4("clipPlane", clipPlane);
 	vegetationShader->setVec3("viewPos", viewPos);
@@ -312,7 +315,13 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
 	// Render all vegetation in a single shader-switch batch
 	if (renderVegetation && vegetationShader) {
 		vegetationShader->use();
+     vegetationShader->setMat4("viewRot", viewRot);
+        vegetationShader->setVec3("viewPos", glm::vec3(cameraPos));
 		for (auto& chunk : visibleChunks) {
+          const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+                                               static_cast<double>(chunk->getOriginZ()));
+            vegetationShader->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - cameraPos));
+            vegetationShader->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 			auto vegRenderer = chunk->getVegetationRenderer();
 			if (vegRenderer && vegRenderer->getInstanceCount() > 0)
 				vegRenderer->render();

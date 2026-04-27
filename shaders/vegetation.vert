@@ -4,7 +4,7 @@ layout (location = 1) in vec2 aTexCoord;  // Texture coordinates
 layout (location = 2) in vec3 aNormal;    // Normal vector
 
 // Per-instance attributes
-layout (location = 3) in vec3 aInstancePos;    // World position of vegetation instance
+layout (location = 3) in vec3 aInstancePos;    // Chunk-local position of vegetation instance
 layout (location = 4) in float aTexLayer;      // Texture layer index for this instance
 layout (location = 5) in float aRotation;      // Random rotation around Y-axis
 layout (location = 6) in float aSkyLight;      // Sky-light level (0.0 = dark, 1.0 = full sun)
@@ -25,6 +25,9 @@ out VS_OUT {
 
 uniform mat4 projection;
 uniform mat4 view;
+uniform mat4 viewRot;
+uniform vec3 chunkRel;
+uniform vec3 chunkOriginWorld;
 uniform vec4 clipPlane;
 uniform float time;
 uniform float seaLevel;
@@ -40,14 +43,15 @@ void main() {
     );
 
     vec3 rotatedPos = rotationMatrix * aPos;
-    vec4 worldPosition = vec4(rotatedPos + aInstancePos, 1.0);
+    vec3 localPos = rotatedPos + aInstancePos;
+    vec3 worldPos = chunkOriginWorld + localPos;
 
     // Determine if this vegetation is underwater
-    bool isUnderwater = (aInstancePos.y < seaLevel);
+    bool isUnderwater = (worldPos.y < seaLevel);
 
     if (isUnderwater) {
         // Organic underwater sway — coherent across stacked blocks.
-        float h = (aInstancePos.y + aPos.y) - aColumnBaseY;
+        float h = worldPos.y - aColumnBaseY;
 
         // Quadratic falloff: base is anchored, tip sways most (like a real stalk)
         float bend = h * h * 0.012;
@@ -56,36 +60,41 @@ void main() {
         float plantPhase = aRotation * 2.17;
 
         // Primary slow current — elliptical motion (X and Z have offset phases)
-        float swayX = bend * sin(time * 0.35 + aInstancePos.x * 0.4 + aInstancePos.z * 0.25 + plantPhase);
-        float swayZ = bend * sin(time * 0.28 + aInstancePos.x * 0.3 + aInstancePos.z * 0.5 + plantPhase + 1.57);
+        float swayX = bend * sin(time * 0.35 + worldPos.x * 0.4 + worldPos.z * 0.25 + plantPhase);
+        float swayZ = bend * sin(time * 0.28 + worldPos.x * 0.3 + worldPos.z * 0.5 + plantPhase + 1.57);
 
         // Secondary gentle drift at a different frequency
-        swayX += bend * 0.3 * sin(time * 0.6 + aInstancePos.z * 0.7 + plantPhase * 0.5);
-        swayZ += bend * 0.25 * sin(time * 0.5 + aInstancePos.x * 0.6 + plantPhase * 0.7);
+        swayX += bend * 0.3 * sin(time * 0.6 + worldPos.z * 0.7 + plantPhase * 0.5);
+        swayZ += bend * 0.25 * sin(time * 0.5 + worldPos.x * 0.6 + plantPhase * 0.7);
 
         // Subtle ripple that travels up the stalk (small, high-freq wavelet)
         float ripple = h * 0.008 * sin(time * 1.8 - h * 2.0 + plantPhase);
         swayX += ripple;
         swayZ -= ripple * 0.7;
 
-        worldPosition.x += swayX;
-        worldPosition.z += swayZ;
+        worldPos.x += swayX;
+        worldPos.z += swayZ;
+        localPos.x += swayX;
+        localPos.z += swayZ;
     } else {
         // Wind sway for land vegetation
         // Per-plant phase offset
         float plantPhase = aRotation * 1.73;
         float sway = aPos.y * 0.08
-            * sin(time * 1.5 + aInstancePos.x * 0.8 + aInstancePos.z * 0.6 + plantPhase)
+            * sin(time * 1.5 + worldPos.x * 0.8 + worldPos.z * 0.6 + plantPhase)
             + aPos.y * 0.03
-            * sin(time * 2.3 + aInstancePos.x * 1.4 + aInstancePos.z * 1.1 + plantPhase * 0.6);
+            * sin(time * 2.3 + worldPos.x * 1.4 + worldPos.z * 1.1 + plantPhase * 0.6);
 
-        worldPosition.x += sway;
-        worldPosition.z += sway * 0.5 * sin(time * 1.1 + plantPhase); // slight figure-8 in Z
+        float swayZ = sway * 0.5 * sin(time * 1.1 + plantPhase); // slight figure-8 in Z
+        worldPos.x += sway;
+        worldPos.z += swayZ;
+        localPos.x += sway;
+        localPos.z += swayZ;
         // uncomment for bouncy vegetation
         // worldPosition.y += sway * 10;
     }
 
-    vs_out.FragPos = worldPosition.xyz;
+    vs_out.FragPos = worldPos;
     vs_out.Normal = rotationMatrix * aNormal;
     vs_out.TexCoord = aTexCoord;
     vs_out.TexLayer = aTexLayer;
@@ -94,6 +103,7 @@ void main() {
     vs_out.AOFactor = aAOFactor;
     vs_out.BlockLight = aBlockLight;
 
-    gl_Position = projection * view * worldPosition;
-    gl_ClipDistance[0] = dot(worldPosition, clipPlane);
+    vec3 cameraRelPos = localPos + chunkRel;
+    gl_Position = projection * viewRot * vec4(cameraRelPos, 1.0);
+    gl_ClipDistance[0] = dot(vec4(worldPos, 1.0), clipPlane);
 }
