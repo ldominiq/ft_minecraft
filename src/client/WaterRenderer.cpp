@@ -12,6 +12,7 @@
 #include "TextureManager.hpp"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <cmath>
 
 
 // ============================================================
@@ -146,18 +147,36 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     glm::mat4 viewRot = view;
     viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     const glm::dvec3 eyePosD = camera->getEyePosD();
-    const glm::dvec3 lightPosRelD = glm::dvec3(lighting->getLightPos()) - eyePosD;
+    const glm::vec3 sunDir = lighting->getDirectionalLightDirection();
+
+    // Anchor the dudv texture coordinate to an eye-relative origin snapped
+    // to a multiple of the texture's repeat period (1/tiling). This lets
+    // the vertex shader compute the texture coordinate from camera-relative
+    // positions, which keeps the value small (< one period) at any world
+    // coordinate — without it, moveFactor and wave detail would quantize
+    // away at large coords. The snapping aligns to integer multiples of the
+    // period, so the visible texture is identical to the worldspace path.
+    const double period = (dudvTiling > 0.0f) ? (1.0 / static_cast<double>(dudvTiling)) : 1.0;
+    const double anchorX = std::floor(eyePosD.x / period) * period;
+    const double anchorZ = std::floor(eyePosD.z / period) * period;
+    const glm::vec2 texAnchor(static_cast<float>(eyePosD.x - anchorX),
+                              static_cast<float>(eyePosD.z - anchorZ));
 
     // Set water shader uniforms
     waterShader->use();
     waterShader->setMat4("projection", projection);
     waterShader->setMat4("viewRot", viewRot);
-    waterShader->setVec3("lightPositionRel", glm::vec3(lightPosRelD));
-    waterShader->setFloat("lightPosY", lighting->getLightPos().y);
+    // Sun is a directional light. Pass its direction (toward-sun convention,
+    // matching dirLight) so specular stays correct at any world coordinate.
+    // Set explicitly here too — uploadFogUniforms only sets sunDir when fog is on.
+    waterShader->setVec3("sunDir", sunDir);
     waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
-    // Horizon threshold for specular cutoff (sun below horizon → no specular)
-    waterShader->setFloat("horizonY", 55.0f);
-    waterShader->setFloat("twilightBand", 8.0f); // smooth fade band around horizon (units of world Y)
+    // Sun-elevation fade band for specular: sunDir.y in [-1, 1].
+    // Old behavior keyed on lightPos.y in [55±8], where lightPos = dir*200,
+    // i.e. dir.y in [0.235, 0.315]. Preserve that.
+    waterShader->setFloat("twilightLow",  0.235f);
+    waterShader->setFloat("twilightHigh", 0.315f);
+    waterShader->setVec2("texAnchor", texAnchor);
     waterShader->setFloat("moveFactor", waterMoveFactor);
     waterShader->setFloat("waveStrength", waveStrength);
     waterShader->setFloat("tiling", dudvTiling);

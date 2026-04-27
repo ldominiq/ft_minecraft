@@ -3,8 +3,6 @@
 in vec4 clipSpace;
 in vec3 toCameraVector;
 in vec2 textureCoords;
-in vec3 fromLightVector;
-in float lightPosYOut;
 
 out vec4 FragColor;
 
@@ -16,8 +14,10 @@ uniform sampler2D refractionDepthTexture;
 
 uniform float moveFactor;
 uniform vec3 lightColor;
-uniform float horizonY;           // horizon altitude (world Y) below which specular is disabled
-uniform float twilightBand;       // half-width of the smooth fade zone around the horizon
+// Sun-elevation thresholds, expressed as components of sunDir.y in [-1, 1].
+// Specular fades smoothly from 0 at twilightLow up to 1 at twilightHigh.
+uniform float twilightLow;
+uniform float twilightHigh;
 uniform float nearPlane;
 uniform float farPlane;
 
@@ -76,16 +76,17 @@ void main() {
     refractiveFactor = pow(refractiveFactor, 1.0); // The higer the value the more reflective when looking at an angle
     refractiveFactor = clamp(refractiveFactor, 0.001, 0.999);
 
-    // Light reflection calculation
-    vec3 reflectedLight = reflect(normalize(fromLightVector), normal);
+    // Light reflection calculation. Sun is a directional light: sunDir points
+    // toward the sun, so the incoming light direction is -sunDir. Using the
+    // direction directly (instead of reconstructing it from a worldspace
+    // light position) is what keeps specular correct at large coordinates.
+    vec3 reflectedLight = reflect(-sunDir, normal);
     float specular = max(dot(reflectedLight, viewVector), 0.0);
     specular = pow(specular, shineDamper);
     vec3 specularHighlights = lightColor * specular * reflectivity * clamp(waterDepth/5.0, 0.0, 1.0);
 
-    // Smoothly fade specular highlights around the horizon
-    // dayFactor = 0 when lightPosition.y <= horizonY - twilightBand
-    // dayFactor = 1 when lightPosition.y >= horizonY + twilightBand
-    float dayFactor = smoothstep(horizonY - twilightBand, horizonY + twilightBand, lightPosYOut);
+    // Smoothly fade specular highlights around the horizon based on sun elevation.
+    float dayFactor = smoothstep(twilightLow, twilightHigh, sunDir.y);
     specularHighlights *= dayFactor;
 
     FragColor = mix(reflectColor, refractColor, refractiveFactor);
