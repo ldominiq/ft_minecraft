@@ -511,7 +511,7 @@ void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view
 	              [](const std::shared_ptr<Entity>& e){ return !e || e->removed; });
 }
 
-void Renderer::renderWater() const {
+void Renderer::renderWater(const std::shared_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const {
 	glDisable(GL_CULL_FACE);
     for (const auto& weakChunk : renderedChunks) {
         if (auto chunk = weakChunk.lock()) {
@@ -525,6 +525,11 @@ void Renderer::renderWater() const {
                 if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
                     continue;
             }
+
+            const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+                                               static_cast<double>(chunk->getOriginZ()));
+            shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - eyePos));
+            shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 
             glBindVertexArray(chunk->getWaterVao());
             glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);

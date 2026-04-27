@@ -4,7 +4,7 @@ in vec4 clipSpace;
 in vec3 toCameraVector;
 in vec2 textureCoords;
 in vec3 fromLightVector;
-in vec3 lightPos;
+in float lightPosYOut;
 
 out vec4 FragColor;
 
@@ -85,7 +85,7 @@ void main() {
     // Smoothly fade specular highlights around the horizon
     // dayFactor = 0 when lightPosition.y <= horizonY - twilightBand
     // dayFactor = 1 when lightPosition.y >= horizonY + twilightBand
-    float dayFactor = smoothstep(horizonY - twilightBand, horizonY + twilightBand, lightPos.y);
+    float dayFactor = smoothstep(horizonY - twilightBand, horizonY + twilightBand, lightPosYOut);
     specularHighlights *= dayFactor;
 
     FragColor = mix(reflectColor, refractColor, refractiveFactor);

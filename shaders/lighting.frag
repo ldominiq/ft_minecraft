@@ -140,7 +140,7 @@ void main()
     // properties
     vec3 color = texColor.rgb;
     vec3 norm = normalize(fs_in.Normal);
-    vec3 viewDir = normalize(viewPos - fs_in.FragPos);
+    vec3 viewDir = normalize(-fs_in.FragPosRel);
     
     // SSAO
     float AmbientOcclusion = 1.0;
@@ -161,9 +161,9 @@ void main()
     vec3 result = CalcDirLight(dirLight, norm, viewDir, AmbientOcclusion, color);
     // phase 2: point lights
     for(int i = 0; i < NR_POINT_LIGHTS; i++)
-        result += CalcPointLight(pointLights[i], norm, fs_in.FragPos, viewDir, AmbientOcclusion, color);    
+        result += CalcPointLight(pointLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
     // phase 3: spot light
-    result += CalcSpotLight(spotLight, norm, fs_in.FragPos, viewDir, AmbientOcclusion, color);    
+    result += CalcSpotLight(spotLight, norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
 
     if (renderType == 1) {
         FragColor = vec4(norm * 0.5 + 0.5, 1.0); // Visualize normals
@@ -175,9 +175,9 @@ void main()
     } else {
         vec3 finalColor = result * color;
         if (fogEnabled && !cameraUnderwater) {
-            float dist = length(fs_in.FragPos - viewPos);
+            float dist = length(fs_in.FragPosRel);
             float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
-            vec3 fogDir = normalize(fs_in.FragPos - viewPos);
+            vec3 fogDir = normalize(fs_in.FragPosRel);
             finalColor = mix(sampleSkyColor(skyLUT, fogDir, normalize(-dirLight.direction), skyExposure),
                             finalColor, fogFactor);
         }
@@ -208,7 +208,7 @@ void main()
         vec3 tintedColor = FragColor.rgb * underwaterTintColor;
 
         // Distance based fog
-        float distance = length(viewPos - fs_in.FragPos);
+        float distance = length(fs_in.FragPosRel);
         float fogFactor = exp(-distance * underwaterFogDensity);
         fogFactor = clamp(fogFactor, 0.0, 1.0);
 

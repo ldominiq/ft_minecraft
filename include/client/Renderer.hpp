@@ -100,7 +100,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
        void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix,
 						 const glm::dvec3& eyePos) const;
-		void renderWater() const;
+       void renderWater(const std::shared_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const;
 
 		/// Returns true if any water chunk is visible in the current frustum.
 		bool hasVisibleWater() const;

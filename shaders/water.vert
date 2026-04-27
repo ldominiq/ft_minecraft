@@ -5,28 +5,31 @@ out vec4 clipSpace;
 out vec3 toCameraVector;
 out vec2 textureCoords;
 out vec3 fromLightVector;
-out vec3 lightPos;
+out float lightPosYOut;
 
 uniform mat4 projection;
-uniform mat4 view;
-uniform vec3 cameraPos;
-uniform vec3 lightPosition;
+uniform mat4 viewRot;
+uniform vec3 chunkRel;
+uniform vec3 chunkOriginWorld;
+uniform vec3 lightPositionRel;
+uniform float lightPosY;
 
 uniform float tiling;
 
 void main() {
-    vec4 worldPosition = vec4(aPos, 1.0);
+    vec3 worldPos = chunkOriginWorld + aPos;
+    vec3 cameraRelPos = chunkRel + aPos;
 
     // Clip space coordinates for projective texture mapping
-    clipSpace = projection * view * worldPosition;
+    clipSpace = projection * viewRot * vec4(cameraRelPos, 1.0);
     gl_Position = clipSpace;
 
-    textureCoords = worldPosition.xz * tiling;
+    textureCoords = worldPos.xz * tiling;
     
     // Calculate vectors for lighting and Fresnel
-    toCameraVector = cameraPos - worldPosition.xyz;
+    toCameraVector = -cameraRelPos;
 
-    fromLightVector = worldPosition.xyz - lightPosition;
+    fromLightVector = cameraRelPos - lightPositionRel;
 
-    lightPos = lightPosition;
+    lightPosYOut = lightPosY;
 }

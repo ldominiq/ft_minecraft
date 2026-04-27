@@ -290,8 +290,8 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     shader.use();
 
     // set light uniforms
-    shader.setVec3("viewPos", cameraPos);
-    shader.setVec3("lightPos", lightPos);
+    shader.setVec3("viewPos", glm::vec3(0.0f));
+    shader.setVec3("lightPos", lightPos - cameraPos);
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     shader.setFloat("shadows.MIN_BIAS", MIN_BIAS);
     shader.setFloat("shadows.MAX_BIAS", MAX_BIAS);
@@ -337,7 +337,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
             shader.setVec3("pointLights[" + std::to_string(i) + "].specular", glm::vec3(0.0f));
             continue;
         }
-        shader.setVec3("pointLights[" + std::to_string(i) + "].position", pointLightPositions[i]);
+        shader.setVec3("pointLights[" + std::to_string(i) + "].position", pointLightPositions[i] - cameraPos);
         shader.setVec3("pointLights[" + std::to_string(i) + "].ambient", pointLightAmbient[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].diffuse", pointLightDiffuse[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].specular", pointLightSpecular[i]);
@@ -347,7 +347,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     }
     // spotLight (flashlight)
     if (flashlightOn) {
-        shader.setVec3("spotLight.position", cameraPos);
+        shader.setVec3("spotLight.position", glm::vec3(0.0f));
         shader.setVec3("spotLight.direction", cameraFront);
         shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
         shader.setVec3("spotLight.diffuse", glm::vec3(1.0f));
@@ -358,7 +358,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
         shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
         shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
     } else {
-        shader.setVec3("spotLight.position", cameraPos);
+        shader.setVec3("spotLight.position", glm::vec3(0.0f));
         shader.setVec3("spotLight.direction", cameraFront);
         shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
         shader.setVec3("spotLight.diffuse", glm::vec3(0.0f));

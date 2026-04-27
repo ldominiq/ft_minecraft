@@ -181,9 +181,9 @@ void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockTy
 }
 
 void ChunkRenderer::addWaterFace(const int x, const int y, const int z, const int face, const float skyLightLevel) {
-    const float faceX = static_cast<float>(originX + x);
+    const float faceX = static_cast<float>(x);
     const float faceY = static_cast<float>(y);
-    const float faceZ = static_cast<float>(originZ + z);
+    const float faceZ = static_cast<float>(z);
 
     static const float faceData[6][18] = {
         // FRONT face (Z+)
