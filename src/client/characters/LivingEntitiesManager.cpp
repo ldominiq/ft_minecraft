@@ -26,6 +26,13 @@ void LivingEntitiesManager::add(std::weak_ptr<IClientEntity> character)
 void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &view,
 								 const glm::dvec3& eyePos, const float deltaTime)
 {
+  static glm::dvec3 prevEyePos(0.0);
+	static bool hasPrevEyePos = false;
+	const glm::dvec3 eyeDelta = eyePos - prevEyePos;
+	const bool cameraMoved = !hasPrevEyePos || glm::dot(eyeDelta, eyeDelta) > 1e-12;
+	prevEyePos = eyePos;
+	hasPrevEyePos = true;
+
 	characterShader.use();
 	characterShader.setInt("uSkin", 0);
     characterShader.setMat4("uProjection", projection);
@@ -64,8 +71,8 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 		if (cc && !dying)
 			cc->tickFuseAnimation(deltaTime);
 
-		const bool creeperAnimating = cc && (cc->clientPrimed || cc->inflation > 0.0f);
-      if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating)
+     const bool creeperAnimating = cc && (cc->clientPrimed || cc->inflation > 0.0f);
+		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating || cameraMoved)
 		{
 			c->characterBodyParts.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));
           glm::dvec3 meshPosD = c->hasRenderPos ? c->renderPos : c->getPositionD();
