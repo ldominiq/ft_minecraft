@@ -369,25 +369,32 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 			ent->rotationUpdated = true;
 		ent->hasHorizontalInput = (pkt.positionFlags & 0x01) != 0;
 		ent->setOnGround((pkt.positionFlags & 0x02) != 0);
-		if ((pkt.positionFlags & 0x04) != 0) {
-			if (auto ice = std::dynamic_pointer_cast<IClientEntity>(ent))
+		// IClientEntity virtually inherits LivingEntity (the diamond with Creeper
+		// forces it), so static_pointer_cast can't cross the virtual base — the
+		// downcast needs RTTI. Done once here and reused for arm swing / death /
+		// creeper below. Hoisting triggerArmSwing+triggerDeath onto Entity would
+		// dodge the cast, but they're animation hooks meaningless for items and
+		// would further pollute the shared header (see TODO in Entity.hpp).
+		std::shared_ptr<IClientEntity> ice;
+		if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
+			ice = std::dynamic_pointer_cast<IClientEntity>(ent);
+
+		if (ice) {
+			if ((pkt.positionFlags & 0x04) != 0)
 				ice->triggerArmSwing();
+			if (pkt.type == static_cast<uint16_t>(CREEPER))
+				std::static_pointer_cast<ClientCreeper>(ice)->clientPrimed = (pkt.positionFlags & 0x08) != 0;
 		}
-		if (auto cc = std::dynamic_pointer_cast<ClientCreeper>(ent))
-			cc->clientPrimed = (pkt.positionFlags & 0x08) != 0;
 		ent->lastNetUpdateTime = serverTime;
 
 		if (pkt.type == static_cast<uint16_t>(-1))
 		{
-			if (pkt.eEntityType == EEntityTypes::LIVING_ENTITIES)
+			if (ice)
 			{
 				// Start the fall-over death animation instead of erasing immediately.
 				// The LivingEntitiesManager flips `removed` once dyingDone, and
 				// Renderer::drawCharacters sweeps removed entries afterwards.
-				if (auto ice = std::dynamic_pointer_cast<IClientEntity>(ent))
-					ice->triggerDeath();
-				else
-					ent->removed = true;
+				ice->triggerDeath();
 			}
 			else
 			{
