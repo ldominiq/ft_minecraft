@@ -330,7 +330,8 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
 	}
 }
 
-void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const {
+void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix,
+                            const glm::dvec3& eyePos) const {
 	for (auto& weakChunk : renderedChunks) {
 		auto chunk = weakChunk.lock();
 		if (!chunk)
@@ -361,7 +362,8 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 		};
 
 		for (const auto& c : corners) {
-			glm::vec4 clip = lightSpaceMatrix * glm::vec4(c, 1.0f);
+         glm::dvec3 cRelD = glm::dvec3(c) - eyePos;
+            glm::vec4 clip = lightSpaceMatrix * glm::vec4(glm::vec3(cRelD), 1.0f);
 			// Ortho projection has w=1, but be safe
 			float invW = 1.0f / clip.w;
 			float nx = clip.x * invW;
@@ -381,10 +383,9 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 		// Mesh is in chunk-local space — supply the world origin so the
 		// vertex shader can reconstruct world positions before projecting
 		// into the light's clip space.
-		shaderProgram->setVec3("chunkOriginWorld",
-		                       glm::vec3(static_cast<float>(chunk->getOriginX()),
-		                                 0.0f,
-		                                 static_cast<float>(chunk->getOriginZ())));
+      const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+                                           static_cast<double>(chunk->getOriginZ()));
+        shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - eyePos));
 		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 	}
 }
@@ -497,9 +498,10 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 	}
 }
 
-void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime)
+void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view,
+                              const glm::dvec3& eyePos, const float deltatime)
 {
-	livingEntitiesManager.draw(projection, view, deltatime);
+    livingEntitiesManager.draw(projection, view, eyePos, deltatime);
 	// Drop entities whose death animation completed (LivingEntitiesManager marks them).
 	std::erase_if(livingEntities,
 	              [](const std::shared_ptr<Entity>& e){ return !e || e->removed; });

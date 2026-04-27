@@ -37,20 +37,25 @@ HitboxRenderer::~HitboxRenderer() {
     if (vao) glDeleteVertexArrays(1, &vao);
 }
 
-void HitboxRenderer::drawAABB(const AABB& box, const glm::mat4& view, const glm::mat4& proj, const glm::vec3& color) {
+void HitboxRenderer::drawAABB(const AABB& box, const glm::mat4& view, const glm::mat4& proj,
+                              const glm::dvec3& eyePos, const glm::vec3& color) {
     if (!shader) return;
     shader->use();
 
     // compute model from AABB
     glm::vec3 size = box.max - box.min;
-    glm::vec3 center = (box.min + box.max) * 0.5f;
+    glm::dvec3 center = glm::dvec3(box.min + box.max) * 0.5;
+    glm::dvec3 centerRel = center - eyePos;
+
+    glm::mat4 viewRot = view;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
     glm::mat4 model(1.0f);
-    model = glm::translate(model, center);
+    model = glm::translate(model, glm::vec3(centerRel));
     model = glm::scale(model, size); // unit cube [-0.5,0.5] scaled to size
 
     shader->setMat4("model", model);
-    shader->setMat4("view", view);
+    shader->setMat4("view", viewRot);
     shader->setMat4("projection", proj);
     shader->setVec3("color", color);
 

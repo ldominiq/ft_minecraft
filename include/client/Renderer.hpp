@@ -92,7 +92,8 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		                              const glm::vec4& clipPlane, const glm::vec3& viewPos) const;
 
 		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
-		void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const;
+       void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix,
+						 const glm::dvec3& eyePos) const;
 		void renderWater() const;
 
 		/// Returns true if any water chunk is visible in the current frustum.
@@ -118,7 +119,8 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		LivingEntitiesManager livingEntitiesManager;
 		void onEntity(NetEntityMove &pkt, double serverTime);	// handles NetEntityMove packet
-		void drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime);
+     void drawCharacters(const glm::mat4 &projection, const glm::mat4 &view,
+						  const glm::dvec3& eyePos, const float deltatime);
 
 		size_t getDrawCallCount() const { return m_drawCallCount; }
 		void resetDrawCallCount() { m_drawCallCount = 0; }

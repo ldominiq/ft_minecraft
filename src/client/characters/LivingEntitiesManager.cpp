@@ -23,10 +23,15 @@ void LivingEntitiesManager::add(std::weak_ptr<IClientEntity> character)
 	characters.push_back(character);
 }
 
-void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const float deltaTime)
+void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &view,
+								 const glm::dvec3& eyePos, const float deltaTime)
 {
 	characterShader.use();
 	characterShader.setInt("uSkin", 0);
+    characterShader.setMat4("uProjection", projection);
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	characterShader.setMat4("uViewRot", viewRot);
 	auto identity = glm::mat4(1.0f);
 
 	for (const auto &character : characters)
@@ -60,11 +65,13 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			cc->tickFuseAnimation(deltaTime);
 
 		const bool creeperAnimating = cc && (cc->clientPrimed || cc->inflation > 0.0f);
-		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating)
+      if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating)
 		{
 			c->characterBodyParts.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));
-			glm::vec3 meshPos = c->hasRenderPos ? c->renderPos : c->getPosition();
-			c->characterBodyParts.character.translation = glm::translate(glm::mat4(1.0f), meshPos + c->YPositionOffset);
+          glm::dvec3 meshPosD = c->hasRenderPos ? c->renderPos : c->getPositionD();
+			glm::dvec3 meshPosRelD = meshPosD - eyePos;
+			c->characterBodyParts.character.translation = glm::translate(
+				glm::mat4(1.0f), glm::vec3(meshPosRelD + glm::dvec3(c->YPositionOffset)));
 			if (dying)
 			{
 				c->deathAnimation(deltaTime);
@@ -81,12 +88,12 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 				if (swinging)
 					c->swingArmAnimation(deltaTime);
 			}
-			c->characterBodyParts.character.compute(identity, projection, view, characterShader);
+           c->characterBodyParts.character.compute(identity, projection, viewRot, characterShader);
 			c->positionUpdated = false;
 			c->rotationUpdated = false;
 		}
 		else
-			c->characterBodyParts.character.drawScene(characterShader, projection, view);
+           c->characterBodyParts.character.drawScene(characterShader, projection, viewRot);
 	}
 
 	for (const auto &character : characters)
@@ -98,9 +105,9 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			continue ;
 		if (true)
 		{
-			AABB box = c->constructAABB(c->hasRenderPos ? c->renderPos : c->getPosition());
+			AABB box = c->constructAABB(c->hasRenderPos ? c->renderPos : c->getPositionD());
 			glm::vec3 col(1.0f, 0.0f, 0.0f); // red
-			hbRenderer.drawAABB(box, view, projection, col);
+            hbRenderer.drawAABB(box, view, projection, eyePos, col);
 		}
 	}
 

@@ -7,6 +7,7 @@ layout (location = 5) in float aSkyLight; // Sky-light level (0.0 = dark, 1.0 = 
 
 out VS_OUT {
     vec3 FragPos;
+    vec3 FragPosRel;
     vec3 Normal;
     vec2 TexCoord;
     float TexLayer;
@@ -34,6 +35,7 @@ void main()  {
     vec3 cameraRelPos  = chunkRel + aPos;
 
     vs_out.FragPos = worldPos;
+    vs_out.FragPosRel = cameraRelPos;
     vs_out.Normal = aNormal;
     vs_out.TexCoord = aTexCoord;
     vs_out.TexLayer = aTexLayer;

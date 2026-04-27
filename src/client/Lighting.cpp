@@ -981,11 +981,14 @@ void Lighting::initCSMResources()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView, const TextureManager& texMgr)
+void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView,
+                                   const glm::dvec3& eyePos, const TextureManager& texMgr)
 {
     // 1. Compute all light-space matrices for current camera position
     cachedShadowLightDir = -directionalLightDir;
-    csmLightSpaceMatrices = getLightSpaceMatrices(cameraView);
+    glm::mat4 viewRot = cameraView;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    csmLightSpaceMatrices = getLightSpaceMatrices(viewRot);
 
     const int numCascades = static_cast<int>(csmLightSpaceMatrices.size());
 
@@ -1005,7 +1008,7 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
         glClear(GL_DEPTH_BUFFER_BIT);
 
         csmDepthShader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
-        renderer.renderShadow(csmDepthShader, csmLightSpaceMatrices[i]);
+        renderer.renderShadow(csmDepthShader, csmLightSpaceMatrices[i], eyePos);
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1018,7 +1021,10 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
 {
     shader.use();
 
+    glm::mat4 viewRot = cameraView;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     shader.setMat4("view", cameraView);
+    shader.setMat4("viewRot", viewRot);
 
     // Upload all light-space matrices (guard: may be empty if sun is below horizon on first frame)
     for (size_t i = 0; i < shadowCascadeLevels.size() + 1 && i < csmLightSpaceMatrices.size(); ++i)

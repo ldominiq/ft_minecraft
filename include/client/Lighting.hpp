@@ -105,7 +105,8 @@ public:
     glm::mat4 getLightSpaceMatrix(const float nearPlane, const float farPlane, const glm::mat4& view) const;
     std::vector<glm::mat4> getLightSpaceMatrices(const glm::mat4& cameraView) const;
     void initCSMResources();
-    void updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView, const TextureManager& texMgr);
+    void updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView,
+                             const glm::dvec3& eyePos, const TextureManager& texMgr);
     void uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraView) const;
     void drawCSMShadowMapPreview(int cascadeLayer);
     void drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cameraFront, const glm::mat4& cameraView);

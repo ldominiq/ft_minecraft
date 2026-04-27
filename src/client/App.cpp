@@ -810,7 +810,7 @@ void App::render() {
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
-            lighting->updateCSMShadowMaps(*renderer, view, textureManager);
+         lighting->updateCSMShadowMaps(*renderer, view, camera->getEyePosD(), textureManager);
 
             glEndQuery(GL_TIME_ELAPSED);
             shadowQueryIssuedThisFrame[currentQueryIndex] = true;
@@ -1263,7 +1263,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		localPlayer.hasRenderPos = false;
 	}
 
-	renderer->drawCharacters(projection, view, deltaTime);
+  renderer->drawCharacters(projection, view, camera->getEyePosD(), deltaTime);
 }
 
 void App::computeDebugStats()

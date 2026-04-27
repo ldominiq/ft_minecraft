@@ -2,6 +2,7 @@
 
 in VS_OUT {
     vec3 FragPos;
+    vec3 FragPosRel;
     vec3 Normal;
     vec2 TexCoord;
     float TexLayer;
@@ -40,7 +41,7 @@ uniform mat4 lightSpaceMatrices[MAX_CASCADES];
 uniform float cascadePlaneDistances[MAX_CASCADES - 1];
 uniform int cascadeCount;
 uniform float farPlane;
-uniform mat4 view;
+uniform mat4 viewRot;
 uniform bool shadowsEnabled;
 
 #include "sky_common.glsl"
@@ -72,7 +73,7 @@ void main() {
     // Compute shadow from CSM (if enabled and in sunlight)
     float shadow = 0.0;
     if (shadowsEnabled && fs_in.SkyLight > 0.01 && lightDirNorm.y > 0.0) {
-        shadow = computeVegetationShadow(fs_in.FragPos);
+        shadow = computeVegetationShadow(fs_in.FragPosRel);
     }
 
     // Combine skylight and block light: use the maximum of the two
@@ -119,13 +120,13 @@ void main() {
 
 // Simplified CSM shadow calculation for vegetation
 // Uses simpler bias and no complex normal offsetting since vegetation uses upward normal
-float computeVegetationShadow(vec3 fragPosWorldSpace)
+float computeVegetationShadow(vec3 fragPosRel)
 {
     if (cascadeCount == 0)
         return 0.0;
 
     // Find fragment depth in view space to select cascade
-    vec4 fragPosViewSpace = view * vec4(fragPosWorldSpace, 1.0);
+    vec4 fragPosViewSpace = viewRot * vec4(fragPosRel, 1.0);
     float depthValue = abs(fragPosViewSpace.z);
 
     // Select cascade layer
@@ -140,7 +141,7 @@ float computeVegetationShadow(vec3 fragPosWorldSpace)
     }
 
     // Transform to light space
-    vec4 fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
+    vec4 fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosRel, 1.0);
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
@@ -198,7 +199,7 @@ float computeVegetationShadow(vec3 fragPosWorldSpace)
             float blendFactor = clamp((depthValue - blendStart) / (cascadeFar - blendStart), 0.0, 1.0);
 
             // Sample next cascade
-            vec4 nextLightSpace = lightSpaceMatrices[layer + 1] * vec4(fragPosWorldSpace, 1.0);
+            vec4 nextLightSpace = lightSpaceMatrices[layer + 1] * vec4(fragPosRel, 1.0);
             vec3 nextCoords = nextLightSpace.xyz / nextLightSpace.w;
             nextCoords = nextCoords * 0.5 + 0.5;
 

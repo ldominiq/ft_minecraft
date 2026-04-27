@@ -14,6 +14,7 @@ layout (location = 9) in float aBlockLight;    // Block light level (0.0 = no li
 
 out VS_OUT {
     vec3 FragPos;
+    vec3 FragPosRel;
     vec3 Normal;
     vec2 TexCoord;
     float TexLayer;
@@ -94,7 +95,10 @@ void main() {
         // worldPosition.y += sway * 10;
     }
 
+    vec3 cameraRelPos = localPos + chunkRel;
+
     vs_out.FragPos = worldPos;
+    vs_out.FragPosRel = cameraRelPos;
     vs_out.Normal = rotationMatrix * aNormal;
     vs_out.TexCoord = aTexCoord;
     vs_out.TexLayer = aTexLayer;
@@ -103,7 +107,6 @@ void main() {
     vs_out.AOFactor = aAOFactor;
     vs_out.BlockLight = aBlockLight;
 
-    vec3 cameraRelPos = localPos + chunkRel;
     gl_Position = projection * viewRot * vec4(cameraRelPos, 1.0);
     gl_ClipDistance[0] = dot(vec4(worldPos, 1.0), clipPlane);
 }
