@@ -75,8 +75,12 @@ bool CommonWorld<ChunkT>::rayIntersectsAABB(const glm::vec3& rayOrigin, const gl
 	);
 	glm::vec3 invDir = 1.0f / safeDir;
 
-    glm::vec3 t0 = (box.min - rayOrigin) * invDir;
-    glm::vec3 t1 = (box.max - rayOrigin) * invDir;
+    // box.min/max are dvec3 now (precise at large coords). Do the subtraction
+    // in double so the camera-relative ray distances stay accurate, then
+    // narrow to float for the per-axis t comparisons.
+    const glm::dvec3 rayOriginD(rayOrigin);
+    glm::vec3 t0 = glm::vec3(box.min - rayOriginD) * invDir;
+    glm::vec3 t1 = glm::vec3(box.max - rayOriginD) * invDir;
 
     glm::vec3 tmin = glm::min(t0, t1);
     glm::vec3 tmax = glm::max(t0, t1);

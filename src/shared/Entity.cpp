@@ -18,15 +18,19 @@ Entity::~Entity()
 	idManager.release(ID);
 }
 
-// Build a current-player AABB (min at feet)
-AABB Entity::constructAABB(const glm::vec3 &pos) {
-	glm::vec3 mn(pos.x - entityWidth * 0.5f, pos.y,				pos.z - entityWidth * 0.5f);
-	glm::vec3 mx(pos.x + entityWidth * 0.5f, pos.y + entityHeight, pos.z + entityWidth * 0.5f);
+// Build a current-player AABB (min at feet). Built in double so that
+// collision-bound floors stay correct at large world coordinates.
+AABB Entity::constructAABB(const glm::dvec3 &pos) {
+	const double halfW = static_cast<double>(entityWidth) * 0.5;
+	const double height = static_cast<double>(entityHeight);
+	glm::dvec3 mn(pos.x - halfW, pos.y,         pos.z - halfW);
+	glm::dvec3 mx(pos.x + halfW, pos.y + height, pos.z + halfW);
 	return AABB(mn, mx);
 };
 
 bool Entity::aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world) {
-    // compute block search bounds (floor)
+    // compute block search bounds (floor in double — at 5M, float floor of
+    // min.x + EPS would land on the wrong integer because the LSB is ~0.5m).
     int minX = (int)std::floor(box.min.x + EPS);
     int maxX = (int)std::floor(box.max.x - EPS);
     int minY = (int)std::floor(box.min.y + EPS);
@@ -49,7 +53,7 @@ bool Entity::aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world) {
 }
 
 bool Entity::entityCollidesWithBlock(const glm::vec3 blockPos) {
-    AABB box = constructAABB(glm::vec3(position));
+    AABB box = constructAABB(position);
 	float blockPlacementTolerance = entityHeight * 0.1f; // variable used to be able to place blocks under yourself
 
     int minX = static_cast<int>(std::floor(box.min.x + EPS));
@@ -78,7 +82,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
     // (e.g. 0.01 / frame) at very large world coordinates don't lose to
     // float quantization.
     glm::dvec3 newPos = position;
-    AABB currentBox = constructAABB(glm::vec3(position));
+    AABB currentBox = constructAABB(position);
 
     // X axis
     if (std::abs(desiredMove.x) > EPS) {
@@ -86,7 +90,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
         AABB movedX = currentBox.movedBy(dx, 0.0f, 0.0f);
         if (!aabbCollidesWithWorld(movedX, world)) {
             newPos.x += dx;
-            currentBox = constructAABB(glm::vec3(newPos));
+            currentBox = constructAABB(newPos);
 		}
 		else velocity.x = 0.0f;
     }
@@ -97,7 +101,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
         AABB movedZ = currentBox.movedBy(0.0f, 0.0f, dz);
         if (!aabbCollidesWithWorld(movedZ, world)) {
             newPos.z += dz;
-            currentBox = constructAABB(glm::vec3(newPos));
+            currentBox = constructAABB(newPos);
 		}
 		else velocity.z = 0.0f;
     }
@@ -108,7 +112,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
 void Entity::calculateNewYPosition(const ICommonWorld &world)
 {
 	glm::dvec3 newPos = position;
-	AABB currentBox = constructAABB(glm::vec3(position));
+	AABB currentBox = constructAABB(position);
 
 	// attempt Y movement
 

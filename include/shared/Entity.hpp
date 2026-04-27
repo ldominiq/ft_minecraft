@@ -30,14 +30,20 @@ constexpr float EPS = 1e-5f;
 
 using entityID = uint32_t;
 
+// AABB stored in double so that block-collision math (floor(min.x + EPS) ...)
+// stays correct at very large world coordinates. With float, at 5M coords the
+// LSB is ~0.5m and adding entityWidth*0.5 to a player's position rounds to a
+// different block boundary on +X vs -X — manifesting as the player visually
+// clipping into blocks asymmetrically.
 struct AABB {
-    glm::vec3 min;
-    glm::vec3 max;
+    glm::dvec3 min;
+    glm::dvec3 max;
     AABB() = default;
-    AABB(const glm::vec3 &min_, const glm::vec3 &max_) : min(min_), max(max_) {}
+    AABB(const glm::dvec3 &min_, const glm::dvec3 &max_) : min(min_), max(max_) {}
+    AABB(const glm::vec3 &min_, const glm::vec3 &max_) : min(glm::dvec3(min_)), max(glm::dvec3(max_)) {}
 
-    AABB movedBy(float dx, float dy, float dz) const {
-        return AABB(min + glm::vec3(dx, dy, dz), max + glm::vec3(dx, dy, dz));
+    AABB movedBy(double dx, double dy, double dz) const {
+        return AABB(min + glm::dvec3(dx, dy, dz), max + glm::dvec3(dx, dy, dz));
     }
 
     // strict overlap test (no touching)
@@ -117,8 +123,8 @@ class Entity {
 		float yaw = 0;
 		float pitch = 0;
 
-		AABB constructAABB(const glm::vec3 &pos);
-		AABB constructAABB(const glm::dvec3 &pos) { return constructAABB(glm::vec3(pos)); }
+		AABB constructAABB(const glm::dvec3 &pos);
+		AABB constructAABB(const glm::vec3 &pos) { return constructAABB(glm::dvec3(pos)); }
 		bool entityCollidesWithBlock(const glm::vec3 blockPos);
 
 		// position has been changed since last check.
@@ -197,7 +203,11 @@ class Entity {
 		};
 		//virtual void predict();
 
-		virtual void createMesh(std::vector<float> &meshVertices, const TextureManager* texMgr = nullptr) { std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
+		// Item entities only. eyePos is the camera-relative origin: implementations
+		// must emit vertices in (worldPos - eyePos) so positions stay precise at
+		// large world coordinates. The mesh is rebuilt every frame anyway, so
+		// passing eyePos here costs nothing.
+		virtual void createMesh(std::vector<float> &meshVertices, const glm::dvec3& eyePos, const TextureManager* texMgr = nullptr) { (void)meshVertices; (void)eyePos; (void)texMgr; std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
 		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //living entities only
 
 		//the not yet Implemented is a lie. Those are only client functions defined in the client.

@@ -97,8 +97,9 @@ void main() {
 
     // Apply camera underwater fog (when viewing from underwater)
     if (cameraUnderwater) {
-        // Distance-based fog for vegetation
-        float distance = length(viewPos - fs_in.FragPos);
+        // Distance-based fog for vegetation. Use FragPosRel so distance stays
+        // accurate at large world coordinates (FragPos at 5M is float-quantized).
+        float distance = length(fs_in.FragPosRel);
         float fogFactor = exp(-distance * underwaterFogDensity);
         fogFactor = clamp(fogFactor, 0.0, 1.0);
 
@@ -107,11 +108,11 @@ void main() {
         result = mix(underwaterFogColor, tintedColor, fogFactor);
     }
 
-    
+
     if (fogEnabled && !cameraUnderwater) {
-        float dist = length(fs_in.FragPos - viewPos);
+        float dist = length(fs_in.FragPosRel);
         float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
-        vec3 fogDir = normalize(fs_in.FragPos - viewPos);
+        vec3 fogDir = normalize(fs_in.FragPosRel);
         result = mix(sampleSkyColor(skyLUT, fogDir, -lightDir, skyExposure), result, fogFactor);
     }
 

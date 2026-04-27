@@ -23,7 +23,7 @@ ItemPropEntityManager::~ItemPropEntityManager()
 	}
 }
 
-void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities)
+void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities, const glm::dvec3& eyePos)
 {
 	int i = -1;
 	bool itemsRemoved = false; //Needed because when 1 element is removed the order of the elements change. So when 1 element is removed we redo EVERY prop. Shitty solution but it is what is is.
@@ -57,7 +57,7 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 		// }
 
 		//add the meshes of a prop to the back of the buffer
-		entity->get()->createMesh(vertices, textureManager);
+		entity->get()->createMesh(vertices, eyePos, textureManager);
 		memcpy(buffer.data() + i * ITEM_SIZE,
 			vertices.data(),
 			ITEM_SIZE * sizeof(float)
@@ -109,9 +109,9 @@ void ItemPropEntityManager::initGL()
     glBindVertexArray(0);
 }
 
-void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &view, std::vector<std::shared_ptr<ItemEntity>> &entities)
+void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::dvec3& eyePos, std::vector<std::shared_ptr<ItemEntity>> &entities)
 {
-	updateMesh(entities);
+	updateMesh(entities, eyePos);
 
 	shader->use();
 
@@ -123,7 +123,12 @@ void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 		shader->setInt("blockTextures", 0);
 	}
 
+	// Vertices are emitted in camera-relative space by createMesh, so use the
+	// translation-free view (camera at origin of render space).
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
 	shader->setMat4("projection", projection);
-	shader->setMat4("view", view);
+	shader->setMat4("view", viewRot);
 	glDrawArrays(GL_TRIANGLES, 0, entities.size() * 36);
 }

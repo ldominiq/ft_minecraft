@@ -829,7 +829,7 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, glm::vec3(camera->getEyePosD()), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
             renderer->render(textureShader, view, camera->getEyePosD());
@@ -844,7 +844,7 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, glm::vec3(camera->getEyePosD()), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
             renderer->render(textureShader, view, camera->getEyePosD());
@@ -939,7 +939,7 @@ void App::render() {
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         // Draw chunk boundary overlay (if enabled)
-        chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), view, projection, *renderer);
+        chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), camera->getEyePosD(), view, projection, *renderer);
 
         glBindVertexArray(0);
         {
@@ -1165,7 +1165,9 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setVec4("clipPlane", clipPlane);
         vegShader->setMat4("view", view);
         vegShader->setMat4("projection", projection);
-        vegShader->setVec3("viewPos", camera->getPlayer()->getPosition());
+        // Vegetation fragments now use FragPosRel (camera-relative) for fog distances,
+        // so viewPos is the origin of render space — vec3(0).
+        vegShader->setVec3("viewPos", glm::vec3(0.0f));
 
         // Use the same day/night cycle as the main lighting system
         glm::vec3 sunDir = lighting->getDirectionalLightDirection();
@@ -1204,7 +1206,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     renderer->render(activeShader, view, camera->getEyePosD());
     glEndQuery(GL_TIME_ELAPSED);
 
-    lighting->drawLightCubes(view, projection);
+    lighting->drawLightCubes(view, projection, camera->getEyePosD());
 
 	// Check if the entity is within the player's load radius
 	auto updateDrawState = [&](auto &entity)
@@ -1230,7 +1232,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		entity->lerp(clientTime + intraTick - delay);
 	}
     glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
-	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
+	m_itemPropEntityManager->draw(projection, view, camera->getEyePosD(), renderer->itemEntities);
 	glEndQuery(GL_TIME_ELAPSED);
 
 	//mobs
@@ -1423,7 +1425,7 @@ void App::debugWindow() {
 
                     // Teleport (collapsible)
                     if (ImGui::CollapsingHeader("Teleport")) {
-                        static int tpX = 0;
+                        static int tpX = 5000000;
                         static int tpY = 100;
                         static int tpZ = 0;
 

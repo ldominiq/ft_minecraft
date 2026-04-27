@@ -87,7 +87,7 @@ public:
     ~Lighting();
 
     void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater = false) const;
-    void drawLightCubes(const glm::mat4& view, const glm::mat4& projection) const;
+    void drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const;
 
     void updateSunDirection(float deltaTime);
     /// Update the sky scattering LUT (call once per frame, before drawSky).

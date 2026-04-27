@@ -135,7 +135,7 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			const glm::dvec3 maxRelD(posD.x - eyePos.x + halfW,
 									 posD.y - eyePos.y + h,
 									 posD.z - eyePos.z + halfW);
-           AABB box{glm::vec3(minRelD), glm::vec3(maxRelD)};
+           AABB box{minRelD, maxRelD};
 			glm::vec3 col(1.0f, 0.0f, 0.0f); // red
             hbRenderer.drawAABB(box, view, projection, glm::dvec3(0.0), col);
 		}

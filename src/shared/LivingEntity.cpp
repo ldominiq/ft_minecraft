@@ -21,7 +21,7 @@ LivingEntity::~LivingEntity() {}
 
 void LivingEntity::doJump(const ICommonWorld &world)
 {
-	AABB boxFeetProbe = this->constructAABB(glm::vec3(static_cast<float>(this->position.x), static_cast<float>(this->position.y) -EPS - 0.01f, static_cast<float>(this->position.z)));
+	AABB boxFeetProbe = this->constructAABB(glm::dvec3(this->position.x, this->position.y - EPS - 0.01, this->position.z));
 	onGround = this->aabbCollidesWithWorld(boxFeetProbe, world);
 
 	if (this->jump && onGround)

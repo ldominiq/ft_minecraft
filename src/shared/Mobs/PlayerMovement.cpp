@@ -109,7 +109,7 @@ void PlayerMovement::applyFallDamage()
 void PlayerMovement::doJump(const ICommonWorld &world)
 {
 	// Determine if on ground by testing a tiny epsilon below feet
-	AABB boxFeetProbe = this->constructAABB(glm::vec3(static_cast<float>(this->position.x), static_cast<float>(this->position.y) -EPS - 0.01f, static_cast<float>(this->position.z)));
+	AABB boxFeetProbe = this->constructAABB(glm::dvec3(this->position.x, this->position.y - EPS - 0.01, this->position.z));
 	onGround = this->aabbCollidesWithWorld(boxFeetProbe, world);
 
 	// jump
@@ -230,7 +230,7 @@ void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
 
 	// --- X axis ---
 	glm::dvec3 tryX = pos + glm::dvec3(this->velocity.x, 0.0f, 0.0f);
-	if (!aabbCollidesWithWorld(constructAABB(glm::vec3(tryX)), world)) {
+	if (!aabbCollidesWithWorld(constructAABB(tryX), world)) {
 		pos.x = tryX.x;
 	} else {
 		this->velocity.x = 0.0f;
@@ -238,7 +238,7 @@ void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
 
 	// --- Y axis ---
 	glm::dvec3 tryY = pos + glm::dvec3(0.0f, this->velocity.y, 0.0f);
-	if (!aabbCollidesWithWorld(constructAABB(glm::vec3(tryY)), world)) {
+	if (!aabbCollidesWithWorld(constructAABB(tryY), world)) {
 		pos.y = tryY.y;
 	} else {
 		this->velocity.y = 0.0f;
@@ -246,7 +246,7 @@ void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
 
 	// --- Z axis ---
 	glm::dvec3 tryZ = pos + glm::dvec3(0.0f, 0.0f, this->velocity.z);
-	if (!aabbCollidesWithWorld(constructAABB(glm::vec3(tryZ)), world)) {
+	if (!aabbCollidesWithWorld(constructAABB(tryZ), world)) {
 		pos.z = tryZ.z;
 	} else {
 		this->velocity.z = 0.0f;

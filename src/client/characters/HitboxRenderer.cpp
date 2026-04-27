@@ -42,9 +42,10 @@ void HitboxRenderer::drawAABB(const AABB& box, const glm::mat4& view, const glm:
     if (!shader) return;
     shader->use();
 
-    // compute model from AABB
-    glm::vec3 size = box.max - box.min;
-    glm::dvec3 center = glm::dvec3(box.min + box.max) * 0.5;
+    // compute model from AABB. box.min/max are dvec3 (precise at large coords);
+    // the size and centerRel are small enough to safely narrow to float.
+    glm::vec3 size = glm::vec3(box.max - box.min);
+    glm::dvec3 center = (box.min + box.max) * 0.5;
     glm::dvec3 centerRel = center - eyePos;
 
     glm::mat4 viewRot = view;

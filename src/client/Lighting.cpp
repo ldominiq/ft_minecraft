@@ -203,21 +203,26 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     glDepthMask(GL_TRUE);
 }
 
-void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection) const {
+void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const {
     lightCubeShader->use();
-    // we now draw as many light bulbs as we have point lights.
+    // Camera-relative rendering: zero the view's translation column and offset
+    // each cube's model matrix by (worldPos - eyePos), computed in double.
+    glm::mat4 viewRot = view;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
     glBindVertexArray(lightCubeVAO);
     for (unsigned int i = 0; i < 3; i++)
     {
+        const glm::dvec3 posRelD = glm::dvec3(pointLightPositions[i]) - eyePos;
         auto model = glm::mat4(1.0f);
-        model = glm::translate(model, pointLightPositions[i]);
+        model = glm::translate(model, glm::vec3(posRelD));
         model = glm::scale(model, glm::vec3(0.2f)); // Make it a smaller cube
         // Set per-cube color here so each light uses its own color
         glm::vec3 cubeCol = pointLightsOn[i] ? pointLightDiffuse[i] : glm::vec3(0.0f);
         lightCubeShader->setVec3("cubeColor", cubeCol);
         lightCubeShader->setMat4("model", model);
         lightCubeShader->setMat4("projection", projection);
-        lightCubeShader->setMat4("view", view);
+        lightCubeShader->setMat4("view", viewRot);
         glDrawArrays(GL_TRIANGLES, 0, 36);
     }
 }
