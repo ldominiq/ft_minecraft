@@ -537,11 +537,16 @@ void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer,
 	if (Renderer->getTarget(*player, blockPos, faceNormal, livingEntity) != TargetType::Block)
 		return ;
 
-	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));
+ const glm::dvec3 eyePosD = getEyePosD();
+	const glm::dvec3 blockPosRelD = glm::dvec3(blockPos) - eyePosD;
+	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPosRelD));
+
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
 	blockWireframeShader->use();
 	blockWireframeShader->setMat4("model", model);
-	blockWireframeShader->setMat4("view", view);
+    blockWireframeShader->setMat4("view", viewRot);
 	blockWireframeShader->setMat4("projection", projection);
 	blockWireframeShader->setVec3("color", glm::vec3(1.0f, 0.0f, 1.0f));
 
