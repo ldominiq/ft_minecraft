@@ -141,15 +141,18 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius, flo
         else if (distSq >= unloadRadius * unloadRadius)
         {
             auto rt = chunkReceiveTime.find(chunkPos);
-            if (rt != chunkReceiveTime.end() && now - rt->second < RECENT_CHUNK_GRACE) {
+            if (rt != chunkReceiveTime.end() && now - rt->second < RECENT_CHUNK_GRACE)
+            {
                 // Recently arrived — keep it; player position may still be
                 // catching up after a teleport/respawn.
                 ++it;
-            } else {
+            }
+            else
+            {
                 // Outside unload radius and old enough -> remove chunk
                 chunkReceiveTime.erase(chunkPos);
-            it = chunks.erase(it);
-        }
+                it = chunks.erase(it);
+            }
         }
         else
         {
