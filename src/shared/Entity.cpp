@@ -4,13 +4,13 @@
 
 ItemEntityIDManager Entity::idManager;
 
-Entity::Entity(const glm::vec3 &position): position(position), ID(idManager.acquire())
+Entity::Entity(const glm::vec3 &position): position(glm::dvec3(position)), ID(idManager.acquire())
 {
 	yaw = 0;
 	pitch = 0;
 }
 
-Entity::Entity(const glm::vec3 &position, float yaw, entityID ID): position(position), yaw(yaw), ID(ID) {}
+Entity::Entity(const glm::vec3 &position, float yaw, entityID ID): position(glm::dvec3(position)), yaw(yaw), ID(ID) {}
 
 Entity::~Entity()
 {
@@ -49,7 +49,7 @@ bool Entity::aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world) {
 }
 
 bool Entity::entityCollidesWithBlock(const glm::vec3 blockPos) {
-    AABB box = constructAABB(position);
+    AABB box = constructAABB(glm::vec3(position));
 	float blockPlacementTolerance = entityHeight * 0.1f; // variable used to be able to place blocks under yourself
 
     int minX = static_cast<int>(std::floor(box.min.x + EPS));
@@ -74,8 +74,11 @@ bool Entity::entityCollidesWithBlock(const glm::vec3 blockPos) {
 
 void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove)
 {
-    glm::vec3 newPos = position;
-    AABB currentBox = constructAABB(position);
+    // newPos is double so that small-but-cumulative movement increments
+    // (e.g. 0.01 / frame) at very large world coordinates don't lose to
+    // float quantization.
+    glm::dvec3 newPos = position;
+    AABB currentBox = constructAABB(glm::vec3(position));
 
     // X axis
     if (std::abs(desiredMove.x) > EPS) {
@@ -83,7 +86,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
         AABB movedX = currentBox.movedBy(dx, 0.0f, 0.0f);
         if (!aabbCollidesWithWorld(movedX, world)) {
             newPos.x += dx;
-            currentBox = constructAABB(newPos);
+            currentBox = constructAABB(glm::vec3(newPos));
 		}
 		else velocity.x = 0.0f;
     }
@@ -94,7 +97,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
         AABB movedZ = currentBox.movedBy(0.0f, 0.0f, dz);
         if (!aabbCollidesWithWorld(movedZ, world)) {
             newPos.z += dz;
-            currentBox = constructAABB(newPos);
+            currentBox = constructAABB(glm::vec3(newPos));
 		}
 		else velocity.z = 0.0f;
     }
@@ -104,8 +107,8 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
 
 void Entity::calculateNewYPosition(const ICommonWorld &world)
 {
-	glm::vec3 newPos = position;
-	AABB currentBox = constructAABB(position);
+	glm::dvec3 newPos = position;
+	AABB currentBox = constructAABB(glm::vec3(position));
 
 	// attempt Y movement
 

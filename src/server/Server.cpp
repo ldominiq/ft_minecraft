@@ -1065,9 +1065,9 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 
  	pkt.serverClientReconciliationTick = player.movement->getLastAppliedServerClientReconciliationTick();
 
-	pkt.positionX = player.movement->getPosition().x;
-	pkt.positionY = player.movement->getPosition().y;
-	pkt.positionZ = player.movement->getPosition().z;
+	pkt.positionX = player.movement->getPositionD().x;
+	pkt.positionY = player.movement->getPositionD().y;
+	pkt.positionZ = player.movement->getPositionD().z;
 
 	pkt.velocityX = player.movement->getVelocity().x;
 	pkt.velocityY = player.movement->getVelocity().y;

@@ -82,7 +82,10 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		                             float fovDeg, float aspectRatio, float nearP, float farP);
 
 		void processMeshUpdates();
-		void render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation = true) const ;
+		void render(const std::shared_ptr<Shader> &shaderProgram,
+		            const glm::mat4& view,
+		            const glm::dvec3& eyePos,
+		            bool renderVegetation = true) const ;
 
 		/// Update vegetation shader uniforms (for reflection pass where view/clip differ from main camera)
 		void updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,

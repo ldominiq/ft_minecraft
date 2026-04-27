@@ -99,7 +99,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     // Use the reflected view-projection for frustum culling so only chunks
     // actually visible in the reflection are submitted, not all main-camera chunks.
     renderer->updateFrustum(projection * reflectView);
-    renderer->render(sceneShader, false); // skip vegetation
+    renderer->render(sceneShader, reflectView, glm::dvec3(reflectCamPos), false); // skip vegetation
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();
@@ -130,7 +130,7 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     texMgr.bind(GL_TEXTURE0);
     // Render with vegetation so sea vegetation is visible in the refraction texture
     renderer->updateVegetationUniforms(view, projection, clipPlane, camera->getPlayer()->getPosition());
-    renderer->render(sceneShader, true);
+    renderer->render(sceneShader, view, camera->getEyePosD(), true);
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();

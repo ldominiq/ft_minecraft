@@ -162,9 +162,12 @@ struct NetPlayerMove final : public Packet {
 	static constexpr PacketType ID = PacketType::PLAYER_MOVE;
 	int32_t serverClientReconciliationTick = 0; //server tick at which the client has done his inputs/prediction corresponding to this packet.
 
-	float positionX;
-	float positionY;
-	float positionZ;
+	// Player position is sent in double precision so that, far from world
+	// origin, the wire value doesn't snap to the f32 grid (~0.06 units at
+	// x=1e6) — which would re-introduce visible jitter every server tick.
+	double positionX;
+	double positionY;
+	double positionZ;
 
 	float velocityX;
 	float velocityY;
@@ -183,9 +186,9 @@ struct NetPlayerMove final : public Packet {
 
     void encode(BufferWriter& w) const override {
 		w.write_i32(serverClientReconciliationTick);
-		w.write_f32(positionX);
-		w.write_f32(positionY);
-		w.write_f32(positionZ);
+		w.write_f64(positionX);
+		w.write_f64(positionY);
+		w.write_f64(positionZ);
 		w.write_f32(velocityX);
 		w.write_f32(velocityY);
 		w.write_f32(velocityZ);
@@ -199,9 +202,9 @@ struct NetPlayerMove final : public Packet {
     }
     void decode(BufferReader& r) override {
 		serverClientReconciliationTick = r.read_i32();
-		positionX = r.read_f32();
-		positionY = r.read_f32();
-		positionZ = r.read_f32();
+		positionX = r.read_f64();
+		positionY = r.read_f64();
+		positionZ = r.read_f64();
 		velocityX = r.read_f32();
 		velocityY = r.read_f32();
 		velocityZ = r.read_f32();

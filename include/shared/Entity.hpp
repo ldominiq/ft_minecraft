@@ -93,7 +93,11 @@ class Entity {
 
 		glm::vec3 velocity{};
 
-		glm::vec3 position{};
+		// Stored in double precision so that movement at very large world
+		// coordinates (millions of blocks from origin) does not snap to the
+		// float-quantization grid (~0.06 units at x=1e6). Most callers still
+		// see this as a glm::vec3 via the legacy getPosition() accessor.
+		glm::dvec3 position{};
 
 		float slipperiness_prev = SM_AIRBORNE;
 		bool onGround = false;
@@ -114,6 +118,7 @@ class Entity {
 		float pitch = 0;
 
 		AABB constructAABB(const glm::vec3 &pos);
+		AABB constructAABB(const glm::dvec3 &pos) { return constructAABB(glm::vec3(pos)); }
 		bool entityCollidesWithBlock(const glm::vec3 blockPos);
 
 		// position has been changed since last check.
@@ -134,7 +139,10 @@ class Entity {
 		void applyImpulse(const glm::vec3& impulse) { velocity += impulse; }
 		inline virtual EEntityTypes getEntityType() const = 0;
 		virtual void calculateNewPosition(const ICommonWorld &world);
-		inline const glm::vec3 getPosition() const { return position; }
+		// Legacy getter — returns float-precision snapshot of the position.
+		// Use getPositionD() when you need the precision (camera path, etc).
+		inline const glm::vec3 getPosition() const { return glm::vec3(position); }
+		inline const glm::dvec3 getPositionD() const { return position; }
 		inline const float getEntityWidth() const { return entityWidth; }
 		inline const float getEntityHeight() const { return entityHeight; }
 		inline const entityID getID() const { return ID; }
@@ -144,13 +152,16 @@ class Entity {
 		float getDepthUnderwater() const;
 
 		inline void setPosition(glm::vec3 position) {
+			setPosition(glm::dvec3(position));
+		}
+		inline void setPosition(glm::dvec3 position) {
 			if (this->position != position) positionUpdated = true;
 			this->position = position;
 		}
 
 		inline ChunkPos getChunkPos() const {
-			int chunkX = static_cast<int>(std::floor(position.x / Chunk::WIDTH));
-			int chunkZ = static_cast<int>(std::floor(position.z / Chunk::DEPTH));
+			int chunkX = static_cast<int>(std::floor(position.x / static_cast<double>(Chunk::WIDTH)));
+			int chunkZ = static_cast<int>(std::floor(position.z / static_cast<double>(Chunk::DEPTH)));
 			return ChunkPos(chunkX, chunkZ);
 		}
 

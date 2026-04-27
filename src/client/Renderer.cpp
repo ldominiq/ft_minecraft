@@ -268,8 +268,25 @@ void Renderer::processMeshUpdates() {
 	}
 }
 
-void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation) const {
+void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
+                      const glm::mat4& view,
+                      const glm::dvec3& eyePos,
+                      bool renderVegetation) const {
 	std::vector<std::shared_ptr<ChunkRenderer>> visibleChunks;
+
+	// Build "viewRot": world view with translation column zeroed, i.e. the
+	// camera placed at the origin of render space with the same orientation.
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+	// `eyePos` is supplied by the caller in double precision so that
+	// (chunkOrigin - eye) keeps sub-cm precision even at very large world
+	// coordinates. We must NOT recover it from `view` itself, because the
+	// view matrix's translation column is float-quantized.
+	const glm::dvec3 cameraPos = eyePos;
+
+	shaderProgram->use();
+	shaderProgram->setMat4("viewRot", viewRot);
 
 	for (auto& weakChunk : renderedChunks) {
 		auto chunk = weakChunk.lock();
@@ -279,6 +296,14 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderV
 		// Frustum cull: skip chunks entirely outside the camera view
 		if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
 			continue;
+
+		// Per-chunk uniforms for camera-relative rendering.
+		// chunkRel must be computed in double so that large world
+		// coordinates cancel before downcasting to float.
+		const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+		                                   static_cast<double>(chunk->getOriginZ()));
+		shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - cameraPos));
+		shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 
 		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 		visibleChunks.push_back(chunk);
@@ -344,6 +369,13 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 			clipMaxZ < -1.0f || clipMinZ > 1.0f)
 			continue;
 
+		// Mesh is in chunk-local space — supply the world origin so the
+		// vertex shader can reconstruct world positions before projecting
+		// into the light's clip space.
+		shaderProgram->setVec3("chunkOriginWorld",
+		                       glm::vec3(static_cast<float>(chunk->getOriginX()),
+		                                 0.0f,
+		                                 static_cast<float>(chunk->getOriginZ())));
 		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 	}
 }

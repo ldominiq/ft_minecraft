@@ -14,21 +14,32 @@ out VS_OUT {
 } vs_out;
 
 uniform mat4 projection;
-uniform mat4 view;
+// View matrix with translation column zeroed (camera at origin in render
+// space). Used together with chunkRel below to keep the inputs to the
+// projection small even when the player is far from world origin.
+uniform mat4 viewRot;
+// Per-chunk: chunkOrigin - cameraPos, computed CPU-side in double precision.
+uniform vec3 chunkRel;
+// Per-chunk: chunkOrigin in world space (float). Used only to reconstruct
+// world-space FragPos for lighting / shadows / fog. Suffers the same
+// precision quantization at huge distances as before — but the *geometry*
+// (gl_Position) is computed from the precise camera-relative path.
+uniform vec3 chunkOriginWorld;
 
 // Clipping plane for water reflection/refraction
 uniform vec4 clipPlane;
 
 void main()  {
-    vec4 worldPosition = vec4(aPos, 1.0);
-    
-    vs_out.FragPos = aPos;
+    vec3 worldPos      = chunkOriginWorld + aPos;
+    vec3 cameraRelPos  = chunkRel + aPos;
+
+    vs_out.FragPos = worldPos;
     vs_out.Normal = aNormal;
     vs_out.TexCoord = aTexCoord;
     vs_out.TexLayer = aTexLayer;
     vs_out.SkyLight = aSkyLight;
-    gl_Position = projection * view * worldPosition;
-    
+    gl_Position = projection * viewRot * vec4(cameraRelPos, 1.0);
+
     // Clip geometry based on plane (used for water reflection/refraction)
-    gl_ClipDistance[0] = dot(worldPosition, clipPlane);
+    gl_ClipDistance[0] = dot(vec4(worldPos, 1.0), clipPlane);
 }

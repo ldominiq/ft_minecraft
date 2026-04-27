@@ -21,7 +21,7 @@ LivingEntity::~LivingEntity() {}
 
 void LivingEntity::doJump(const ICommonWorld &world)
 {
-	AABB boxFeetProbe = this->constructAABB(glm::vec3(this->position.x, this->position.y -EPS - 0.01f, this->position.z));
+	AABB boxFeetProbe = this->constructAABB(glm::vec3(static_cast<float>(this->position.x), static_cast<float>(this->position.y) -EPS - 0.01f, static_cast<float>(this->position.z)));
 	onGround = this->aabbCollidesWithWorld(boxFeetProbe, world);
 
 	if (this->jump && onGround)
@@ -115,7 +115,7 @@ glm::vec3 LivingEntity::getDesiredMove()
 void LivingEntity::mobAutoJump(const ICommonWorld &world)
 {
 	if (aiWantsMove && onGround) {
-		glm::vec3 ahead = position + glm::vec3(aiMoveDir.x * 0.35f, 0.05f, aiMoveDir.y * 0.35f);
+		glm::dvec3 ahead = position + glm::dvec3(aiMoveDir.x * 0.35f, 0.05f, aiMoveDir.y * 0.35f);
 		AABB probe = constructAABB(ahead);
 		if (aabbCollidesWithWorld(probe, world))
 			jump = true;
@@ -148,9 +148,9 @@ LivingEntity *LivingEntity::findNearestSurvivalPlayer(
 		if (pm->gamemode != GAMEMODES::SURVIVAL) continue;
 		if (pm->health <= 0) continue;
 
-		glm::vec3 d = pm->getPosition() - this->position;
+		glm::dvec3 d = pm->getPositionD() - this->position;
 		if (std::abs(d.y) > verticalTolerance * 2.0f) continue;
-		float dist2 = d.x * d.x + d.z * d.z;
+		double dist2 = d.x * d.x + d.z * d.z;
 		if (dist2 < bestDistSq) {
 			bestDistSq = dist2;
 			target = pm;

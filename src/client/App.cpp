@@ -830,7 +830,7 @@ void App::render() {
             lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
-            renderer->render(textureShader);
+            renderer->render(textureShader, view, camera->getEyePosD());
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
 
@@ -845,7 +845,7 @@ void App::render() {
             lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
-            renderer->render(textureShader);
+            renderer->render(textureShader, view, camera->getEyePosD());
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
 
@@ -868,7 +868,7 @@ void App::render() {
             gBufferShader->setMat4("view", view);
             gBufferShader->setMat4("projection", projection);
             textureManager.bind(GL_TEXTURE0);
-            renderer->render(gBufferShader);
+            renderer->render(gBufferShader, view, camera->getEyePosD(), false);
 
             gBuffer->unbind();
         }
@@ -1199,7 +1199,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     }
 
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
-    renderer->render(activeShader);
+    renderer->render(activeShader, view, camera->getEyePosD());
     glEndQuery(GL_TIME_ELAPSED);
 
     lighting->drawLightCubes(view, projection);
@@ -1257,7 +1257,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 	// reconciliation cycle updating the raw physics position mid-frame.
 	auto &localPlayer = *camera->getPlayer();
 	if (camera->isThirdPersonCameraActive()) {
-		localPlayer.renderPos = camera->getInterpolatedPlayerPos();
+		localPlayer.renderPos = camera->getInterpolatedPlayerPosD();
 		localPlayer.hasRenderPos = true;
 	} else {
 		localPlayer.hasRenderPos = false;
