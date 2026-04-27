@@ -259,10 +259,13 @@ struct NetEntityMove final : public Packet {
 	uint32_t entityID;
 	uint16_t type = 0;	// stone/dirt/etc.. for block - zombie/creeper/etc... for living entity. -1 to erase the entity
 
-	//position
-	float positionX;
-	float positionY;
-	float positionZ;
+	// Position is sent in double precision. At ~5M blocks from origin, f32 ULP is
+	// ~0.5 blocks — diagonal walking quantizes onto a coarser grid for X vs Z and
+	// produces visible zig-zag on the receiving client (sender's own position is
+	// fine because it predicts locally). dvec3 keeps sub-block precision past 1e8.
+	double positionX;
+	double positionY;
+	double positionZ;
 
 	float yaw;
 	float pitch = 0.0f;
@@ -276,9 +279,9 @@ struct NetEntityMove final : public Packet {
 		w.write_u8(eEntityType);
 		w.write_u32(entityID);
 		w.write_u16(type);
-		w.write_f32(positionX);
-		w.write_f32(positionY);
-		w.write_f32(positionZ);
+		w.write_f64(positionX);
+		w.write_f64(positionY);
+		w.write_f64(positionZ);
 		w.write_f32(yaw);
 		w.write_f32(pitch);
 		w.write_u8(positionFlags);
@@ -287,9 +290,9 @@ struct NetEntityMove final : public Packet {
 		eEntityType = static_cast<EEntityTypes>(r.read_u8());
 		entityID = r.read_u32();
 		type = r.read_u16();
-		positionX = r.read_f32();
-		positionY = r.read_f32();
-		positionZ = r.read_f32();
+		positionX = r.read_f64();
+		positionY = r.read_f64();
+		positionZ = r.read_f64();
 		yaw = r.read_f32();
 		pitch = r.read_f32();
 		positionFlags = r.read_u8();
