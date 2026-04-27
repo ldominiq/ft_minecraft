@@ -76,7 +76,7 @@ class TextureManager;
 //only used in client.
 struct Snapshot
 {
-	glm::vec3 position;
+ glm::dvec3 position;
 	glm::vec3 velocity;
 	double time;
 };
@@ -192,7 +192,7 @@ class Entity {
 			double t = (glfwTime - start.time) / duration;
 			t = std::clamp(t, 0.0, 1.0);
 
-			glm::vec3 interpolatedPosition = glm::mix(start.position, end.position, t);
+         glm::dvec3 interpolatedPosition = glm::mix(start.position, end.position, t);
 			setPosition(interpolatedPosition);
 		};
 		//virtual void predict();

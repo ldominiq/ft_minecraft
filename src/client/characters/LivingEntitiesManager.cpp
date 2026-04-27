@@ -1,5 +1,6 @@
 #include "LivingEntitiesManager.hpp"
 #include "ClientCreeper.hpp"
+#include <cmath>
 
 LivingEntitiesManager::LivingEntitiesManager() : characterShader("shaders/characterCube.vert", "shaders/characterCube.frag")
 {
@@ -71,7 +72,20 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 		if (cc && !dying)
 			cc->tickFuseAnimation(deltaTime);
 
-     const bool creeperAnimating = cc && (cc->clientPrimed || cc->inflation > 0.0f);
+        const bool creeperAnimating = cc && (cc->clientPrimed || cc->inflation > 0.0f);
+
+		const bool isLocalPlayer = (c->getID() == static_cast<entityID>(-1));
+		if (!isLocalPlayer) {
+			const glm::dvec3 targetPosD = c->getPositionD();
+			if (!c->hasRenderPos) {
+				c->renderPos = targetPosD;
+				c->hasRenderPos = true;
+			} else {
+				const double alpha = 1.0 - std::exp(-static_cast<double>(deltaTime) * 22.0);
+				c->renderPos = glm::mix(c->renderPos, targetPosD, alpha);
+			}
+		}
+
 		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating || cameraMoved)
 		{
 			c->characterBodyParts.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));

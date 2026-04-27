@@ -1248,7 +1248,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		updateDrawState(entity);
 
 		static bool firstFrame = true;
-		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) { 
+     if (!entity->snapshots.empty() && entity->getPositionD() == entity->snapshots.back().position && !firstFrame) {
             entity->positionUpdated = false; 
         }
 		firstFrame = false;

@@ -39,10 +39,14 @@ glm::mat4 Camera::getViewMatrix() const
   glm::dvec3 interpolatedPosD = player->getPositionD();
 	if (renderPositionInitialized)
 		interpolatedPosD = glm::mix(renderPrevPosition, renderCurrPosition, static_cast<double>(renderTickAlpha));
-	glm::vec3 playerPos = glm::vec3(interpolatedPosD) + glm::vec3(0, player->getEyesHeight(), 0) + visualOffset;
+    glm::dvec3 playerPosD = interpolatedPosD
+		+ glm::dvec3(0.0, static_cast<double>(player->getEyesHeight()), 0.0)
+		+ glm::dvec3(visualOffset);
 
-	if (!thirdPersonCamera)
-		return glm::lookAt(playerPos, playerPos + player->Front, player->WorldUp);
+	if (!thirdPersonCamera) {
+		const glm::dvec3 centerD = playerPosD + glm::dvec3(player->Front);
+		return glm::mat4(glm::lookAt(playerPosD, centerD, glm::dvec3(player->WorldUp)));
+	}
 
 	float cameraDistance = 3.0f;  // behind the player
 	float cameraHeight   = 1.5f;  // slightly above
@@ -51,23 +55,25 @@ glm::mat4 Camera::getViewMatrix() const
 	float pitch = glm::radians(player->pitch);
 
 	// Direction the player is looking
-	glm::vec3 forward(
+  glm::dvec3 forward(
 		cos(pitch) * cos(yaw),
 		sin(pitch),
 		cos(pitch) * sin(yaw)
 	);
 
 	// Camera position BEHIND the player, opposite of forward
-	glm::vec3 camPos =
-		playerPos
-		- forward * cameraDistance  // behind
-		+ glm::vec3(0, cameraHeight, 0); // slight upward offset
+  glm::dvec3 camPosD =
+		playerPosD
+       - forward * static_cast<double>(cameraDistance)  // behind
+		+ glm::dvec3(0.0, static_cast<double>(cameraHeight), 0.0); // slight upward offset
 
-	return glm::lookAt(
-		camPos,
-		playerPos + forward * 10.0f,   // look where the player is looking
-		glm::vec3(0, 1, 0)
-	);
+	const glm::dvec3 targetD = playerPosD + forward * 10.0;
+
+ return glm::mat4(glm::lookAt(
+		camPosD,
+		targetD,
+		glm::dvec3(0.0, 1.0, 0.0)
+	));
 }
 
 glm::dvec3 Camera::getEyePosD() const

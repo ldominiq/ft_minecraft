@@ -396,7 +396,7 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 
 void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 {
-	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
+    glm::dvec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
 	entityID ID = pkt.entityID;
 	float yaw = pkt.yaw;
 
@@ -419,10 +419,10 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 			        || ent->snapshots.back().time < serverTime - 2.0 * oneTick;
 		if (stale) {
 			ent->snapshots.clear();
-			ent->snapshots.emplace_back(Snapshot{ent->getPosition(), glm::vec3(0.0f), serverTime - oneTick});
+           ent->snapshots.emplace_back(Snapshot{ent->getPositionD(), glm::vec3(0.0f), serverTime - oneTick});
 		}
 		bool actuallyMoved = !ent->snapshots.empty() &&
-			glm::length(position - ent->snapshots.back().position) > 0.001f;
+            glm::length(position - ent->snapshots.back().position) > 0.001;
 		ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 		ent->yaw = yaw;
 		ent->pitch = pkt.pitch;
@@ -467,7 +467,7 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 	if (pkt.eEntityType == EEntityTypes::ITEMS)
 	{
 		ItemType type = itemIDToItemType(pkt.type);
-		auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
+     auto entityPtr = std::make_shared<ItemPropEntity>(glm::vec3(position), yaw, type, ID);
 		itemEntities.push_back(entityPtr);
 		entitiesMap[ID] = entityPtr;
 	}
@@ -478,13 +478,13 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 		switch (type)
 		{
 			case PLAYER:
-				entityPtr = std::make_shared<ClientPlayer>(position, yaw, ID);
+              entityPtr = std::make_shared<ClientPlayer>(glm::vec3(position), yaw, ID);
 				break;
 			case CREEPER:
-				entityPtr = std::make_shared<ClientCreeper>(position, yaw, ID);
+             entityPtr = std::make_shared<ClientCreeper>(glm::vec3(position), yaw, ID);
 				break;
 			case ZOMBIE:
-				entityPtr = std::make_shared<ClientZombie>(position, yaw, ID);
+              entityPtr = std::make_shared<ClientZombie>(glm::vec3(position), yaw, ID);
 				break;
 			default:
 				std::cout << "ERROR ERROR MAYDAY WE GOT A PROBLEM" << std::endl;
