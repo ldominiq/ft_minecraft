@@ -1,9 +1,9 @@
 #version 460 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoord;
-layout (location = 2) in float aTexLayer;
-layout (location = 4) in vec3 aNormal;
-layout (location = 5) in float aSkyLight; // Sky-light level (0.0 = dark, 1.0 = full sun)
+#include "terrain_vertex_decode.glsl"
+
+// Packed terrain vertex (8 bytes). See terrain_vertex_decode.glsl.
+layout (location = 0) in uint aV0;
+layout (location = 1) in uint aV1;
 
 out VS_OUT {
     vec3 FragPos;
@@ -31,6 +31,12 @@ uniform vec3 chunkOriginWorld;
 uniform vec4 clipPlane;
 
 void main()  {
+    vec3 aPos      = unpackPos(aV0);
+    vec2 aTexCoord = CORNERS[unpackCorner(aV1)];
+    float aTexLayer= float(unpackTexLayer(aV1));
+    vec3 aNormal   = NORMALS[unpackNormal(aV1)];
+    float aSkyLight= unpackSkyLight(aV1);
+
     vec3 worldPos      = chunkOriginWorld + aPos;
     vec3 cameraRelPos  = chunkRel + aPos;
 

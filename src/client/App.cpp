@@ -1318,8 +1318,8 @@ void App::computeDebugStats()
         size_t waterVerts = 0;
         for (auto& weakChunk : renderer->getRenderedChunks()) {
             if (auto chunk = weakChunk.lock()) {
-                solidVerts += chunk->getMeshVerticesSize() / 11;
-                waterVerts += chunk->getWaterMeshVerticesSize() / 11;
+                solidVerts += chunk->getMeshVertexCount();
+                waterVerts += chunk->getWaterMeshVertexCount();
             }
         }
         const size_t totalVerts      = solidVerts + waterVerts;

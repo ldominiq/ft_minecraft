@@ -1,7 +1,9 @@
 #version 460 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoord;
-layout (location = 2) in float aTexLayer;
+#include "terrain_vertex_decode.glsl"
+
+// Packed terrain vertex (8 bytes). See terrain_vertex_decode.glsl.
+layout (location = 0) in uint aV0;
+layout (location = 1) in uint aV1;
 
 // Multi-pass CSM: each cascade is rendered separately.
 // lightSpaceMatrix is updated per-pass on the CPU side.
@@ -17,7 +19,8 @@ flat out float TexLayer;
 
 void main()
 {
-    TexCoord = aTexCoord;
-    TexLayer = aTexLayer;
+    vec3 aPos = unpackPos(aV0);
+    TexCoord = CORNERS[unpackCorner(aV1)];
+    TexLayer = float(unpackTexLayer(aV1));
     gl_Position = lightSpaceMatrix * vec4(chunkRel + aPos, 1.0);
 }

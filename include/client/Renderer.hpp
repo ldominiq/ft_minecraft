@@ -138,7 +138,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void buildChunks();
 		void updateChunk(const NetModifiedBlockData &pkt);
 		void organizeChunks(const std::pair<int, int> pos, int loadRadius, float deltaTime = 0.016f);
-    	void draw(const std::shared_ptr<Shader> &shaderProgram, const GLuint &VAO, const uint &meshVerticesSize) const; // Draw the chunk using the given shader program
+    	void draw(const std::shared_ptr<Shader> &shaderProgram, const GLuint &VAO, const uint &vertexCount) const; // Draw the chunk using the given shader program
 
 		void prepareChunk(const NetChunkHeader& pkt);
 		void receiveChunk(const NetChunkData& pkt);

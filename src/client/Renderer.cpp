@@ -243,10 +243,10 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
 }
 
 //I dislike having VAO here. TODO : MAYBE MAYBE change it
-void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, const uint &meshVerticesSize) const {
+void Renderer::draw(const std::shared_ptr<Shader>& shader, const GLuint &VAO, const uint &vertexCount) const {
     shader->use();
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, meshVerticesSize / 11); // 11 floats per vertex
+    glDrawArrays(GL_TRIANGLES, 0, vertexCount); // packed vertex format: count is exact vertex count
 	m_drawCallCount++;
 }
 
@@ -296,7 +296,7 @@ void Renderer::renderTerrainOnly(const std::shared_ptr<Shader>& shaderProgram,
 
 	for (auto& weakChunk : renderedChunks) {
 		auto chunk = weakChunk.lock();
-		if (!chunk || chunk->getMeshVerticesSize() == 0)
+		if (!chunk || chunk->getMeshVertexCount() == 0)
 			continue;
 
 		// Optional per-pass distance cap (e.g. water reflection wants only
@@ -320,7 +320,7 @@ void Renderer::renderTerrainOnly(const std::shared_ptr<Shader>& shaderProgram,
 		shaderProgram->setVec3("chunkRel", glm::vec3(chunkRelD));
 		shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 
-		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+		draw(shaderProgram, chunk->getVao(), chunk->getMeshVertexCount());
 		m_lastVisibleChunks.push_back(chunk);
 	}
 }
@@ -380,7 +380,7 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 			continue;
 
 		// Skip empty chunks (no geometry to cast shadows)
-		if (chunk->getMeshVerticesSize() == 0)
+		if (chunk->getMeshVertexCount() == 0)
 			continue;
 
 		// Frustum cull: test the chunk AABB against the light's clip volume.
@@ -428,7 +428,7 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
       const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
                                            static_cast<double>(chunk->getOriginZ()));
         shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - eyePos));
-		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
+		draw(shaderProgram, chunk->getVao(), chunk->getMeshVertexCount());
 	}
 }
 
@@ -555,7 +555,7 @@ void Renderer::renderWater(const std::shared_ptr<Shader>& shaderProgram, const g
 	glDisable(GL_CULL_FACE);
     for (const auto& weakChunk : renderedChunks) {
         if (auto chunk = weakChunk.lock()) {
-            if (chunk->getWaterMeshVerticesSize() == 0)
+            if (chunk->getWaterMeshVertexCount() == 0)
                 continue;
 
             // Frustum cull water the same as terrain
@@ -572,7 +572,7 @@ void Renderer::renderWater(const std::shared_ptr<Shader>& shaderProgram, const g
             shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 
             glBindVertexArray(chunk->getWaterVao());
-            glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);
+            glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVertexCount());
         }
     }
 	glEnable(GL_CULL_FACE);
@@ -581,7 +581,7 @@ void Renderer::renderWater(const std::shared_ptr<Shader>& shaderProgram, const g
 bool Renderer::hasVisibleWater() const {
 	for (const auto& weakChunk : renderedChunks) {
 		if (auto chunk = weakChunk.lock()) {
-			if (chunk->getWaterMeshVerticesSize() == 0)
+			if (chunk->getWaterMeshVertexCount() == 0)
 				continue;
 
            if (frustumCullingEnabled) {
@@ -693,7 +693,7 @@ void Renderer::drawFrustumCullingDebug(const glm::vec3& cameraPos,
         const glm::vec3 minP(x0, 0.0f, z0);
         const glm::vec3 maxP(x1, Chunk::HEIGHT, z1);
 
-        bool empty   = (chunk->getMeshVerticesSize() == 0);
+        bool empty   = (chunk->getMeshVertexCount() == 0);
         bool visible = cameraFrustum.isBoxVisible(minP, maxP);
 
         totalChunks++;
