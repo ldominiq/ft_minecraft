@@ -86,6 +86,10 @@ uniform float farPlane;
 uniform mat4 viewRot;
 uniform int pcfQuality; // 0=1-tap, 1=3x3, 2=5x5
 
+// Toggles the texColor.a < 0.1 discard (leaf/glass cutouts).
+// Set to false by Fast leaf-render mode for max early-Z efficiency.
+uniform bool useAlphaTest;
+
 // SSAO
 uniform sampler2D ssaoTexture;
 uniform int ssaoEnabled;
@@ -124,17 +128,19 @@ float CSMShadowCalculation(vec3 fragPosRel);
 float sampleCascadeShadow(int layer, vec3 fragPosRel, vec3 normal, vec3 lightDir);
 
 void main()
-{    
+{
     // Sample the texture array using (u, v, layer)
     vec4 texColor = texture(blockTextures, vec3(fs_in.TexCoord, fs_in.TexLayer));
 
-    // Discard fully transparent fragments
-    if (texColor.a < 0.1)
+    // Alpha test (cutout discard) — toggleable. In "Fast" leaf mode the host
+    // sets useAlphaTest=false so leaf cubes render fully opaque (no cutouts)
+    // and the GPU keeps early-Z fully effective.
+    if (useAlphaTest && texColor.a < 0.1)
         discard;
 
     // Unpremultiply alpha to get original colors (only for semi-transparent pixels)
     // For opaque or nearly-opaque pixels (alpha > 0.95), skip to avoid precision issues
-    if (texColor.a > 0.01 && texColor.a < 0.95) {
+    if (useAlphaTest && texColor.a > 0.01 && texColor.a < 0.95) {
         texColor.rgb /= texColor.a;
     }
 

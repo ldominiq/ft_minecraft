@@ -91,6 +91,8 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     sceneShader->setVec4("clipPlane", clipPlane);
     sceneShader->setMat4("view", reflectView);
     sceneShader->setMat4("projection", projection);
+    sceneShader->setBool("useAlphaTest",
+        ChunkRenderer::sLeafRenderMode != ChunkRenderer::LeafRenderMode::Fast);
 
     // Calculate reflected camera direction for lighting
     const glm::vec3 originalDir = camera->getPlayer()->getCameraDir();
@@ -150,6 +152,8 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     sceneShader->setVec4("clipPlane", clipPlane);
     sceneShader->setMat4("view", view);
     sceneShader->setMat4("projection", projection);
+    sceneShader->setBool("useAlphaTest",
+        ChunkRenderer::sLeafRenderMode != ChunkRenderer::LeafRenderMode::Fast);
 
     // Render refraction scene
     lighting->uploadLightingUniforms(*sceneShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());

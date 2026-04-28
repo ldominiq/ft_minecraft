@@ -70,6 +70,22 @@ class ChunkRenderer : public Chunk {
 		inline const uint getWaterMeshVertexCount() const {return waterMeshVertexCount;}
 
 		inline VegetationRenderer* getVegetationRenderer() const { return vegetationRenderer.get(); }
+
+		// Leaf-rendering strategy. Drives both mesh emission and fragment-shader
+		// alpha test. Switching modes only affects the *next* mesh rebuild; for
+		// instant effect call buildMesh() on every loaded chunk (or press F3+A).
+		//
+		//   Fast   — leaves treated as opaque blocks. Mesher culls leaf-to-leaf
+		//            and solid-to-leaf faces. Fragment shader skips alpha test.
+		//            Cheapest; leaves look like solid green cubes.
+		//   Fancy  — leaves treated as transparent (original behaviour). Every
+		//            face emitted, including leaves seen through other leaves.
+		//            Most expensive; visually richest.
+		//   Smart  — leaves alpha-tested (cutouts visible on outer faces) but
+		//            mesher culls like Fast. Outer surface looks like leaves;
+		//            inside each canopy is hollow.
+		enum class LeafRenderMode { Fast, Fancy, Smart };
+		static LeafRenderMode sLeafRenderMode;
 };
 
 #endif

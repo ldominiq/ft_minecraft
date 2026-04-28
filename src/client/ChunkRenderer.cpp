@@ -1,6 +1,11 @@
 
 #include "ChunkRenderer.hpp"
 
+// Default to "Smart" — keep alpha cutouts on outer leaf surfaces, but cull
+// the wasted internal faces. Closest match to the original look at a fraction
+// of the vertex count.
+ChunkRenderer::LeafRenderMode ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Smart;
+
 ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVertexCount(0), waterMeshVertexCount(0) {
     vegetationRenderer = std::make_unique<VegetationRenderer>();
     cachedMinP = glm::vec3(static_cast<float>(originX), 0.0f, static_cast<float>(originZ));
@@ -305,16 +310,26 @@ void ChunkRenderer::buildMeshData() {
         return static_cast<float>(lightVal) / 15.0f;
     };
 
+    // In Fast/Smart, leaves are treated as opaque blocks for mesh-emission
+    // decisions: faces between leaves and other leaves (or between leaves
+    // and other solid blocks) are skipped. In Fancy, leaves stay transparent
+    // and every face is emitted — the original behaviour.
+    const bool leavesAreTransparentForMesh =
+        (sLeafRenderMode == LeafRenderMode::Fancy);
+
     for (int x = 0; x < WIDTH; ++x) {
         for (int y = 0; y < HEIGHT; ++y) {
             for (int z = 0; z < DEPTH; ++z) {
                 const int idx = x + WIDTH * (y + HEIGHT * z);
                 BlockType currentBlock = blockTypeVector[idx];
-                
+
                 if (currentBlock == BlockType::AIR) continue;
                 if (isBlockVegetation(currentBlock)) continue;
 
                 const bool isWater = (currentBlock == BlockType::WATER);
+                const bool currentIsLeaf = isBlockLeaves(currentBlock);
+                const bool smartLeavesCullLikeFast = (sLeafRenderMode == LeafRenderMode::Smart);
+                const bool fancyLeaves = (sLeafRenderMode == LeafRenderMode::Fancy);
 
                 for (const FaceDir& face : faces) {
                     BlockType neighborBlock;
@@ -325,6 +340,15 @@ void ChunkRenderer::buildMeshData() {
                     }
 
                     const float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, face.dx, face.dy, face.dz, face.neighborDir));
+                    const bool neighborIsLeaf = isBlockLeaves(neighborBlock);
+                    const bool neighborIsTransparent = isBlockTransparent(neighborBlock);
+
+                    // Treat leaves as transparent (Fancy) or opaque (Fast/Smart)
+                    // for the purposes of the emission test below. Cactus is
+                    // always transparent; this only affects leaf neighbours.
+                    const bool neighborTreatedTransparent =
+                        isBlockTransparent(neighborBlock) &&
+                        (leavesAreTransparentForMesh || !isBlockLeaves(neighborBlock));
 
                     if (isWater) {
                         if (neighborBlock == BlockType::AIR || isBlockTransparent(neighborBlock) || isBlockVegetation(neighborBlock)) {
@@ -335,8 +359,31 @@ void ChunkRenderer::buildMeshData() {
                         if (isSide || !isBlockSolid(neighborBlock) || neighborBlock != BlockType::CACTUS) {
                             addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
                         }
-                    } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock) || neighborBlock == BlockType::CACTUS) {
-                        addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                    }
+                    else if (currentIsLeaf) {
+                        // Leaves:
+                        // - Fast/Smart: cull leaf-to-leaf faces
+                        // - Fancy: keep leaf-to-leaf faces
+                        if (!isBlockSolid(neighborBlock) ||
+                            (fancyLeaves && neighborIsLeaf) ||
+                            neighborBlock == BlockType::CACTUS) {
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                        }
+                    }
+                    else {
+                        // Solid blocks:
+                        // - Smart/Fancy: render faces next to leaves
+                        // - Fast: cull them
+                        const bool neighborTreatsAsTransparent =
+                            neighborIsTransparent &&
+                            (fancyLeaves || !neighborIsLeaf);
+
+                        if (!isBlockSolid(neighborBlock) ||
+                            neighborTreatsAsTransparent ||
+                            (smartLeavesCullLikeFast && neighborIsLeaf) ||
+                            neighborBlock == BlockType::CACTUS) {
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                        }
                     }
                 }
             }

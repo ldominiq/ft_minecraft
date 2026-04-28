@@ -875,6 +875,8 @@ void App::render() {
             gBufferShader->use();
             gBufferShader->setMat4("view", view);
             gBufferShader->setMat4("projection", projection);
+            gBufferShader->setBool("useAlphaTest",
+                ChunkRenderer::sLeafRenderMode != ChunkRenderer::LeafRenderMode::Fast);
             textureManager.bind(GL_TEXTURE0);
             renderer->render(gBufferShader, view, camera->getEyePosD(), false);
 
@@ -1213,6 +1215,13 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         activeShader->use(); // Switch back to main shader
     }
 
+    // Derive the alpha-test flag from the current leaf-render mode.
+    // Fast leaves are opaque (no discard); Fancy/Smart keep the cutout test.
+    const bool leafAlphaTest =
+        (ChunkRenderer::sLeafRenderMode != ChunkRenderer::LeafRenderMode::Fast);
+    activeShader->use();
+    activeShader->setBool("useAlphaTest", leafAlphaTest);
+
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
     if (depthPrepassEnabled) {
         // ── Z-prepass ────────────────────────────────────────────────
@@ -1222,6 +1231,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         depthPrepassShader->use();
         depthPrepassShader->setMat4("projection", projection);
         depthPrepassShader->setVec4("clipPlane", clipPlane);
+        depthPrepassShader->setBool("useAlphaTest", leafAlphaTest);
         textureManager.bind(GL_TEXTURE0); // for alpha test on leaves
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         renderer->renderTerrainOnly(depthPrepassShader, view, camera->getEyePosD());
@@ -1616,6 +1626,9 @@ void App::debugWindow() {
                         renderer->setVegetationSwayMaxDistance(0.0f);
                         renderer->setVegetationDensity(2);
                         depthPrepassEnabled = true;
+                        // Performance: solid-cube leaves, no alpha test.
+                        ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Fast;
+                        for (auto &cp : renderer->getRenderedChunks()) if (auto c = cp.lock()) c->buildMesh();
                     }
                     ImGui::SameLine();
                     if (ImGui::Button("Balanced")) {
@@ -1634,6 +1647,9 @@ void App::debugWindow() {
                         renderer->setVegetationSwayMaxDistance(150.0f);
                         renderer->setVegetationDensity(1);
                         depthPrepassEnabled = true;
+                        // Balanced: keep leaf cutouts on outer surfaces, skip internal faces.
+                        ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Smart;
+                        for (auto &cp : renderer->getRenderedChunks()) if (auto c = cp.lock()) c->buildMesh();
                     }
                     ImGui::SameLine();
                     if (ImGui::Button("High")) {
@@ -1652,6 +1668,9 @@ void App::debugWindow() {
                         renderer->setVegetationSwayMaxDistance(0.0f);
                         renderer->setVegetationDensity(1);
                         depthPrepassEnabled = true;
+                        // High: original look — leaves transparent, every face emitted.
+                        ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Fancy;
+                        for (auto &cp : renderer->getRenderedChunks()) if (auto c = cp.lock()) c->buildMesh();
                     }
 
                     ImGui::SeparatorText("Shadow Map");
@@ -1720,6 +1739,31 @@ void App::debugWindow() {
 
                     ImGui::SeparatorText("Terrain");
                     ImGui::Checkbox("Z-prepass (kills fragment overdraw)", &depthPrepassEnabled);
+
+                    ImGui::Separator();
+                    ImGui::TextWrapped("Leaf rendering. Switching modes only affects new mesh builds.");
+                    int leafMode = static_cast<int>(ChunkRenderer::sLeafRenderMode);
+                    if (ImGui::Combo("Leaf mode", &leafMode,
+                                     "Fast (opaque leaves, no cutouts)\0"
+                                     "Fancy (transparent, all faces)\0"
+                                     "Smart (cutouts, fewer faces)\0")) {
+                        ChunkRenderer::sLeafRenderMode = static_cast<ChunkRenderer::LeafRenderMode>(leafMode);
+                        for (auto &chunkPtr : renderer->getRenderedChunks())
+                            if (auto chunk = chunkPtr.lock())
+                                chunk->buildMesh();
+                    }
+                    ImGui::SetItemTooltip(
+                        "Fast  — leaves render as solid green cubes. Mesher culls leaf-to-leaf and solid-to-leaf faces. Cheapest.\n"
+                        "Fancy — original look: leaves are alpha-tested, every face emitted (you can see leaves through other leaves). Most expensive.\n"
+                        "Smart — leaves keep alpha cutouts on outer faces, but mesher skips internal faces. Hollow canopies; recommended balance.");
+
+                    if (ImGui::Button("Rebuild all chunk meshes")) {
+                        for (auto &chunkPtr : renderer->getRenderedChunks())
+                            if (auto chunk = chunkPtr.lock())
+                                chunk->buildMesh();
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(or press F3+A)");
 
                     ImGui::EndTabItem();
                 }
