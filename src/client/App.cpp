@@ -596,6 +596,12 @@ void App::loadResources() {
     gBufferShader->use();
     gBufferShader->setInt("blockTextures", 0);
 
+    // Z-prepass shader — minimal vertex transform + alpha-test discard.
+    depthPrepassShader = std::make_shared<Shader>(
+        "shaders/terrain_depth_prepass.vert", "shaders/terrain_depth_prepass.frag");
+    depthPrepassShader->use();
+    depthPrepassShader->setInt("blockTextures", 0);
+
     // Wire the texture manager and shaders to subsystems that need them
     renderer->setTextureManager(&textureManager);
     renderer->setVegetationShader(std::make_shared<Shader>("shaders/vegetation.vert", "shaders/vegetation.frag"));
@@ -1203,7 +1209,33 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     }
 
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
-    renderer->render(activeShader, view, camera->getEyePosD());
+    if (depthPrepassEnabled) {
+        // ── Z-prepass ────────────────────────────────────────────────
+        // Render terrain depth-only with color writes off. Subsequent color
+        // pass uses GL_EQUAL so each pixel only runs the heavy lighting
+        // shader once, regardless of overdraw — big win in dense jungle.
+        depthPrepassShader->use();
+        depthPrepassShader->setMat4("projection", projection);
+        depthPrepassShader->setVec4("clipPlane", clipPlane);
+        textureManager.bind(GL_TEXTURE0); // for alpha test on leaves
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        renderer->renderTerrainOnly(depthPrepassShader, view, camera->getEyePosD());
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+        // ── Color pass: terrain only, GL_EQUAL ────────────────────────
+        glDepthFunc(GL_EQUAL);
+        // Tiny tweak: with prepass, the alpha discard in the color shader
+        // is redundant (same texels were already discarded in prepass).
+        // Leaving it in is harmless and avoids a separate shader variant.
+        renderer->renderTerrainOnly(activeShader, view, camera->getEyePosD());
+        glDepthFunc(GL_LESS);
+
+        // ── Vegetation pass (LESS depth, no prepass) ──────────────────
+        renderer->renderVegetationOnly(view, camera->getEyePosD());
+        activeShader->use();
+    } else {
+        renderer->render(activeShader, view, camera->getEyePosD());
+    }
     glEndQuery(GL_TIME_ELAPSED);
 
     lighting->drawLightCubes(view, projection, camera->getEyePosD());
@@ -1574,6 +1606,7 @@ void App::debugWindow() {
                         waterRenderer->setReflectionMaxDistance(0.0f);
                         // Vegetation distance limiter (jungle scenes)
                         renderer->setVegetationMaxDistance(100.0f);
+                        depthPrepassEnabled = true;
                     }
                     ImGui::SameLine();
                     if (ImGui::Button("Balanced")) {
@@ -1587,6 +1620,7 @@ void App::debugWindow() {
                         waterRenderer->setRefractionVegetationEnabled(true);
                         waterRenderer->setReflectionMaxDistance(120.0f);
                         renderer->setVegetationMaxDistance(200.0f);
+                        depthPrepassEnabled = true;
                     }
                     ImGui::SameLine();
                     if (ImGui::Button("High")) {
@@ -1600,6 +1634,7 @@ void App::debugWindow() {
                         waterRenderer->setRefractionVegetationEnabled(true);
                         waterRenderer->setReflectionMaxDistance(0.0f);
                         renderer->setVegetationMaxDistance(0.0f);
+                        depthPrepassEnabled = true;
                     }
 
                     ImGui::SeparatorText("Shadow Map");
@@ -1652,6 +1687,9 @@ void App::debugWindow() {
                     bool ssaoOn = ssao->isEnabled();
                     if (ImGui::Checkbox("SSAO (kills 12 ms when off)", &ssaoOn))
                         ssao->setEnabled(ssaoOn);
+
+                    ImGui::SeparatorText("Terrain");
+                    ImGui::Checkbox("Z-prepass (kills fragment overdraw)", &depthPrepassEnabled);
 
                     ImGui::EndTabItem();
                 }

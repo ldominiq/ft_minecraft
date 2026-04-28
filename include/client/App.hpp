@@ -230,6 +230,14 @@ private:
     std::shared_ptr<SSAO> ssao;
     std::shared_ptr<Shader> gBufferShader;
 
+    // Z-prepass for terrain. When enabled, terrain is drawn twice in the main
+    // scene pass: once depth-only with the prepass shader (color writes off),
+    // then again with the heavy lighting shader and glDepthFunc(GL_EQUAL).
+    // Eliminates fragment overdraw on dense biomes (jungle leaves) at the
+    // cost of a second vertex submission.
+    std::shared_ptr<Shader> depthPrepassShader;
+    bool depthPrepassEnabled = true;
+
 	std::optional<int> seed;
 
     uint8_t currentBiome = 0;

@@ -271,12 +271,9 @@ void Renderer::processMeshUpdates() {
 	}
 }
 
-void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
-                      const glm::mat4& view,
-                      const glm::dvec3& eyePos,
-                      bool renderVegetation) const {
-	std::vector<std::shared_ptr<ChunkRenderer>> visibleChunks;
-
+void Renderer::renderTerrainOnly(const std::shared_ptr<Shader>& shaderProgram,
+                                 const glm::mat4& view,
+                                 const glm::dvec3& eyePos) const {
 	// Build "viewRot": world view with translation column zeroed, i.e. the
 	// camera placed at the origin of render space with the same orientation.
 	glm::mat4 viewRot = view;
@@ -291,11 +288,11 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
 	shaderProgram->use();
 	shaderProgram->setMat4("viewRot", viewRot);
 
-	// Squared distance caps avoid sqrt in the per-chunk loop.
-	const float chunkMaxDistSq    = (maxRenderDistanceOverride > 0.0f)
+	// Squared distance cap avoids sqrt in the per-chunk loop.
+	const float chunkMaxDistSq = (maxRenderDistanceOverride > 0.0f)
 		? maxRenderDistanceOverride * maxRenderDistanceOverride : 0.0f;
-	const float vegMaxDistSq      = (vegetationMaxDistance > 0.0f)
-		? vegetationMaxDistance * vegetationMaxDistance : 0.0f;
+
+	m_lastVisibleChunks.clear();
 
 	for (auto& weakChunk : renderedChunks) {
 		auto chunk = weakChunk.lock();
@@ -312,44 +309,65 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
 			continue;
 
 		// Frustum cull: skip chunks entirely outside the camera view
-       if (frustumCullingEnabled) {
-            const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - cameraPos;
-            const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - cameraPos;
-            if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
-                continue;
-        }
+		if (frustumCullingEnabled) {
+			const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - cameraPos;
+			const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - cameraPos;
+			if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
+				continue;
+		}
 
 		// Per-chunk uniforms for camera-relative rendering.
-		// chunkRel must be computed in double so that large world
-		// coordinates cancel before downcasting to float.
 		shaderProgram->setVec3("chunkRel", glm::vec3(chunkRelD));
 		shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 
 		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
-		visibleChunks.push_back(chunk);
+		m_lastVisibleChunks.push_back(chunk);
 	}
+}
 
-	// Render all vegetation in a single shader-switch batch
-	if (renderVegetation && vegetationShader) {
-		vegetationShader->use();
-     vegetationShader->setMat4("viewRot", viewRot);
-        vegetationShader->setVec3("viewPos", glm::vec3(cameraPos));
-		for (auto& chunk : visibleChunks) {
-          const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
-                                               static_cast<double>(chunk->getOriginZ()));
-            const glm::dvec3 chunkRelD = chunkOriginWorldD - cameraPos;
-            // Vegetation distance cap — separate from terrain so the user can
-            // keep distant terrain visible while killing distant leaf overdraw.
-            if (vegMaxDistSq > 0.0f) {
-                const float dSq = static_cast<float>(chunkRelD.x * chunkRelD.x + chunkRelD.z * chunkRelD.z);
-                if (dSq > vegMaxDistSq) continue;
-            }
-            vegetationShader->setVec3("chunkRel", glm::vec3(chunkRelD));
-            vegetationShader->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
-			auto vegRenderer = chunk->getVegetationRenderer();
-			if (vegRenderer && vegRenderer->getInstanceCount() > 0)
-				vegRenderer->render();
+void Renderer::renderVegetationOnly(const glm::mat4& view, const glm::dvec3& eyePos) const {
+	if (!vegetationShader || m_lastVisibleChunks.empty())
+		return;
+
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	const glm::dvec3 cameraPos = eyePos;
+
+	const float vegMaxDistSq = (vegetationMaxDistance > 0.0f)
+		? vegetationMaxDistance * vegetationMaxDistance : 0.0f;
+
+	vegetationShader->use();
+	vegetationShader->setMat4("viewRot", viewRot);
+	vegetationShader->setVec3("viewPos", glm::vec3(cameraPos));
+
+	for (auto& chunk : m_lastVisibleChunks) {
+		const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+		                                   static_cast<double>(chunk->getOriginZ()));
+		const glm::dvec3 chunkRelD = chunkOriginWorldD - cameraPos;
+		// Vegetation distance cap — separate from terrain so the user can
+		// keep distant terrain visible while killing distant leaf overdraw.
+		if (vegMaxDistSq > 0.0f) {
+			const float dSq = static_cast<float>(chunkRelD.x * chunkRelD.x + chunkRelD.z * chunkRelD.z);
+			if (dSq > vegMaxDistSq) continue;
 		}
+		vegetationShader->setVec3("chunkRel", glm::vec3(chunkRelD));
+		vegetationShader->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
+		auto vegRenderer = chunk->getVegetationRenderer();
+		if (vegRenderer && vegRenderer->getInstanceCount() > 0)
+			vegRenderer->render();
+	}
+}
+
+void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
+                      const glm::mat4& view,
+                      const glm::dvec3& eyePos,
+                      bool renderVegetation) const {
+	// Convenience wrapper used by passes that don't want a Z-prepass
+	// (water reflection/refraction, GBuffer, etc.).
+	renderTerrainOnly(shaderProgram, view, eyePos);
+	if (renderVegetation && vegetationShader) {
+		renderVegetationOnly(view, eyePos);
+		// Restore the caller's shader for any subsequent uniform binds.
 		shaderProgram->use();
 	}
 }

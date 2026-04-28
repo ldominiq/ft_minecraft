@@ -50,6 +50,10 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	// already marked them sent in PlayerKnownChunks) never re-sends them.
 	std::unordered_map<ChunkPos, std::chrono::steady_clock::time_point> chunkReceiveTime;
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
+	// Cached visibility list from the most recent terrain pass — reused by
+	// renderVegetationOnly so we don't re-run frustum culling. Mutable because
+	// render() is const-qualified.
+	mutable std::vector<std::shared_ptr<ChunkRenderer>> m_lastVisibleChunks;
 	float maxRenderedChunkDist = 0.0f; // world-space distance to edge of farthest rendered chunk
 	Frustum cameraFrustum;
   glm::dvec3 frustumEyePos = glm::dvec3(0.0);
@@ -106,6 +110,18 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		            const glm::mat4& view,
 		            const glm::dvec3& eyePos,
 		            bool renderVegetation = true) const ;
+
+		/// Render only the terrain chunk loop (no vegetation). Populates the
+		/// internal visibility cache so a subsequent `renderVegetationOnly`
+		/// call can reuse the same chunk list — used by the Z-prepass path,
+		/// where terrain runs twice (prepass + color) and vegetation once.
+		void renderTerrainOnly(const std::shared_ptr<Shader>& shaderProgram,
+		                       const glm::mat4& view,
+		                       const glm::dvec3& eyePos) const;
+
+		/// Render only the vegetation pass, reusing the visible-chunks cache
+		/// from the most recent `render()` / `renderTerrainOnly()` call.
+		void renderVegetationOnly(const glm::mat4& view, const glm::dvec3& eyePos) const;
 
 		/// Update vegetation shader uniforms (for reflection pass where view/clip differ from main camera)
 		void updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
