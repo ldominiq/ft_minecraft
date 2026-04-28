@@ -1699,6 +1699,58 @@ void App::debugWindow() {
                                 lighting->setShadowMapMaxBias(shadowMaxBias);
                             ImGui::EndTabItem();
                         }
+                        if (ImGui::BeginTabItem("Graphics Quality")) {
+                            // Preset buttons
+                            if (ImGui::Button("Performance")) {
+                                lighting->setCascadeCount(2);
+                                lighting->setShadowMapResolution(1024);
+                                lighting->setShadowFarPlane(250.0f);
+                                lighting->setPcfQuality(Lighting::PcfQuality::Low);
+                                lighting->setShadowAlphaTest(false);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("Balanced")) {
+                                lighting->setCascadeCount(3);
+                                lighting->setShadowMapResolution(2048);
+                                lighting->setShadowFarPlane(350.0f);
+                                lighting->setPcfQuality(Lighting::PcfQuality::Medium);
+                                lighting->setShadowAlphaTest(false);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("High")) {
+                                lighting->setCascadeCount(3);
+                                lighting->setShadowMapResolution(2048);
+                                lighting->setShadowFarPlane(500.0f);
+                                lighting->setPcfQuality(Lighting::PcfQuality::High);
+                                lighting->setShadowAlphaTest(true);
+                            }
+
+                            ImGui::SeparatorText("Shadow Map");
+                            static const int kRes[] = { 512, 1024, 2048, 4096 };
+                            int curResIdx = 1;
+                            for (int i = 0; i < 4; ++i) if ((int)lighting->getShadowMapResolution() == kRes[i]) curResIdx = i;
+                            if (ImGui::Combo("Resolution", &curResIdx, "512\0001024\0002048\0004096\000"))
+                                lighting->setShadowMapResolution(kRes[curResIdx]);
+
+                            int cascades = lighting->getCascadeCount();
+                            if (ImGui::SliderInt("Cascades", &cascades, 2, 3))
+                                lighting->setCascadeCount(cascades);
+
+                            float farP = lighting->getShadowFarPlane();
+                            if (ImGui::SliderFloat("Shadow Distance", &farP, 100.0f, 1000.0f, "%.0f"))
+                                lighting->setShadowFarPlane(farP);
+
+                            ImGui::SeparatorText("Filtering");
+                            int pcf = static_cast<int>(lighting->getPcfQuality());
+                            if (ImGui::Combo("PCF Quality", &pcf, "Low (1 tap)\0Medium (3x3)\0High (5x5)\0"))
+                                lighting->setPcfQuality(static_cast<Lighting::PcfQuality>(pcf));
+
+                            bool alpha = lighting->getShadowAlphaTest();
+                            if (ImGui::Checkbox("Leaf shadows (alpha-tested)", &alpha))
+                                lighting->setShadowAlphaTest(alpha);
+
+                            ImGui::EndTabItem();
+                        }
                         if (ImGui::BeginTabItem("Directional Light"))
                         {
                             bool directionalLightOn = lighting->isDirectionalLightOn();

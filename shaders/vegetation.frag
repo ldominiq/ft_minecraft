@@ -43,6 +43,7 @@ uniform int cascadeCount;
 uniform float farPlane;
 uniform mat4 viewRot;
 uniform bool shadowsEnabled;
+uniform int pcfQuality; // 0=1-tap, 1=3x3, 2=5x5
 
 #include "sky_common.glsl"
 
@@ -161,12 +162,13 @@ float computeVegetationShadow(vec3 fragPosRel)
 
     float biasedDepth = projCoords.z - bias;
 
-    // PCF sampling: 3x3 for first cascade, 5x5 for others
+    // PCF sampling: quality controlled by pcfQuality uniform (uniform branch = free)
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMapArray, 0));
     float shadow = 0.0;
 
-    if (layer == 0)
-    {
+    if (pcfQuality == 0) {
+        shadow = texture(shadowMapArray, vec4(projCoords.xy, float(layer), biasedDepth));
+    } else if (pcfQuality == 1) {
         for (int x = -1; x <= 1; ++x)
             for (int y = -1; y <= 1; ++y)
             {
@@ -174,9 +176,7 @@ float computeVegetationShadow(vec3 fragPosRel)
                 shadow += texture(shadowMapArray, vec4(sampleUV, float(layer), biasedDepth));
             }
         shadow /= 9.0;
-    }
-    else
-    {
+    } else {
         for (int x = -2; x <= 2; ++x)
             for (int y = -2; y <= 2; ++y)
             {
@@ -211,13 +211,26 @@ float computeVegetationShadow(vec3 fragPosRel)
                 float nextDepth = nextCoords.z - nextBias;
                 float nextShadow = 0.0;
 
-                for (int x = -2; x <= 2; ++x)
-                    for (int y = -2; y <= 2; ++y)
-                    {
-                        vec2 sampleUV = nextCoords.xy + vec2(x, y) * texelSize;
-                        nextShadow += texture(shadowMapArray, vec4(sampleUV, float(layer + 1), nextDepth));
-                    }
-                nextShadow = 1.0 - (nextShadow / 25.0);
+                if (pcfQuality == 0) {
+                    nextShadow = texture(shadowMapArray, vec4(nextCoords.xy, float(layer + 1), nextDepth));
+                } else if (pcfQuality == 1) {
+                    for (int x = -1; x <= 1; ++x)
+                        for (int y = -1; y <= 1; ++y)
+                        {
+                            vec2 sampleUV = nextCoords.xy + vec2(x, y) * texelSize;
+                            nextShadow += texture(shadowMapArray, vec4(sampleUV, float(layer + 1), nextDepth));
+                        }
+                    nextShadow /= 9.0;
+                } else {
+                    for (int x = -2; x <= 2; ++x)
+                        for (int y = -2; y <= 2; ++y)
+                        {
+                            vec2 sampleUV = nextCoords.xy + vec2(x, y) * texelSize;
+                            nextShadow += texture(shadowMapArray, vec4(sampleUV, float(layer + 1), nextDepth));
+                        }
+                    nextShadow /= 25.0;
+                }
+                nextShadow = 1.0 - nextShadow;
 
                 shadow = mix(shadow, nextShadow, blendFactor);
             }

@@ -84,6 +84,7 @@ uniform float cascadePlaneDistances[MAX_CASCADES - 1]; // N-1 split points for N
 uniform int cascadeCount;
 uniform float farPlane;
 uniform mat4 viewRot;
+uniform int pcfQuality; // 0=1-tap, 1=3x3, 2=5x5
 
 // SSAO
 uniform sampler2D ssaoTexture;
@@ -334,8 +335,9 @@ float sampleCascadeShadow(int layer, vec3 fragPosRel, vec3 normal, vec3 lightDir
 
     // PCF: 3×3 for cascade 0, 5×5 for farther cascades
     float shadow = 0.0;
-    if (layer == 0)
-    {
+    if (pcfQuality == 0) {
+        shadow = texture(shadowMapArray, vec4(offsetCoords.xy, float(layer), biasedDepth));
+    } else if (pcfQuality == 1) {
         for (int x = -1; x <= 1; ++x)
             for (int y = -1; y <= 1; ++y)
             {
@@ -343,9 +345,7 @@ float sampleCascadeShadow(int layer, vec3 fragPosRel, vec3 normal, vec3 lightDir
                 shadow += texture(shadowMapArray, vec4(sampleUV, float(layer), biasedDepth));
             }
         shadow /= 9.0;
-    }
-    else
-    {
+    } else {
         for (int x = -2; x <= 2; ++x)
             for (int y = -2; y <= 2; ++y)
             {
