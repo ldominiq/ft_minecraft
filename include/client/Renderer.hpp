@@ -54,6 +54,8 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	Frustum cameraFrustum;
   glm::dvec3 frustumEyePos = glm::dvec3(0.0);
 	bool frustumCullingEnabled = true;
+	float maxRenderDistanceOverride = 0.0f; // 0 = no cap; set by water reflection pass
+	float vegetationMaxDistance = 0.0f;     // 0 = no cap; cull distant vegetation chunks
 	const TextureManager* textureManager = nullptr;
 	std::shared_ptr<Shader> vegetationShader = nullptr;
 
@@ -78,6 +80,18 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		bool isFrustumCullingEnabled() const { return frustumCullingEnabled; }
 		void setFrustumCullingEnabled(bool enabled) { frustumCullingEnabled = enabled; }
+
+		// Optional per-frame override that caps the chunk render distance during
+		// the next render() call (used by water reflection to avoid drawing
+		// distant terrain into a tiny offscreen target). 0 = no cap.
+		float getMaxRenderDistanceOverride() const { return maxRenderDistanceOverride; }
+		void  setMaxRenderDistanceOverride(float d) { maxRenderDistanceOverride = d; }
+
+		// Cull vegetation in chunks whose center is farther than this from the
+		// camera (in world units). 0 = no cap. Cheap CPU-side filter; saves
+		// instanced vegetation draw calls in dense biomes.
+		float getVegetationMaxDistance() const { return vegetationMaxDistance; }
+		void  setVegetationMaxDistance(float d) { vegetationMaxDistance = d; }
 
 		void setTextureManager(const TextureManager* tm) { textureManager = tm; }
 		void setVegetationShader(const std::shared_ptr<Shader>& shader) { vegetationShader = shader; }

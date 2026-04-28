@@ -20,13 +20,20 @@ public:
     int getWidth() const { return displayWidth; }
     int getHeight() const { return displayHeight; }
 
+    int getRefractionWidth() const { return refractionWidth; }
+    int getRefractionHeight() const { return refractionHeight; }
+
+    /// Recreate the refraction FBO + textures at a new resolution. Cheap (one-shot
+    /// per setting change), called from WaterRenderer::setRefractionResolutionScale.
+    void resizeRefraction(int width, int height);
+
     void cleanUp();
 
 private:
     static constexpr int REFLECTION_WIDTH = 320;
     static constexpr int REFLECTION_HEIGHT = 180;
-    static constexpr int REFRACTION_WIDTH = 1280;
-    static constexpr int REFRACTION_HEIGHT = 720;
+    int refractionWidth = 1280;
+    int refractionHeight = 720;
 
     GLuint reflectionFrameBuffer = 0;
     GLuint reflectionTexture = 0;

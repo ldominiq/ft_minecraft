@@ -40,6 +40,18 @@ void WaterRenderer::setDependencies(const std::shared_ptr<Lighting> &lightingRef
     camera = cameraRef;
 }
 
+void WaterRenderer::setRefractionResolutionScale(float scale, int displayWidth, int displayHeight) {
+    if (scale < 0.1f) scale = 0.1f;
+    if (scale > 1.0f) scale = 1.0f;
+    if (scale == refractionResolutionScale) return;
+    refractionResolutionScale = scale;
+
+    // Recreate the refraction FBO at the new size — one-shot, not per frame.
+    const int w = static_cast<int>(static_cast<float>(displayWidth)  * scale);
+    const int h = static_cast<int>(static_cast<float>(displayHeight) * scale);
+    fbos->resizeRefraction(w, h);
+}
+
 void WaterRenderer::prepareRender() {
     waterShader->use();
     glActiveTexture(GL_TEXTURE0);
@@ -93,14 +105,28 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     texMgr.bind(GL_TEXTURE0);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
     lighting->drawSky(skyView, projection, reflectCamPos, false);
-    // Update vegetation shader with reflected view/clip before rendering
-    renderer->updateVegetationUniforms(reflectView, projection, clipPlane, reflectCamPos);
-    // Use the reflected view-projection for frustum culling so only chunks
-    // actually visible in the reflection are submitted, not all main-camera chunks.
-  glm::mat4 reflectViewRot = reflectView;
-    reflectViewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-    renderer->updateFrustum(projection * reflectViewRot, reflectCamPosD);
-    renderer->render(sceneShader, reflectView, reflectCamPosD, false); // skip vegetation
+
+    if (reflectionEnabled) {
+        // Update vegetation shader with reflected view/clip before rendering
+        renderer->updateVegetationUniforms(reflectView, projection, clipPlane, reflectCamPos);
+        // Use the reflected view-projection for frustum culling so only chunks
+        // actually visible in the reflection are submitted, not all main-camera chunks.
+        glm::mat4 reflectViewRot = reflectView;
+        reflectViewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        renderer->updateFrustum(projection * reflectViewRot, reflectCamPosD);
+
+        // Optionally cap the per-chunk render distance for reflection only —
+        // distant terrain rarely contributes meaningfully to a reflection but
+        // costs the same draw-call/vertex work as the main pass.
+        const float prevDistCap = renderer->getMaxRenderDistanceOverride();
+        if (reflectionMaxDistance > 0.0f)
+            renderer->setMaxRenderDistanceOverride(reflectionMaxDistance);
+        renderer->render(sceneShader, reflectView, reflectCamPosD, false); // skip vegetation
+        renderer->setMaxRenderDistanceOverride(prevDistCap);
+    }
+    // When reflection is disabled we still ran drawSky() above so the FBO
+    // contains a usable sky-tinted image — water surface will sample it as
+    // a plain reflection of the sky, which is cheap and looks fine.
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();
@@ -132,9 +158,10 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     sceneShader->setInt("ssaoEnabled", 0);
     sceneShader->setFloat("shadows.enabled", 0.0f);
     texMgr.bind(GL_TEXTURE0);
-    // Render with vegetation so sea vegetation is visible in the refraction texture
-    renderer->updateVegetationUniforms(view, projection, clipPlane, glm::vec3(camera->getEyePosD()));
-    renderer->render(sceneShader, view, camera->getEyePosD(), true);
+    // Sea vegetation in refraction is expensive in dense biomes — toggleable.
+    if (refractionRendersVegetation)
+        renderer->updateVegetationUniforms(view, projection, clipPlane, glm::vec3(camera->getEyePosD()));
+    renderer->render(sceneShader, view, camera->getEyePosD(), refractionRendersVegetation);
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();
