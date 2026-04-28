@@ -1191,6 +1191,11 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setFloat("time", static_cast<float>(glfwGetTime()));
         vegShader->setFloat("seaLevel", 64.0f);
 
+        // Graphics-quality knobs (sway tier, distance LOD, density skip)
+        vegShader->setInt  ("vegetationSwayQuality",  renderer->getVegetationSwayQuality());
+        vegShader->setFloat("vegetationSwayMaxDist",  renderer->getVegetationSwayMaxDistance());
+        vegShader->setInt  ("vegetationDensity",      renderer->getVegetationDensity());
+
         // Underwater fog for vegetation
         vegShader->setBool("cameraUnderwater", cameraUnderwater);
     	vegShader->setVec3("underwaterTintColor", lighting->getUnderwaterTintColor());
@@ -1606,6 +1611,10 @@ void App::debugWindow() {
                         waterRenderer->setReflectionMaxDistance(0.0f);
                         // Vegetation distance limiter (jungle scenes)
                         renderer->setVegetationMaxDistance(100.0f);
+                        // Vegetation: no sway, half density — biggest jungle win
+                        renderer->setVegetationSwayQuality(0);
+                        renderer->setVegetationSwayMaxDistance(0.0f);
+                        renderer->setVegetationDensity(2);
                         depthPrepassEnabled = true;
                     }
                     ImGui::SameLine();
@@ -1620,6 +1629,10 @@ void App::debugWindow() {
                         waterRenderer->setRefractionVegetationEnabled(true);
                         waterRenderer->setReflectionMaxDistance(120.0f);
                         renderer->setVegetationMaxDistance(200.0f);
+                        // Cheap sway, full density, fade out near the cull distance
+                        renderer->setVegetationSwayQuality(1);
+                        renderer->setVegetationSwayMaxDistance(150.0f);
+                        renderer->setVegetationDensity(1);
                         depthPrepassEnabled = true;
                     }
                     ImGui::SameLine();
@@ -1634,6 +1647,10 @@ void App::debugWindow() {
                         waterRenderer->setRefractionVegetationEnabled(true);
                         waterRenderer->setReflectionMaxDistance(0.0f);
                         renderer->setVegetationMaxDistance(0.0f);
+                        // Full sway, no LOD, full density
+                        renderer->setVegetationSwayQuality(2);
+                        renderer->setVegetationSwayMaxDistance(0.0f);
+                        renderer->setVegetationDensity(1);
                         depthPrepassEnabled = true;
                     }
 
@@ -1682,6 +1699,19 @@ void App::debugWindow() {
                     float vegDist = renderer->getVegetationMaxDistance();
                     if (ImGui::SliderFloat("Vegetation distance (0 = no cap)", &vegDist, 0.0f, 400.0f, "%.0f"))
                         renderer->setVegetationMaxDistance(vegDist);
+
+                    int swayQ = renderer->getVegetationSwayQuality();
+                    if (ImGui::Combo("Wind sway quality", &swayQ,
+                                     "None (cheapest)\0Low (1 sin)\0High (current)\0"))
+                        renderer->setVegetationSwayQuality(swayQ);
+
+                    float swayDist = renderer->getVegetationSwayMaxDistance();
+                    if (ImGui::SliderFloat("Sway LOD distance (0 = no fade)", &swayDist, 0.0f, 300.0f, "%.0f"))
+                        renderer->setVegetationSwayMaxDistance(swayDist);
+
+                    int density = renderer->getVegetationDensity();
+                    if (ImGui::SliderInt("Density (render every Nth)", &density, 1, 4))
+                        renderer->setVegetationDensity(density);
 
                     ImGui::SeparatorText("Ambient Occlusion");
                     bool ssaoOn = ssao->isEnabled();

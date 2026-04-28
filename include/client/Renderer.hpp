@@ -60,6 +60,9 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	bool frustumCullingEnabled = true;
 	float maxRenderDistanceOverride = 0.0f; // 0 = no cap; set by water reflection pass
 	float vegetationMaxDistance = 0.0f;     // 0 = no cap; cull distant vegetation chunks
+	int   vegetationSwayQuality = 2;        // 0 none, 1 low (1 sin), 2 high (current)
+	float vegetationSwayMaxDistance = 0.0f; // 0 = no fade; world-space LOD cutoff
+	int   vegetationDensity = 1;            // 1 = all instances; N = render every Nth
 	const TextureManager* textureManager = nullptr;
 	std::shared_ptr<Shader> vegetationShader = nullptr;
 
@@ -96,6 +99,23 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		// instanced vegetation draw calls in dense biomes.
 		float getVegetationMaxDistance() const { return vegetationMaxDistance; }
 		void  setVegetationMaxDistance(float d) { vegetationMaxDistance = d; }
+
+		// Wind sway shader cost — uniform-controlled branch in vegetation.vert.
+		//   0 = none (skip all sin/cos sway math), 1 = low (1 sin), 2 = high (current 3-5 sin)
+		int  getVegetationSwayQuality() const { return vegetationSwayQuality; }
+		void setVegetationSwayQuality(int q)  { vegetationSwayQuality = (q < 0 ? 0 : (q > 2 ? 2 : q)); }
+
+		// World-space distance beyond which sway fades to zero (cheaper LOD
+		// for distant vegetation while still showing it). 0 = no fade.
+		float getVegetationSwayMaxDistance() const { return vegetationSwayMaxDistance; }
+		void  setVegetationSwayMaxDistance(float d) { vegetationSwayMaxDistance = d; }
+
+		// Render only every Nth vegetation instance. 1 = full density, 2 =
+		// half (every other), 3 = third, etc. Implemented as an early-out in
+		// the vertex shader keyed off gl_InstanceID — skipped instances exit
+		// before the expensive sway path runs.
+		int  getVegetationDensity() const { return vegetationDensity; }
+		void setVegetationDensity(int n)  { vegetationDensity = (n < 1 ? 1 : n); }
 
 		void setTextureManager(const TextureManager* tm) { textureManager = tm; }
 		void setVegetationShader(const std::shared_ptr<Shader>& shader) { vegetationShader = shader; }

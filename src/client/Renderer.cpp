@@ -261,6 +261,11 @@ void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& 
 	vegetationShader->setMat4("projection", projection);
 	vegetationShader->setVec4("clipPlane", clipPlane);
 	vegetationShader->setVec3("viewPos", viewPos);
+	// Graphics-quality knobs — uploaded here too so vegetation in water
+	// refraction respects the same sway/density settings as the main pass.
+	vegetationShader->setInt  ("vegetationSwayQuality", vegetationSwayQuality);
+	vegetationShader->setFloat("vegetationSwayMaxDist", vegetationSwayMaxDistance);
+	vegetationShader->setInt  ("vegetationDensity",     vegetationDensity);
 }
 
 void Renderer::processMeshUpdates() {
