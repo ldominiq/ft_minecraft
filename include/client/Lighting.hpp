@@ -285,8 +285,8 @@ private:
     std::unique_ptr<SkyLUT> skyLUT;
     
     // CSM
-    std::shared_ptr<Shader> ShaderCsmDepth;
-	std::shared_ptr<Shader> ShaderCsmDepthAlpha; // alternate shadow program with alpha test
+    std::shared_ptr<Shader> csmDepthShader;
+	std::shared_ptr<Shader> csmDepthAlphaShader; // alternate shadow program with alpha test
     GLuint csmFBO = 0;
     GLuint csmDepthMaps = 0;
     unsigned int depthMapResolution = 1024;

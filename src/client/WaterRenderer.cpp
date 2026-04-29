@@ -43,7 +43,6 @@ void WaterRenderer::setDependencies(const std::shared_ptr<Lighting> &lightingRef
 void WaterRenderer::setRefractionResolutionScale(float scale, int displayWidth, int displayHeight) {
     if (scale < 0.1f) scale = 0.1f;
     if (scale > 1.0f) scale = 1.0f;
-    if (scale == refractionResolutionScale) return;
     refractionResolutionScale = scale;
 
     // Recreate the refraction FBO at the new size — one-shot, not per frame.

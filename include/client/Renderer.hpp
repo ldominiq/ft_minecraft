@@ -111,9 +111,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void  setVegetationSwayMaxDistance(float d) { vegetationSwayMaxDistance = d; }
 
 		// Render only every Nth vegetation instance. 1 = full density, 2 =
-		// half (every other), 3 = third, etc. Implemented as an early-out in
-		// the vertex shader keyed off gl_InstanceID — skipped instances exit
-		// before the expensive sway path runs.
+		// half (every other), 3 = third, etc.
 		int  getVegetationDensity() const { return vegetationDensity; }
 		void setVegetationDensity(int n)  { vegetationDensity = (n < 1 ? 1 : n); }
 

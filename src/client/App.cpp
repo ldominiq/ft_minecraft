@@ -12,7 +12,6 @@ App::App(const std::string& serverIp):
 
             lighting(nullptr),
             textureShader(nullptr),
-            gradientShader(nullptr),
             activeShader(nullptr) {
 
     // Pre-allocate the FPS sample buffer to avoid reallocations at runtime
@@ -576,9 +575,8 @@ void App::setUdpClientPacketCallback()
 
 void App::loadResources() {
     // Load shaders and textures
-
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
-    gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
+    
     // Load individual block textures into a texture array
     textureManager.loadResourcePack("assets");
 
@@ -1239,10 +1237,12 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 
         // ── Color pass: terrain only, GL_EQUAL ────────────────────────
         glDepthFunc(GL_EQUAL);
+        glDepthMask(GL_FALSE);  // prepass already wrote depth; no need to write it again
         // Tiny tweak: with prepass, the alpha discard in the color shader
         // is redundant (same texels were already discarded in prepass).
         // Leaving it in is harmless and avoids a separate shader variant.
         renderer->renderTerrainOnly(activeShader, view, camera->getEyePosD());
+        glDepthMask(GL_TRUE);
         glDepthFunc(GL_LESS);
 
         // ── Vegetation pass (LESS depth, no prepass) ──────────────────
@@ -1779,8 +1779,6 @@ void App::debugWindow() {
                                 glfwSwapInterval(vsync ? 1 : 0);
                             if (ImGui::Checkbox("Wireframe", &wireframe))
                                 glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-                            if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader))
-                                activeShader = useGradientShader ? gradientShader : textureShader;
                             ImGui::RadioButton("Lighting render", &selectedRenderType, 0); ImGui::SameLine();
                             ImGui::RadioButton("Normals render",  &selectedRenderType, 1); ImGui::SameLine();
                             ImGui::RadioButton("Depth render",    &selectedRenderType, 2);
@@ -2672,18 +2670,6 @@ void App::processInput() {
         }
         if (glfwGetKey(window, controlsArray[TOGGLE_WIREFRAME]) == GLFW_RELEASE) {
             f1Held = false;
-        }
-
-        // Toggle Shader (switch between texture and gradient shader).  When
-        // useGradientShader is true we use gradientShader; otherwise we use
-        // textureShader.
-        if (glfwGetKey(window, controlsArray[TOGGLE_SHADER]) == GLFW_PRESS && !f2Held) {
-            useGradientShader = !useGradientShader;
-            activeShader = useGradientShader ? gradientShader : textureShader;
-            f2Held = true;
-        }
-        if (glfwGetKey(window, controlsArray[TOGGLE_SHADER]) == GLFW_RELEASE) {
-            f2Held = false;
         }
 
     }

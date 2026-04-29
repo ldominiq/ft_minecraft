@@ -929,13 +929,17 @@ std::vector<glm::mat4> Lighting::getLightSpaceMatrices(const glm::mat4& cameraVi
 
 void Lighting::initCSMResources()
 {
-    ShaderCsmDepth = std::make_shared<Shader>(
-        "shaders/csmDepth.vert",
-        "shaders/csmDepth.frag");
+    if (!csmDepthShader) {
+        csmDepthShader = std::make_shared<Shader>(
+            "shaders/csmDepth.vert",
+            "shaders/csmDepth.frag");
+    }
 
-    ShaderCsmDepthAlpha = std::make_shared<Shader>(
-        "shaders/csmDepth.vert",
-		"shaders/csmDepthAlpha.frag");
+    if (!csmDepthAlphaShader) {
+        csmDepthAlphaShader = std::make_shared<Shader>(
+            "shaders/csmDepth.vert",
+		    "shaders/csmDepthAlpha.frag");
+    }
 
     const int numCascades = static_cast<int>(shadowCascadeLevels.size()) + 1;
 
@@ -1058,7 +1062,7 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
 
     const int numCascades = static_cast<int>(csmLightSpaceMatrices.size());
 
-	auto& shader = shadowAlphaTest ? ShaderCsmDepthAlpha : ShaderCsmDepth;
+	auto& shader = shadowAlphaTest ? csmDepthAlphaShader : csmDepthShader;
     shader->use();
 
     // Bind the texture array only when the alpha-test variant needs it

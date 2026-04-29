@@ -365,6 +365,7 @@ void ChunkRenderer::buildMeshData() {
                         // - Fast/Smart: cull leaf-to-leaf faces
                         // - Fancy: keep leaf-to-leaf faces
                         if (!isBlockSolid(neighborBlock) ||
+                            neighborTreatedTransparent ||
                             (fancyLeaves && neighborIsLeaf) ||
                             neighborBlock == BlockType::CACTUS) {
                             addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
