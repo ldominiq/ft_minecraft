@@ -17,6 +17,8 @@ public:
     GLuint ID;
 
     Shader(const char* vertexPath, const char* fragmentPath);
+    // Compute-only shader (no vertex/fragment stages).
+    explicit Shader(const char* computePath);
     void use() const;
 
     void stop() const;

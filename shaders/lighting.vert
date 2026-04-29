@@ -1,53 +1,62 @@
 #version 460 core
 #include "terrain_vertex_decode.glsl"
+#include "terrain_ssbo.glsl"
 
-// Packed terrain vertex (8 bytes). See terrain_vertex_decode.glsl.
-layout (location = 0) in uint aV0;
-layout (location = 1) in uint aV1;
+// Terrain forward-lighting vertex shader.
+//
+// Vertex data comes from the vertex SSBO (binding 1) instead of VAO attributes.
+// getV0() / getV1() index via gl_VertexID, which is already offset by the
+// 'first' field of the MDI draw command — no manual offset needed.
+//
+// Per-draw chunk info comes from the ChunkInfo SSBO (binding 0) indexed via
+// gl_BaseInstance (= chunk slot index set in the draw command).
 
 out VS_OUT {
-    vec3 FragPos;
-    vec3 FragPosRel;
+    vec3 FragPos;       // World-space position (for lighting)
+    vec3 FragPosRel;    // Camera-relative position (for projection — keeps precision)
     vec3 Normal;
     vec2 TexCoord;
     float TexLayer;
-    float SkyLight; // Passed to fragment shader for cave darkening
+    float SkyLight;
 } vs_out;
 
 uniform mat4 projection;
-// View matrix with translation column zeroed (camera at origin in render
-// space). Used together with chunkRel below to keep the inputs to the
-// projection small even when the player is far from world origin.
+// View matrix with translation column zeroed — camera sits at the world origin
+// in render space.  Keeps the values fed to `projection` small and precise.
 uniform mat4 viewRot;
-// Per-chunk: chunkOrigin - cameraPos, computed CPU-side in double precision.
-uniform vec3 chunkRel;
-// Per-chunk: chunkOrigin in world space (float). Used only to reconstruct
-// world-space FragPos for lighting / shadows / fog. Suffers the same
-// precision quantization at huge distances as before — but the *geometry*
-// (gl_Position) is computed from the precise camera-relative path.
-uniform vec3 chunkOriginWorld;
-
-// Clipping plane for water reflection/refraction
+// Camera world position (double→float on CPU). Used to compute the
+// camera-relative offset chunkRel = chunkOrigin - cameraPos in the shader.
+uniform vec3 cameraPos;
+// Clipping plane for water reflection / refraction passes.
 uniform vec4 clipPlane;
 
-void main()  {
-    vec3 aPos      = unpackPos(aV0);
-    vec2 aTexCoord = CORNERS[unpackCorner(aV1)];
-    float aTexLayer= float(unpackTexLayer(aV1));
-    vec3 aNormal   = NORMALS[unpackNormal(aV1)];
-    float aSkyLight= unpackSkyLight(aV1);
+void main() {
+    uint aV0 = getV0();
+    uint aV1 = getV1();
 
-    vec3 worldPos      = chunkOriginWorld + aPos;
-    vec3 cameraRelPos  = chunkRel + aPos;
+    vec3 aPos       = unpackPos(aV0);
+    vec2 aTexCoord  = CORNERS[unpackCorner(aV1)];
+    float aTexLayer = float(unpackTexLayer(aV1));
+    vec3 aNormal    = NORMALS[unpackNormal(aV1)];
+    float aSkyLight = unpackSkyLight(aV1);
 
-    vs_out.FragPos = worldPos;
+    // Chunk origin in world space, read from the ChunkInfo SSBO via gl_BaseInstance.
+    vec3 chunkOriginWorld = getChunkOrigin();
+    // Camera-relative offset (computed on GPU; float precision is fine within render distance).
+    vec3 chunkRel = chunkOriginWorld - cameraPos;
+
+    vec3 worldPos     = chunkOriginWorld + aPos;
+    vec3 cameraRelPos = chunkRel        + aPos;
+
+    vs_out.FragPos    = worldPos;
     vs_out.FragPosRel = cameraRelPos;
-    vs_out.Normal = aNormal;
-    vs_out.TexCoord = aTexCoord;
-    vs_out.TexLayer = aTexLayer;
-    vs_out.SkyLight = aSkyLight;
+    vs_out.Normal     = aNormal;
+    vs_out.TexCoord   = aTexCoord;
+    vs_out.TexLayer   = aTexLayer;
+    vs_out.SkyLight   = aSkyLight;
+
     gl_Position = projection * viewRot * vec4(cameraRelPos, 1.0);
 
-    // Clip geometry based on plane (used for water reflection/refraction)
+    // Clip geometry against a horizontal plane (used by the water reflection pass).
     gl_ClipDistance[0] = dot(vec4(worldPos, 1.0), clipPlane);
 }

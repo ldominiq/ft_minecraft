@@ -89,6 +89,48 @@ static std::string resolveIncludes(
     return result;
 }
 
+// Compute-only shader (GL_COMPUTE_SHADER).
+// Supports the same #include mechanism as vert/frag shaders.
+Shader::Shader(const char* computePath) {
+    std::string cCode;
+    {
+        std::ifstream cFile(computePath, std::ios::in | std::ios::binary);
+        if (!cFile.is_open()) {
+            std::cerr << "ERROR::SHADER::COMPUTE_FILE_OPEN_FAILED: '" << computePath << "'\n";
+        } else {
+            std::stringstream s;
+            s << cFile.rdbuf();
+            cCode = s.str();
+        }
+    }
+
+    std::filesystem::path cRoot = std::filesystem::path(computePath).parent_path().lexically_normal();
+    std::unordered_set<std::string> visited;
+    cCode = resolveIncludes(cCode, cRoot, cRoot, visited);
+
+    const char* src = cCode.c_str();
+    GLuint comp = glCreateShader(GL_COMPUTE_SHADER);
+    glShaderSource(comp, 1, &src, nullptr);
+    glCompileShader(comp);
+    int success;
+    char infoLog[512];
+    glGetShaderiv(comp, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(comp, 512, nullptr, infoLog);
+        std::cerr << "ERROR::SHADER::COMPUTE::COMPILATION_FAILED [" << computePath << "]\n" << infoLog << "\n";
+    }
+
+    ID = glCreateProgram();
+    glAttachShader(ID, comp);
+    glLinkProgram(ID);
+    glGetProgramiv(ID, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(ID, 512, nullptr, infoLog);
+        std::cerr << "ERROR::SHADER::COMPUTE::LINKING_FAILED [" << computePath << "]\n" << infoLog << "\n";
+    }
+    glDeleteShader(comp);
+}
+
 Shader::Shader(const char* vertexPath, const char* fragmentPath) {
     std::string vCode;
     std::string fCode;

@@ -28,7 +28,7 @@
 
 static constexpr int MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK = 20;
 static constexpr int REGION_SIZE = 32;
-static constexpr int MAX_RADIUS = 32;
+static constexpr int MAX_RADIUS = 64;
 static constexpr int RADIUS_OF_REGIONS_TO_KEEP = 2;
 static constexpr ChunkPos INVALID_CHUNK = {std::numeric_limits<int>::min(), std::numeric_limits<int>::min()};
 static constexpr bool SAVES_ACTIVE = false;
@@ -85,7 +85,7 @@ class World final : public CommonWorld<ChunkGeneration>
     // reduces frame drops when many chunks need to be generated.  This
     // value can be tuned based on the number of available CPU cores.
     std::size_t maxConcurrentGeneration = 20;
-	std::size_t maxConcurrentGenerationPerPlayer = 4;
+	std::size_t maxConcurrentGenerationPerPlayer = 20;
 
 	static constexpr size_t MAX_DUMP_PIXELS = 4096ULL * 4096ULL; // ~64MB/channel
 

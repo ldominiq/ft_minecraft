@@ -1,4 +1,5 @@
 #include "Renderer.hpp"
+#include "TerrainGPUBuffer.hpp"
 #include <algorithm>
 #include <cmath>
 #include <imgui.h>
@@ -111,7 +112,9 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius, flo
     // Clear renderedChunks first
     renderedChunks.clear();
 
-	int unloadRadius = loadRadius * 4;
+    const int maxUnloadRadius = static_cast<int>(std::floor(std::sqrt(TerrainGPUBuffer::MAX_CHUNKS / 3.1415926f)));
+
+    int unloadRadius = std::min(loadRadius * 4, maxUnloadRadius);
     const int radiusSq = loadRadius * loadRadius;
 
     // Don't evict chunks that arrived in the last few seconds: the player
@@ -279,54 +282,62 @@ void Renderer::processMeshUpdates() {
 void Renderer::renderTerrainOnly(const std::shared_ptr<Shader>& shaderProgram,
                                  const glm::mat4& view,
                                  const glm::dvec3& eyePos) const {
-	// Build "viewRot": world view with translation column zeroed, i.e. the
-	// camera placed at the origin of render space with the same orientation.
+	// ── View setup ───────────────────────────────────────────────────────────
+	// viewRot: view matrix with translation zeroed so the camera is at the
+	// origin of render space.  Combined with cameraPos in the vertex shader
+	// this keeps gl_Position inputs small and precise even at large world coords.
 	glm::mat4 viewRot = view;
 	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-
-	// `eyePos` is supplied by the caller in double precision so that
-	// (chunkOrigin - eye) keeps sub-cm precision even at very large world
-	// coordinates. We must NOT recover it from `view` itself, because the
-	// view matrix's translation column is float-quantized.
-	const glm::dvec3 cameraPos = eyePos;
+	const glm::vec3 cameraPos = glm::vec3(eyePos);
 
 	shaderProgram->use();
 	shaderProgram->setMat4("viewRot", viewRot);
+	// cameraPos replaces the old per-chunk chunkRel + chunkOriginWorld uniforms.
+	// The vertex shader computes chunkRel = getChunkOrigin() - cameraPos on GPU.
+	shaderProgram->setVec3("cameraPos", cameraPos);
 
-	// Squared distance cap avoids sqrt in the per-chunk loop.
+	// ── CPU-side visibility loop (vegetation cache only) ──────────────────────
+	// The GPU handles the actual frustum cull for terrain draws (see below).
+	// We still run a CPU loop so that renderVegetationOnly() has the correct
+	// m_lastVisibleChunks list, and so maxRenderedChunkDist stays up-to-date.
 	const float chunkMaxDistSq = (maxRenderDistanceOverride > 0.0f)
 		? maxRenderDistanceOverride * maxRenderDistanceOverride : 0.0f;
 
 	m_lastVisibleChunks.clear();
-
 	for (auto& weakChunk : renderedChunks) {
 		auto chunk = weakChunk.lock();
-		if (!chunk || chunk->getMeshVertexCount() == 0)
-			continue;
+		if (!chunk) continue;
 
-		// Optional per-pass distance cap (e.g. water reflection wants only
-		// nearby chunks rendered into its tiny offscreen target).
-		const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
-		                                   static_cast<double>(chunk->getOriginZ()));
-		const glm::dvec3 chunkRelD = chunkOriginWorldD - cameraPos;
-		const float distSq = static_cast<float>(chunkRelD.x * chunkRelD.x + chunkRelD.z * chunkRelD.z);
-		if (chunkMaxDistSq > 0.0f && distSq > chunkMaxDistSq)
-			continue;
+		// Optional distance cap (used by the water reflection pass).
+		if (chunkMaxDistSq > 0.0f) {
+			const double dx = static_cast<double>(chunk->getOriginX()) - eyePos.x;
+			const double dz = static_cast<double>(chunk->getOriginZ()) - eyePos.z;
+			if ((float)(dx*dx + dz*dz) > chunkMaxDistSq) continue;
+		}
 
-		// Frustum cull: skip chunks entirely outside the camera view
+		// CPU frustum cull — cheap because the GPU already culls terrain draws.
+		// We do it here so that vegetation (which is CPU-dispatched) is correct.
 		if (frustumCullingEnabled) {
-			const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - cameraPos;
-			const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - cameraPos;
+			const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - eyePos;
+			const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - eyePos;
 			if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
 				continue;
 		}
 
-		// Per-chunk uniforms for camera-relative rendering.
-		shaderProgram->setVec3("chunkRel", glm::vec3(chunkRelD));
-		shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
-
-		draw(shaderProgram, chunk->getVao(), chunk->getMeshVertexCount());
 		m_lastVisibleChunks.push_back(chunk);
+	}
+
+	// ── GPU frustum cull + single MDI draw call ───────────────────────────────
+	// The compute shader writes a DrawArraysIndirectCommand per slot.
+	// Slots that are empty (vertexCount == 0) or outside the frustum get
+	// instanceCount = 0, which makes the GPU skip them at essentially zero cost.
+	if (TerrainGPUBuffer::instance()) {
+		TerrainGPUBuffer::instance()->cull(cameraPos, cameraFrustum.getPlanes());
+		// cull() calls m_cullShader->use() internally; re-bind the terrain shader
+		// before draw() so glMultiDrawArraysIndirect runs the right program.
+		shaderProgram->use();
+		TerrainGPUBuffer::instance()->draw();
+		m_drawCallCount++;
 	}
 }
 
@@ -379,61 +390,60 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
 
 void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix,
                             const glm::dvec3& eyePos) const {
+	// Shadow pass still draws per chunk (different frustum per cascade).
+	// Vertices come from the global SSBO (no per-chunk VAO), so we bind the
+	// emptyVAO + SSBOs once, then use glDrawArraysInstancedBaseInstance per chunk.
+	// gl_BaseInstance = chunk slot index → vertex shader reads ChunkInfo SSBO.
+	if (!TerrainGPUBuffer::instance()) return;
+
+	glBindVertexArray(TerrainGPUBuffer::instance()->emptyVAO);
+	TerrainGPUBuffer::instance()->bindSSBOs();
+
+	shaderProgram->use();
+	// cameraPos replaces the old per-chunk chunkRel uniform.
+	// The shadow vertex shader computes chunkRel = getChunkOrigin() - cameraPos.
+	shaderProgram->setVec3("cameraPos", glm::vec3(eyePos));
+
 	for (auto& weakChunk : renderedChunks) {
 		auto chunk = weakChunk.lock();
-		if (!chunk)
-			continue;
-
-		// Skip empty chunks (no geometry to cast shadows)
-		if (chunk->getMeshVertexCount() == 0)
+		if (!chunk || chunk->getTerrainVtxCount() == 0)
 			continue;
 
 		// Frustum cull: test the chunk AABB against the light's clip volume.
-		// Chunk world-space AABB:
-		const float x0 = chunk->getCachedMinP().x;
-		const float z0 = chunk->getCachedMinP().z;
-		const float x1 = chunk->getCachedMaxP().x;
-		const float z1 = chunk->getCachedMaxP().z;
-		constexpr float y0 = 0.0f;
-		constexpr float y1 = static_cast<float>(Chunk::HEIGHT);
+		const float x0 = chunk->getCachedMinP().x, z0 = chunk->getCachedMinP().z;
+		const float x1 = chunk->getCachedMaxP().x, z1 = chunk->getCachedMaxP().z;
+		constexpr float y0 = 0.0f, y1 = static_cast<float>(Chunk::HEIGHT);
 
-		// Transform all 8 AABB corners into light clip space and compute
-		// the min/max of the resulting NDC coordinates.
+		// Transform all 8 AABB corners into light clip space to get NDC extents.
 		float clipMinX =  1e30f, clipMaxX = -1e30f;
 		float clipMinY =  1e30f, clipMaxY = -1e30f;
 		float clipMinZ =  1e30f, clipMaxZ = -1e30f;
 
 		const glm::vec3 corners[8] = {
-			{x0, y0, z0}, {x1, y0, z0}, {x0, y1, z0}, {x1, y1, z0},
-			{x0, y0, z1}, {x1, y0, z1}, {x0, y1, z1}, {x1, y1, z1},
+			{x0,y0,z0},{x1,y0,z0},{x0,y1,z0},{x1,y1,z0},
+			{x0,y0,z1},{x1,y0,z1},{x0,y1,z1},{x1,y1,z1},
 		};
-
 		for (const auto& c : corners) {
-         glm::dvec3 cRelD = glm::dvec3(c) - eyePos;
-            glm::vec4 clip = lightSpaceMatrix * glm::vec4(glm::vec3(cRelD), 1.0f);
-			// Ortho projection has w=1, but be safe
-			float invW = 1.0f / clip.w;
-			float nx = clip.x * invW;
-			float ny = clip.y * invW;
-			float nz = clip.z * invW;
-			clipMinX = std::min(clipMinX, nx); clipMaxX = std::max(clipMaxX, nx);
-			clipMinY = std::min(clipMinY, ny); clipMaxY = std::max(clipMaxY, ny);
-			clipMinZ = std::min(clipMinZ, nz); clipMaxZ = std::max(clipMaxZ, nz);
+			glm::vec4 clip = lightSpaceMatrix * glm::vec4(glm::vec3(glm::dvec3(c) - eyePos), 1.0f);
+			float iw = 1.0f / clip.w;
+			clipMinX = std::min(clipMinX, clip.x*iw); clipMaxX = std::max(clipMaxX, clip.x*iw);
+			clipMinY = std::min(clipMinY, clip.y*iw); clipMaxY = std::max(clipMaxY, clip.y*iw);
+			clipMinZ = std::min(clipMinZ, clip.z*iw); clipMaxZ = std::max(clipMaxZ, clip.z*iw);
 		}
-
-		// If the AABB is entirely outside any clip plane, skip this chunk.
 		if (clipMaxX < -1.0f || clipMinX > 1.0f ||
 			clipMaxY < -1.0f || clipMinY > 1.0f ||
 			clipMaxZ < -1.0f || clipMinZ > 1.0f)
 			continue;
 
-		// Mesh is in chunk-local space — supply the world origin so the
-		// vertex shader can reconstruct world positions before projecting
-		// into the light's clip space.
-      const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
-                                           static_cast<double>(chunk->getOriginZ()));
-        shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - eyePos));
-		draw(shaderProgram, chunk->getVao(), chunk->getMeshVertexCount());
+		// Draw this chunk's vertices from the global SSBO.
+		// baseInstance = gpuSlot → vertex shader reads gl_BaseInstance to find ChunkInfo.
+		glDrawArraysInstancedBaseInstance(
+			GL_TRIANGLES,
+			(GLint)chunk->getTerrainVtxFirst(),  // first vertex in SSBO (= gl_VertexID base)
+			(GLsizei)chunk->getTerrainVtxCount(), // vertex count
+			1,                                    // instance count
+			chunk->getGpuSlot());                 // baseInstance = slot index
+		m_drawCallCount++;
 	}
 }
 

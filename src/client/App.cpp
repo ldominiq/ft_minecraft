@@ -46,8 +46,8 @@ void App::init(const std::string& serverIp) {
     }
 
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 
     // Monitor infos
     monitor = glfwGetPrimaryMonitor();
@@ -574,6 +574,15 @@ void App::setUdpClientPacketCallback()
 
 
 void App::loadResources() {
+    // ── GPU-driven terrain buffer ─────────────────────────────────────────────
+    // Must be initialized before any ChunkRenderer uploads its mesh, because
+    // ChunkRenderer::uploadMesh() calls TerrainGPUBuffer::instance()->alloc().
+    {
+        auto cullShader = std::make_shared<Shader>("shaders/frustum_cull.comp");
+        m_terrainGPUBuffer.init(cullShader);
+        TerrainGPUBuffer::setInstance(&m_terrainGPUBuffer);
+    }
+
     // Load shaders and textures
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     
@@ -1806,7 +1815,7 @@ void App::debugWindow() {
                             
                             if (renderer) {
                                 int radius = camera->getPlayer()->getLoadRadius();
-                                if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 32))
+                                if (ImGui::SliderInt("Chunk Load Radius", &radius, 4, 64))
                                     camera->getPlayer()->setLoadRadius(radius);
                             }
                             {
@@ -2339,6 +2348,11 @@ void App::transitionTo(GameState newState) {
 }
 
 void App::cleanup() {
+    // Destroy GPU buffers before the OpenGL context is torn down.
+    // Setting the instance pointer to nullptr first so that any ChunkRenderer
+    // destructors triggered after this point don't try to call free().
+    TerrainGPUBuffer::setInstance(nullptr);
+    m_terrainGPUBuffer.destroy();
 
     // Shutdown ImGui before terminating GLFW
     ImGui_ImplOpenGL3_Shutdown();

@@ -6,7 +6,7 @@
 // of the vertex count.
 ChunkRenderer::LeafRenderMode ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Smart;
 
-ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVertexCount(0), waterMeshVertexCount(0) {
+ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), waterMeshVertexCount(0) {
     vegetationRenderer = std::make_unique<VegetationRenderer>();
     cachedMinP = glm::vec3(static_cast<float>(originX), 0.0f, static_cast<float>(originZ));
     cachedMaxP = glm::vec3(static_cast<float>(originX) + Chunk::WIDTH, static_cast<float>(Chunk::HEIGHT), static_cast<float>(originZ) + Chunk::DEPTH);
@@ -14,25 +14,18 @@ ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVertexCount(0), 
 
 ChunkRenderer::~ChunkRenderer() {
     if (glfwGetCurrentContext()) {
-        if (VAO) {
-            glDeleteVertexArrays(1, &VAO);
-            VAO = 0;
+        // Return terrain slot to the global SSBO pool.
+        // Guard against the buffer being destroyed before all chunks are freed
+        // (e.g. during app shutdown).
+        if (gpuSlot != TerrainGPUBuffer::INVALID_SLOT && TerrainGPUBuffer::instance()) {
+            TerrainGPUBuffer::instance()->free(gpuSlot, terrainVtxFirst, terrainVtxCount);
+            gpuSlot = TerrainGPUBuffer::INVALID_SLOT;
         }
-        if (VBO) {
-            glDeleteBuffers(1, &VBO);
-            VBO = 0;
-        }
-        if (waterVAO) {
-            glDeleteVertexArrays(1, &waterVAO);
-            waterVAO = 0;
-        }
-        if (waterVBO) {
-            glDeleteBuffers(1, &waterVBO);
-            waterVBO = 0;
-        }
+        // Water still uses a per-chunk VAO.
+        if (waterVAO) { glDeleteVertexArrays(1, &waterVAO); waterVAO = 0; }
+        if (waterVBO) { glDeleteBuffers(1, &waterVBO);      waterVBO = 0; }
     } else {
-        VAO = 0;
-        VBO = 0;
+        gpuSlot = TerrainGPUBuffer::INVALID_SLOT;
         waterVAO = 0;
         waterVBO = 0;
     }
@@ -393,49 +386,51 @@ void ChunkRenderer::buildMeshData() {
 }
 
 void ChunkRenderer::uploadMesh() {
-    // Upload solid mesh to OpenGL
-    if (VAO == 0)
-        glGenVertexArrays(1, &VAO);
-    if (VBO == 0)
-        glGenBuffers(1, &VBO);
+    // ── Terrain — upload into the global SSBO vertex pool ─────────────────────
+    // Free the old GPU slot if this chunk is being rebuilt (e.g. after a block edit).
+    if (gpuSlot != TerrainGPUBuffer::INVALID_SLOT && TerrainGPUBuffer::instance()) {
+        TerrainGPUBuffer::instance()->free(gpuSlot, terrainVtxFirst, terrainVtxCount);
+        gpuSlot         = TerrainGPUBuffer::INVALID_SLOT;
+        terrainVtxFirst = 0;
+        terrainVtxCount = 0;
+    }
 
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, meshVertices.size() * sizeof(PackedVertex), meshVertices.data(), GL_STATIC_DRAW);
+    // Allocate a new slot and upload vertex data.  Even zero-vertex chunks get a
+    // slot so the ChunkInfo SSBO has a valid (empty) entry for that position.
+    if (TerrainGPUBuffer::instance()) {
+        gpuSlot = TerrainGPUBuffer::instance()->alloc(
+            meshVertices,
+            cachedMinP,        // originWorld = chunk lower-left corner
+            cachedMinP,        // aabbMin (Y=0 is already in cachedMinP)
+            cachedMaxP,        // aabbMax = full height
+            terrainVtxFirst);
+        terrainVtxCount = (uint32_t)meshVertices.size();
+    }
 
-    // Packed terrain vertex layout (8 bytes per vertex). Decoded in
-    // shaders/terrain_vertex_decode.glsl.
-    //   location 0: v0  (uint) — pos.x | pos.y | pos.z (1/16 fixed point)
-    //   location 1: v1  (uint) — normal | corner | texLayer | skyLight
-    // NOTE: glVertexAttribIPointer (the I variant) — integer attributes are
-    // delivered as uint without the float conversion path.
-    GLsizei stride = sizeof(PackedVertex);
-    glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v0)));
-    glEnableVertexAttribArray(0);
-    glVertexAttribIPointer(1, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v1)));
-    glEnableVertexAttribArray(1);
-
-    meshVertexCount = static_cast<uint>(meshVertices.size());
     meshVertices.clear();
     meshVertices.shrink_to_fit();
 
-    // Upload water mesh — same packed format.
+    // ── Water — still uses a traditional VAO/VBO (water is not MDI yet) ───────
     if (!waterMeshVertices.empty()) {
-        if (waterVAO == 0)
-            glGenVertexArrays(1, &waterVAO);
-        if (waterVBO == 0)
-            glGenBuffers(1, &waterVBO);
+        if (waterVAO == 0) glGenVertexArrays(1, &waterVAO);
+        if (waterVBO == 0) glGenBuffers(1, &waterVBO);
 
         glBindVertexArray(waterVAO);
         glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
-        glBufferData(GL_ARRAY_BUFFER, waterMeshVertices.size() * sizeof(PackedVertex), waterMeshVertices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER,
+                     (GLsizeiptr)(waterMeshVertices.size() * sizeof(PackedVertex)),
+                     waterMeshVertices.data(), GL_STATIC_DRAW);
 
-        glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v0)));
+        // Packed vertex layout: location 0 = v0 (uint), location 1 = v1 (uint).
+        GLsizei stride = sizeof(PackedVertex);
+        glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, stride,
+                               reinterpret_cast<void*>(offsetof(PackedVertex, v0)));
         glEnableVertexAttribArray(0);
-        glVertexAttribIPointer(1, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v1)));
+        glVertexAttribIPointer(1, 1, GL_UNSIGNED_INT, stride,
+                               reinterpret_cast<void*>(offsetof(PackedVertex, v1)));
         glEnableVertexAttribArray(1);
 
-        waterMeshVertexCount = static_cast<uint>(waterMeshVertices.size());
+        waterMeshVertexCount = (uint)waterMeshVertices.size();
     } else {
         waterMeshVertexCount = 0;
     }

@@ -495,8 +495,8 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		player->movement->pendingInputs.pop_front(); // drop oldest to keep ack/queue consistent
 	player->movement->pendingInputs.push_back(pkt);
 
-	if (pkt.loadRadius > 32)
-		pkt.loadRadius = 32;
+	if (pkt.loadRadius > 64)
+		pkt.loadRadius = 64;
 	else if (pkt.loadRadius < 4)
 		pkt.loadRadius = 4;
 	player->movement->loadRadius = pkt.loadRadius;

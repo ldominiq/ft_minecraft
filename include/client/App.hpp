@@ -28,6 +28,7 @@
 #include "GuiTexture.hpp"
 #include "InventoryUI.hpp"
 #include "GBuffer.hpp"
+#include "TerrainGPUBuffer.hpp"
 #include "SSAO.hpp"
 #include "TextureManager.hpp"
 #include "ui/TerrainDebugWindow.hpp"
@@ -284,7 +285,11 @@ private:
 
     std::string serverIp;
 
-    float renderDistance = 1000.0f; // Distance of the far clipping plane
+    // GPU-driven terrain buffer: owns the vertex SSBO, ChunkInfo SSBO, and MDI
+    // draw command SSBO.  Must outlive all ChunkRenderer instances.
+    TerrainGPUBuffer m_terrainGPUBuffer;
+
+    float renderDistance = 1500.0f; // Distance of the far clipping plane (increased to match higher load radius)
 
     // Distance fog
     float fogStartFraction = 0.5f;  // fog begins at this fraction of maxRenderedChunkDist (0=camera, 1=edge) (the nearest unloaded chunk boundary)

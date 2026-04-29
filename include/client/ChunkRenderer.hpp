@@ -13,6 +13,7 @@
 #include "blockRenderingHelperFunctions.hpp"
 #include "VegetationRenderer.hpp"
 #include "PackedVertex.hpp"
+#include "TerrainGPUBuffer.hpp"
 #include <memory>
 
 #ifdef _WIN32
@@ -21,10 +22,13 @@ typedef unsigned int uint;
 
 class ChunkRenderer : public Chunk {
 
-    GLuint VAO = 0;
-    GLuint VBO = 0;
-	uint meshVertexCount = 0;                      // number of PackedVertex entries (NOT bytes / floats)
-    std::vector<PackedVertex> meshVertices;        // 8 bytes per vertex (was 11 floats)
+    // ── Terrain GPU slot ──────────────────────────────────────────────────────
+    // Terrain vertices live in the global TerrainGPUBuffer (SSBO).
+    // gpuSlot is the ChunkInfo slot index; INVALID_SLOT means not yet uploaded.
+    uint32_t gpuSlot          = TerrainGPUBuffer::INVALID_SLOT;
+    uint32_t terrainVtxFirst  = 0;  // starting vertex index in the SSBO
+    uint32_t terrainVtxCount  = 0;  // vertex count (0 if empty chunk)
+    std::vector<PackedVertex> meshVertices;  // CPU-side, cleared after upload
 
 	GLuint waterVAO = 0;
 	GLuint waterVBO = 0;
@@ -63,9 +67,14 @@ class ChunkRenderer : public Chunk {
 		void uploadMesh();
 		void buildVegetationMesh() const; // Build vegetation instanced mesh
 
-		inline const GLuint getVao() const {return VAO;}
-		inline const uint getMeshVertexCount() const {return meshVertexCount;}
+		// SSBO-based terrain (no per-chunk VAO/VBO for solid geometry).
+		inline uint32_t getGpuSlot()         const { return gpuSlot; }
+		inline uint32_t getTerrainVtxFirst() const { return terrainVtxFirst; }
+		inline uint32_t getTerrainVtxCount() const { return terrainVtxCount; }
+		// Alias used by debug stats / frustum radar.
+		inline uint getMeshVertexCount() const { return (uint)terrainVtxCount; }
 
+		// Water still uses a per-chunk VAO (water is not MDI yet).
 		inline const GLuint getWaterVao() const {return waterVAO;}
 		inline const uint getWaterMeshVertexCount() const {return waterMeshVertexCount;}
 

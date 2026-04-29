@@ -1,0 +1,104 @@
+#version 460 core
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Terrain GPU frustum culling — compute shader
+// ─────────────────────────────────────────────────────────────────────────────
+// Each invocation tests one chunk slot against the camera frustum and writes a
+// DrawArraysIndirectCommand into the draw command SSBO.  The main terrain pass
+// then calls glMultiDrawArraysIndirect once and the GPU skips any command whose
+// instanceCount is 0 at essentially zero cost.
+//
+// Dispatch: glDispatchCompute(ceil(MAX_CHUNKS / 64), 1, 1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// ── Per-chunk metadata (binding 0) ────────────────────────────────────────────
+// Written once when a chunk is uploaded (alloc), zeroed when freed.
+// Must match GpuChunkInfo in TerrainGPUBuffer.hpp exactly (std430, 64 bytes).
+struct ChunkInfo {
+    vec4  originWorld;  // .xyz = world-space chunk origin
+    vec4  aabbMin;      // .xyz = world-space AABB minimum
+    vec4  aabbMax;      // .xyz = world-space AABB maximum
+    uint  vertexFirst;  // first vertex index inside the vertex SSBO
+    uint  vertexCount;  // 0 → slot is empty / unloaded; skip immediately
+    uint  _pad[2];
+};
+
+layout(std430, binding = 0) readonly buffer ChunkInfoBuf {
+    ChunkInfo gChunkInfo[];
+};
+
+// ── Draw commands (binding 2) — one per slot ──────────────────────────────────
+// This buffer is also bound as GL_DRAW_INDIRECT_BUFFER for the MDI draw call.
+// Must match GpuDrawCommand in TerrainGPUBuffer.hpp exactly (16 bytes).
+struct DrawCommand {
+    uint count;          // vertex count (passthrough from ChunkInfo)
+    uint instanceCount;  // 1 = draw, 0 = cull (GPU skips the whole draw at zero cost)
+    uint first;          // gl_VertexID base = ChunkInfo.vertexFirst
+    uint baseInstance;   // chunk slot index — vertex shaders read as gl_BaseInstance
+                         // to index ChunkInfo for per-draw data (chunkOrigin etc.)
+};
+
+layout(std430, binding = 2) writeonly buffer DrawCommandBuf {
+    DrawCommand gDrawCmds[];
+};
+
+// ── Per-frame uniforms ────────────────────────────────────────────────────────
+// Camera-relative frustum planes (from Frustum::getPlanes()).
+// Convention: a point P is INSIDE the frustum when dot(plane.xyz, P) + plane.w >= 0.
+// The frustum is built from (projection * viewRot) where viewRot has translation
+// zeroed, so the planes are in camera-relative space.
+uniform vec4  uFrustumPlanes[6];  // Left, Right, Bottom, Top, Near, Far
+
+// Camera world position (float precision is fine for culling).
+// Used to convert stored world-space AABBs to camera-relative space.
+uniform vec3  uCameraPos;
+
+// Total slots to test — matches TerrainGPUBuffer::MAX_CHUNKS.
+uniform uint  uChunkCount;
+
+// ── Frustum test ─────────────────────────────────────────────────────────────
+// Tests an AABB given in camera-relative space against all 6 frustum planes.
+// Returns true if the box is at least partially inside (should be rendered).
+bool frustumTest(vec3 minRel, vec3 maxRel) {
+    for (int i = 0; i < 6; i++) {
+        vec3 n = uFrustumPlanes[i].xyz;
+        // P-vertex: AABB corner most aligned with the plane normal.
+        // If even this most-inside corner is behind the plane, the whole box is outside.
+        vec3 pv = vec3(
+            n.x >= 0.0 ? maxRel.x : minRel.x,
+            n.y >= 0.0 ? maxRel.y : minRel.y,
+            n.z >= 0.0 ? maxRel.z : minRel.z
+        );
+        if (dot(n, pv) + uFrustumPlanes[i].w < 0.0)
+            return false;
+    }
+    return true;
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+
+    // Guard: invocations beyond MAX_CHUNKS are no-ops.
+    if (idx >= uChunkCount) return;
+
+    ChunkInfo info = gChunkInfo[idx];
+
+    // Empty / unloaded slots are always culled.
+    bool visible = false;
+    if (info.vertexCount > 0u) {
+        // Convert world-space AABB to camera-relative before the frustum test.
+        vec3 minRel = info.aabbMin.xyz - uCameraPos;
+        vec3 maxRel = info.aabbMax.xyz - uCameraPos;
+        visible = frustumTest(minRel, maxRel);
+    }
+
+    // Write the draw command for this slot.
+    gDrawCmds[idx] = DrawCommand(
+        info.vertexCount,
+        visible ? 1u : 0u,  // instanceCount controls whether the GPU draws or skips
+        info.vertexFirst,
+        idx                 // baseInstance = slot index, read as gl_BaseInstance in vertex shaders
+    );
+}
