@@ -34,9 +34,14 @@ PlayerMovement::~PlayerMovement()
 
 void PlayerMovement::onDeath()
 {
-	accumulatedFallDistance = 0.0f;
-	position = spawnPosition;
+	setPosition(spawnPosition); // TODO : maybe add a respawn delay and play death animation instead of instant teleport?
+	positionUpdated = true;
 	health = 20;
+	velocity = glm::vec3(0.0f);
+	accumulatedFallDistance = 0.0f;
+	jumpBoostApplied = false;
+	pendingInputs.clear();
+	pendingArmSwing = false;
 }
 
 //for creative

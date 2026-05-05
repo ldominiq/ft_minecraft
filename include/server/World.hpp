@@ -25,6 +25,8 @@
 #include "PlayerInfo.hpp"
 #include "CommonWorld.hpp"
 #include "LiquidsManager.hpp"
+#include "Zombie.hpp"
+#include "Creeper.hpp"
 
 static constexpr int MAXIMUM_NUMBER_OF_CHUNKS_SENT_PER_TICK = 20;
 static constexpr int REGION_SIZE = 32;
@@ -57,7 +59,6 @@ struct SkyTimeState {
 	uint8_t skyMode        = 1;     // 0 = Skyrim, 1 = Smooth
 	float   skyTimeSpeed   = 0.05f;
 };
-
 class World final : public CommonWorld<ChunkGeneration>
 {
     TerrainGenerationParams terrainParams;
@@ -154,6 +155,13 @@ class World final : public CommonWorld<ChunkGeneration>
 
 		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 		void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
+
+		void trySpawnNightMobs(const std::vector<CPlayerInfo> &players);
+		// Carve a spherical crater at `center` and deal distance-falloff damage to every
+		// LivingEntity inside. `source` is the entity whose action caused the blast
+		// (typically the creeper itself) — it's flagged diedByExplosion on hit so the
+		// server skips its fall-over animation. Pass nullptr for non-entity sources.
+		void explodeAt(const glm::vec3 &center, float radius, float maxDamage, LivingEntity *source);
 
 		void advanceSkyTime();
 

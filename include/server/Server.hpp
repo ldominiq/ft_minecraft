@@ -66,6 +66,7 @@ private:
 	void pingLoop();
 
 	void gameTick();
+	void despawnDistantMobs();
 
     void createSocket();
     void fillServerInfo();

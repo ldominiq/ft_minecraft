@@ -199,6 +199,9 @@ void App::init(const std::string& serverIp) {
         const float yoffset = static_cast<float>(app->lastY - mouseY); // Reversed: y-coordinates go from bottom to top
         app->lastX = mouseX;
         app->lastY = mouseY;
+
+        if (!app->camera || !app->camera->getPlayer() || app->camera->getPlayer()->health <= 0) return; // don't allow clicking if player is dead or camera not initialized
+
         app->camera->processMouseMovement(xoffset, yoffset);
 
 		app->mouseMovedRecently = true;
@@ -327,6 +330,8 @@ void App::init(const std::string& serverIp) {
 				mouseButtons |= IN_RIGHT_CLICK;
 			}
 		}
+
+		if (!app->camera || !app->camera->getPlayer() || app->camera->getPlayer()->health <= 0) return; // don't allow clicking if player is dead or camera not initialized
 
 		if (mouseButtons && app->camera && app->camera->getPlayer())
 			app->camera->getPlayer()->triggerArmSwing();
@@ -671,6 +676,7 @@ void App::render() {
             NetPlayerInputs tickInputs = inputs;
             if (manager)
                 tickInputs.keys = 0;
+
 
             tickInputs.serverClientReconciliationTick = clientTick;
             camera->queueInput(tickInputs, clientTick);
