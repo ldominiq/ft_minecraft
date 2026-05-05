@@ -382,9 +382,16 @@ void World::updateVisibleChunks(CPlayerInfo &player)
 		PlayerKnownChunks[player.id].insert(bestChunk);
 
 		if (chunks.find(bestChunk) != chunks.end())
-			rdyChunks.push_back(bestChunk);
+		{
+			// Already-generated chunk: queue directly for THIS player. Going
+			// through the shared world->rdyChunks would re-send the chunk to
+			// every other player whose PlayerKnownChunks already contains it,
+			// causing visible chunk-blink for the others every time another
+			// player requests an already-cached chunk.
+			player.rdyChunks.push_back(bestChunk);
+		}
 		else
-		{	
+		{
 			plannedChunks.insert(bestChunk);
 			const TerrainGenerationParams paramsCopy = terrainParams;
 			chunkJobs[bestChunk] = std::async(std::launch::async, [bestChunk, paramsCopy]() {

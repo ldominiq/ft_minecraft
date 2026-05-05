@@ -4,6 +4,8 @@
 
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
+#include <chrono>
 #include <future>
 
 #include <glm/glm.hpp>
@@ -41,6 +43,12 @@ struct chunkData {
 class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::unordered_map<ChunkPos, chunkData> chunksData; //building chunk
 	std::unordered_set<ChunkPos> chunksToBuild; // chunk to build and upload mesh
+	// When each chunk's last fragment arrived. Used to give newly-received
+	// chunks a grace period before organizeChunks is allowed to evict them
+	// by distance — otherwise a stale player position right after a teleport
+	// or respawn can erase chunks that JUST arrived, and the server (which
+	// already marked them sent in PlayerKnownChunks) never re-sends them.
+	std::unordered_map<ChunkPos, std::chrono::steady_clock::time_point> chunkReceiveTime;
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
 	float maxRenderedChunkDist = 0.0f; // world-space distance to edge of farthest rendered chunk
 	Frustum cameraFrustum;
