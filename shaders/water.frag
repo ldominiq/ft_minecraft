@@ -34,6 +34,8 @@ uniform float fogEnd;
 uniform float fogStrength;
 uniform bool fogEnabled;
 uniform vec3 sunDir;
+uniform float fogMieG;
+uniform float fogMieStrength;
 
 #include "sky_common.glsl"
 
@@ -104,8 +106,10 @@ void main() {
         float dist = length(toCameraVector);
         float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
         vec3 viewDir = normalize(-toCameraVector); // direction from camera toward water
-        vec3 fogColor = sampleSkyColor(skyLUT, viewDir, sunDir, skyExposure);
-        FragColor.rgb = mix(fogColor, FragColor.rgb, fogFactor);
+        FragColor.rgb = applyDistanceFog(FragColor.rgb, viewDir, sunDir,
+                                         skyLUT, skyExposure,
+                                         fogStart, fogEnd, fogStrength,
+                                         dist, fogMieG, fogMieStrength);
         // Also fade alpha so water edge softens into fog
         FragColor.a *= fogFactor;
     }

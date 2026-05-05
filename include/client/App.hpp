@@ -29,6 +29,9 @@
 #include "InventoryUI.hpp"
 #include "GBuffer.hpp"
 #include "SSAO.hpp"
+#include "ScenePostFB.hpp"
+#include "GodRays.hpp"
+#include "LensFlare.hpp"
 #include "TextureManager.hpp"
 #include "ui/TerrainDebugWindow.hpp"
 #include "FogUniforms.hpp"
@@ -228,6 +231,12 @@ private:
     std::shared_ptr<GBuffer> gBuffer;
     std::shared_ptr<SSAO> ssao;
     std::shared_ptr<Shader> gBufferShader;
+
+    // Post-FX: scene depth blit target (used when SSAO/GBuffer aren't
+    // populating depth this frame), volumetric god rays, lens flare.
+    std::unique_ptr<ScenePostFB> scenePostFB;
+    std::unique_ptr<GodRays>     godRays;
+    std::unique_ptr<LensFlare>   lensFlare;
 
     // Z-prepass for terrain. When enabled, terrain is drawn twice in the main
     // scene pass: once depth-only with the prepass shader (color writes off),

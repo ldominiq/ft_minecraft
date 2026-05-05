@@ -108,6 +108,8 @@ uniform float fogStart;    // world-space distance where fog begins
 uniform float fogEnd;      // world-space distance where fog is fully opaque
 uniform float fogStrength; // exponent: 1=linear ramp, >1=fog concentrated at edge
 uniform bool fogEnabled;
+uniform float fogMieG;        // Mie anisotropy for sun-facing fog in-scatter (0=isotropic, 0.95=narrow halo)
+uniform float fogMieStrength; // 0 = pure sky-LUT fog (legacy behaviour)
 
 #include "sky_common.glsl"
 
@@ -183,10 +185,12 @@ void main()
         vec3 finalColor = result * color;
         if (fogEnabled && !cameraUnderwater) {
             float dist = length(fs_in.FragPosRel);
-            float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
             vec3 fogDir = normalize(fs_in.FragPosRel);
-            finalColor = mix(sampleSkyColor(skyLUT, fogDir, normalize(-dirLight.direction), skyExposure),
-                            finalColor, fogFactor);
+            vec3 sunDir = normalize(-dirLight.direction);
+            finalColor = applyDistanceFog(finalColor, fogDir, sunDir,
+                                          skyLUT, skyExposure,
+                                          fogStart, fogEnd, fogStrength,
+                                          dist, fogMieG, fogMieStrength);
         }
         FragColor = vec4(finalColor, 1.0);
     }

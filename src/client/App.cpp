@@ -135,6 +135,14 @@ void App::init(const std::string& serverIp) {
     gBuffer = std::make_shared<GBuffer>(screenWidth, screenHeight);
     ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
+    scenePostFB = std::make_unique<ScenePostFB>(screenWidth, screenHeight);
+    godRays     = std::make_unique<GodRays>(screenWidth, screenHeight);
+    lensFlare   = std::make_unique<LensFlare>();
+    // Default everything off so the first frame matches pre-feature visuals;
+    // user toggles them on from the Post FX debug tab.
+    godRays->setEnabled(false);
+    lensFlare->setEnabled(false);
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -934,7 +942,29 @@ void App::render() {
         
     	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
     	renderScene(view, projection, clipPlane);
-    	
+
+        // ── Post-FX: god rays (volumetric in-scatter via CSM ray-march) ──
+        // Capture scene depth from the default framebuffer right after the
+        // main pass — before water surface writes water depth on top — so
+        // the volumetric ray-march terminates at land/vegetation, and the
+        // lens-flare sun-occlusion test below ignores water as well.
+        const bool needSceneDepth =
+            (godRays && godRays->isEnabled() && lighting->isSunAboveHorizon()) ||
+            (lensFlare && lensFlare->isEnabled() && lighting->isSunAboveHorizon());
+        if (needSceneDepth) {
+            scenePostFB->resize(screenWidth, screenHeight);
+            scenePostFB->captureDepthFromDefault();
+        }
+
+        if (godRays && godRays->isEnabled() && lighting->isSunAboveHorizon()) {
+            const glm::vec3 sunDirToward = glm::normalize(lighting->getDirectionalLightDirection());
+            godRays->render(*lighting, projection, view,
+                            sunDirToward,
+                            lighting->getDirectionalDiffuseColor(),
+                            scenePostFB->getDepthTexture(),
+                            screenWidth, screenHeight);
+        }
+
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
         if (waterVisible) {
@@ -943,6 +973,15 @@ void App::render() {
     	    waterRenderer->renderWaterSurface(projection);
         }
         glEndQuery(GL_TIME_ELAPSED);
+
+        // ── Post-FX: lens flare (camera-side artifact, draws over water) ──
+        if (lensFlare && lensFlare->isEnabled() && lighting->isSunAboveHorizon()) {
+            const glm::vec3 sunDirToward = glm::normalize(lighting->getDirectionalLightDirection());
+            const glm::mat4 viewRot = glm::mat4(glm::mat3(view));
+            lensFlare->render(projection * viewRot, sunDirToward,
+                              scenePostFB->getDepthTexture(),
+                              screenWidth, screenHeight);
+        }
 
 
 		renderer->buildChunks();
@@ -2097,6 +2136,55 @@ void App::debugWindow() {
                                 ImGui::SliderFloat("Fog Start (fraction of chunk radius)", &fogStartFraction, 0.0f, 0.95f, "%.2f");
                                 ImGui::SliderFloat("Fog Strength", &fogStrength, 0.1f, 10.0f, "%.1f");
                                 ImGui::Text("Fog range: %.0f - %.0f blocks", renderer->getMaxRenderedChunkDist() * fogStartFraction, renderer->getMaxRenderedChunkDist());
+
+                                ImGui::Separator();
+                                ImGui::Text("Sun Mie In-Scatter");
+                                FogMieParams& mie = fogMieParams();
+                                ImGui::SliderFloat("Mie g (anisotropy)", &mie.g, 0.0f, 0.95f, "%.2f");
+                                ImGui::SliderFloat("Mie Strength",      &mie.strength, 0.0f, 1.5f, "%.2f");
+                                ImGui::TextDisabled("Strength = 0 collapses to legacy fog.");
+                            }
+                            ImGui::EndTabItem();
+                        }
+
+                        if (ImGui::BeginTabItem("Post FX")) {
+                            ImGui::Text("Volumetric God Rays");
+                            if (godRays) {
+                                bool grEnabled = godRays->isEnabled();
+                                if (ImGui::Checkbox("God Rays Enabled", &grEnabled))
+                                    godRays->setEnabled(grEnabled);
+                                if (grEnabled) {
+                                    int   steps     = godRays->getNumSteps();
+                                    float density   = godRays->getDensity();
+                                    float aniso     = godRays->getAnisotropy();
+                                    float maxDist   = godRays->getMaxDistance();
+                                    float intensity = godRays->getIntensity();
+                                    if (ImGui::SliderInt("Steps", &steps, 8, 64))
+                                        godRays->setNumSteps(steps);
+                                    if (ImGui::SliderFloat("Density (sigma_t)", &density, 0.0f, 0.05f, "%.4f"))
+                                        godRays->setDensity(density);
+                                    if (ImGui::SliderFloat("Anisotropy g", &aniso, 0.0f, 0.95f, "%.2f"))
+                                        godRays->setAnisotropy(aniso);
+                                    if (ImGui::SliderFloat("Max Distance", &maxDist, 50.0f, 800.0f, "%.0f"))
+                                        godRays->setMaxDistance(maxDist);
+                                    if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 4.0f, "%.2f"))
+                                        godRays->setIntensity(intensity);
+                                    ImGui::TextDisabled("Half-res, marches CSM. Auto-disabled when sun is below horizon.");
+                                }
+                            }
+
+                            ImGui::Separator();
+                            ImGui::Text("Lens Flare");
+                            if (lensFlare) {
+                                bool lfEnabled = lensFlare->isEnabled();
+                                if (ImGui::Checkbox("Lens Flare Enabled", &lfEnabled))
+                                    lensFlare->setEnabled(lfEnabled);
+                                if (lfEnabled) {
+                                    float intensity = lensFlare->getIntensity();
+                                    if (ImGui::SliderFloat("Flare Intensity", &intensity, 0.0f, 2.0f, "%.2f"))
+                                        lensFlare->setIntensity(intensity);
+                                    ImGui::TextDisabled("Procedural ghost chain along sun->screen-center.");
+                                }
                             }
                             ImGui::EndTabItem();
                         }

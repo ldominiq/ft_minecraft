@@ -33,6 +33,8 @@ uniform float fogStart;
 uniform float fogEnd;
 uniform float fogStrength;
 uniform bool fogEnabled;
+uniform float fogMieG;
+uniform float fogMieStrength;
 
 // CSM shadow uniforms
 #define MAX_CASCADES 5
@@ -112,9 +114,11 @@ void main() {
 
     if (fogEnabled && !cameraUnderwater) {
         float dist = length(fs_in.FragPosRel);
-        float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
         vec3 fogDir = normalize(fs_in.FragPosRel);
-        result = mix(sampleSkyColor(skyLUT, fogDir, -lightDir, skyExposure), result, fogFactor);
+        result = applyDistanceFog(result, fogDir, -lightDir,
+                                  skyLUT, skyExposure,
+                                  fogStart, fogEnd, fogStrength,
+                                  dist, fogMieG, fogMieStrength);
     }
 
     FragColor = vec4(result, texColor.a);
