@@ -8,11 +8,19 @@ Shape::Shape(glm::vec3 color) : Space()
 
 Shape::~Shape() {}
 
+void Shape::setSkinBox(const std::array<glm::vec4, 6>& uvs)
+{
+	faceUVs = uvs;
+}
+
 //assumes the shader is already in use
 void Shape::draw(const glm::mat4 &mvp, const Shader &shader)
 {
 	shader.setMat4("uMVP", mvp);
 	shader.setVec3("uColor", color);
+	GLint loc = glGetUniformLocation(shader.ID, "uFaceUVs");
+	if (loc >= 0)
+		glUniform4fv(loc, 6, &faceUVs[0].x);
 	drawCube();
 }
 

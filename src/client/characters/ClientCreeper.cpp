@@ -1,5 +1,6 @@
 
 #include "ClientCreeper.hpp"
+#include "SkinBox.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -62,10 +63,17 @@ void ClientCreeper::createCharacterAt(const glm::vec3 &pos, float width, float h
 	YPositionOffset = glm::vec3(0, feetPositionY * characterYScaleNorm * height, 0);
 	character.translation = glm::translate(glm::mat4(1.0f), pos + YPositionOffset);
 
+	// Classic 64x32 creeper skin layout.
+	constexpr int SW = 64, SH = 32;
+	auto headUVs  = boxUVs(0,  0,  8, 8,  8, SW, SH);
+	auto torsoUVs = boxUVs(16, 16, 8, 12, 4, SW, SH);
+	auto legUVs   = boxUVs(0,  16, 4, 6,  4, SW, SH);
+
 	// Torso
 	auto torso = std::make_shared<Shape>(glm::vec3(0.2f, 0.75f, 0.2f));
 	torsoBaseScale = glm::vec3(torsoScaleX, torsoScaleY, torsoScaleZ);
 	torso->scale = glm::scale(glm::mat4(1.0f), torsoBaseScale);
+	torso->setSkinBox(torsoUVs);
 	character.addChild(torso);
 
 	// Head (darker green, slightly.)
@@ -73,6 +81,7 @@ void ClientCreeper::createCharacterAt(const glm::vec3 &pos, float width, float h
 	headBaseScale = glm::vec3(headScaleX, headScaleY, headScaleZ);
 	head->scale = glm::scale(glm::mat4(1.0f), headBaseScale);
 	head->translation = glm::translate(glm::mat4(1.0f), glm::vec3(0, headTransY, 0));
+	head->setSkinBox(headUVs);
 	character.addChild(head);
 
 	// Four legs at the torso corners. Translation values are expressed in leg-local
@@ -82,6 +91,7 @@ void ClientCreeper::createCharacterAt(const glm::vec3 &pos, float width, float h
 		auto leg = std::make_shared<Shape>(glm::vec3(0.18f, 0.6f, 0.18f));
 		leg->scale = glm::scale(glm::mat4(1.0f), glm::vec3(legScaleX, legScaleY, legScaleZ));
 		leg->translation = glm::translate(glm::mat4(1.0f), glm::vec3(txLocal, legTransY, tzLocal));
+		leg->setSkinBox(legUVs);
 		character.addChild(leg);
 		return leg;
 	};

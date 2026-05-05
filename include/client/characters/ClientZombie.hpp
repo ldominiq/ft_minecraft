@@ -13,6 +13,8 @@ class ClientZombie : public Zombie, public IClientEntity
 		~ClientZombie() = default;
 
 		void walkAnimation(float deltaTime) override;
+		
+		std::string skinName() const override { return "zombie"; }
 };
 
 #endif

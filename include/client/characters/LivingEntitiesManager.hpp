@@ -6,6 +6,7 @@
 
 #include "IClientEntity.hpp"
 #include "HitboxRenderer.hpp"
+#include "SkinManager.hpp"
 
 //actual manager and completely different from ItemPropEntityManager... ff
 class LivingEntitiesManager
@@ -13,6 +14,7 @@ class LivingEntitiesManager
 	Shader characterShader; // Should probably reuse another one but it is what it is
 	std::vector<std::weak_ptr<IClientEntity>> characters;
 	HitboxRenderer hbRenderer;
+	SkinManager skinManager;
 
 	public:
 

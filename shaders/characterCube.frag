@@ -1,10 +1,23 @@
 #version 460 core
 
-uniform vec3 uColor;   // uniform color for the whole object
+uniform vec3 uColor;        // fallback color when no skin is bound
+uniform sampler2D uSkin;    // 2D skin texture. V=0 is top of image; no V-flip applied — UVs are already in skin-auth space.
+uniform bool uUseTexture;   // when true, sample uSkin; otherwise emit uColor
+
+in vec2 vTex;
 
 out vec4 FragColor;
 
 void main()
 {
-    FragColor = vec4(uColor, 1.0); // apply uniform color
+    if (uUseTexture)
+    {
+        vec4 c = texture(uSkin, vTex);
+        if (c.a < 0.1) discard;
+        FragColor = vec4(c.rgb, 1.0);
+    }
+    else
+    {
+        FragColor = vec4(uColor, 1.0);
+    }
 }

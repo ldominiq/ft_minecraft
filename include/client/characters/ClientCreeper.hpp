@@ -16,6 +16,8 @@ class ClientCreeper : public Creeper, public IClientEntity
 		void swingArmAnimation(float /*deltaTime*/) override {} // no arms
 		void applyHeadPitch(float /*pitchDegrees*/) override {}  // creeper head is fixed
 
+		std::string skinName() const override { return "creeper"; }
+
 		// Inflate/deflate the body every frame, independent of movement, so the
 		// fuse animation keeps advancing while the creeper stands still.
 		void tickFuseAnimation(float deltaTime);
