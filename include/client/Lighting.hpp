@@ -112,9 +112,22 @@ public:
     void drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cameraFront, const glm::mat4& cameraView);
     bool debugCascades = false;
     bool showCSMDebugView = false;
-    std::vector<float> shadowCascadeLevels{ 25.0f, 100.0f };  // 2 splits → 3 cascades: [0.1–25], [25–100], [100–500]
+    std::vector<float> shadowCascadeLevels{ 40.0f };
     int debugPreviewLayer = 0;
 
+    enum class PcfQuality : int { Low = 0, Medium = 1, High = 2 }; // 1-tap, 3x3, 5x5
+
+    void setShadowMapResolution(unsigned int res); // triggers rebuildCSMResources()
+    void setCascadeCount(int count); // 2 or 3 - triggers rebuild
+    void setShadowFarPlane(float farPlane);
+	void setPcfQuality(PcfQuality q) { pcfQuality = q; };
+	void setShadowAlphaTest(bool enabled) { shadowAlphaTest = enabled; };
+
+	unsigned int getShadowMapResolution() const { return depthMapResolution; };
+    int getCascadeCount() const { return static_cast<int>(shadowCascadeLevels.size()) + 1; }
+    float getShadowFarPlane() const { return cameraFarPlane; }
+	PcfQuality getPcfQuality() const { return pcfQuality; }
+	bool getShadowAlphaTest() const { return shadowAlphaTest; };
 
     // GETTERS
     bool isDirectionalLightOn() const { return directionalLightOn; };
@@ -273,11 +286,17 @@ private:
     
     // CSM
     std::shared_ptr<Shader> csmDepthShader;
+	std::shared_ptr<Shader> csmDepthAlphaShader; // alternate shadow program with alpha test
     GLuint csmFBO = 0;
     GLuint csmDepthMaps = 0;
-    unsigned int depthMapResolution = 2048;
-    float cameraFarPlane = 500.0f;
+    unsigned int depthMapResolution = 1024;
+    float cameraFarPlane = 250.0f;
     std::vector<glm::mat4> csmLightSpaceMatrices;
+
+	void rebuildCSMResources(); // glDeleteTextures + initCSMResources()
+	void recomputeCascadeSplits(); // derive shadowCascadeLevels from cascadeCount + farPlane
+	PcfQuality pcfQuality = PcfQuality::Low;
+	bool shadowAlphaTest = false; // whether to alpha-test shadow casters when rendering depth maps (only relevant for foliage)
 
     // Screen dimensions
     int width;

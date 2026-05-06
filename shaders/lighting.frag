@@ -84,6 +84,11 @@ uniform float cascadePlaneDistances[MAX_CASCADES - 1]; // N-1 split points for N
 uniform int cascadeCount;
 uniform float farPlane;
 uniform mat4 viewRot;
+uniform int pcfQuality; // 0=1-tap, 1=3x3, 2=5x5
+
+// Toggles the texColor.a < 0.1 discard (leaf/glass cutouts).
+// Set to false by Fast leaf-render mode for max early-Z efficiency.
+uniform bool useAlphaTest;
 
 // SSAO
 uniform sampler2D ssaoTexture;
@@ -123,17 +128,19 @@ float CSMShadowCalculation(vec3 fragPosRel);
 float sampleCascadeShadow(int layer, vec3 fragPosRel, vec3 normal, vec3 lightDir);
 
 void main()
-{    
+{
     // Sample the texture array using (u, v, layer)
     vec4 texColor = texture(blockTextures, vec3(fs_in.TexCoord, fs_in.TexLayer));
 
-    // Discard fully transparent fragments
-    if (texColor.a < 0.1)
+    // Alpha test (cutout discard) — toggleable. In "Fast" leaf mode the host
+    // sets useAlphaTest=false so leaf cubes render fully opaque (no cutouts)
+    // and the GPU keeps early-Z fully effective.
+    if (useAlphaTest && texColor.a < 0.1)
         discard;
 
     // Unpremultiply alpha to get original colors (only for semi-transparent pixels)
     // For opaque or nearly-opaque pixels (alpha > 0.95), skip to avoid precision issues
-    if (texColor.a > 0.01 && texColor.a < 0.95) {
+    if (useAlphaTest && texColor.a > 0.01 && texColor.a < 0.95) {
         texColor.rgb /= texColor.a;
     }
 
@@ -334,8 +341,9 @@ float sampleCascadeShadow(int layer, vec3 fragPosRel, vec3 normal, vec3 lightDir
 
     // PCF: 3×3 for cascade 0, 5×5 for farther cascades
     float shadow = 0.0;
-    if (layer == 0)
-    {
+    if (pcfQuality == 0) {
+        shadow = texture(shadowMapArray, vec4(offsetCoords.xy, float(layer), biasedDepth));
+    } else if (pcfQuality == 1) {
         for (int x = -1; x <= 1; ++x)
             for (int y = -1; y <= 1; ++y)
             {
@@ -343,9 +351,7 @@ float sampleCascadeShadow(int layer, vec3 fragPosRel, vec3 normal, vec3 lightDir
                 shadow += texture(shadowMapArray, vec4(sampleUV, float(layer), biasedDepth));
             }
         shadow /= 9.0;
-    }
-    else
-    {
+    } else {
         for (int x = -2; x <= 2; ++x)
             for (int y = -2; y <= 2; ++y)
             {

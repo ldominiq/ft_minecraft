@@ -50,10 +50,19 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	// already marked them sent in PlayerKnownChunks) never re-sends them.
 	std::unordered_map<ChunkPos, std::chrono::steady_clock::time_point> chunkReceiveTime;
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
+	// Cached visibility list from the most recent terrain pass — reused by
+	// renderVegetationOnly so we don't re-run frustum culling. Mutable because
+	// render() is const-qualified.
+	mutable std::vector<std::shared_ptr<ChunkRenderer>> m_lastVisibleChunks;
 	float maxRenderedChunkDist = 0.0f; // world-space distance to edge of farthest rendered chunk
 	Frustum cameraFrustum;
   glm::dvec3 frustumEyePos = glm::dvec3(0.0);
 	bool frustumCullingEnabled = true;
+	float maxRenderDistanceOverride = 0.0f; // 0 = no cap; set by water reflection pass
+	float vegetationMaxDistance = 0.0f;     // 0 = no cap; cull distant vegetation chunks
+	int   vegetationSwayQuality = 2;        // 0 none, 1 low (1 sin), 2 high (current)
+	float vegetationSwayMaxDistance = 0.0f; // 0 = no fade; world-space LOD cutoff
+	int   vegetationDensity = 1;            // 1 = all instances; N = render every Nth
 	const TextureManager* textureManager = nullptr;
 	std::shared_ptr<Shader> vegetationShader = nullptr;
 
@@ -79,6 +88,33 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		bool isFrustumCullingEnabled() const { return frustumCullingEnabled; }
 		void setFrustumCullingEnabled(bool enabled) { frustumCullingEnabled = enabled; }
 
+		// Optional per-frame override that caps the chunk render distance during
+		// the next render() call (used by water reflection to avoid drawing
+		// distant terrain into a tiny offscreen target). 0 = no cap.
+		float getMaxRenderDistanceOverride() const { return maxRenderDistanceOverride; }
+		void  setMaxRenderDistanceOverride(float d) { maxRenderDistanceOverride = d; }
+
+		// Cull vegetation in chunks whose center is farther than this from the
+		// camera (in world units). 0 = no cap. Cheap CPU-side filter; saves
+		// instanced vegetation draw calls in dense biomes.
+		float getVegetationMaxDistance() const { return vegetationMaxDistance; }
+		void  setVegetationMaxDistance(float d) { vegetationMaxDistance = d; }
+
+		// Wind sway shader cost — uniform-controlled branch in vegetation.vert.
+		//   0 = none (skip all sin/cos sway math), 1 = low (1 sin), 2 = high (current 3-5 sin)
+		int  getVegetationSwayQuality() const { return vegetationSwayQuality; }
+		void setVegetationSwayQuality(int q)  { vegetationSwayQuality = (q < 0 ? 0 : (q > 2 ? 2 : q)); }
+
+		// World-space distance beyond which sway fades to zero (cheaper LOD
+		// for distant vegetation while still showing it). 0 = no fade.
+		float getVegetationSwayMaxDistance() const { return vegetationSwayMaxDistance; }
+		void  setVegetationSwayMaxDistance(float d) { vegetationSwayMaxDistance = d; }
+
+		// Render only every Nth vegetation instance. 1 = full density, 2 =
+		// half (every other), 3 = third, etc.
+		int  getVegetationDensity() const { return vegetationDensity; }
+		void setVegetationDensity(int n)  { vegetationDensity = (n < 1 ? 1 : n); }
+
 		void setTextureManager(const TextureManager* tm) { textureManager = tm; }
 		void setVegetationShader(const std::shared_ptr<Shader>& shader) { vegetationShader = shader; }
 		const std::shared_ptr<Shader>& getVegetationShader() const { return vegetationShader; }
@@ -92,6 +128,18 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		            const glm::mat4& view,
 		            const glm::dvec3& eyePos,
 		            bool renderVegetation = true) const ;
+
+		/// Render only the terrain chunk loop (no vegetation). Populates the
+		/// internal visibility cache so a subsequent `renderVegetationOnly`
+		/// call can reuse the same chunk list — used by the Z-prepass path,
+		/// where terrain runs twice (prepass + color) and vegetation once.
+		void renderTerrainOnly(const std::shared_ptr<Shader>& shaderProgram,
+		                       const glm::mat4& view,
+		                       const glm::dvec3& eyePos) const;
+
+		/// Render only the vegetation pass, reusing the visible-chunks cache
+		/// from the most recent `render()` / `renderTerrainOnly()` call.
+		void renderVegetationOnly(const glm::mat4& view, const glm::dvec3& eyePos) const;
 
 		/// Update vegetation shader uniforms (for reflection pass where view/clip differ from main camera)
 		void updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
@@ -108,7 +156,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		void buildChunks();
 		void updateChunk(const NetModifiedBlockData &pkt);
 		void organizeChunks(const std::pair<int, int> pos, int loadRadius, float deltaTime = 0.016f);
-    	void draw(const std::shared_ptr<Shader> &shaderProgram, const GLuint &VAO, const uint &meshVerticesSize) const; // Draw the chunk using the given shader program
+    	void draw(const std::shared_ptr<Shader> &shaderProgram, const GLuint &VAO, const uint &vertexCount) const; // Draw the chunk using the given shader program
 
 		void prepareChunk(const NetChunkHeader& pkt);
 		void receiveChunk(const NetChunkData& pkt);

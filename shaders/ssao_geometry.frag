@@ -9,12 +9,16 @@ in vec3 FragPos;
 in vec3 Normal;
 
 uniform sampler2DArray blockTextures;
+uniform bool useAlphaTest;
 
 void main() {
-    // Discard fully transparent fragments
-    vec4 texColor = texture(blockTextures, vec3(TexCoords, TexLayer));
-    if (texColor.a < 0.1)
-        discard;
+    // Alpha test gated by leaf-render mode (Fast = off, Fancy/Smart = on).
+    // Skipping when off keeps GBuffer fully populated for opaque-leaf pixels.
+    if (useAlphaTest) {
+        vec4 texColor = texture(blockTextures, vec3(TexCoords, TexLayer));
+        if (texColor.a < 0.1)
+            discard;
+    }
 
     // store the fragment position vector in the first gbuffer texture
     gPosition = vec4(FragPos, 1.0);

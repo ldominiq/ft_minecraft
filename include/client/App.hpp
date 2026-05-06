@@ -183,7 +183,6 @@ private:
 
     std::shared_ptr<Lighting> lighting;
     std::shared_ptr<Shader> textureShader;
-    std::shared_ptr<Shader> gradientShader;
 
     std::shared_ptr<Shader> activeShader;   // pointer to the currently active shader program
 
@@ -229,6 +228,13 @@ private:
     std::shared_ptr<GBuffer> gBuffer;
     std::shared_ptr<SSAO> ssao;
     std::shared_ptr<Shader> gBufferShader;
+
+    // Z-prepass for terrain. When enabled, terrain is drawn twice in the main
+    // scene pass: once depth-only with the prepass shader (color writes off),
+    // then again with the heavy lighting shader and glDepthFunc(GL_EQUAL).
+	// Eliminates fragment overdraw for things not seen (might be better on some hardware, worse on others)
+    std::shared_ptr<Shader> depthPrepassShader;
+    bool depthPrepassEnabled = true;
 
 	std::optional<int> seed;
 
@@ -277,8 +283,6 @@ private:
 	int screenHeight = 720;
 
     std::string serverIp;
-
-    bool useGradientShader = false;
 
     float renderDistance = 1000.0f; // Distance of the far clipping plane
 

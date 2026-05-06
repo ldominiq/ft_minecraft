@@ -12,6 +12,7 @@
 #include "TextureManager.hpp"
 #include "blockRenderingHelperFunctions.hpp"
 #include "VegetationRenderer.hpp"
+#include "PackedVertex.hpp"
 #include <memory>
 
 #ifdef _WIN32
@@ -22,13 +23,13 @@ class ChunkRenderer : public Chunk {
 
     GLuint VAO = 0;
     GLuint VBO = 0;
-	uint meshVerticesSize = 0;
-    std::vector<float> meshVertices; // Vertices for the mesh
+	uint meshVertexCount = 0;                      // number of PackedVertex entries (NOT bytes / floats)
+    std::vector<PackedVertex> meshVertices;        // 8 bytes per vertex (was 11 floats)
 
 	GLuint waterVAO = 0;
 	GLuint waterVBO = 0;
-	uint waterMeshVerticesSize = 0;
-	std::vector<float> waterMeshVertices;
+	uint waterMeshVertexCount = 0;
+	std::vector<PackedVertex> waterMeshVertices;
 
 	const TextureManager* textureManager = nullptr;
 
@@ -63,12 +64,28 @@ class ChunkRenderer : public Chunk {
 		void buildVegetationMesh() const; // Build vegetation instanced mesh
 
 		inline const GLuint getVao() const {return VAO;}
-		inline const uint getMeshVerticesSize() const {return meshVerticesSize;}
+		inline const uint getMeshVertexCount() const {return meshVertexCount;}
 
 		inline const GLuint getWaterVao() const {return waterVAO;}
-		inline const uint getWaterMeshVerticesSize() const {return waterMeshVerticesSize;}
+		inline const uint getWaterMeshVertexCount() const {return waterMeshVertexCount;}
 
 		inline VegetationRenderer* getVegetationRenderer() const { return vegetationRenderer.get(); }
+
+		// Leaf-rendering strategy. Drives both mesh emission and fragment-shader
+		// alpha test. Switching modes only affects the *next* mesh rebuild; for
+		// instant effect call buildMesh() on every loaded chunk (or press F3+A).
+		//
+		//   Fast   — leaves treated as opaque blocks. Mesher culls leaf-to-leaf
+		//            and solid-to-leaf faces. Fragment shader skips alpha test.
+		//            Cheapest; leaves look like solid green cubes.
+		//   Fancy  — leaves treated as transparent (original behaviour). Every
+		//            face emitted, including leaves seen through other leaves.
+		//            Most expensive; visually richest.
+		//   Smart  — leaves alpha-tested (cutouts visible on outer faces) but
+		//            mesher culls like Fast. Outer surface looks like leaves;
+		//            inside each canopy is hollow.
+		enum class LeafRenderMode { Fast, Fancy, Smart };
+		static LeafRenderMode sLeafRenderMode;
 };
 
 #endif

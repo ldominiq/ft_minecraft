@@ -34,7 +34,27 @@ void WaterFramebuffer::bindReflectionFrameBuffer() {
 }
 
 void WaterFramebuffer::bindRefractionFrameBuffer() {
-    bindFrameBuffer(refractionFrameBuffer, REFRACTION_WIDTH, REFRACTION_HEIGHT);
+    bindFrameBuffer(refractionFrameBuffer, refractionWidth, refractionHeight);
+}
+
+void WaterFramebuffer::resizeRefraction(int width, int height) {
+    if (width < 1)  width = 1;
+    if (height < 1) height = 1;
+    if (width == refractionWidth && height == refractionHeight) return;
+
+    // Tear down the old refraction attachments and FBO, then rebuild at the new size.
+    if (refractionFrameBuffer) {
+        glDeleteFramebuffers(1, &refractionFrameBuffer);
+        glDeleteTextures(1, &refractionTexture);
+        glDeleteTextures(1, &refractionDepthTexture);
+        refractionFrameBuffer = 0;
+        refractionTexture = 0;
+        refractionDepthTexture = 0;
+    }
+
+    refractionWidth = width;
+    refractionHeight = height;
+    initializeRefractionFrameBuffer();
 }
 
 // switch back to default framebuffer
@@ -52,8 +72,8 @@ void WaterFramebuffer::initializeReflectionFrameBuffer() {
 
 void WaterFramebuffer::initializeRefractionFrameBuffer() {
     refractionFrameBuffer = createFrameBuffer();
-    refractionTexture = createTextureAttachment(REFRACTION_WIDTH, REFRACTION_HEIGHT);
-    refractionDepthTexture = createDepthTextureAttachment(REFRACTION_WIDTH, REFRACTION_HEIGHT);
+    refractionTexture = createTextureAttachment(refractionWidth, refractionHeight);
+    refractionDepthTexture = createDepthTextureAttachment(refractionWidth, refractionHeight);
     unbindCurrentFrameBuffer();
 }
 

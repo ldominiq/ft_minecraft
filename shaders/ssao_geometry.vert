@@ -1,9 +1,9 @@
 #version 460 core
+#include "terrain_vertex_decode.glsl"
 
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoords;
-layout (location = 2) in float aTexLayer;
-layout (location = 4) in vec3 aNormal;
+// Packed terrain vertex (8 bytes). See terrain_vertex_decode.glsl.
+layout (location = 0) in uint aV0;
+layout (location = 1) in uint aV1;
 
 out vec3 FragPos;
 out vec2 TexCoords;
@@ -19,11 +19,14 @@ uniform vec3 chunkRel;
 
 void main()
 {
+    vec3 aPos       = unpackPos(aV0);
+    vec3 aNormal    = NORMALS[unpackNormal(aV1)];
+
     vec3 cameraRelPos = chunkRel + aPos;
     vec4 viewSpacePos = viewRot * vec4(cameraRelPos, 1.0);
     FragPos = viewSpacePos.xyz;
-    TexCoords = aTexCoords;
-    TexLayer = aTexLayer;
+    TexCoords = CORNERS[unpackCorner(aV1)];
+    TexLayer = float(unpackTexLayer(aV1));
 
     Normal = normalize(mat3(viewRot) * aNormal);
 

@@ -929,9 +929,17 @@ std::vector<glm::mat4> Lighting::getLightSpaceMatrices(const glm::mat4& cameraVi
 
 void Lighting::initCSMResources()
 {
-    csmDepthShader = std::make_shared<Shader>(
-        "shaders/csmDepth.vert",
-        "shaders/csmDepth.frag");
+    if (!csmDepthShader) {
+        csmDepthShader = std::make_shared<Shader>(
+            "shaders/csmDepth.vert",
+            "shaders/csmDepth.frag");
+    }
+
+    if (!csmDepthAlphaShader) {
+        csmDepthAlphaShader = std::make_shared<Shader>(
+            "shaders/csmDepth.vert",
+		    "shaders/csmDepthAlpha.frag");
+    }
 
     const int numCascades = static_cast<int>(shadowCascadeLevels.size()) + 1;
 
@@ -987,6 +995,62 @@ void Lighting::initCSMResources()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+void Lighting::rebuildCSMResources() {
+    if (csmDepthMaps) {
+        glDeleteTextures(1, &csmDepthMaps);
+        csmDepthMaps = 0;
+	}
+    if (csmFBO) {
+        glDeleteFramebuffers(1, &csmFBO);
+        csmFBO = 0;
+    }
+	initCSMResources(); // recreate with current depthMapResolution + numCascades
+}
+
+void Lighting::recomputeCascadeSplits()
+{
+    // Derive cascade split distances from cascade count + cameraFarPlane.
+    // Ratios chosen to match the original tuning (25, 100 at far=500 → 0.05, 0.20).
+    const int n = static_cast<int>(shadowCascadeLevels.size()) + 1; // current count
+    shadowCascadeLevels.clear();
+    if (n <= 2) {
+        // 2 cascades → 1 split at ~16% of far plane (e.g. 40 at far=250)
+        shadowCascadeLevels.push_back(cameraFarPlane * 0.16f);
+    } else {
+        // 3 cascades → 2 splits at 5% and 20% of far plane
+        shadowCascadeLevels.push_back(cameraFarPlane * 0.05f);
+        shadowCascadeLevels.push_back(cameraFarPlane * 0.20f);
+    }
+}
+
+void Lighting::setShadowMapResolution(unsigned int res)
+{
+    if (res == depthMapResolution) return;
+    depthMapResolution = res;
+    rebuildCSMResources();
+}
+
+void Lighting::setCascadeCount(int count)
+{
+    if (count < 2) count = 2;
+    if (count > 3) count = 3;
+    const int current = static_cast<int>(shadowCascadeLevels.size()) + 1;
+    if (count == current) return;
+    // Pre-size the splits vector so recomputeCascadeSplits sees the new count
+    shadowCascadeLevels.assign(count - 1, 0.0f);
+    recomputeCascadeSplits();
+    rebuildCSMResources();
+}
+
+void Lighting::setShadowFarPlane(float farPlane)
+{
+    if (farPlane == cameraFarPlane) return;
+    cameraFarPlane = farPlane;
+    // Splits scale with the far plane — recompute to stay proportional.
+    recomputeCascadeSplits();
+    // Texture array dimensions don't depend on far plane, so no rebuild needed.
+}
+
 void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView,
                                    const glm::dvec3& eyePos, const TextureManager& texMgr)
 {
@@ -998,11 +1062,14 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
 
     const int numCascades = static_cast<int>(csmLightSpaceMatrices.size());
 
-    csmDepthShader->use();
+	auto& shader = shadowAlphaTest ? csmDepthAlphaShader : csmDepthShader;
+    shader->use();
 
-    // Bind the texture array so the depth shader can alpha-test leaves
-    texMgr.bind(GL_TEXTURE0);
-    csmDepthShader->setInt("blockTextures", 0);
+    // Bind the texture array only when the alpha-test variant needs it
+    if (shadowAlphaTest) {
+        texMgr.bind(GL_TEXTURE0);
+        shader->setInt("blockTextures", 0);
+    }
 
     glViewport(0, 0, depthMapResolution, depthMapResolution);
     glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
@@ -1013,8 +1080,8 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
                                   csmDepthMaps, 0, i);
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        csmDepthShader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
-        renderer.renderShadow(csmDepthShader, csmLightSpaceMatrices[i], eyePos);
+        shader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
+        renderer.renderShadow(shader, csmLightSpaceMatrices[i], eyePos);
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1052,6 +1119,7 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
 
     shader.setInt("cascadeCount", static_cast<int>(shadowCascadeLevels.size()) + 1);
     shader.setFloat("farPlane", cameraFarPlane);
+	shader.setInt("pcfQuality", static_cast<int>(pcfQuality));
 
     // Bind the CSM depth texture array to texture unit 7.
     glActiveTexture(GL_TEXTURE0 + TextureUnits::CSM_SHADOW);

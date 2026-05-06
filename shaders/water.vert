@@ -1,5 +1,10 @@
 #version 460 core
-layout (location = 0) in vec3 aPos;
+#include "terrain_vertex_decode.glsl"
+
+// Water meshes use the same packed vertex format as terrain. Water shader
+// only needs position; the other fields are decoded but unused.
+layout (location = 0) in uint aV0;
+layout (location = 1) in uint aV1;
 
 out vec4 clipSpace;
 out vec3 toCameraVector;
@@ -17,6 +22,7 @@ uniform vec2 texAnchor;
 uniform float tiling;
 
 void main() {
+    vec3 aPos = unpackPos(aV0);
     vec3 cameraRelPos = chunkRel + aPos;
 
     // Clip space coordinates for projective texture mapping
