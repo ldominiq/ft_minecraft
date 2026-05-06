@@ -23,14 +23,14 @@ class ItemPropEntityManager {
 	const TextureManager* textureManager = nullptr;
 	GLuint VAO, VBO, EBO;
 
-	void updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities);
+	void updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities, const glm::dvec3& eyePos);
 	void initGL();
 
 	public:
 		ItemPropEntityManager(const TextureManager* texMgr);
 		~ItemPropEntityManager();
 
-	void draw(const glm::mat4 &projection, const glm::mat4 &view, std::vector<std::shared_ptr<ItemEntity>> &entities);
+	void draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::dvec3& eyePos, std::vector<std::shared_ptr<ItemEntity>> &entities);
 };
 
 #endif

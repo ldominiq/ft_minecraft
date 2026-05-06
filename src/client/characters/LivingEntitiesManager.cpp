@@ -1,5 +1,6 @@
 #include "LivingEntitiesManager.hpp"
 #include "ClientCreeper.hpp"
+#include <cmath>
 
 LivingEntitiesManager::LivingEntitiesManager() : characterShader("shaders/characterCube.vert", "shaders/characterCube.frag")
 {
@@ -23,10 +24,22 @@ void LivingEntitiesManager::add(std::weak_ptr<IClientEntity> character)
 	characters.push_back(character);
 }
 
-void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const float deltaTime)
+void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &view,
+								 const glm::dvec3& eyePos, const float deltaTime)
 {
+  static glm::dvec3 prevEyePos(0.0);
+	static bool hasPrevEyePos = false;
+	const glm::dvec3 eyeDelta = eyePos - prevEyePos;
+	const bool cameraMoved = !hasPrevEyePos || glm::dot(eyeDelta, eyeDelta) > 1e-12;
+	prevEyePos = eyePos;
+	hasPrevEyePos = true;
+
 	characterShader.use();
 	characterShader.setInt("uSkin", 0);
+    characterShader.setMat4("uProjection", projection);
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	characterShader.setMat4("uViewRot", viewRot);
 	auto identity = glm::mat4(1.0f);
 
 	for (const auto &character : characters)
@@ -59,12 +72,27 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 		if (cc && !dying)
 			cc->tickFuseAnimation(deltaTime);
 
-		const bool creeperAnimating = cc && (cc->clientPrimed || cc->inflation > 0.0f);
-		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating)
+        const bool creeperAnimating = cc && (cc->clientPrimed || cc->inflation > 0.0f);
+
+		const bool isLocalPlayer = (c->getID() == static_cast<entityID>(-1));
+		if (!isLocalPlayer) {
+			const glm::dvec3 targetPosD = c->getPositionD();
+			if (!c->hasRenderPos) {
+				c->renderPos = targetPosD;
+				c->hasRenderPos = true;
+			} else {
+				const double alpha = 1.0 - std::exp(-static_cast<double>(deltaTime) * 22.0);
+				c->renderPos = glm::mix(c->renderPos, targetPosD, alpha);
+			}
+		}
+
+		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating || cameraMoved)
 		{
 			c->characterBodyParts.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));
-			glm::vec3 meshPos = c->hasRenderPos ? c->renderPos : c->getPosition();
-			c->characterBodyParts.character.translation = glm::translate(glm::mat4(1.0f), meshPos + c->YPositionOffset);
+          glm::dvec3 meshPosD = c->hasRenderPos ? c->renderPos : c->getPositionD();
+			glm::dvec3 meshPosRelD = meshPosD - eyePos;
+			c->characterBodyParts.character.translation = glm::translate(
+				glm::mat4(1.0f), glm::vec3(meshPosRelD + glm::dvec3(c->YPositionOffset)));
 			if (dying)
 			{
 				c->deathAnimation(deltaTime);
@@ -81,12 +109,12 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 				if (swinging)
 					c->swingArmAnimation(deltaTime);
 			}
-			c->characterBodyParts.character.compute(identity, projection, view, characterShader);
+           c->characterBodyParts.character.compute(identity, projection, viewRot, characterShader);
 			c->positionUpdated = false;
 			c->rotationUpdated = false;
 		}
 		else
-			c->characterBodyParts.character.drawScene(characterShader, projection, view);
+           c->characterBodyParts.character.drawScene(characterShader, projection, viewRot);
 	}
 
 	for (const auto &character : characters)
@@ -98,9 +126,18 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			continue ;
 		if (true)
 		{
-			AABB box = c->constructAABB(c->hasRenderPos ? c->renderPos : c->getPosition());
+            const glm::dvec3 posD = c->hasRenderPos ? c->renderPos : c->getPositionD();
+			const double halfW = static_cast<double>(c->getEntityWidth()) * 0.5;
+			const double h = static_cast<double>(c->getEntityHeight());
+			const glm::dvec3 minRelD(posD.x - eyePos.x - halfW,
+									 posD.y - eyePos.y,
+									 posD.z - eyePos.z - halfW);
+			const glm::dvec3 maxRelD(posD.x - eyePos.x + halfW,
+									 posD.y - eyePos.y + h,
+									 posD.z - eyePos.z + halfW);
+           AABB box{minRelD, maxRelD};
 			glm::vec3 col(1.0f, 0.0f, 0.0f); // red
-			hbRenderer.drawAABB(box, view, projection, col);
+            hbRenderer.drawAABB(box, view, projection, glm::dvec3(0.0), col);
 		}
 	}
 

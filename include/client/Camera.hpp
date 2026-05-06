@@ -18,7 +18,7 @@
 struct PredictedStates
 {
 	int32_t serverClientReconciliationTick;
-	glm::vec3 position;
+	glm::dvec3 position;
 	glm::vec3 velocity;
 	float yaw;
 	float pitch;
@@ -71,8 +71,8 @@ class Camera {
 	bool reconcileLogEnabled = false;
    bool reconcileAutoPhaseAdjust = false;
 	float renderTickAlpha = 0.0f;
-	glm::vec3 renderPrevPosition = glm::vec3(0.0f);
-	glm::vec3 renderCurrPosition = glm::vec3(0.0f);
+	glm::dvec3 renderPrevPosition = glm::dvec3(0.0);
+	glm::dvec3 renderCurrPosition = glm::dvec3(0.0);
 	bool renderPositionInitialized = false;
 
 	ReconcileDebugStats reconcileDebugStats;
@@ -85,10 +85,19 @@ public:
 	~Camera();
 
     glm::mat4 getViewMatrix() const;
-    glm::vec3 getInterpolatedPlayerPos() const {
+    // Eye position used by getViewMatrix(), in double precision so that
+    // the chunk renderer can compute (chunkOrigin - eye) without losing
+    // precision near 1e6+. Includes eye height and any visual offset.
+    glm::dvec3 getEyePosD() const;
+    //glm::vec3 getInterpolatedPlayerPos() const {
+    //    if (!renderPositionInitialized)
+    //        return player->getPosition();
+    //    return glm::vec3(glm::mix(renderPrevPosition, renderCurrPosition, static_cast<double>(renderTickAlpha))) + visualOffset;
+    //}
+    glm::dvec3 getInterpolatedPlayerPosD() const {
         if (!renderPositionInitialized)
-            return player->getPosition();
-        return glm::mix(renderPrevPosition, renderCurrPosition, renderTickAlpha) + visualOffset;
+            return player->getPositionD();
+        return glm::mix(renderPrevPosition, renderCurrPosition, static_cast<double>(renderTickAlpha)) + glm::dvec3(visualOffset);
     }
     void processMouseMovement(float xoffset, float yoffset);
 	void onSnapshot(NetPlayerMove &pkt);

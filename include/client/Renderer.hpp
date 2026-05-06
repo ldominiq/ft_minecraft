@@ -52,6 +52,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
 	float maxRenderedChunkDist = 0.0f; // world-space distance to edge of farthest rendered chunk
 	Frustum cameraFrustum;
+  glm::dvec3 frustumEyePos = glm::dvec3(0.0);
 	bool frustumCullingEnabled = true;
 	const TextureManager* textureManager = nullptr;
 	std::shared_ptr<Shader> vegetationShader = nullptr;
@@ -64,8 +65,13 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	public:
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
 
-		/// Update the camera frustum for culling. Call once per frame before render().
-		void updateFrustum(const glm::mat4& viewProjection) { cameraFrustum.update(viewProjection); }
+     /// Update the camera frustum for culling. The view-projection should be
+		/// built from a translation-free view matrix (camera at origin), and eyePos
+		/// is used to test world AABBs in camera-relative space.
+		void updateFrustum(const glm::mat4& viewProjection, const glm::dvec3& eyePos) {
+			cameraFrustum.update(viewProjection);
+			frustumEyePos = eyePos;
+		}
 
 		/// Get the current camera frustum (for debug visualization).
 		const Frustum& getFrustum() const { return cameraFrustum; }
@@ -82,15 +88,19 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		                             float fovDeg, float aspectRatio, float nearP, float farP);
 
 		void processMeshUpdates();
-		void render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation = true) const ;
+		void render(const std::shared_ptr<Shader> &shaderProgram,
+		            const glm::mat4& view,
+		            const glm::dvec3& eyePos,
+		            bool renderVegetation = true) const ;
 
 		/// Update vegetation shader uniforms (for reflection pass where view/clip differ from main camera)
 		void updateVegetationUniforms(const glm::mat4& view, const glm::mat4& projection,
 		                              const glm::vec4& clipPlane, const glm::vec3& viewPos) const;
 
 		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
-		void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const;
-		void renderWater() const;
+       void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix,
+						 const glm::dvec3& eyePos) const;
+       void renderWater(const std::shared_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const;
 
 		/// Returns true if any water chunk is visible in the current frustum.
 		bool hasVisibleWater() const;
@@ -115,7 +125,8 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		LivingEntitiesManager livingEntitiesManager;
 		void onEntity(NetEntityMove &pkt, double serverTime);	// handles NetEntityMove packet
-		void drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime);
+     void drawCharacters(const glm::mat4 &projection, const glm::mat4 &view,
+						  const glm::dvec3& eyePos, const float deltatime);
 
 		size_t getDrawCallCount() const { return m_drawCallCount; }
 		void resetDrawCallCount() { m_drawCallCount = 0; }

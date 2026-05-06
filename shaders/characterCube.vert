@@ -4,7 +4,9 @@ layout (location = 0) in vec3 aPos;
 layout (location = 1) in float aFaceIndex;
 layout (location = 2) in vec2 aFaceCorner;
 
-uniform mat4 uMVP;
+uniform mat4 uProjection;
+uniform mat4 uViewRot;
+uniform mat4 uModelRel;
 // Per-part face UV rects in normalized skin-auth space (V=0 is top of PNG).
 // xy = (u_left, v_top), zw = (u_right, v_bottom). Indexed 0..5.
 uniform vec4 uFaceUVs[6];
@@ -17,5 +19,5 @@ void main()
     vec4 rect = uFaceUVs[face];
     vTex = mix(rect.xy, rect.zw, aFaceCorner);
 
-    gl_Position = uMVP * vec4(aPos, 1.0);
+    gl_Position = uProjection * uViewRot * uModelRel * vec4(aPos, 1.0);
 }

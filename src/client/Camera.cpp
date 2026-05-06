@@ -1,4 +1,5 @@
 #include "Camera.hpp"
+#include <cmath>
 #include <limits>
 
 Camera::Camera(glm::vec3 position)
@@ -6,8 +7,8 @@ Camera::Camera(glm::vec3 position)
 
 	//TODO position & yaw should be given by server
 	glm::vec3 startingPos = glm::vec3(0,150,0);
-	player = std::make_shared<ClientPlayer>(startingPos, 0, -1);
-  renderPrevPosition = startingPos;
+	player = std::make_shared<ClientPlayer>(startingPos, 0.0f, static_cast<entityID>(-1));
+	renderPrevPosition = startingPos;
 	renderCurrPosition = startingPos;
 	renderPositionInitialized = true;
     player->updateCameraVectors();
@@ -30,13 +31,22 @@ Camera::~Camera() {
 
 glm::mat4 Camera::getViewMatrix() const
 {
-  glm::vec3 interpolatedPos = player->getPosition();
+  // Interpolation done in double so the per-frame eye position keeps
+  // sub-cm precision even at very large world coordinates. The view
+  // matrix returned is still mat4 (translation column quantized to
+  // float), but the chunk renderer reads getEyePosD() separately to
+  // build chunkRel without going through this float matrix.
+  glm::dvec3 interpolatedPosD = player->getPositionD();
 	if (renderPositionInitialized)
-		interpolatedPos = glm::mix(renderPrevPosition, renderCurrPosition, renderTickAlpha);
-	glm::vec3 playerPos = interpolatedPos + glm::vec3(0, player->getEyesHeight(), 0) + visualOffset;
+		interpolatedPosD = glm::mix(renderPrevPosition, renderCurrPosition, static_cast<double>(renderTickAlpha));
+    glm::dvec3 playerPosD = interpolatedPosD
+		+ glm::dvec3(0.0, static_cast<double>(player->getEyesHeight()), 0.0)
+		+ glm::dvec3(visualOffset);
 
-	if (!thirdPersonCamera)
-		return glm::lookAt(playerPos, playerPos + player->Front, player->WorldUp);
+	if (!thirdPersonCamera) {
+		const glm::dvec3 centerD = playerPosD + glm::dvec3(player->Front);
+		return glm::mat4(glm::lookAt(playerPosD, centerD, glm::dvec3(player->WorldUp)));
+	}
 
 	float cameraDistance = 3.0f;  // behind the player
 	float cameraHeight   = 1.5f;  // slightly above
@@ -45,29 +55,61 @@ glm::mat4 Camera::getViewMatrix() const
 	float pitch = glm::radians(player->pitch);
 
 	// Direction the player is looking
-	glm::vec3 forward(
+  glm::dvec3 forward(
 		cos(pitch) * cos(yaw),
 		sin(pitch),
 		cos(pitch) * sin(yaw)
 	);
 
 	// Camera position BEHIND the player, opposite of forward
-	glm::vec3 camPos =
-		playerPos
-		- forward * cameraDistance  // behind
-		+ glm::vec3(0, cameraHeight, 0); // slight upward offset
+  glm::dvec3 camPosD =
+		playerPosD
+       - forward * static_cast<double>(cameraDistance)  // behind
+		+ glm::dvec3(0.0, static_cast<double>(cameraHeight), 0.0); // slight upward offset
 
-	return glm::lookAt(
-		camPos,
-		playerPos + forward * 10.0f,   // look where the player is looking
-		glm::vec3(0, 1, 0)
+	const glm::dvec3 targetD = playerPosD + forward * 10.0;
+
+ return glm::mat4(glm::lookAt(
+		camPosD,
+		targetD,
+		glm::dvec3(0.0, 1.0, 0.0)
+	));
+}
+
+glm::dvec3 Camera::getEyePosD() const
+{
+	glm::dvec3 interpolatedPosD = player->getPositionD();
+	if (renderPositionInitialized)
+		interpolatedPosD = glm::mix(renderPrevPosition, renderCurrPosition, static_cast<double>(renderTickAlpha));
+	glm::dvec3 playerPosD = interpolatedPosD
+		+ glm::dvec3(0.0, static_cast<double>(player->getEyesHeight()), 0.0)
+		+ glm::dvec3(visualOffset);
+
+	if (!thirdPersonCamera)
+		return playerPosD;
+
+	// Third person: replicate getViewMatrix's third-person eye math in double.
+	const float cameraDistance = 3.0f;
+	const float cameraHeight   = 1.5f;
+	const float yawRad   = glm::radians(player->yaw);
+	const float pitchRad = glm::radians(player->pitch);
+	const glm::dvec3 forward(
+		std::cos(pitchRad) * std::cos(yawRad),
+		std::sin(pitchRad),
+		std::cos(pitchRad) * std::sin(yawRad)
 	);
+	return playerPosD - forward * static_cast<double>(cameraDistance)
+		+ glm::dvec3(0.0, static_cast<double>(cameraHeight), 0.0);
 }
 
 void Camera::updateSmoothing(float deltaTime) {
-	if (glm::length(visualOffset) > 0.001f) {
-		float decayRate = 12.0f; // Tune this to make corrections faster or slower
-		visualOffset *= std::max(0.0f, 1.0f - decayRate * deltaTime);
+   const float len2 = glm::dot(visualOffset, visualOffset);
+	if (len2 > 1e-6f) {
+		constexpr float decayRate = 12.0f;
+		const float decay = std::exp(-decayRate * std::max(deltaTime, 0.0f));
+		visualOffset *= decay;
+		if (glm::dot(visualOffset, visualOffset) < 1e-6f)
+			visualOffset = glm::vec3(0.0f);
 	} else {
 		visualOffset = glm::vec3(0.0f);
 	}
@@ -82,8 +124,8 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 	// freeze local simulation while dead
 	if (player->health <= 0) {
 		player->setVelocity(glm::vec3(0.0f));
-		renderPrevPosition = player->getPosition();
-		renderCurrPosition = player->getPosition();
+		renderPrevPosition = player->getPositionD();
+		renderCurrPosition = player->getPositionD();
 		renderPositionInitialized = true;
 		return;
 	}
@@ -115,18 +157,18 @@ void Camera::predict(const Renderer &world, int32_t clientTick) //clientime brok
 	player->calculateNewPosition(world);
 
 	if (!renderPositionInitialized) {
-		renderPrevPosition = player->getPosition();
-		renderCurrPosition = player->getPosition();
+		renderPrevPosition = player->getPositionD();
+		renderCurrPosition = player->getPositionD();
 		renderPositionInitialized = true;
 	} else {
 		renderPrevPosition = renderCurrPosition;
-		renderCurrPosition = player->getPosition();
+		renderCurrPosition = player->getPositionD();
 	}
 
 	//construct predictions for reconcialiation and snapshots for interpolation
 	predictedStates.emplace_back(PredictedStates{
 		clientTick,
-		player->getPosition(),
+		player->getPositionD(),
 		player->getVelocity(),
 		player->yaw,
 		player->pitch,
@@ -180,9 +222,9 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 			if (candIt == predictedStates.end())
 				return std::numeric_limits<float>::max();
 
-			glm::vec3 posDiff = candIt->position - correction.position;
+			glm::dvec3 posDiff = candIt->position - correction.position;
 			glm::vec3 velDiff = candIt->velocity - correction.velocity;
-			return glm::length(posDiff) + glm::length(velDiff) * 0.25f;
+			return static_cast<float>(glm::length(posDiff)) + glm::length(velDiff) * 0.25f;
 		};
 
 		const int32_t ack = correction.serverClientReconciliationTick;
@@ -210,18 +252,18 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 	});
 
 	if (it != predictedStates.end()) {
-     glm::vec3 posDiff = it->position - effectiveCorrection.position;
+     glm::dvec3 posDiff = it->position - effectiveCorrection.position;
 		glm::vec3 velDiff = it->velocity - effectiveCorrection.velocity;
 
-		float hPosErr = std::sqrt(posDiff.x * posDiff.x + posDiff.z * posDiff.z);
-		float vPosErr = std::abs(posDiff.y);
+		float hPosErr = static_cast<float>(std::sqrt(posDiff.x * posDiff.x + posDiff.z * posDiff.z));
+		float vPosErr = static_cast<float>(std::abs(posDiff.y));
 		float vErr = glm::length(velDiff);
-		reconcileDebugStats.lastErrAtAckTick = glm::length(posDiff);
+		reconcileDebugStats.lastErrAtAckTick = static_cast<float>(glm::length(posDiff));
 
 		if (it != predictedStates.begin()) {
 			auto prevIt = std::prev(it);
-         glm::vec3 prevPosDiff = prevIt->position - effectiveCorrection.position;
-			reconcileDebugStats.lastErrAtAckMinusOneTick = glm::length(prevPosDiff);
+         glm::dvec3 prevPosDiff = prevIt->position - effectiveCorrection.position;
+			reconcileDebugStats.lastErrAtAckMinusOneTick = static_cast<float>(glm::length(prevPosDiff));
 			if (reconcileDebugStats.lastErrAtAckMinusOneTick + 0.01f < reconcileDebugStats.lastErrAtAckTick)
 				reconcileDebugStats.suspectedOffByOneCorrections++;
 		} else {
@@ -254,7 +296,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 	const PredictedStates oldCurrentState = predictedStates.empty()
 		? PredictedStates{
 			clientTick,
-			player->getPosition(),
+			player->getPositionD(),
 			player->getVelocity(),
 			player->yaw,
 			player->pitch,
@@ -291,7 +333,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 	});
 
 	player->snapshots.emplace_back(Snapshot{
-        effectiveCorrection.position,
+		effectiveCorrection.position,
 		effectiveCorrection.velocity,
 		effectiveCorrection.serverClientReconciliationTick * (1.0f / TPS)
 	});
@@ -302,7 +344,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 	const PredictedStates reconciledCurrentState = predictedStates.empty()
 		? PredictedStates{
 			clientTick,
-			player->getPosition(),
+			player->getPositionD(),
 			player->getVelocity(),
 			player->yaw,
 			player->pitch,
@@ -314,12 +356,12 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 		}
 		: predictedStates.back();
 
-	glm::vec3 positionDiff = reconciledCurrentState.position - oldCurrentState.position;
+	glm::dvec3 positionDiff = reconciledCurrentState.position - oldCurrentState.position;
 	glm::vec3 velocityDiff = reconciledCurrentState.velocity - oldCurrentState.velocity;
-	const float horizontalPosErr = std::sqrt(positionDiff.x * positionDiff.x + positionDiff.z * positionDiff.z);
-	const float verticalPosErr = std::abs(positionDiff.y);
+	const float horizontalPosErr = static_cast<float>(std::sqrt(positionDiff.x * positionDiff.x + positionDiff.z * positionDiff.z));
+	const float verticalPosErr = static_cast<float>(std::abs(positionDiff.y));
 	const float velocityErr = std::sqrt(glm::dot(velocityDiff, velocityDiff));
-	reconcileDebugStats.lastPosErr = std::sqrt(glm::dot(positionDiff, positionDiff));
+	reconcileDebugStats.lastPosErr = static_cast<float>(std::sqrt(glm::dot(positionDiff, positionDiff)));
 	reconcileDebugStats.lastVelErr = velocityErr;
 	reconcileDebugStats.lastHorizontalErr = horizontalPosErr;
 	reconcileDebugStats.lastVerticalErr = verticalPosErr;
@@ -328,12 +370,13 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
     if (horizontalPosErr > reconcilePosErrorThreshold || verticalPosErr > reconcilePosErrorThreshold || velocityErr > reconcileVelErrorThreshold)
 	{
         // Smooth visual popping by setting a bounded camera offset that decays over time.
-		glm::vec3 desiredVisualOffset = oldCurrentState.position - reconciledCurrentState.position;
+		// Computed in double then downcast — the diff itself is small (sub-block).
+		glm::dvec3 desiredVisualOffsetD = oldCurrentState.position - reconciledCurrentState.position;
 		constexpr float kMaxVisualOffset = 0.35f;
-		const float desiredLen = glm::length(desiredVisualOffset);
+		const float desiredLen = static_cast<float>(glm::length(desiredVisualOffsetD));
 		if (desiredLen > kMaxVisualOffset && desiredLen > 0.0f)
-			desiredVisualOffset = (desiredVisualOffset / desiredLen) * kMaxVisualOffset;
-		visualOffset = desiredVisualOffset;
+			desiredVisualOffsetD = (desiredVisualOffsetD / static_cast<double>(desiredLen)) * static_cast<double>(kMaxVisualOffset);
+		visualOffset = glm::vec3(desiredVisualOffsetD);
 
         if (reconcileLogEnabled) {
 			std::cout << "[RECONCILE] clientTick=" << clientTick
@@ -364,8 +407,8 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 		predictedStates.back().pitch = localPitch;
 	}
 
-	renderPrevPosition = player->getPosition();
-	renderCurrPosition = player->getPosition();
+	renderPrevPosition = player->getPositionD();
+	renderCurrPosition = player->getPositionD();
 	renderPositionInitialized = true;
 }
 
@@ -378,7 +421,7 @@ void Camera::onSnapshot(NetPlayerMove &pkt)
 		((long)(pkt.serverClientReconciliationTick) - (long)(lastAppliedServerClientReconciliationTick) <= 0))
 		return;
 
-	glm::vec3 position;
+	glm::dvec3 position;
 	position.x = pkt.positionX;
 	position.y = pkt.positionY;
 	position.z = pkt.positionZ;
@@ -494,11 +537,16 @@ void Camera::drawWireframeSelectedBlockFace(std::shared_ptr<Renderer> &Renderer,
 	if (Renderer->getTarget(*player, blockPos, faceNormal, livingEntity) != TargetType::Block)
 		return ;
 
-	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPos));
+ const glm::dvec3 eyePosD = getEyePosD();
+	const glm::dvec3 blockPosRelD = glm::dvec3(blockPos) - eyePosD;
+	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(blockPosRelD));
+
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
 	blockWireframeShader->use();
 	blockWireframeShader->setMat4("model", model);
-	blockWireframeShader->setMat4("view", view);
+    blockWireframeShader->setMat4("view", viewRot);
 	blockWireframeShader->setMat4("projection", projection);
 	blockWireframeShader->setVec3("color", glm::vec3(1.0f, 0.0f, 1.0f));
 

@@ -203,21 +203,26 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     glDepthMask(GL_TRUE);
 }
 
-void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection) const {
+void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const {
     lightCubeShader->use();
-    // we now draw as many light bulbs as we have point lights.
+    // Camera-relative rendering: zero the view's translation column and offset
+    // each cube's model matrix by (worldPos - eyePos), computed in double.
+    glm::mat4 viewRot = view;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
     glBindVertexArray(lightCubeVAO);
     for (unsigned int i = 0; i < 3; i++)
     {
+        const glm::dvec3 posRelD = glm::dvec3(pointLightPositions[i]) - eyePos;
         auto model = glm::mat4(1.0f);
-        model = glm::translate(model, pointLightPositions[i]);
+        model = glm::translate(model, glm::vec3(posRelD));
         model = glm::scale(model, glm::vec3(0.2f)); // Make it a smaller cube
         // Set per-cube color here so each light uses its own color
         glm::vec3 cubeCol = pointLightsOn[i] ? pointLightDiffuse[i] : glm::vec3(0.0f);
         lightCubeShader->setVec3("cubeColor", cubeCol);
         lightCubeShader->setMat4("model", model);
         lightCubeShader->setMat4("projection", projection);
-        lightCubeShader->setMat4("view", view);
+        lightCubeShader->setMat4("view", viewRot);
         glDrawArrays(GL_TRIANGLES, 0, 36);
     }
 }
@@ -284,14 +289,15 @@ void Lighting::updateSunDirection(const float deltaTime) {
     cachedShadowLightDir = -directionalLightDir;
 }
 
-void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cameraPos, const glm::vec3 cameraFront) const {
+void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &eyePos, const glm::vec3 cameraFront) const {
     // 2. Render the scene normally, using the generated shadow map to determine shadowed fragments.
     // The following code implements both steps each frame.
     shader.use();
 
-    // set light uniforms
-    shader.setVec3("viewPos", cameraPos);
-    shader.setVec3("lightPos", lightPos);
+    // set light uniforms — subtract in double then narrow, otherwise far-from-origin
+    // coords lose precision via catastrophic cancellation in the f32 difference.
+    shader.setVec3("viewPos", glm::vec3(0.0f));
+    shader.setVec3("lightPos", glm::vec3(glm::dvec3(lightPos) - eyePos));
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     shader.setFloat("shadows.MIN_BIAS", MIN_BIAS);
     shader.setFloat("shadows.MAX_BIAS", MAX_BIAS);
@@ -337,7 +343,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
             shader.setVec3("pointLights[" + std::to_string(i) + "].specular", glm::vec3(0.0f));
             continue;
         }
-        shader.setVec3("pointLights[" + std::to_string(i) + "].position", pointLightPositions[i]);
+        shader.setVec3("pointLights[" + std::to_string(i) + "].position", glm::vec3(glm::dvec3(pointLightPositions[i]) - eyePos));
         shader.setVec3("pointLights[" + std::to_string(i) + "].ambient", pointLightAmbient[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].diffuse", pointLightDiffuse[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].specular", pointLightSpecular[i]);
@@ -347,7 +353,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     }
     // spotLight (flashlight)
     if (flashlightOn) {
-        shader.setVec3("spotLight.position", cameraPos);
+        shader.setVec3("spotLight.position", glm::vec3(0.0f));
         shader.setVec3("spotLight.direction", cameraFront);
         shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
         shader.setVec3("spotLight.diffuse", glm::vec3(1.0f));
@@ -358,7 +364,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
         shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
         shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
     } else {
-        shader.setVec3("spotLight.position", cameraPos);
+        shader.setVec3("spotLight.position", glm::vec3(0.0f));
         shader.setVec3("spotLight.direction", cameraFront);
         shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
         shader.setVec3("spotLight.diffuse", glm::vec3(0.0f));
@@ -981,11 +987,14 @@ void Lighting::initCSMResources()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView, const TextureManager& texMgr)
+void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView,
+                                   const glm::dvec3& eyePos, const TextureManager& texMgr)
 {
     // 1. Compute all light-space matrices for current camera position
     cachedShadowLightDir = -directionalLightDir;
-    csmLightSpaceMatrices = getLightSpaceMatrices(cameraView);
+    glm::mat4 viewRot = cameraView;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    csmLightSpaceMatrices = getLightSpaceMatrices(viewRot);
 
     const int numCascades = static_cast<int>(csmLightSpaceMatrices.size());
 
@@ -1005,7 +1014,7 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
         glClear(GL_DEPTH_BUFFER_BIT);
 
         csmDepthShader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
-        renderer.renderShadow(csmDepthShader, csmLightSpaceMatrices[i]);
+        renderer.renderShadow(csmDepthShader, csmLightSpaceMatrices[i], eyePos);
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1018,7 +1027,10 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
 {
     shader.use();
 
+    glm::mat4 viewRot = cameraView;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     shader.setMat4("view", cameraView);
+    shader.setMat4("viewRot", viewRot);
 
     // Upload all light-space matrices (guard: may be empty if sun is below horizon on first frame)
     for (size_t i = 0; i < shadowCascadeLevels.size() + 1 && i < csmLightSpaceMatrices.size(); ++i)

@@ -797,7 +797,9 @@ void App::render() {
 		glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
 
         // Update camera frustum for chunk culling (once per frame, before any render call)
-        renderer->updateFrustum(projection * view);
+     glm::mat4 viewRot = view;
+        viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        renderer->updateFrustum(projection * viewRot, camera->getEyePosD());
 
 
         lighting->setViewportSize(screenWidth, screenHeight);
@@ -810,7 +812,7 @@ void App::render() {
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
-            lighting->updateCSMShadowMaps(*renderer, view, textureManager);
+         lighting->updateCSMShadowMaps(*renderer, view, camera->getEyePosD(), textureManager);
 
             glEndQuery(GL_TIME_ELAPSED);
             shadowQueryIssuedThisFrame[currentQueryIndex] = true;
@@ -827,10 +829,10 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
-            renderer->render(textureShader);
+            renderer->render(textureShader, view, camera->getEyePosD());
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
 
@@ -842,10 +844,10 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
-            renderer->render(textureShader);
+            renderer->render(textureShader, view, camera->getEyePosD());
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
 
@@ -868,7 +870,7 @@ void App::render() {
             gBufferShader->setMat4("view", view);
             gBufferShader->setMat4("projection", projection);
             textureManager.bind(GL_TEXTURE0);
-            renderer->render(gBufferShader);
+            renderer->render(gBufferShader, view, camera->getEyePosD(), false);
 
             gBuffer->unbind();
         }
@@ -937,7 +939,7 @@ void App::render() {
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         // Draw chunk boundary overlay (if enabled)
-        chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), view, projection, *renderer);
+        chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), camera->getEyePosD(), view, projection, *renderer);
 
         glBindVertexArray(0);
         {
@@ -1130,7 +1132,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     activeShader->setVec4("clipPlane", clipPlane);
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
-    lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+   lighting->uploadLightingUniforms(*activeShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
     lighting->uploadUnderwaterUniforms(*activeShader);
     activeShader->setBool("cameraUnderwater", cameraUnderwater);
     lighting->uploadCSMUniforms(*activeShader, view);
@@ -1163,7 +1165,9 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setVec4("clipPlane", clipPlane);
         vegShader->setMat4("view", view);
         vegShader->setMat4("projection", projection);
-        vegShader->setVec3("viewPos", camera->getPlayer()->getPosition());
+        // Vegetation fragments now use FragPosRel (camera-relative) for fog distances,
+        // so viewPos is the origin of render space — vec3(0).
+        vegShader->setVec3("viewPos", glm::vec3(0.0f));
 
         // Use the same day/night cycle as the main lighting system
         glm::vec3 sunDir = lighting->getDirectionalLightDirection();
@@ -1199,10 +1203,10 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     }
 
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
-    renderer->render(activeShader);
+    renderer->render(activeShader, view, camera->getEyePosD());
     glEndQuery(GL_TIME_ELAPSED);
 
-    lighting->drawLightCubes(view, projection);
+    lighting->drawLightCubes(view, projection, camera->getEyePosD());
 
 	// Check if the entity is within the player's load radius
 	auto updateDrawState = [&](auto &entity)
@@ -1228,7 +1232,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		entity->lerp(clientTime + intraTick - delay);
 	}
     glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
-	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
+	m_itemPropEntityManager->draw(projection, view, camera->getEyePosD(), renderer->itemEntities);
 	glEndQuery(GL_TIME_ELAPSED);
 
 	//mobs
@@ -1246,7 +1250,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		updateDrawState(entity);
 
 		static bool firstFrame = true;
-		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) { 
+     if (!entity->snapshots.empty() && entity->getPositionD() == entity->snapshots.back().position && !firstFrame) {
             entity->positionUpdated = false; 
         }
 		firstFrame = false;
@@ -1257,13 +1261,13 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 	// reconciliation cycle updating the raw physics position mid-frame.
 	auto &localPlayer = *camera->getPlayer();
 	if (camera->isThirdPersonCameraActive()) {
-		localPlayer.renderPos = camera->getInterpolatedPlayerPos();
+		localPlayer.renderPos = camera->getInterpolatedPlayerPosD();
 		localPlayer.hasRenderPos = true;
 	} else {
 		localPlayer.hasRenderPos = false;
 	}
 
-	renderer->drawCharacters(projection, view, deltaTime);
+  renderer->drawCharacters(projection, view, camera->getEyePosD(), deltaTime);
 }
 
 void App::computeDebugStats()
@@ -1421,7 +1425,7 @@ void App::debugWindow() {
 
                     // Teleport (collapsible)
                     if (ImGui::CollapsingHeader("Teleport")) {
-                        static int tpX = 0;
+                        static int tpX = 5000000;
                         static int tpY = 100;
                         static int tpZ = 0;
 

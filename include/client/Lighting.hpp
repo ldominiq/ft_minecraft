@@ -87,14 +87,14 @@ public:
     ~Lighting();
 
     void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater = false) const;
-    void drawLightCubes(const glm::mat4& view, const glm::mat4& projection) const;
+    void drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const;
 
     void updateSunDirection(float deltaTime);
     /// Update the sky scattering LUT (call once per frame, before drawSky).
     /// Only regenerates when atmosphere parameters or camera height change.
     void updateSkyLUT(float cameraPosY);
 
-    void uploadLightingUniforms(const Shader& shader, const glm::vec3& cameraPos, glm::vec3 cameraFront) const;
+    void uploadLightingUniforms(const Shader& shader, const glm::dvec3& eyePos, glm::vec3 cameraFront) const;
     void uploadUnderwaterUniforms(const Shader& shader) const;
     void drawTexturePreviewQuad(unsigned int textureID, bool grayscale = false, glm::vec2 offset = glm::vec2(0.0f));
 
@@ -105,7 +105,8 @@ public:
     glm::mat4 getLightSpaceMatrix(const float nearPlane, const float farPlane, const glm::mat4& view) const;
     std::vector<glm::mat4> getLightSpaceMatrices(const glm::mat4& cameraView) const;
     void initCSMResources();
-    void updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView, const TextureManager& texMgr);
+    void updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView,
+                             const glm::dvec3& eyePos, const TextureManager& texMgr);
     void uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraView) const;
     void drawCSMShadowMapPreview(int cascadeLayer);
     void drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cameraFront, const glm::mat4& cameraView);

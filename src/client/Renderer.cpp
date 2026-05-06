@@ -257,7 +257,10 @@ void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& 
                                         const glm::vec4& clipPlane, const glm::vec3& viewPos) const {
 	if (!vegetationShader) return;
 	vegetationShader->use();
+    glm::mat4 viewRot = view;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 	vegetationShader->setMat4("view", view);
+    vegetationShader->setMat4("viewRot", viewRot);
 	vegetationShader->setMat4("projection", projection);
 	vegetationShader->setVec4("clipPlane", clipPlane);
 	vegetationShader->setVec3("viewPos", viewPos);
@@ -271,8 +274,25 @@ void Renderer::processMeshUpdates() {
 	}
 }
 
-void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderVegetation) const {
+void Renderer::render(const std::shared_ptr<Shader> &shaderProgram,
+                      const glm::mat4& view,
+                      const glm::dvec3& eyePos,
+                      bool renderVegetation) const {
 	std::vector<std::shared_ptr<ChunkRenderer>> visibleChunks;
+
+	// Build "viewRot": world view with translation column zeroed, i.e. the
+	// camera placed at the origin of render space with the same orientation.
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+	// `eyePos` is supplied by the caller in double precision so that
+	// (chunkOrigin - eye) keeps sub-cm precision even at very large world
+	// coordinates. We must NOT recover it from `view` itself, because the
+	// view matrix's translation column is float-quantized.
+	const glm::dvec3 cameraPos = eyePos;
+
+	shaderProgram->use();
+	shaderProgram->setMat4("viewRot", viewRot);
 
 	for (auto& weakChunk : renderedChunks) {
 		auto chunk = weakChunk.lock();
@@ -280,8 +300,20 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderV
 			continue;
 
 		// Frustum cull: skip chunks entirely outside the camera view
-		if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
-			continue;
+       if (frustumCullingEnabled) {
+            const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - cameraPos;
+            const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - cameraPos;
+            if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
+                continue;
+        }
+
+		// Per-chunk uniforms for camera-relative rendering.
+		// chunkRel must be computed in double so that large world
+		// coordinates cancel before downcasting to float.
+		const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+		                                   static_cast<double>(chunk->getOriginZ()));
+		shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - cameraPos));
+		shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 
 		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 		visibleChunks.push_back(chunk);
@@ -290,7 +322,13 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderV
 	// Render all vegetation in a single shader-switch batch
 	if (renderVegetation && vegetationShader) {
 		vegetationShader->use();
+     vegetationShader->setMat4("viewRot", viewRot);
+        vegetationShader->setVec3("viewPos", glm::vec3(cameraPos));
 		for (auto& chunk : visibleChunks) {
+          const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+                                               static_cast<double>(chunk->getOriginZ()));
+            vegetationShader->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - cameraPos));
+            vegetationShader->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 			auto vegRenderer = chunk->getVegetationRenderer();
 			if (vegRenderer && vegRenderer->getInstanceCount() > 0)
 				vegRenderer->render();
@@ -299,7 +337,8 @@ void Renderer::render(const std::shared_ptr<Shader> &shaderProgram, bool renderV
 	}
 }
 
-void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix) const {
+void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix,
+                            const glm::dvec3& eyePos) const {
 	for (auto& weakChunk : renderedChunks) {
 		auto chunk = weakChunk.lock();
 		if (!chunk)
@@ -330,7 +369,8 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 		};
 
 		for (const auto& c : corners) {
-			glm::vec4 clip = lightSpaceMatrix * glm::vec4(c, 1.0f);
+         glm::dvec3 cRelD = glm::dvec3(c) - eyePos;
+            glm::vec4 clip = lightSpaceMatrix * glm::vec4(glm::vec3(cRelD), 1.0f);
 			// Ortho projection has w=1, but be safe
 			float invW = 1.0f / clip.w;
 			float nx = clip.x * invW;
@@ -347,13 +387,19 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 			clipMaxZ < -1.0f || clipMinZ > 1.0f)
 			continue;
 
+		// Mesh is in chunk-local space — supply the world origin so the
+		// vertex shader can reconstruct world positions before projecting
+		// into the light's clip space.
+      const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+                                           static_cast<double>(chunk->getOriginZ()));
+        shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - eyePos));
 		draw(shaderProgram, chunk->getVao(), chunk->getMeshVerticesSize());
 	}
 }
 
 void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 {
-	glm::vec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
+    glm::dvec3 position(pkt.positionX, pkt.positionY, pkt.positionZ);
 	entityID ID = pkt.entityID;
 	float yaw = pkt.yaw;
 
@@ -376,10 +422,10 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 			        || ent->snapshots.back().time < serverTime - 2.0 * oneTick;
 		if (stale) {
 			ent->snapshots.clear();
-			ent->snapshots.emplace_back(Snapshot{ent->getPosition(), glm::vec3(0.0f), serverTime - oneTick});
+           ent->snapshots.emplace_back(Snapshot{ent->getPositionD(), glm::vec3(0.0f), serverTime - oneTick});
 		}
 		bool actuallyMoved = !ent->snapshots.empty() &&
-			glm::length(position - ent->snapshots.back().position) > 0.001f;
+            glm::length(position - ent->snapshots.back().position) > 0.001;
 		ent->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 		ent->yaw = yaw;
 		ent->pitch = pkt.pitch;
@@ -431,7 +477,8 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 	if (pkt.eEntityType == EEntityTypes::ITEMS)
 	{
 		ItemType type = itemIDToItemType(pkt.type);
-		auto entityPtr = std::make_shared<ItemPropEntity>(position, yaw, type, ID);
+     auto entityPtr = std::make_shared<ItemPropEntity>(glm::vec3(position), yaw, type, ID);
+		entityPtr->setPosition(position);
 		itemEntities.push_back(entityPtr);
 		entitiesMap[ID] = entityPtr;
 	}
@@ -442,19 +489,20 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 		switch (type)
 		{
 			case PLAYER:
-				entityPtr = std::make_shared<ClientPlayer>(position, yaw, ID);
+              entityPtr = std::make_shared<ClientPlayer>(glm::vec3(position), yaw, ID);
 				break;
 			case CREEPER:
-				entityPtr = std::make_shared<ClientCreeper>(position, yaw, ID);
+             entityPtr = std::make_shared<ClientCreeper>(glm::vec3(position), yaw, ID);
 				break;
 			case ZOMBIE:
-				entityPtr = std::make_shared<ClientZombie>(position, yaw, ID);
+              entityPtr = std::make_shared<ClientZombie>(glm::vec3(position), yaw, ID);
 				break;
 			default:
 				std::cout << "ERROR ERROR MAYDAY WE GOT A PROBLEM" << std::endl;
 				return;
 		}
 
+		entityPtr->setPosition(position);
 		entityPtr->positionUpdated = true;
 		entityPtr->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 		livingEntitiesManager.add(entityPtr);
@@ -466,15 +514,16 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 	}
 }
 
-void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view, const float deltatime)
+void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view,
+                              const glm::dvec3& eyePos, const float deltatime)
 {
-	livingEntitiesManager.draw(projection, view, deltatime);
+    livingEntitiesManager.draw(projection, view, eyePos, deltatime);
 	// Drop entities whose death animation completed (LivingEntitiesManager marks them).
 	std::erase_if(livingEntities,
 	              [](const std::shared_ptr<Entity>& e){ return !e || e->removed; });
 }
 
-void Renderer::renderWater() const {
+void Renderer::renderWater(const std::shared_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const {
 	glDisable(GL_CULL_FACE);
     for (const auto& weakChunk : renderedChunks) {
         if (auto chunk = weakChunk.lock()) {
@@ -482,8 +531,17 @@ void Renderer::renderWater() const {
                 continue;
 
             // Frustum cull water the same as terrain
-            if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
-                continue;
+           if (frustumCullingEnabled) {
+                const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - frustumEyePos;
+                const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - frustumEyePos;
+                if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
+                    continue;
+            }
+
+            const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+                                               static_cast<double>(chunk->getOriginZ()));
+            shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - eyePos));
+            shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 
             glBindVertexArray(chunk->getWaterVao());
             glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVerticesSize() / 11);
@@ -498,8 +556,12 @@ bool Renderer::hasVisibleWater() const {
 			if (chunk->getWaterMeshVerticesSize() == 0)
 				continue;
 
-			if (frustumCullingEnabled && !cameraFrustum.isBoxVisible(chunk->getCachedMinP(), chunk->getCachedMaxP()))
-				continue;
+           if (frustumCullingEnabled) {
+                const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - frustumEyePos;
+                const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - frustumEyePos;
+                if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
+                    continue;
+            }
 
 			return true; // Found at least one visible water chunk
 		}
