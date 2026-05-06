@@ -69,6 +69,8 @@ void App::init(const std::string& serverIp) {
         image.pixels = nullptr;
     }
     
+    audio = std::make_unique<AudioManager>();
+    audio->init();
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
@@ -493,7 +495,20 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::MODIFIED_BLOCK_DATA: {
 				auto& p = static_cast<NetModifiedBlockData&>(*pkt);
+				// Look up the OLD block before applying the chunk update so we can pick the
+				// right break/place sound (break = use the old block's material).
+				BlockType oldBlock = renderer->getBlockWorld({p.x, p.y, p.z});
+				BlockType newBlock = static_cast<BlockType>(p.blockType);
 				renderer->updateChunk(p);
+
+				if (audio) {
+					glm::dvec3 center(p.x + 0.5, p.y + 0.5, p.z + 0.5);
+					if (newBlock == BlockType::AIR && oldBlock != BlockType::AIR) {
+						audio->playSfx3D(AudioManager::breakFor(oldBlock), center);
+					} else if (oldBlock == BlockType::AIR && newBlock != BlockType::AIR) {
+						audio->playSfx3D(AudioManager::placeFor(newBlock), center);
+					}
+				}
 				break;
 			}
 
@@ -505,6 +520,11 @@ void App::setUdpClientPacketCallback()
 
             case PacketType::NET_IMGUI: {
                 auto& p = static_cast<NetImGui&>(*pkt);
+                // Push every biome packet to the audio manager
+                // We can't gate on p.currentBiome != currentBiome here because
+                // the very first packet may match the default 0 (PLAINS) and skip
+                // starting the music entirely.
+                if (audio) audio->setBiome(static_cast<BiomeType>(p.currentBiome));
                 currentBiome = p.currentBiome;
                 currentTerrainHeight = p.terrainHeight;
                 currentSeaLevel = p.seaLevel;
@@ -657,6 +677,9 @@ void App::render() {
 			auto manager = menuManager.lock();
 			if (manager) manager->render();
 
+			// Pause/keep music silent while in menus. camera/renderer may be null pre-spawn.
+			if (audio && camera && renderer) audio->update(deltaTime, false, *camera, *renderer);
+
 			glfwSwapBuffers(window);
 			glfwPollEvents();
 			continue;
@@ -721,6 +744,9 @@ void App::render() {
 		udpClient->reliabilityKeepalive();
 		udpClient->receivePacket();
         camera->flushPendingSnapshot(*renderer, clientTick);
+
+        // Per-frame audio update: refresh listener pose, drive music + footstep triggers.
+        if (audio) audio->update(deltaTime, gameState == GameState::Playing, *camera, *renderer);
 
         if (clientConnected && udpClient) {
             float now = static_cast<float>(glfwGetTime());
@@ -2379,6 +2405,8 @@ void App::cleanup() {
 		glDeleteTextures(1, &menuDirtTex);
 		menuDirtTex = 0;
 	}
+
+    audio->shutdown();
 
     glfwTerminate();
     saveControls();
