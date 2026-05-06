@@ -3,6 +3,7 @@
 #include "Camera.hpp"
 #include "Renderer.hpp"
 #include "ClientPlayer.hpp"
+#include "Config.hpp"
 
 #include <glm/glm.hpp>
 
@@ -10,6 +11,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <unordered_set>
 
 namespace {
     // Distance attenuation envelope. min: full volume, max: silent.
@@ -375,7 +377,9 @@ void AudioManager::update(float deltaTime, bool isPlaying, Camera& cam, Renderer
         glm::vec3 fwd  = player->Front;
         glm::vec3 up   = player->WorldUp;
         // Velocity comes from the most recent snapshot (Entity::velocity is protected).
-        glm::vec3 vel  = cam.getLatestSnapshot().velocity;
+        // The physics layer stores velocity in *blocks per tick* (Minecraft-style integrator),
+        // so scale to m/s for SoLoud's doppler model.
+        glm::vec3 vel  = cam.getLatestSnapshot().velocity * TPS;
 
         engine.set3dListenerParameters(
             static_cast<float>(pos.x), static_cast<float>(pos.y), static_cast<float>(pos.z),
@@ -397,23 +401,28 @@ void AudioManager::updateFootsteps(float dt, Camera& cam, Renderer& world) {
     if (!player) return;
 
     glm::dvec3 ppos  = player->getPositionD();
-    glm::vec3  pvel  = cam.getLatestSnapshot().velocity;
+    // Snapshot velocity is in blocks-per-tick (Minecraft-style integrator); convert to m/s
+    // so it lines up with `speed * dt` distance accumulation below.
+    glm::vec3  pvel  = cam.getLatestSnapshot().velocity * TPS;
 
     // Horizontal speed only — we don't want the y-axis fall to count as walking.
     glm::vec2 horiz(pvel.x, pvel.z);
     float speed = glm::length(horiz);
 
+    // The local player's own sounds are 2D — playing them as 3D emitters at the feet
+    // while the listener sits at the eyes makes every step pan slightly below-and-behind
+
     // Detect water entry → splash one-shot.
     bool underwater = world.isUnderwater(ppos);
     if (underwater && !prevUnderwater) {
-        playSfx3D(SoundId::Player_Splash, ppos, glm::vec3(0.0f), 1.0f);
+        playSfx2D(SoundId::Player_Splash, 1.0f);
     }
     prevUnderwater = underwater;
 
     // Jump rising edge: was on ground, no longer on ground, moving upward.
     bool onGround = player->isOnGround();
     if (!onGround && prevOnGround && pvel.y > 0.05f) {
-        playSfx3D(SoundId::Player_Jump, ppos, glm::vec3(0.0f), 0.8f);
+        playSfx2D(SoundId::Player_Jump, 0.8f);
     }
     prevOnGround = onGround;
 
@@ -423,7 +432,7 @@ void AudioManager::updateFootsteps(float dt, Camera& cam, Renderer& world) {
             footstepDistance += speed * dt;
             if (footstepDistance >= kSwimStrokeM) {
                 footstepDistance = 0.0f;
-                playSfx3D(SoundId::Player_Swim, ppos, glm::vec3(0.0f), 0.7f);
+                playSfx2D(SoundId::Player_Swim, 0.7f);
             }
         }
         return;
@@ -443,11 +452,71 @@ void AudioManager::updateFootsteps(float dt, Camera& cam, Renderer& world) {
     BlockType ground = world.getBlockWorld(below);
     if (ground == BlockType::AIR) return; // stepping over a hole — skip the click
 
-    playSfx3D(footstepFor(ground), ppos, glm::vec3(0.0f), 0.8f);
+    playSfx2D(footstepFor(ground), 0.5f);
 }
 
-void AudioManager::updateMobAudio(float /*dt*/, Camera& /*cam*/, Renderer& /*world*/) {
-    // Stub: per-entity audio (idle ambient, footsteps, hurt/death edges) hooks in here once
-    // we settle on the right ClientCreeper/ClientZombie observation surface. Keeping the
-    // method present so update() has a stable seam to call into without future churn.
+void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
+    // Remote-entity footsteps. Only PLAYERs get them today — creeper/zombie audio plugs in here
+    // later (idle ambient, hurt/death edges). The local player is NOT in `livingEntities`;
+    // it lives on Camera, so we can iterate this list as "everyone but me".
+    //
+    // Server packets don't carry velocity (NetEntityMove), so we derive horizontal speed from
+    // successive snapshot positions. Snapshots arrive at ~TPS, which is enough resolution to
+    // drive the same per-stride trigger we use for the local player.
+
+    auto localPlayer = cam.getPlayer();
+    const void* localKey = localPlayer.get();
+
+    for (auto& wle : world.livingEntities) {
+        // livingEntities is std::vector<std::shared_ptr<LivingEntity>> — already strong refs.
+        auto le = wle;
+        if (!le) continue;
+        if (le.get() == localKey) continue;          // skip self (defensive — not normally present)
+        if (le->getLivingEntityType() != PLAYER) continue; // only player footsteps for now
+
+        const void* key = le.get();
+        MobAudioState& st = mobStates[key];
+
+        // Need at least two snapshots to derive a speed. Bail until we have history.
+        if (le->snapshots.size() < 2) {
+            st.footstepDist = 0.0f;
+            continue;
+        }
+        const auto& s1 = le->snapshots.back();
+        const auto& s0 = le->snapshots[le->snapshots.size() - 2];
+        double snapDt = s1.time - s0.time;
+        if (snapDt <= 1e-4) continue;
+
+        glm::dvec3 dpos = s1.position - s0.position;
+        glm::vec2 horiz(static_cast<float>(dpos.x), static_cast<float>(dpos.z));
+        float speed = glm::length(horiz) / static_cast<float>(snapDt); // m/s
+
+        if (!le->isOnGround() || speed < 0.05f) {
+            st.footstepDist = 0.0f;
+            continue;
+        }
+
+        st.footstepDist += speed * dt;
+        if (st.footstepDist < kFootstepStrideM) continue;
+        st.footstepDist = 0.0f;
+
+        glm::dvec3 epos = le->getPositionD();
+        glm::ivec3 below = glm::ivec3(glm::floor(epos)) + glm::ivec3(0, -1, 0);
+        BlockType ground = world.getBlockWorld(below);
+        if (ground == BlockType::AIR) continue;
+
+        playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.8f);
+    }
+
+    // Sweep mobStates entries whose entity is gone, so the map doesn't grow forever.
+    if (!mobStates.empty()) {
+        std::unordered_set<const void*> alive;
+        alive.reserve(world.livingEntities.size());
+        for (auto& le : world.livingEntities)
+            if (le) alive.insert(le.get());
+        for (auto it = mobStates.begin(); it != mobStates.end(); ) {
+            if (alive.count(it->first) == 0) it = mobStates.erase(it);
+            else ++it;
+        }
+    }
 }

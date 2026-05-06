@@ -2194,6 +2194,16 @@ void App::debugWindow() {
 
                 // ── Settings ─────────────────────────────────────────────
                 if (ImGui::BeginTabItem("Settings")) {
+                    float masterVolume = audio->getMasterVolume();
+                    float musicVolume = audio->getMusicVolume();
+                    float sfxVolume = audio->getSfxVolume();
+                    if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f, "%.2f"))
+                        audio->setMasterVolume(masterVolume);
+                    if (ImGui::SliderFloat("Music Volume", &musicVolume, 0.0f, 1.0f, "%.2f"))
+                        audio->setMusicVolume(musicVolume);
+                    if (ImGui::SliderFloat("SFX Volume", &sfxVolume, 0.0f, 1.0f, "%.2f"))
+                        audio->setSfxVolume(sfxVolume);
+
                     if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
                         style._NextFrameFontSizeBase = style.FontSizeBase;
                     ImGui::Separator();
