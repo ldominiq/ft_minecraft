@@ -263,6 +263,8 @@ struct NetEntityMove final : public Packet {
 
 	float yaw;
 
+	std::string entityName = "";
+
 	// bit 0 = hasHorizontalInput, bit 1 = onGround
 	uint8_t positionFlags = 0;
 
@@ -277,6 +279,7 @@ struct NetEntityMove final : public Packet {
 		w.write_f32(positionZ);
 		w.write_f32(yaw);
 		w.write_u8(positionFlags);
+		w.write_string(entityName);
     }
     void decode(BufferReader& r) override {
 		eEntityType = static_cast<EEntityTypes>(r.read_u8());
@@ -287,6 +290,7 @@ struct NetEntityMove final : public Packet {
 		positionZ = r.read_f32();
 		yaw = r.read_f32();
 		positionFlags = r.read_u8();
+		entityName = r.read_string();
     }
 };
 inline AutoRegister<NetEntityMove> _reg_NetEntityMove;

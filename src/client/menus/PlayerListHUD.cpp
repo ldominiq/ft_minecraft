@@ -85,10 +85,17 @@ void PlayerListHUD::onRender()
 
         // Name
         if (e.isLocal)
-            snprintf(buf, sizeof(buf), "Player #%u (You)", e.id);
+            snprintf(buf, sizeof(buf), "%s (You)", e.name.c_str());
         else
-            snprintf(buf, sizeof(buf), "Player #%u", e.id);
+            snprintf(buf, sizeof(buf), "%s", e.name.c_str());
         textRenderer.renderText(buf, panelX + padX + iconSize + 6.0f, rowY, glm::vec3(1.0f));
+
+		// id
+        // if (e.isLocal)
+        //     snprintf(buf, sizeof(buf), "Player #%u (You)", e.id);
+        // else
+        //     snprintf(buf, sizeof(buf), "Player #%u", e.id);
+        // textRenderer.renderText(buf, panelX + padX + iconSize + 6.0f, rowY, glm::vec3(1.0f));
 
         // Ping right-aligned, color-coded
         if (e.pingMs >= 0.0f)

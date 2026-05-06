@@ -391,6 +391,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.computeSpawnPosition(world->getTerrainParams());
 
 	auto movement = p.movement;
+	p.movement->setName(pkt.username);
 	players.push_back(std::move(p));
 	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
@@ -418,11 +419,14 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		pkt.entityID = ent->get()->getID();
 		pkt.type = -1;
 
+		//not really needed info
 		pkt.positionX = ent->get()->getPosition().x;
 		pkt.positionY = ent->get()->getPosition().y;
 		pkt.positionZ = ent->get()->getPosition().z;
 
 		pkt.yaw = ent->get()->yaw;
+
+		pkt.entityName = ent->get()->getName();
 
 		sendPacketTo(pkt, p.addr);
 	}
@@ -761,7 +765,12 @@ void Server::sendDeaths()
 		if (le->get()->health <= 0)
 		{
 			le->get()->onDeath();
-			messages.push_back("Someone has died miserably");
+
+			std::string name = le->get()->getName();
+			if (name.empty())
+				messages.push_back("Someone has died miserably");
+			else
+				messages.push_back(name + " has been obliterated");
 
 			if (le->get()->getLivingEntityType() != PLAYER)
 			{
@@ -934,6 +943,9 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.positionZ = entity->getPosition().z;
 
 			pkt.yaw = entity->yaw;
+
+			pkt.entityName = entity->getName();
+
 			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u) | (entity->isOnGround() ? 0x02u : 0u);
 
 			sendPacketTo(pkt, p.addr);
@@ -1134,6 +1146,8 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			pkt->positionZ = entity->getPosition().z;
 
 			pkt->yaw = entity->yaw;
+
+			pkt->entityName = entity->getName();
 
 			groupPkt.push_back(std::move(pkt));
 		}

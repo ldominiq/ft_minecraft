@@ -11,15 +11,43 @@ SettingsMenu::SettingsMenu(float width, float height, GLuint dirtTex)
 	: Menu(DESIGN_W, DESIGN_H), dirtTexture(dirtTex)
 {
 	doneButton.label = "Done";
+	changeControlsButton.label = "Controls";
 	resize(width, height);
+	username = "nameless";
+}
+
+void SettingsMenu::addChar(char c)
+{
+	if (username.size() >= 16) return;
+
+	username += c;
+}
+
+void SettingsMenu::removeChar()
+{
+	if (!username.empty()) {
+		username.pop_back();
+	}
 }
 
 void SettingsMenu::build()
 {
 	float centerX = fullscreenWidth / 2.0f;
+	float quarterY = fullscreenHeight / 3.0f;
+	int amountOfButtons = 2; // adjust if more buttons are added
 
 	float btnW = BTN_W * menuScale;
 	float btnH = BTN_H * menuScale;
+
+	nameBox.w = btnW;
+	nameBox.h = btnH;
+	nameBox.x = centerX - btnW / 2.0f;
+	nameBox.y = fullscreenHeight - quarterY - nameBox.h;
+
+	changeControlsButton.w = btnW;
+	changeControlsButton.h = btnH;
+	changeControlsButton.x = centerX - btnW / 2.0f;
+	changeControlsButton.y = nameBox.y - btnH - 20.0f * menuScale;
 
 	doneButton.w = btnW;
 	doneButton.h = btnH;
@@ -44,20 +72,18 @@ void SettingsMenu::onRender()
 
 	titleRenderer.renderText(title, titleX, titleY, glm::vec3(1.0f));
 
-	// Coming soon text
+	// playerName text
 	float msgScale = 0.6f * menuScale;
 	textRenderer.setScale(msgScale);
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
-	std::string msg = "Coming soon...";
-	float msgWidth = textRenderer.getPixelSizeOfString(msg);
-	float msgX = (fullscreenWidth - msgWidth) / 2.0f;
-	float msgY = fullscreenHeight / 2.0f;
-
-	textRenderer.renderText(msg, msgX, msgY, glm::vec3(0.7f));
+	drawInputBox(nameBox.x, nameBox.y, nameBox.w, nameBox.h, username, true);
 
 	drawButton(doneButton.x, doneButton.y, doneButton.w, doneButton.h,
 			   doneButton.label, doneButton.hovered);
+	
+	drawButton(changeControlsButton.x, changeControlsButton.y, changeControlsButton.w, changeControlsButton.h,
+			   changeControlsButton.label, changeControlsButton.hovered);
 
 	textRenderer.setScale(savedScale);
 }
@@ -70,6 +96,10 @@ void SettingsMenu::handleMouseMove(double mouseX, double mouseY)
 	doneButton.hovered =
 		glX >= doneButton.x && glX <= doneButton.x + doneButton.w &&
 		glY >= doneButton.y && glY <= doneButton.y + doneButton.h;
+	
+	changeControlsButton.hovered =
+		glX >= changeControlsButton.x && glX <= changeControlsButton.x + changeControlsButton.w &&
+		glY >= changeControlsButton.y && glY <= changeControlsButton.y + changeControlsButton.h;
 }
 
 void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, int action)
@@ -83,5 +113,10 @@ void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, in
 	if (glX >= doneButton.x && glX <= doneButton.x + doneButton.w &&
 		glY >= doneButton.y && glY <= doneButton.y + doneButton.h) {
 		if (onDone) onDone();
+	}
+
+	if (glX >= changeControlsButton.x && glX <= changeControlsButton.x + changeControlsButton.w &&
+		glY >= changeControlsButton.y && glY <= changeControlsButton.y + changeControlsButton.h) {
+		if (changeControls) changeControls();
 	}
 }

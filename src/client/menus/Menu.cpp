@@ -196,6 +196,31 @@ void Menu::drawButton(float x, float y, float w, float h, const std::string& lab
 	textRenderer.setScale(savedScale);
 }
 
+void Menu::drawInputBox(float x, float y, float w, float h, const std::string& text, bool focused)
+{
+	// Input box border
+	float border = 2.0f * menuScale;
+	drawSimpleQuad(x - border, y - border,
+				   w + 2 * border, h + 2 * border,
+				   glm::vec4(0.7f, 0.7f, 0.7f, 1.0f));
+
+	// Input box background
+	drawSimpleQuad(x, y, w, h,
+				   glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
+
+	// text inside box
+	float textScale = 0.5f * menuScale;
+	textRenderer.setScale(textScale);
+	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+
+	// Blinking cursor
+	std::string displayText = text;
+	bool showCursor = static_cast<int>(glfwGetTime() * 2.0f) % 2 == 0;
+	if (showCursor && focused) displayText += "_";
+
+	textRenderer.renderText(displayText, x + 8.0f * menuScale, y + h * 0.25f, glm::vec3(1.0f));
+}
+
 GLuint Menu::loadTexture2D(const char* path, bool pixelated, int* outWidth, int* outHeight)
 {
     int width, height, channels;

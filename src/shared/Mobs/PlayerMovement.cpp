@@ -3,6 +3,8 @@
 
 PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 {
+	name = "nameless";
+
 	type = PLAYER;
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;
@@ -19,6 +21,8 @@ PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 //client
 PlayerMovement::PlayerMovement(const glm::vec3 &position, float yaw, entityID ID): LivingEntity(position, yaw ,ID)
 {
+	name = "nameless";
+
 	type = PLAYER;
 
 	this->entityWidth = 0.6f;
