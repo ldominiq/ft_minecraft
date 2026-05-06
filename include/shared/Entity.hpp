@@ -103,6 +103,7 @@ class Entity {
 		virtual glm::vec3 getDesiredMove() = 0;
 		void calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove);
 		virtual void calculateNewYPosition(const ICommonWorld &world);
+		virtual void calculateUnderwaterPosition(const ICommonWorld &world);
 
 	public:
 		Entity(const glm::vec3 &position);
@@ -121,6 +122,8 @@ class Entity {
 		bool hasHorizontalInput = true;
 		// yaw/rotation has changed since last check (without a position change).
 		bool rotationUpdated = false;
+		// one-shot flag: player clicked to break/place/attack. Broadcast once then reset.
+		bool pendingArmSwing = false;
 		// timestamp of the last network position update (glfwGetTime / serverTime scale)
 		double lastNetUpdateTime = -1.0;
 
@@ -138,7 +141,6 @@ class Entity {
 
 		inline void setSlipperinessPrev(float slipperiness) { this->slipperiness_prev = slipperiness; }
 		inline void setOnGround(bool value) { this->onGround = value; }
-		bool isUnderwater(const ICommonWorld &world) const;
 		float getDepthUnderwater() const;
 
 		inline void setPosition(glm::vec3 position) {

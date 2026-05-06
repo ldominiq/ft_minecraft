@@ -1,9 +1,13 @@
 #include "Server.hpp"
 
 #include "Creeper.hpp"
+#include "Zombie.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <random>
 #include <sstream>
+
 Server::Server() {
 #ifdef _WIN32
     WSADATA wsaData;
@@ -51,12 +55,6 @@ void Server::run(std::optional<int> &seed) {
 		world = std::make_unique<World>(seed.value());
 	else
 		world = std::make_unique<World>();
-
-	glm::vec3 startingPos = glm::vec3(0,200, 0);
-	std::shared_ptr<Creeper> crep = std::make_shared<Creeper>(startingPos);
-	std::shared_ptr<Creeper> crep2 = std::make_shared<Creeper>(glm::vec3(0,90,0));
-	world->livingEntities.push_back(crep);
-	world->livingEntities.push_back(crep2);
 
 	running = true;
 
@@ -329,6 +327,14 @@ void Server::gameTick()
 
 	world->advanceSkyTime();
 
+	// Attempt mob spawning every 5 seconds
+	if (tick > 0 && tick % (static_cast<int>(TPS) * 5) == 0)
+		world->trySpawnNightMobs(players);
+
+	// Despawn mobs with no player nearby once per second.
+	if (tick > 0 && tick % static_cast<int>(TPS) == 0)
+		despawnDistantMobs();
+
 	// Broadcast every 20 ticks (~1s)
 	if (tick % static_cast<int>(TPS) == 0)
 		broadcastSkyTime();
@@ -425,6 +431,7 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		pkt.positionZ = ent->get()->getPosition().z;
 
 		pkt.yaw = ent->get()->yaw;
+		pkt.pitch = ent->get()->pitch;
 
 		pkt.entityName = ent->get()->getName();
 
@@ -441,7 +448,11 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 {
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 	if (player == players.end())
-		return ;
+		return;
+
+	// Dead or waiting to respawn: ignore all movement/keyboard input.
+	if (player->movement->health <= 0.0f || player->movement->pendingDeathRemovalTicks > 0)
+		return;
 
  	// Discard outdated or duplicate packets
 	if (pkt.serverClientReconciliationTick <= player->serverClientReconciliationTick)
@@ -472,7 +483,8 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 		}
 	}
 
-	if (pkt.yaw != player->movement->yaw) player->movement->rotationUpdated = true;
+	if (pkt.yaw != player->movement->yaw || pkt.pitch != player->movement->pitch)
+    	player->movement->rotationUpdated = true;
 
 	player->serverClientReconciliationTick = pkt.serverClientReconciliationTick;
 	player->movement->setLastInputPacketReceived(pkt);
@@ -501,6 +513,10 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	if (player == players.end())
 		return ;
 
+	// Dead or waiting to respawn: ignore all mouse actions.
+	if (player->movement->health <= 0.0f || player->movement->pendingDeathRemovalTicks > 0)
+		return;
+
 	if (world->processPlayerMouseInputs(*player, pkt, tick))
 	{
 		NetInventory dropItem;
@@ -511,6 +527,9 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 		dropItem.slot = slot;
 		sendPacketTo(dropItem, cliaddr);
 	}
+
+	if (pkt.mouseButtons & (IN_LEFT_CLICK | IN_RIGHT_CLICK))
+		player->movement->pendingArmSwing = true;
 }
 
 void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
@@ -758,11 +777,55 @@ void Server::sendAll()
 	world->rdyChunks.clear();
 }
 
+void Server::despawnDistantMobs()
+{
+	// Remove any non-player living entity that has no player within DESPAWN_RADIUS (horizontal).
+	// Frees up the spawn cap so new mobs appear as players move around the world.
+	constexpr float DESPAWN_RADIUS = 200.0f;
+	constexpr float DESPAWN_RADIUS_SQ = DESPAWN_RADIUS * DESPAWN_RADIUS;
+
+	for (auto it = world->livingEntities.begin(); it != world->livingEntities.end();) {
+		auto &e = *it;
+		if (!e || e->getLivingEntityType() == PLAYER) { ++it; continue; }
+
+		float nearestSq = std::numeric_limits<float>::infinity();
+		for (auto &p : players) {
+			if (!p.movement) continue;
+			glm::vec3 d = p.movement->getPosition() - e->getPosition();
+			float dsq = d.x * d.x + d.z * d.z;
+			if (dsq < nearestSq) nearestSq = dsq;
+		}
+
+		if (nearestSq > DESPAWN_RADIUS_SQ) {
+			NetEntityMove pkt;
+			pkt.eEntityType = e->getEntityType();
+			pkt.entityID = e->getID();
+			pkt.type = -1;
+			pkt.positionX = e->getPosition().x;
+			pkt.positionY = e->getPosition().y;
+			pkt.positionZ = e->getPosition().z;
+			pkt.yaw = e->yaw;
+			for (const auto &p : players)
+				sendPacketTo(pkt, p.addr);
+
+			it = world->livingEntities.erase(it);
+		} else {
+			++it;
+		}
+	}
+}
+
 void Server::sendDeaths()
 {
+	// How many server ticks the body lingers so clients can play the fall-over animation.
+	constexpr int32_t DEATH_ANIMATION_TICKS = static_cast<int32_t>(TPS * 1); // ~1s at 20 TPS
+
 	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end();)
 	{
-		if (le->get()->health <= 0)
+		LivingEntity *ent = le->get();
+
+		// Countdown path: already broadcast the death; waiting for the animation window.
+		if (ent->pendingDeathRemovalTicks > 0)
 		{
 			le->get()->onDeath();
 
@@ -772,27 +835,53 @@ void Server::sendDeaths()
 			else
 				messages.push_back(name + " has been obliterated");
 
-			if (le->get()->getLivingEntityType() != PLAYER)
+			ent->pendingDeathRemovalTicks--;
+			if (ent->pendingDeathRemovalTicks == 0)
 			{
-				NetEntityMove pkt;
+				if (ent->getLivingEntityType() == PLAYER) {
+					ent->onDeath(); // respawn now after animation window
+					ent->deathBroadcast = false; // reset for potential respawn
+					ent->diedByExplosion = false;
+				}
+				else {
+					le = world->livingEntities.erase(le);
+					continue;
+				}
 
-				pkt.eEntityType = le->get()->getEntityType();
-				pkt.entityID = le->get()->getID();
-				pkt.type = -1;
-
-				pkt.positionX = le->get()->getPosition().x;
-				pkt.positionY = le->get()->getPosition().y;
-				pkt.positionZ = le->get()->getPosition().z;
-
-				pkt.yaw = le->get()->yaw;
-
-				le = world->livingEntities.erase(le);
-
-				for (const auto& player : players)
-					sendPacketTo(pkt, player.addr);
-				
-				continue ;
 			}
+			le++;
+			continue;
+		}
+
+		if (ent->health <= 0 && !ent->deathBroadcast)
+		{
+			messages.push_back("Someone has died miserably");
+			ent->deathBroadcast = true;
+
+			
+			NetEntityMove pkt;
+			pkt.eEntityType = ent->getEntityType();
+			pkt.entityID    = ent->getID();
+			pkt.type        = static_cast<uint16_t>(-1);
+			pkt.positionX   = ent->getPosition().x;
+			pkt.positionY   = ent->getPosition().y;
+			pkt.positionZ   = ent->getPosition().z;
+			pkt.yaw         = ent->yaw;
+			pkt.pitch		= ent->pitch;
+			pkt.positionFlags = 0;
+				
+			for (const auto& player : players)
+				sendPacketTo(pkt, player.addr);
+			
+			if (ent->diedByExplosion && ent->getLivingEntityType() != PLAYER)
+			{
+				// No body left — creepers that self-detonate vanish immediately.
+				le = world->livingEntities.erase(le);
+				continue;
+			}
+
+			// start death animation window
+			ent->pendingDeathRemovalTicks = DEATH_ANIMATION_TICKS;
 		}
 		le++;
 	}
@@ -930,7 +1019,7 @@ void Server::sendEntitiesPositionDeltas()
 	{
 		for (CPlayerInfo &p : players)
 		{
-			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated)) continue;
+			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated && !entity->pendingArmSwing)) continue;
 
 			NetEntityMove pkt;
 
@@ -946,13 +1035,18 @@ void Server::sendEntitiesPositionDeltas()
 
 			pkt.entityName = entity->getName();
 
-			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u) | (entity->isOnGround() ? 0x02u : 0u);
+			pkt.pitch = entity->pitch;
+			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
+			                  | (entity->isOnGround() ? 0x02u : 0u)
+			                  | (entity->pendingArmSwing ? 0x04u : 0u)
+			                  | (entity->networkedPrimed ? 0x08u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}
 
 		entity->positionUpdated = false;
 		entity->rotationUpdated = false;
+		entity->pendingArmSwing = false;
 	}
 
 	for (auto &entity : world->itemEntities)
@@ -1146,6 +1240,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			pkt->positionZ = entity->getPosition().z;
 
 			pkt->yaw = entity->yaw;
+			pkt->pitch = entity->pitch;
 
 			pkt->entityName = entity->getName();
 

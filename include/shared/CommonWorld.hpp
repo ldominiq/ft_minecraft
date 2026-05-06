@@ -19,6 +19,7 @@ enum class TargetType {
 class ICommonWorld {
 public:
 	virtual BlockType getBlockWorld(glm::ivec3 globalCoords) const = 0;
+	virtual bool isUnderwater(const glm::vec3 &position) const = 0;
     virtual ~ICommonWorld() = default;
 };
 
@@ -46,6 +47,8 @@ class CommonWorld : public ICommonWorld{
 		TargetType getTarget(const LivingEntity& src, glm::ivec3 &hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance = 100);
 		// bool removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, BlockType &dropped);
 		// bool setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block);
+
+		bool isUnderwater(const glm::vec3 &position) const;
 
 		// Return the total number of chunks currently loaded in the world (in memory).
 		inline std::size_t getTotalChunkCount() const {

@@ -3,6 +3,9 @@
 //
 
 #include "World.hpp"
+#include "Mobs/Creeper.hpp"
+
+static std::mt19937 spawnRng(std::random_device{}());
 
 World::World() {
     std::mt19937 rng(time(nullptr));
@@ -379,9 +382,16 @@ void World::updateVisibleChunks(CPlayerInfo &player)
 		PlayerKnownChunks[player.id].insert(bestChunk);
 
 		if (chunks.find(bestChunk) != chunks.end())
-			rdyChunks.push_back(bestChunk);
+		{
+			// Already-generated chunk: queue directly for THIS player. Going
+			// through the shared world->rdyChunks would re-send the chunk to
+			// every other player whose PlayerKnownChunks already contains it,
+			// causing visible chunk-blink for the others every time another
+			// player requests an already-cached chunk.
+			player.rdyChunks.push_back(bestChunk);
+		}
 		else
-		{	
+		{
 			plannedChunks.insert(bestChunk);
 			const TerrainGenerationParams paramsCopy = terrainParams;
 			chunkJobs[bestChunk] = std::async(std::launch::async, [bestChunk, paramsCopy]() {
@@ -978,8 +988,25 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 
 void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t clientTick)
 {
+	// Snapshot pending creeper explosions: we apply them after the tickAI/move pass so we
+	// don't mutate livingEntities health mid-iteration in unexpected ways.
+	std::vector<Creeper *> exploding;
 	for (auto &entity : livingEntities)
+	{
+		// Freeze AI while the fall-over death animation plays out server-side.
+		if (entity->pendingDeathRemovalTicks > 0 || entity->health <= 0)
+			continue;
+		entity->tickAI(*this, livingEntities, clientTick);
 		entity->calculateNewPosition(*this);
+		if (auto *creeper = dynamic_cast<Creeper *>(entity.get())) {
+			if (creeper->wantsExplode) {
+				creeper->wantsExplode = false;
+				exploding.push_back(creeper);
+			}
+		}
+	}
+	for (Creeper *creeper : exploding)
+		explodeAt(creeper->getPosition(), creeper->explodeRadius, creeper->explodeDamage, creeper);
 
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{
@@ -1082,4 +1109,141 @@ void World::setSkyTime(const SkyTimeState &newState) {
     skyTimeState.sunStepping   = false;
     skyTimeState.sunPauseTimer = 0.0f;
     skyTimeState.sunStepTimer  = 0.0f;
+}
+
+void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage, LivingEntity *source)
+{
+    const float r2 = radius * radius;
+    const int r = static_cast<int>(std::ceil(radius));
+
+    const int cx = static_cast<int>(std::floor(center.x));
+    const int cy = static_cast<int>(std::floor(center.y));
+    const int cz = static_cast<int>(std::floor(center.z));
+
+    // Carve a rough sphere of blocks to air. setBlockWorld pushes to updatedBlocks,
+    // which the existing block-sync pipeline streams to every client.
+    for (int dx = -r; dx <= r; ++dx) {
+        for (int dy = -r; dy <= r; ++dy) {
+            for (int dz = -r; dz <= r; ++dz) {
+                const float d2 = float(dx*dx + dy*dy + dz*dz);
+                if (d2 > r2) continue;
+                const glm::ivec3 bpos{cx + dx, cy + dy, cz + dz};
+                const BlockType b = getBlockWorld(bpos);
+                if (b == BlockType::AIR || b == BlockType::BEDROCK || b == BlockType::END)
+                    continue;
+                setBlockWorld(bpos, std::nullopt, BlockType::AIR);
+            }
+        }
+    }
+
+    // Distance-falloff damage + knockback for every living entity inside the sphere.
+    for (auto &entity : livingEntities) {
+        if (!entity) continue;
+        glm::vec3 diff = entity->getPosition() - center;
+        float dist = glm::length(diff);
+        if (dist > radius) continue;
+        float falloff = 1.0f - (dist / radius);
+        if (falloff <= 0.0f) continue;
+
+        entity->health -= maxDamage * falloff;
+        if (entity.get() == source)
+            entity->diedByExplosion = true;
+
+        glm::vec3 knockDir = dist > EPS ? diff / dist : glm::vec3(0, 1, 0);
+        entity->applyImpulse(knockDir * (falloff * 10.0f) + glm::vec3(0.0f, 0.3f * falloff, 0.0f));
+    }
+}
+
+void World::trySpawnNightMobs(const std::vector<CPlayerInfo> &players)
+{
+	// Night-time check: sun elevation is cos(skyTimeOffset * 0.1) (see Lighting.cpp).
+	// Negative elevation means the sun is below the horizon — i.e. night.
+	// Using this formulation avoids wrap-around issues as skyTimeOffset accumulates.
+	const float skyT = getSkyTimeState().skyTimeOffset;
+	if (std::cos(skyT * 0.1f) >= 0.0f)
+		return;
+	if (players.empty())
+		return;
+
+	constexpr int MAX_ZOMBIES_PER_PLAYER  = 10;
+	constexpr int MAX_CREEPERS_PER_PLAYER = 50;
+	constexpr int MIN_SPAWN_DIST = 40;
+	constexpr int MAX_SPAWN_DIST = 80;
+	constexpr int SCAN_TOP_Y = 200;
+	constexpr int SCAN_BOTTOM_Y = 4;
+
+	// Count current hostile mobs.
+	int zombieCount  = 0;
+	int creeperCount = 0;
+	for (auto &e : livingEntities) {
+		if (!e) continue;
+		if (e->getLivingEntityType() == ZOMBIE)  zombieCount++;
+		if (e->getLivingEntityType() == CREEPER) creeperCount++;
+	}
+
+	auto findGroundSpawn = [&](const glm::vec3 &ppos, glm::vec3 &out) -> bool {
+		float angle = glm::radians(static_cast<float>(std::uniform_int_distribution<int>(0, 359)(spawnRng)));
+		int dist = std::uniform_int_distribution<int>(MIN_SPAWN_DIST, MAX_SPAWN_DIST - 1)(spawnRng);
+		int sx = static_cast<int>(std::floor(ppos.x + std::cos(angle) * dist));
+		int sz = static_cast<int>(std::floor(ppos.z + std::sin(angle) * dist));
+
+		auto isAir = [&](int y) {
+			BlockType b = getBlockWorld({sx, y, sz});
+			return b == BlockType::AIR;
+		};
+		auto isSpawnableGround = [&](int y) {
+			BlockType b = getBlockWorld({sx, y, sz});
+			return b != BlockType::END && isBlockSolid(b);
+		};
+
+		int groundY = -1;
+		bool airAbove1 = isAir(SCAN_TOP_Y + 1);
+		bool airAbove2 = isAir(SCAN_TOP_Y);
+		for (int y = SCAN_TOP_Y; y >= SCAN_BOTTOM_Y; --y) {
+			if (isSpawnableGround(y) && airAbove1 && airAbove2) {
+				groundY = y;
+				break;
+			}
+			airAbove2 = airAbove1;
+			airAbove1 = isAir(y);
+		}
+		if (groundY < 0) return false;
+
+		glm::vec3 spawnPos(sx + 0.5f, static_cast<float>(groundY + 1), sz + 0.5f);
+		glm::vec3 d = spawnPos - ppos;
+		if (d.x * d.x + d.z * d.z < float(MIN_SPAWN_DIST * MIN_SPAWN_DIST) * 0.25f) return false;
+		out = spawnPos;
+		return true;
+	};
+
+	for (auto &player : players) {
+		if (!player.movement) continue;
+
+		// Zombies: unchanged rate.
+		if (zombieCount < MAX_ZOMBIES_PER_PLAYER * static_cast<int>(players.size())) {
+			for (int attempt = 0; attempt < 5; ++attempt) {
+				glm::vec3 spawnPos;
+				if (!findGroundSpawn(player.movement->getPosition(), spawnPos)) continue;
+				auto zombie = std::make_shared<Zombie>(spawnPos);
+				livingEntities.push_back(zombie);
+				zombieCount++;
+				break;
+			}
+		}
+
+		// Creepers: lower cap AND a probability gate — only ~25% of attempts are allowed
+		// to actually result in a spawn, so creepers are clearly rarer than zombies.
+		if (creeperCount < MAX_CREEPERS_PER_PLAYER * static_cast<int>(players.size()) &&
+			std::uniform_int_distribution<int>(0, 3)(spawnRng) == 0)
+		{
+			for (int attempt = 0; attempt < 5; ++attempt) {
+				glm::vec3 spawnPos;
+				if (!findGroundSpawn(player.movement->getPosition(), spawnPos)) continue;
+				auto creeper = std::make_shared<Creeper>(spawnPos);
+				livingEntities.push_back(creeper);
+				creeperCount++;
+				break;
+			}
+		}
+	}
 }

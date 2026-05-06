@@ -262,10 +262,11 @@ struct NetEntityMove final : public Packet {
 	float positionZ;
 
 	float yaw;
+	float pitch = 0.0f;
 
 	std::string entityName = "";
 
-	// bit 0 = hasHorizontalInput, bit 1 = onGround
+	// bit 0 = hasHorizontalInput, bit 1 = onGround, bit 2 = armSwing event
 	uint8_t positionFlags = 0;
 
 	NetEntityMove() : Packet(ID) {}
@@ -278,6 +279,7 @@ struct NetEntityMove final : public Packet {
 		w.write_f32(positionY);
 		w.write_f32(positionZ);
 		w.write_f32(yaw);
+		w.write_f32(pitch);
 		w.write_u8(positionFlags);
 		w.write_string(entityName);
     }
@@ -289,6 +291,7 @@ struct NetEntityMove final : public Packet {
 		positionY = r.read_f32();
 		positionZ = r.read_f32();
 		yaw = r.read_f32();
+		pitch = r.read_f32();
 		positionFlags = r.read_u8();
 		entityName = r.read_string();
     }

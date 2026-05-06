@@ -13,7 +13,9 @@ class ClientPlayer : public PlayerMovement, public IClientEntity
 
 		ClientPlayer(const glm::vec3 &position, float yaw, entityID ID);
 		~ClientPlayer() = default;
-		
+
+		std::string skinName() const override { return "player"; }
+
 		// void walkAnimation(float deltaTime) override;
 		// void jumpAnimation(float currentFrame) override;
 };

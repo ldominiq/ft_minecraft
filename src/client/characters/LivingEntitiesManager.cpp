@@ -1,9 +1,16 @@
 #include "LivingEntitiesManager.hpp"
+#include "ClientCreeper.hpp"
 
 LivingEntitiesManager::LivingEntitiesManager() : characterShader("shaders/characterCube.vert", "shaders/characterCube.frag")
 {
 	//builds the meshes for the cube (body parts)
 	createCube();
+
+	// Load entity skins. Missing files fall through — manager::get returns 0
+	// and we render with per-limb colors as a fallback.
+	skinManager.load("player",  "assets/skins/steve.png");
+	skinManager.load("creeper", "assets/skins/creeper.png");
+	skinManager.load("zombie", "assets/skins/zombie.png");
 }
 
 LivingEntitiesManager::~LivingEntitiesManager()
@@ -19,6 +26,7 @@ void LivingEntitiesManager::add(std::weak_ptr<IClientEntity> character)
 void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const float deltaTime)
 {
 	characterShader.use();
+	characterShader.setInt("uSkin", 0);
 	auto identity = glm::mat4(1.0f);
 
 	for (const auto &character : characters)
@@ -30,15 +38,49 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 		if (!c->DoDraw())
 			continue ;
 
-		if (c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || c->hasRenderPos)
+		// Bind this entity's skin (if any) before issuing its draw calls.
+		GLuint skin = skinManager.get(c->skinName());
+		if (skin)
+		{
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, skin);
+			characterShader.setBool("uUseTexture", true);
+		}
+		else
+		{
+			characterShader.setBool("uUseTexture", false);
+		}
+
+		const bool swinging = c->characterBodyParts.onArmSwingAnimation;
+		const bool dying = c->characterBodyParts.dying;
+
+		// Advance creeper inflate/deflate every frame
+		auto cc = std::dynamic_pointer_cast<ClientCreeper>(c);
+		if (cc && !dying)
+			cc->tickFuseAnimation(deltaTime);
+
+		const bool creeperAnimating = cc && (cc->clientPrimed || cc->inflation > 0.0f);
+		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating)
 		{
 			c->characterBodyParts.character.rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-c->yaw), glm::vec3(0, 1, 0));
 			glm::vec3 meshPos = c->hasRenderPos ? c->renderPos : c->getPosition();
 			c->characterBodyParts.character.translation = glm::translate(glm::mat4(1.0f), meshPos + c->YPositionOffset);
-			// Only advance the walk animation when the entity is actually moving;
-			// hasRenderPos alone (third-person camera) should not drive the animation.
-			if ((c->positionUpdated && c->hasHorizontalInput) || c->characterBodyParts.onWalkAnimation)
-				c->walkAnimation(deltaTime);
+			if (dying)
+			{
+				c->deathAnimation(deltaTime);
+				if (c->characterBodyParts.dyingDone)
+					c->removed = true;
+			}
+			else
+			{
+				// Only advance the walk animation when the entity is actually moving;
+				// hasRenderPos alone (third-person camera) should not drive the animation.
+				if ((c->positionUpdated && c->hasHorizontalInput) || c->characterBodyParts.onWalkAnimation)
+					c->walkAnimation(deltaTime);
+				c->applyHeadPitch(c->pitch);
+				if (swinging)
+					c->swingArmAnimation(deltaTime);
+			}
 			c->characterBodyParts.character.compute(identity, projection, view, characterShader);
 			c->positionUpdated = false;
 			c->rotationUpdated = false;

@@ -3,6 +3,8 @@
 #define LIVING_ENTITY_HPP
 
 #include "Entity.hpp"
+#include <memory>
+#include <vector>
 
 //MOVEMENT MULTIPLIERS
 #define MM_WALKING		1.0f
@@ -22,10 +24,13 @@ enum LivingEntityType : uint16_t
 {
 	PLAYER = 0,
 	CREEPER = 4,
+	ZOMBIE = 5,
 };
 
 class LivingEntity : public Entity
 {
+	std::chrono::steady_clock::time_point lastVoidDamageTime{};
+
 	protected :
 		std::string name = "";
 
@@ -43,10 +48,39 @@ class LivingEntity : public Entity
 		const float forehead = 0.3f;
 		float eyesheight = 0.0f;
 
+		// Shared mob-AI state. Populated by subclass tickAI overrides via the
+		// helpers below; consumed by the shared getDesiredMove/calculateNewPosition.
+		glm::vec2 aiMoveDir = glm::vec2(0.0f);
+		bool      aiWantsMove = false;
+		bool      isChasing = false;
+		int32_t   wanderTicksLeft = 0;
+
+		// Shared mob-AI constants (override in subclass if they need different radii).
+		static constexpr float MOB_FOLLOW_RADIUS = 16.0f;
+		static constexpr float MOB_VERTICAL_TOLERANCE = 3.0f;
+
+		LivingEntity *findNearestSurvivalPlayer(const std::vector<std::shared_ptr<LivingEntity>> &entities,
+		                                        float followRadius, float verticalTolerance);
+		void setYawTracked(float newYaw);
+		void wanderStep();
+		void mobAutoJump(const ICommonWorld &world);
+
 	public:
 		float health = 20;
 		float damage = 5;
 		float accumulatedFallDistance = 0.0f;
+
+		// Death-animation bookkeeping (server-authoritative).
+		// When health hits 0, sendDeaths broadcasts the death packet once and sets
+		// pendingDeathRemovalTicks > 0 so the entity lingers for the fall-over animation.
+		// `diedByExplosion` skips the delay (the body physically vanishes in the blast).
+		bool deathBroadcast = false;
+		bool diedByExplosion = false;
+		int32_t pendingDeathRemovalTicks = 0;
+
+		// Generic "fused"/priming flag sent to clients in NetEntityMove::positionFlags bit 0x08.
+		// Currently only creepers set this.
+		bool networkedPrimed = false;
 
 		LivingEntity(const glm::vec3 &position);
 		LivingEntity(const glm::vec3 &position, float yaw, entityID ID);
@@ -58,7 +92,9 @@ class LivingEntity : public Entity
 		virtual void attack(LivingEntity &victim);
 		virtual void onDeath();
 		virtual void applyFallDamage();
+		virtual void tickAI(const ICommonWorld &world, const std::vector<std::shared_ptr<LivingEntity>> &entities, int32_t tick) { (void)world; (void)entities; (void)tick; }
 		void calculateNewYPosition(const ICommonWorld &world) override;
+		void calculateNewPosition(const ICommonWorld &world) override;
 		inline EEntityTypes getEntityType() const override { return EEntityTypes::LIVING_ENTITIES; }
 		inline LivingEntityType getLivingEntityType() const { return type; }
 		inline float getEyesHeight() const { return eyesheight; }
