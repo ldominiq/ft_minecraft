@@ -3,6 +3,15 @@
 #include <cmath>
 #include <imgui.h>
 
+void Renderer::setMSAAEnabled(bool enabled) {
+	if (enabled) {
+		glEnable(GL_MULTISAMPLE);
+	} else {
+		glDisable(GL_MULTISAMPLE);
+	}
+	m_msaaEnabled = enabled;
+}
+
 void Renderer::linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk) {
 
     const int dirX[] = { 0, 0, 1, -1 };
@@ -82,7 +91,7 @@ void Renderer::buildChunks()
 
 	// ── Build meshes (all skyLight arrays are valid) ────────────
 	std::vector<std::future<ChunkPos>> meshFutures;
-	for (auto& [pos, chunk] : toBuild) {
+		for (auto& [pos, chunk] : toBuild) {
 		auto cx = pos.first;
 		auto cz = pos.second;
 		auto chunkPtr = chunk; // structured bindings can't be captured directly
@@ -90,7 +99,7 @@ void Renderer::buildChunks()
 			chunkPtr->buildMeshData();
 			return Chunk::toKey(cx, cz);
 		}));
-	}
+				}
 
 	for (auto it = meshFutures.begin(); it != meshFutures.end();) {
 		ChunkPos pos = it->get();

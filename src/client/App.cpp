@@ -46,8 +46,9 @@ void App::init(const std::string& serverIp) {
     }
 
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+	glfwWindowHint(GLFW_SAMPLES, 8); // 8x MSAA
 
     // Monitor infos
     monitor = glfwGetPrimaryMonitor();
@@ -140,6 +141,9 @@ void App::init(const std::string& serverIp) {
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
+
+    glEnable(GL_MULTISAMPLE);
+
 
     lighting->initCSMResources();
 
@@ -1801,6 +1805,10 @@ void App::debugWindow() {
                             bool ssaoEnabled = ssao->isEnabled();
                             if (ImGui::Checkbox("SSAO", &ssaoEnabled))
                                 ssao->setEnabled(ssaoEnabled);
+
+							bool msaaEnabled = renderer->isMSAAEnabled();
+							if (ImGui::Checkbox("MSAA", &msaaEnabled))
+								renderer->setMSAAEnabled(msaaEnabled);
                             
                             ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
                             

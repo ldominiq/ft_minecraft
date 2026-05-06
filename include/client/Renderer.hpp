@@ -71,6 +71,8 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 	mutable size_t m_drawCallCount = 0; // for debug stats
 
+	bool m_msaaEnabled = true;
+
 	public:
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
 
@@ -178,6 +180,9 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		size_t getDrawCallCount() const { return m_drawCallCount; }
 		void resetDrawCallCount() { m_drawCallCount = 0; }
+
+		void setMSAAEnabled(bool enabled);
+		bool isMSAAEnabled() const { return m_msaaEnabled; }
 };
 
 #endif
