@@ -62,6 +62,7 @@ void AudioManager::shutdown() {
     sfxCache.clear();
     musicCache.clear();
     mobStates.clear();
+    explosionWindows.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +252,8 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/mobs/creeper/explode3.wav",
         "assets/sounds/mobs/creeper/explode4.wav"});
 
-    // Player + UI.
+    // Player + UI. jump/splash/swim wavs aren't on disk yet — the loader logs once and
+    // pickVariation() returns null, so the trigger code stays harmless until you drop them in.
     loadSfx(SoundId::Player_Jump,        {"assets/sounds/player/jump.wav"});
     loadSfx(SoundId::Player_Splash,      {"assets/sounds/player/splash.wav"});
     loadSfx(SoundId::Player_Swim,        {"assets/sounds/player/swim.wav"});
@@ -263,6 +265,14 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/player/attack/strong5.wav",
         "assets/sounds/player/attack/strong6.wav",
         });
+    loadSfx(SoundId::Player_FallSmall,   {"assets/sounds/player/damage/fallsmall.wav"});
+    loadSfx(SoundId::Player_FallBig,     {"assets/sounds/player/damage/fallbig.wav"});
+    loadSfx(SoundId::Player_Hurt, {
+        "assets/sounds/player/damage/hit1.wav",
+        "assets/sounds/player/damage/hit2.wav",
+        "assets/sounds/player/damage/hit3.wav"});
+    // Generic Minecraft-style "block pop" used for breaking flowers / tall grass / mushrooms.
+    loadSfx(SoundId::Block_Pop,          {"assets/sounds/player/pop.wav"});
     loadSfx(SoundId::UI_Click,           {"assets/sounds/ui/button_click.wav"});
 
     // Per-biome ambient music. Streamed (no full decode in RAM).
@@ -327,12 +337,57 @@ SoundId AudioManager::footstepFor(BlockType b) {
     }
 }
 
+// Vegetation (flowers, tall grass, kelp, coral, dead bush, etc.). Breaks/places use the
+// soft Block_Pop one-shot in vanilla. Listed once and reused by both breakFor and placeFor.
+static bool isVegetation(BlockType b) {
+    switch (b) {
+        case BlockType::SHORT_GRASS:
+        case BlockType::CORNFLOWER:
+        case BlockType::POPPY:
+        case BlockType::PINK_TULIP:
+        case BlockType::ORANGE_TULIP:
+        case BlockType::RED_TULIP:
+        case BlockType::WHITE_TULIP:
+        case BlockType::BLUE_ORCHID:
+        case BlockType::ALLIUM:
+        case BlockType::AZURE_BLUET:
+        case BlockType::OXEYE_DAISY:
+        case BlockType::LILY_OF_THE_VALLEY:
+        case BlockType::WITHER_ROSE:
+        case BlockType::DANDELION:
+        case BlockType::RED_MUSHROOM:
+        case BlockType::BROWN_MUSHROOM:
+        case BlockType::DEAD_BUSH:
+        case BlockType::SEAGRASS:
+        case BlockType::TALL_SEAGRASS_BOTTOM:
+        case BlockType::TALL_SEAGRASS_TOP:
+        case BlockType::KELP:
+        case BlockType::KELP_PLANT:
+        case BlockType::BRAIN_CORAL:
+        case BlockType::BRAIN_CORAL_FAN:
+        case BlockType::BUBBLE_CORAL:
+        case BlockType::BUBBLE_CORAL_FAN:
+        case BlockType::FIRE_CORAL:
+        case BlockType::FIRE_CORAL_FAN:
+        case BlockType::HORN_CORAL:
+        case BlockType::HORN_CORAL_FAN:
+        case BlockType::TUBE_CORAL:
+        case BlockType::TUBE_CORAL_FAN:
+            return true;
+        default:
+            return false;
+    }
+}
+
 SoundId AudioManager::breakFor(BlockType b) {
+    if (isVegetation(b)) return SoundId::Block_Pop;
     switch (b) {
         case BlockType::GRASS:
         case BlockType::DIRT:
         case BlockType::COARSE_DIRT:
         case BlockType::CLAY:            return SoundId::Break_Dirt;
+        case BlockType::GRAVEL:          return SoundId::Break_Gravel;
+        case BlockType::SNOW:            return SoundId::Break_Snow;
         case BlockType::SAND:
         case BlockType::RED_SAND:
         case BlockType::SOUL_SAND:
@@ -354,12 +409,34 @@ SoundId AudioManager::breakFor(BlockType b) {
     }
 }
 
+SoundId AudioManager::hurtSoundFor(LivingEntityType t) {
+    switch (t) {
+        case ZOMBIE:  return SoundId::Zombie_Hurt;
+        case CREEPER: return SoundId::Creeper_Hurt;
+        case PLAYER:
+        default:      return SoundId::Player_Hurt;
+    }
+}
+
+bool AudioManager::blockSfxSuppressed(glm::dvec3 worldPos) const {
+    // Linear scan — windows live for <1s and there's almost never more than 1 active at a time.
+    for (const auto& w : explosionWindows) {
+        glm::dvec3 d = worldPos - w.pos;
+        double r = static_cast<double>(w.radius);
+        if (glm::dot(d, d) <= r * r) return true;
+    }
+    return false;
+}
+
 SoundId AudioManager::placeFor(BlockType b) {
+    if (isVegetation(b)) return SoundId::Block_Pop;
     switch (b) {
         case BlockType::GRASS:
         case BlockType::DIRT:
         case BlockType::COARSE_DIRT:
         case BlockType::CLAY:            return SoundId::Place_Dirt;
+        case BlockType::GRAVEL:          return SoundId::Place_Gravel;
+        case BlockType::SNOW:            return SoundId::Place_Snow;
         case BlockType::SAND:
         case BlockType::RED_SAND:
         case BlockType::SOUL_SAND:
@@ -407,6 +484,20 @@ void AudioManager::playSfx2D(SoundId id, float volume) {
     SoLoud::Wav* w = pickVariation(id);
     if (!w) return;
     sfxBus.play(*w, volume);
+}
+
+SoLoud::handle AudioManager::playSfx3DTracked(SoundId id, glm::dvec3 pos, glm::vec3 vel, float volume) {
+    SoLoud::Wav* w = pickVariation(id);
+    if (!w) return 0;
+
+    const float fx = static_cast<float>(pos.x);
+    const float fy = static_cast<float>(pos.y);
+    const float fz = static_cast<float>(pos.z);
+
+    SoLoud::handle h = sfxBus.play3d(*w, fx, fy, fz, vel.x, vel.y, vel.z, volume);
+    engine.set3dSourceMinMaxDistance(h, kAttenMin, kAttenMax);
+    engine.set3dSourceAttenuation(h, SoLoud::AudioSource::INVERSE_DISTANCE, 1.0f);
+    return h;
 }
 
 // ---------------------------------------------------------------------------
@@ -491,10 +582,32 @@ void AudioManager::update(float deltaTime, bool isPlaying, Camera& cam, Renderer
         glm::dvec3 pos = cam.getEyePosD();
         glm::vec3 fwd  = player->Front;
         glm::vec3 up   = player->WorldUp;
-        // Velocity comes from the most recent snapshot (Entity::velocity is protected).
-        // The physics layer stores velocity in *blocks per tick* (Minecraft-style integrator),
-        // so scale to m/s for SoLoud's doppler model.
-        glm::vec3 vel  = cam.getLatestSnapshot().velocity * TPS;
+        // Listener velocity is forced to zero (no doppler). Real player velocity spikes
+        // hard during creeper-explosion knockback / fall recovery, and SoLoud's doppler then
+        // pitch-shifts every active 3D voice — heard as a "crackle" during/after the blast.
+        // Doppler isn't worth those artifacts in a survival game.
+        glm::vec3 vel  = glm::vec3(0.0f);
+
+        // Listener-jump detection: a >16m single-frame move means respawn or debug teleport, not
+        // normal motion (max sprint ~7 m/s × 16 ms ≈ 0.11 m). Stop tracked long-running 3D voices
+        // so they don't replay at the wrong spatialization for the new listener position.
+        if (hasPrevListenerPos) {
+            glm::dvec3 jump = pos - prevListenerPos;
+            constexpr double kJumpThresh = 16.0;
+            if (glm::dot(jump, jump) > kJumpThresh * kJumpThresh) {
+                for (auto& kv : mobStates) {
+                    if (kv.second.fuseHandle) {
+                        engine.stop(kv.second.fuseHandle);
+                        kv.second.fuseHandle = 0;
+                    }
+                    // Force a fresh rising-edge so a still-primed creeper can re-trigger its
+                    // fuse the next time we get into earshot.
+                    kv.second.prevPrimed = false;
+                }
+            }
+        }
+        prevListenerPos    = pos;
+        hasPrevListenerPos = true;
 
         engine.set3dListenerParameters(
             static_cast<float>(pos.x), static_cast<float>(pos.y), static_cast<float>(pos.z),
@@ -539,7 +652,31 @@ void AudioManager::updateFootsteps(float dt, Camera& cam, Renderer& world) {
     if (!onGround && prevOnGround && pvel.y > 0.05f) {
         playSfx2D(SoundId::Player_Jump, 0.8f);
     }
+
+    // Fall-impact rising edge: was airborne, just touched ground. Use the *previous* frame's
+    // accumulatedFallDistance because the server resets it to 0 on landing — by the time we see
+    // onGround=true the counter is already 0. Thresholds match vanilla:
+    //   >=4 blocks → fallbig (matches the SAFE_FALL_DISTANCE+1 boundary that triggers damage)
+    //   >=2.0      → fallsmall (just a thump, no damage)
+    float curFallDist = player->getAccumulatedFallDistance();
+    if (onGround && !prevOnGround) {
+        if (prevFallDist >= 4.0f)
+            playSfx2D(SoundId::Player_FallBig,   1.0f);
+        else if (prevFallDist >= 2.0f)
+            playSfx2D(SoundId::Player_FallSmall, 0.8f);
+    }
+    // Latch *after* the edge check so the value we read is from "the frame before landing".
+    prevFallDist = curFallDist;
     prevOnGround = onGround;
+
+    // Local-player hurt edge: any decrement in health triggers a 2D hit one-shot. Health is
+    // server-authoritative and arrives via reconciliation; client-side prediction never lowers
+    // it, so a drop is always a real hit (mob attack, fall damage, void). The 0->20 respawn
+    // case is an *increase*, so the strict `<` keeps it silent.
+    float curHealth = player->health;
+    if (curHealth < lastPlayerHealth)
+        playSfx2D(SoundId::Player_Hurt, 0.9f);
+    lastPlayerHealth = curHealth;
 
     // Underwater: replace footsteps with periodic swim strokes.
     if (underwater) {
@@ -581,14 +718,33 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
 
     // Stall guard: a long frame (loading screen, freeze, world unload, big teleport) would otherwise
     // mark every mob as "vanished" the next frame and burst-play a chorus of death sounds. Wipe the
-    // map and skip emission this tick instead.
+    // map and skip emission this tick instead. Stop any tracked voices first (e.g. fuses) so they
+    // don't keep emitting from the old positions after we forget about them.
     if (dt > 0.2f) {
+        for (auto& kv : mobStates)
+            if (kv.second.fuseHandle) engine.stop(kv.second.fuseHandle);
         mobStates.clear();
+        explosionWindows.clear();
         return;
+    }
+
+    // Tick down active explosion suppression windows (set when a primed creeper vanishes below).
+    // Windows are typically 0.5–0.8s — long enough to swallow the crater's MODIFIED_BLOCK_DATA
+    // burst that arrives over the following few packets without muting unrelated mining nearby.
+    for (auto it = explosionWindows.begin(); it != explosionWindows.end(); ) {
+        it->ttl -= dt;
+        if (it->ttl <= 0.0f) it = explosionWindows.erase(it);
+        else                 ++it;
     }
 
     auto localPlayer = cam.getPlayer();
     const void* localKey = localPlayer.get();
+
+    // Listener position for the per-mob audibility gate. One-shots beyond kAttenMax are killed
+    // by SoLoud's inaudible-behavior, but only after one buffer fires — that buffer is the
+    // "split-second of zombie death" the player hears when a mob dies far away. Skip them here.
+    const glm::dvec3 listenerPos = cam.getEyePosD();
+    const double kAudibleD2 = static_cast<double>(kAttenMax) * static_cast<double>(kAttenMax);
 
     for (auto& wle : world.livingEntities) {
         // livingEntities is std::vector<std::shared_ptr<LivingEntity>> — already strong refs.
@@ -599,52 +755,68 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
         const void* key = le.get();
         MobAudioState& st = mobStates[key];
 
-        // Stash type + position every tick so the death-edge sweep below can play a 3D one-shot
-        // at the entity's last known location after the entity itself is gone.
-        st.type    = le->getLivingEntityType();
-        st.lastPos = le->getPositionD();
-
-        // Need at least two snapshots to derive a speed. Bail until we have history.
-        if (le->snapshots.size() < 2) {
-            st.footstepDist = 0.0f;
-            continue;
-        }
-        const auto& s1 = le->snapshots.back();
-        const auto& s0 = le->snapshots[le->snapshots.size() - 2];
-        double snapDt = s1.time - s0.time;
-        if (snapDt <= 1e-4) continue;
-
-        glm::dvec3 dpos = s1.position - s0.position;
-        glm::vec2 horiz(static_cast<float>(dpos.x), static_cast<float>(dpos.z));
-        float speed = glm::length(horiz) / static_cast<float>(snapDt); // m/s
+        // Stash type + position + diedByExplosion every tick so the death-edge sweep below
+        // can fire the right 3D one-shot at the entity's last known location, after the entity
+        // itself is gone. diedByExplosion is set by Renderer.cpp when the death packet's
+        // positionFlags bit 0x20 is on; the value lingers on LivingEntity until it's removed.
+        st.type            = le->getLivingEntityType();
+        st.lastPos         = le->getPositionD();
+        st.diedByExplosion = le->diedByExplosion;
 
         glm::dvec3 epos = st.lastPos;
+        glm::dvec3 dToListener = epos - listenerPos;
+        bool audible = glm::dot(dToListener, dToListener) <= kAudibleD2;
 
-        // ---- footsteps -----------------------------------------------------
-        bool moving = le->isOnGround() && speed >= 0.05f;
-        if (!moving) {
-            st.footstepDist = 0.0f;
+        // ---- footsteps (per-snapshot delta from cached last-consumed-pos) --
+        // Reading dpos from snapshots[size-2..size-1] is unreliable: Renderer.cpp wipes & reseeds
+        // the snapshots vector whenever there's a >100ms server-side gap (`stale` path), and the
+        // reseed has both entries at the SAME position. Mobs that stop-and-go (zombie chase →
+        // attack pause → chase) hit that path every cycle, losing the first move-after-idle.
+        // Caching `lastConsumedPos` ourselves survives the reseed and gives us the true distance
+        // travelled since last consumption.
+        if (!le->snapshots.empty()) {
+            const auto& s1 = le->snapshots.back();
+            if (s1.time != st.lastSnapTime) {
+                if (st.hasLastConsumedPos && le->isOnGround()) {
+                    glm::dvec3 dpos = s1.position - st.lastConsumedPos;
+                    glm::vec2  horiz(static_cast<float>(dpos.x), static_cast<float>(dpos.z));
+                    float dist = glm::length(horiz);
+                    // Sanity cap: a >5m single-snapshot delta is a teleport / chunk-load, not
+                    // walking. Don't credit it as stride distance.
+                    if (dist < 5.0f)
+                        st.footstepDist += dist;
+                } else if (!le->isOnGround()) {
+                    st.footstepDist = 0.0f; // airborne — reset stride accumulator
+                }
+                st.lastConsumedPos    = s1.position;
+                st.hasLastConsumedPos = true;
+                st.lastSnapTime       = s1.time;
+            }
         } else {
-            st.footstepDist += speed * dt;
-            if (st.footstepDist >= kFootstepStrideM) {
-                st.footstepDist = 0.0f;
+            st.footstepDist = 0.0f;
+        }
 
-                glm::ivec3 below = glm::ivec3(glm::floor(epos)) + glm::ivec3(0, -1, 0);
-                BlockType ground = world.getBlockWorld(below);
-                if (ground != BlockType::AIR) {
-                    switch (st.type) {
-                        case PLAYER:
-                            playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.8f);
-                            break;
-                        case ZOMBIE:
-                            // Material-independent zombie shuffle (5 variations on disk).
-                            playSfx3D(SoundId::Zombie_Step, epos, glm::vec3(0.0f), 0.7f);
-                            break;
-                        case CREEPER:
-                            // No creeper-specific step asset; fall back to material footsteps.
-                            playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.5f);
-                            break;
-                    }
+        if (st.footstepDist >= kFootstepStrideM) {
+            st.footstepDist = 0.0f;
+
+            glm::ivec3 below = glm::ivec3(glm::floor(epos)) + glm::ivec3(0, -1, 0);
+            BlockType ground = world.getBlockWorld(below);
+            if (ground != BlockType::AIR && audible) {
+                // Volumes here are pre-attenuation. INVERSE_DISTANCE with kAttenMin=1m halves
+                // the level every doubling of distance, so headroom > 1.0 is fine and is what
+                // makes mobs actually audible past a couple meters.
+                switch (st.type) {
+                    case PLAYER:
+                        playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.8f);
+                        break;
+                    case ZOMBIE:
+                        // Material-independent zombie shuffle (5 variations on disk).
+                        playSfx3D(SoundId::Zombie_Step, epos, glm::vec3(0.0f), 1.4f);
+                        break;
+                    case CREEPER:
+                        // No creeper-specific step asset; fall back to material footsteps.
+                        playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 1.0f);
+                        break;
                 }
             }
         }
@@ -660,19 +832,28 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
 
             st.idleCooldown -= dt;
             if (st.idleCooldown <= 0.0f) {
-                SoundId idleId = (st.type == ZOMBIE) ? SoundId::Zombie_Idle : SoundId::Creeper_Idle;
-                playSfx3D(idleId, epos, glm::vec3(0.0f), 0.7f);
+                if (audible) {
+                    SoundId idleId = (st.type == ZOMBIE) ? SoundId::Zombie_Idle : SoundId::Creeper_Idle;
+                    playSfx3D(idleId, epos, glm::vec3(0.0f), 0.7f);
+                }
                 // 6–14 s — vanilla cadence. Random within range so two nearby mobs don't sync.
                 st.idleCooldown = 6.0f + frand01() * 8.0f;
             }
 
             // Creeper fuse rising-edge. clientPrimed is mirrored from NetEntityMove's 0x08 flag.
+            // Track the SoLoud handle so we can stop the (long) fuse sample when the creeper
+            // unprimes, dies, or explodes — otherwise the voice keeps playing at its old position
+            // and glitches when the listener jumps (e.g. you die mid-fuse and respawn far away).
             if (st.type == CREEPER) {
                 bool primed = false;
                 if (auto cc = std::dynamic_pointer_cast<ClientCreeper>(le))
                     primed = cc->clientPrimed;
-                if (primed && !st.prevPrimed)
-                    playSfx3D(SoundId::Creeper_Fuse, epos, glm::vec3(0.0f), 1.0f);
+                if (primed && !st.prevPrimed) {
+                    if (audible)
+                        st.fuseHandle = playSfx3DTracked(SoundId::Creeper_Fuse, epos, glm::vec3(0.0f), 1.0f);
+                } else if (!primed && st.prevPrimed) {
+                    if (st.fuseHandle) { engine.stop(st.fuseHandle); st.fuseHandle = 0; }
+                }
                 st.prevPrimed = primed;
             }
         }
@@ -681,7 +862,8 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
     // ---- death / explode sweep -------------------------------------------------
     // Anything in `mobStates` that's no longer in `livingEntities` just disappeared this frame —
     // fire the appropriate one-shot before erasing. Creepers that exploded were primed at vanish
-    // time; otherwise it's a regular death.
+    // time; otherwise it's a regular death. Distance-gated to kAttenMax so a zombie dying past
+    // the audible envelope doesn't pop one buffer of "uggh!" before SoLoud kills the voice.
     if (!mobStates.empty()) {
         std::unordered_set<const void*> alive;
         alive.reserve(world.livingEntities.size());
@@ -689,15 +871,35 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
             if (le) alive.insert(le.get());
         for (auto it = mobStates.begin(); it != mobStates.end(); ) {
             if (alive.count(it->first) == 0) {
-                const MobAudioState& st = it->second;
+                MobAudioState& st = it->second;
+                // Stop any still-playing fuse voice for this creeper. Otherwise the sample
+                // keeps emitting from `lastPos` long after the creeper is gone (and worse, the
+                // listener may have teleported, which produces an audible jump on the voice).
+                if (st.fuseHandle) { engine.stop(st.fuseHandle); st.fuseHandle = 0; }
+
+                glm::dvec3 d = st.lastPos - listenerPos;
+                bool deathAudible = glm::dot(d, d) <= kAudibleD2;
+
                 switch (st.type) {
                     case CREEPER:
-                        playSfx3D(st.prevPrimed ? SoundId::Creeper_Explode
-                                                : SoundId::Creeper_Death,
-                                  st.lastPos, glm::vec3(0.0f), 1.0f);
+                        // Explosions are loud and "global feeling" in vanilla — keep them audible
+                        // even past the regular envelope. Death is gated normally. Discriminator
+                        // is the server-authoritative diedByExplosion flag (latched by Renderer
+                        // from the death packet's bit 0x20), NOT prevPrimed — a primed creeper
+                        // killed before its fuse expires plays the death sound, not the explode.
+                        if (st.diedByExplosion) {
+                            playSfx3D(SoundId::Creeper_Explode, st.lastPos, glm::vec3(0.0f), 1.0f);
+                            // Suppression window so the cascade of MODIFIED_BLOCK_DATA packets
+                            // from the crater doesn't add ~30 stone-break voices on top of the
+                            // explosion. Vanilla blast radius is ~3 blocks; 6m catches the crater.
+                            explosionWindows.push_back({st.lastPos, 6.0f, 0.7f});
+                        } else if (deathAudible) {
+                            playSfx3D(SoundId::Creeper_Death, st.lastPos, glm::vec3(0.0f), 1.0f);
+                        }
                         break;
                     case ZOMBIE:
-                        playSfx3D(SoundId::Zombie_Death, st.lastPos, glm::vec3(0.0f), 1.0f);
+                        if (deathAudible)
+                            playSfx3D(SoundId::Zombie_Death, st.lastPos, glm::vec3(0.0f), 1.0f);
                         break;
                     case PLAYER:
                         // No remote-player death sound today.

@@ -341,6 +341,24 @@ void App::init(const std::string& serverIp) {
 		if (mouseButtons && app->camera && app->camera->getPlayer())
 			app->camera->getPlayer()->triggerArmSwing();
 
+		// Self-feedback on left-click: play the attack swing ONLY when the click would actually
+		// hit a mob/player. Server resolves the hit via the same getTarget raycast at attack-tick
+		// time, so client and server agree (modulo ~1 tick of network desync, acceptable for sfx).
+		// Empty swings stay silent; vanilla does the same. The victim's hurt sound (bit 0x10) is
+		// what tells the player "you connected" and arrives from the server moments later.
+		if ((mouseButtons & IN_LEFT_CLICK) && app->audio && app->renderer && app->camera) {
+			auto local = app->camera->getPlayer();
+			if (local) {
+				glm::ivec3 hitBlock{}, faceNormal{};
+				LivingEntity* victim = nullptr;
+				if (app->renderer->getTarget(*local, hitBlock, faceNormal, victim) == TargetType::LivingEntity
+				    && victim != nullptr
+				    && victim != local.get()) {
+					app->audio->playSfx2D(SoundId::Player_AttackSwing, 0.7f);
+				}
+			}
+		}
+
 		NetPlayerMouseInputs pkt;
 		pkt.mouseButtons = mouseButtons;
 		app->udpClient->sendPacket(pkt);
@@ -480,6 +498,17 @@ void App::setUdpClientPacketCallback()
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
 				renderer->onEntity(p, clientTime);
+				// Hurt one-shot (server bit 0x10). Skip on the death packet (type == -1) — the
+				// AudioManager's death-edge sweep handles that case with the proper death sfx.
+				if (audio
+				    && p.eEntityType == EEntityTypes::LIVING_ENTITIES
+				    && p.type != static_cast<uint16_t>(-1)
+				    && (p.positionFlags & 0x10)) {
+					glm::dvec3 epos(p.positionX, p.positionY, p.positionZ);
+					audio->playSfx3D(
+						AudioManager::hurtSoundFor(static_cast<LivingEntityType>(p.type)),
+						epos, glm::vec3(0.0f), 1.0f);
+				}
 				break;
 			}
 
@@ -502,11 +531,39 @@ void App::setUdpClientPacketCallback()
 				renderer->updateChunk(p);
 
 				if (audio) {
+					// Distance-gate: block updates fan out worldwide (water spread, creeper
+					// explosion fallout, other players mining in their chunk), but a 3D one-shot
+					// past the listener's audible envelope still pops a sub-frame click before
+					// SoLoud kills it for being inaudible. ~48m matches kAttenMax (64m) with
+					// some safety margin so we never start an emitter we'll immediately cull.
 					glm::dvec3 center(p.x + 0.5, p.y + 0.5, p.z + 0.5);
+					constexpr double kBlockSfxMaxDist = 48.0;
+					glm::dvec3 listener = camera ? camera->getEyePosD() : glm::dvec3(center);
+					glm::dvec3 diff = center - listener;
+					double d2 = glm::dot(diff, diff);
+					if (d2 > kBlockSfxMaxDist * kBlockSfxMaxDist) {
+						break;
+					}
+
+					// Suppress block sfx that fall inside an active creeper-explosion window —
+					// otherwise the crater's ~30-block destruction cascade stacks into a "weird
+					// noise" right when the player hears the explode sound itself.
+					if (audio->blockSfxSuppressed(center))
+						break;
+
+					// Liquid spread (water/lava) is a constant background of MODIFIED_BLOCK_DATA
+					// packets; playing the default Stone break/place for them is the wrong sound
+					// AND noisy. Skip the audio for liquid changes; everything else falls through.
+					auto isLiquid = [](BlockType b) {
+						return b == BlockType::WATER || b == BlockType::LAVA;
+					};
+
 					if (newBlock == BlockType::AIR && oldBlock != BlockType::AIR) {
-						audio->playSfx3D(AudioManager::breakFor(oldBlock), center);
+						if (!isLiquid(oldBlock))
+							audio->playSfx3D(AudioManager::breakFor(oldBlock), center);
 					} else if (oldBlock == BlockType::AIR && newBlock != BlockType::AIR) {
-						audio->playSfx3D(AudioManager::placeFor(newBlock), center);
+						if (!isLiquid(newBlock))
+							audio->playSfx3D(AudioManager::placeFor(newBlock), center);
 					}
 				}
 				break;

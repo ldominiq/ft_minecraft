@@ -951,7 +951,11 @@ void Server::sendDeaths()
 			pkt.positionZ   = ent->getPositionD().z;
 			pkt.yaw         = ent->yaw;
 			pkt.pitch		= ent->pitch;
-			pkt.positionFlags = 0;
+			// On the death packet (type==-1), bit 0x20 carries the diedByExplosion truth so the
+			// client can pick the right sound (creeper-explode vs creeper-death) without guessing
+			// from the priming state (which is true for *any* fused creeper, even when killed
+			// before the fuse completes).
+			pkt.positionFlags = (ent->diedByExplosion ? 0x20u : 0u);
 				
 			for (const auto& player : players)
 				sendPacketTo(pkt, player.addr);
@@ -1102,7 +1106,7 @@ void Server::sendEntitiesPositionDeltas()
 	{
 		for (CPlayerInfo &p : players)
 		{
-			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated && !entity->pendingArmSwing)) continue;
+			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated && !entity->pendingArmSwing && !entity->pendingHurt)) continue;
 
 			NetEntityMove pkt;
 
@@ -1119,7 +1123,8 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
 			                  | (entity->isOnGround() ? 0x02u : 0u)
 			                  | (entity->pendingArmSwing ? 0x04u : 0u)
-			                  | (entity->networkedPrimed ? 0x08u : 0u);
+			                  | (entity->networkedPrimed ? 0x08u : 0u)
+			                  | (entity->pendingHurt ? 0x10u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}
@@ -1127,6 +1132,7 @@ void Server::sendEntitiesPositionDeltas()
 		entity->positionUpdated = false;
 		entity->rotationUpdated = false;
 		entity->pendingArmSwing = false;
+		entity->pendingHurt = false;
 	}
 
 	for (auto &entity : world->itemEntities)

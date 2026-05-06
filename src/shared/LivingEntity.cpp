@@ -41,6 +41,7 @@ void LivingEntity::attack(LivingEntity &victim)
 
 	victim.health -= damage;
 	victim.applyImpulse(knockbackDir * strength + glm::vec3(0.0f, verticalBoost, 0.0f));
+	victim.pendingHurt = true; // broadcast a hurt one-shot to clients (positionFlags bit 0x10)
 }
 
 void LivingEntity::onDeath()

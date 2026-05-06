@@ -57,6 +57,12 @@ enum class SoundId {
     Player_Splash,
     Player_Swim,
     Player_AttackSwing,
+    Player_FallSmall,    // landing after a short fall (>= 1.5 blocks, no damage)
+    Player_FallBig,      // landing after a damaging fall (>= 4 blocks)
+    Player_Hurt,         // generic player damage one-shot (hit*.wav)
+
+    // Generic block-pop one-shot used for vegetation breaks/places.
+    Block_Pop,
 
     // UI.
     UI_Click,
@@ -102,6 +108,14 @@ public:
     static SoundId footstepFor(BlockType b);
     static SoundId breakFor(BlockType b);
     static SoundId placeFor(BlockType b);
+    // Per-entity-type hurt sound (Player_Hurt / Zombie_Hurt / Creeper_Hurt). Used by both
+    // the local-player health-decrement edge and the remote-entity 0x10 hurt-flag handler.
+    static SoundId hurtSoundFor(LivingEntityType t);
+
+    // True when `worldPos` falls inside an active creeper-explosion suppression window. Block
+    // break/place packets that resolve here should be silenced so the only thing the player
+    // hears is the explosion itself (otherwise ~30 stone-break voices stack into a "weird noise").
+    bool blockSfxSuppressed(glm::dvec3 worldPos) const;
 
 private:
     // ---- engine + routing -------------------------------------------------
@@ -130,8 +144,29 @@ private:
 
     // ---- footstep state ---------------------------------------------------
     float footstepDistance = 0.0f;   // accumulated horizontal distance walked since last step
-    bool  prevOnGround     = true;   // for jump rising-edge
+    bool  prevOnGround     = true;   // for jump rising-edge AND fall-impact rising-edge
     bool  prevUnderwater   = false;  // for splash on water entry
+    float prevFallDist     = 0.0f;   // last frame's accumulatedFallDistance, latched for landing edge
+    float lastPlayerHealth = 20.0f;  // local-player health from previous frame, for the hurt edge
+
+    // ---- listener-jump detection ------------------------------------------
+    // Player respawn / debug teleport moves the listener in a single frame. Active 3D voices
+    // (especially long ones like the creeper fuse) keep playing at their absolute world coords,
+    // and SoLoud's spatializer recomputes their pan/volume against the new listener — the
+    // result is an audible click/glitch on the next buffer. Tracking the listener position
+    // lets us detect that jump and stop the long-running 3D voices we own.
+    glm::dvec3 prevListenerPos{0.0};
+    bool       hasPrevListenerPos = false;
+
+    // ---- creeper-explosion block-sfx suppression --------------------------
+    // Each entry suppresses MODIFIED_BLOCK_DATA sfx within `radius` of `pos` for `ttl` seconds.
+    // Pushed from updateMobAudio() when a primed creeper vanishes; ticked down in update().
+    struct ExplosionWindow {
+        glm::dvec3 pos;
+        float      radius;
+        float      ttl;
+    };
+    std::vector<ExplosionWindow> explosionWindows{};
 
     // ---- mob audio state --------------------------------------------------
     struct MobAudioState {
@@ -142,6 +177,22 @@ private:
         bool             prevPrimed   = false;    // creeper fuse rising-edge detect
         LivingEntityType type         = PLAYER;   // survives the entity for the death-edge sweep
         glm::dvec3       lastPos{};               // last seen position, used for 3D death/explode sfx
+        // Position of the most recently consumed snapshot. We compute footstep deltas from THIS,
+        // not from snapshots[size-2], because Renderer.cpp wipes & reseeds the snapshots vector
+        // whenever there's a >100ms server-side gap — losing the first move-after-idle every
+        // stop/go cycle (chase→attack→chase). Caching it here survives the reseed.
+        glm::dvec3       lastConsumedPos{};
+        bool             hasLastConsumedPos = false;
+        // Time of the latest *consumed* snapshot, used to skip duplicate frames.
+        double           lastSnapTime = -1.0;
+        // Latched from LivingEntity::diedByExplosion the frame before the entity vanishes; the
+        // death sweep reads it to choose Creeper_Death vs Creeper_Explode (was guessed from
+        // prevPrimed before, which mis-fired when a primed creeper got killed mid-fuse).
+        bool             diedByExplosion = false;
+        // SoLoud voice for the active creeper fuse one-shot. Tracked so we can stop it on
+        // unprime / death / explode — otherwise the sample keeps playing at the creeper's old
+        // position and glitches when the listener jumps (player death + respawn far away).
+        SoLoud::handle   fuseHandle   = 0;
     };
     // Keyed by raw LivingEntity*; entries cleaned up after the entity disappears (see updateMobAudio).
     std::unordered_map<const void*, MobAudioState> mobStates{};
@@ -158,4 +209,9 @@ private:
     void updateFootsteps(float dt, Camera& cam, Renderer& world);
     void updateMobAudio(float dt, Camera& cam, Renderer& world);
     void applyVolumes();
+
+    // Like playSfx3D but returns the SoLoud voice handle so the caller can stop it later.
+    // 0 on missing asset.
+    SoLoud::handle playSfx3DTracked(SoundId id, glm::dvec3 pos, glm::vec3 vel = glm::vec3(0.0f),
+                                    float volume = 1.0f);
 };
