@@ -1396,8 +1396,8 @@ void App::debugWindow() {
             }
 
             glm::vec3 pos = camera->getPlayer()->getPosition();
-            int wx = static_cast<int>(std::floor(pos.x));
-            int wz = static_cast<int>(std::floor(pos.z));
+            double wx = static_cast<double>(std::floor(pos.x));
+            double wz = static_cast<double>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
             ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
             if (!uiInteractive) {
@@ -1475,7 +1475,7 @@ void App::debugWindow() {
 
                     // World
                     ImGui::SeparatorText("World");
-                    ImGui::Text("Position:  x=%d  y=%d  z=%d", wx, wy, wz);
+                    ImGui::Text("Position:  x=%f  y=%d  z=%f", wx, wy, wz);
                     ImGui::Text("Seed: %d", currentWorldSeed);
                     ImGui::Text("Height: %d  (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
                     {
@@ -1502,20 +1502,20 @@ void App::debugWindow() {
 
                     // Teleport (collapsible)
                     if (ImGui::CollapsingHeader("Teleport")) {
-                        static int tpX = 5000000;
+                        static double tpX = 5000000;
                         static int tpY = 100;
-                        static int tpZ = 0;
+                        static double tpZ = 0;
 
                         // Negative width = "extend to N pixels from the right edge",
                         // so the field grows/shrinks with the window while leaving
                         // room for the label and the +/- steppers.
                         const float tpFieldTrailing = -60.0f;
                         ImGui::SetNextItemWidth(tpFieldTrailing);
-                        ImGui::InputInt("X##tp", &tpX);
+                        ImGui::InputDouble("X##tp", &tpX);
                         ImGui::SetNextItemWidth(tpFieldTrailing);
                         ImGui::InputInt("Y##tp", &tpY);
                         ImGui::SetNextItemWidth(tpFieldTrailing);
-                        ImGui::InputInt("Z##tp", &tpZ);
+                        ImGui::InputDouble("Z##tp", &tpZ);
 
                         if (ImGui::Button("Copy current")) {
                             tpX = wx; tpY = wy; tpZ = wz;
