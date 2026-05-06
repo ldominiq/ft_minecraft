@@ -3,6 +3,7 @@
 #include "Camera.hpp"
 #include "Renderer.hpp"
 #include "ClientPlayer.hpp"
+#include "ClientCreeper.hpp"
 #include "Config.hpp"
 
 #include <glm/glm.hpp>
@@ -101,53 +102,167 @@ void AudioManager::loadAllAssets() {
     loadSfx(SoundId::Footstep_Grass, {
         "assets/sounds/footsteps/grass/grass1.wav",
         "assets/sounds/footsteps/grass/grass2.wav",
-        "assets/sounds/footsteps/grass/grass3.wav"});
-    loadSfx(SoundId::Footstep_Dirt, {
-        "assets/sounds/footsteps/dirt/dirt1.wav",
-        "assets/sounds/footsteps/dirt/dirt2.wav"});
+        "assets/sounds/footsteps/grass/grass3.wav",
+        "assets/sounds/footsteps/grass/grass4.wav",
+        "assets/sounds/footsteps/grass/grass5.wav",
+        "assets/sounds/footsteps/grass/grass6.wav",
+        });
     loadSfx(SoundId::Footstep_Stone, {
         "assets/sounds/footsteps/stone/stone1.wav",
         "assets/sounds/footsteps/stone/stone2.wav",
-        "assets/sounds/footsteps/stone/stone3.wav"});
+        "assets/sounds/footsteps/stone/stone3.wav",
+        "assets/sounds/footsteps/stone/stone4.wav",
+        "assets/sounds/footsteps/stone/stone5.wav",
+        "assets/sounds/footsteps/stone/stone6.wav",
+        });
     loadSfx(SoundId::Footstep_Wood, {
         "assets/sounds/footsteps/wood/wood1.wav",
-        "assets/sounds/footsteps/wood/wood2.wav"});
-    loadSfx(SoundId::Footstep_Sand,    {"assets/sounds/footsteps/sand/sand1.wav"});
-    loadSfx(SoundId::Footstep_Snow,    {"assets/sounds/footsteps/snow/snow1.wav"});
-    loadSfx(SoundId::Footstep_Gravel,  {"assets/sounds/footsteps/gravel/gravel1.wav"});
+        "assets/sounds/footsteps/wood/wood2.wav",
+        "assets/sounds/footsteps/wood/wood3.wav",
+        "assets/sounds/footsteps/wood/wood4.wav",
+        "assets/sounds/footsteps/wood/wood5.wav",
+        "assets/sounds/footsteps/wood/wood6.wav",
+        });
+    loadSfx(SoundId::Footstep_Sand,    {
+        "assets/sounds/footsteps/sand/sand1.wav",
+        "assets/sounds/footsteps/sand/sand2.wav",
+        "assets/sounds/footsteps/sand/sand3.wav",
+        "assets/sounds/footsteps/sand/sand4.wav",
+        "assets/sounds/footsteps/sand/sand5.wav",
+        });
+    loadSfx(SoundId::Footstep_Snow,    {
+        "assets/sounds/footsteps/snow/snow1.wav",
+        "assets/sounds/footsteps/snow/snow2.wav",
+        "assets/sounds/footsteps/snow/snow3.wav",
+        "assets/sounds/footsteps/snow/snow4.wav",
+        });
+    loadSfx(SoundId::Footstep_Gravel,  {
+        "assets/sounds/footsteps/gravel/gravel1.wav",
+        "assets/sounds/footsteps/gravel/gravel2.wav",
+        "assets/sounds/footsteps/gravel/gravel3.wav",
+        "assets/sounds/footsteps/gravel/gravel4.wav",
+        });
     loadSfx(SoundId::Footstep_Leaves,  {"assets/sounds/footsteps/leaves/leaves1.wav"});
     loadSfx(SoundId::Footstep_Water,   {"assets/sounds/footsteps/water/splash1.wav"});
 
     // Block break / place — keyed by material group.
-    loadSfx(SoundId::Break_Stone,  {"assets/sounds/blocks/break/stone.wav"});
-    loadSfx(SoundId::Break_Wood,   {"assets/sounds/blocks/break/wood.wav"});
-    loadSfx(SoundId::Break_Dirt,   {"assets/sounds/blocks/break/dirt.wav"});
-    loadSfx(SoundId::Break_Sand,   {"assets/sounds/blocks/break/sand.wav"});
-    loadSfx(SoundId::Break_Glass,  {"assets/sounds/blocks/break/glass.wav"});
+    loadSfx(SoundId::Break_Stone,  {
+        "assets/sounds/blocks/stone/stone1.wav",
+        "assets/sounds/blocks/stone/stone2.wav",
+        "assets/sounds/blocks/stone/stone3.wav",
+        "assets/sounds/blocks/stone/stone4.wav",
+        });
+    loadSfx(SoundId::Break_Wood,   {
+        "assets/sounds/blocks/wood/wood1.wav",
+        "assets/sounds/blocks/wood/wood2.wav",
+        "assets/sounds/blocks/wood/wood3.wav",
+        "assets/sounds/blocks/wood/wood4.wav",
+        });
+    loadSfx(SoundId::Break_Dirt,   {
+        "assets/sounds/blocks/grass/grass1.wav",
+        "assets/sounds/blocks/grass/grass2.wav",
+        "assets/sounds/blocks/grass/grass3.wav",
+        "assets/sounds/blocks/grass/grass4.wav",
+        });
+    loadSfx(SoundId::Break_Sand,   {
+        "assets/sounds/blocks/sand/sand1.wav",
+        "assets/sounds/blocks/sand/sand2.wav",
+        "assets/sounds/blocks/sand/sand3.wav",
+        "assets/sounds/blocks/sand/sand4.wav",
+        });
+    loadSfx(SoundId::Break_Gravel, {
+        "assets/sounds/blocks/gravel/gravel1.wav",
+        "assets/sounds/blocks/gravel/gravel2.wav",
+        "assets/sounds/blocks/gravel/gravel3.wav",
+        "assets/sounds/blocks/gravel/gravel4.wav",
+        });
     loadSfx(SoundId::Break_Leaves, {"assets/sounds/blocks/break/leaves.wav"});
-    loadSfx(SoundId::Place_Stone,  {"assets/sounds/blocks/place/stone.wav"});
-    loadSfx(SoundId::Place_Wood,   {"assets/sounds/blocks/place/wood.wav"});
-    loadSfx(SoundId::Place_Dirt,   {"assets/sounds/blocks/place/dirt.wav"});
-    loadSfx(SoundId::Place_Sand,   {"assets/sounds/blocks/place/sand.wav"});
-    loadSfx(SoundId::Place_Glass,  {"assets/sounds/blocks/place/glass.wav"});
+    loadSfx(SoundId::Break_Snow, {
+        "assets/sounds/blocks/snow/snow1.wav",
+        "assets/sounds/blocks/snow/snow2.wav",
+        "assets/sounds/blocks/snow/snow3.wav",
+        "assets/sounds/blocks/snow/snow4.wav",
+        });
+    loadSfx(SoundId::Place_Stone,  {
+        "assets/sounds/blocks/stone/stone1.wav",
+        "assets/sounds/blocks/stone/stone2.wav",
+        "assets/sounds/blocks/stone/stone3.wav",
+        "assets/sounds/blocks/stone/stone4.wav",
+        });
+    loadSfx(SoundId::Place_Wood,   {
+        "assets/sounds/blocks/wood/wood1.wav",
+        "assets/sounds/blocks/wood/wood2.wav",
+        "assets/sounds/blocks/wood/wood3.wav",
+        "assets/sounds/blocks/wood/wood4.wav",
+        });
+    loadSfx(SoundId::Place_Dirt,   {
+        "assets/sounds/blocks/grass/grass1.wav",
+        "assets/sounds/blocks/grass/grass2.wav",
+        "assets/sounds/blocks/grass/grass3.wav",
+        "assets/sounds/blocks/grass/grass4.wav",
+        });
+    loadSfx(SoundId::Place_Sand,   {
+        "assets/sounds/blocks/sand/sand1.wav",
+        "assets/sounds/blocks/sand/sand2.wav",
+        "assets/sounds/blocks/sand/sand3.wav",
+        "assets/sounds/blocks/sand/sand4.wav",
+        });
     loadSfx(SoundId::Place_Leaves, {"assets/sounds/blocks/place/leaves.wav"});
+    loadSfx(SoundId::Place_Snow, {
+        "assets/sounds/blocks/snow/snow1.wav",
+        "assets/sounds/blocks/snow/snow2.wav",
+        "assets/sounds/blocks/snow/snow3.wav",
+        "assets/sounds/blocks/snow/snow4.wav",
+        });
 
-    // Mobs.
-    loadSfx(SoundId::Zombie_Idle,    {"assets/sounds/mobs/zombie/idle.wav"});
-    loadSfx(SoundId::Zombie_Hurt,    {"assets/sounds/mobs/zombie/hurt.wav"});
+    // Mobs. Filenames here mirror what's actually on disk under assets/sounds/mobs/ —
+    // zombies have their own per-step set; creepers reuse the player's material footsteps.
+    loadSfx(SoundId::Zombie_Idle, {
+        "assets/sounds/mobs/zombie/say1.wav",
+        "assets/sounds/mobs/zombie/say2.wav",
+        "assets/sounds/mobs/zombie/say3.wav"});
+    loadSfx(SoundId::Zombie_Hurt, {
+        "assets/sounds/mobs/zombie/hurt1.wav",
+        "assets/sounds/mobs/zombie/hurt2.wav"});
     loadSfx(SoundId::Zombie_Death,   {"assets/sounds/mobs/zombie/death.wav"});
-    loadSfx(SoundId::Zombie_Attack,  {"assets/sounds/mobs/zombie/attack.wav"});
-    loadSfx(SoundId::Creeper_Idle,   {"assets/sounds/mobs/creeper/idle.wav"});
-    loadSfx(SoundId::Creeper_Hurt,   {"assets/sounds/mobs/creeper/hurt.wav"});
+    loadSfx(SoundId::Zombie_Step, {
+        "assets/sounds/mobs/zombie/step1.wav",
+        "assets/sounds/mobs/zombie/step2.wav",
+        "assets/sounds/mobs/zombie/step3.wav",
+        "assets/sounds/mobs/zombie/step4.wav",
+        "assets/sounds/mobs/zombie/step5.wav"});
+    // Creeper hurt reuses the say files (no dedicated hurt asset; vanilla does the same).
+    loadSfx(SoundId::Creeper_Idle, {
+        "assets/sounds/mobs/creeper/say1.wav",
+        "assets/sounds/mobs/creeper/say2.wav",
+        "assets/sounds/mobs/creeper/say3.wav",
+        "assets/sounds/mobs/creeper/say4.wav"});
+    loadSfx(SoundId::Creeper_Hurt, {
+        "assets/sounds/mobs/creeper/say1.wav",
+        "assets/sounds/mobs/creeper/say2.wav",
+        "assets/sounds/mobs/creeper/say3.wav",
+        "assets/sounds/mobs/creeper/say4.wav"});
     loadSfx(SoundId::Creeper_Death,  {"assets/sounds/mobs/creeper/death.wav"});
     loadSfx(SoundId::Creeper_Fuse,   {"assets/sounds/mobs/creeper/fuse.wav"});
-    loadSfx(SoundId::Creeper_Explode,{"assets/sounds/mobs/creeper/explode.wav"});
+    loadSfx(SoundId::Creeper_Explode, {
+        "assets/sounds/mobs/creeper/explode.wav",
+        "assets/sounds/mobs/creeper/explode1.wav",
+        "assets/sounds/mobs/creeper/explode2.wav",
+        "assets/sounds/mobs/creeper/explode3.wav",
+        "assets/sounds/mobs/creeper/explode4.wav"});
 
     // Player + UI.
     loadSfx(SoundId::Player_Jump,        {"assets/sounds/player/jump.wav"});
     loadSfx(SoundId::Player_Splash,      {"assets/sounds/player/splash.wav"});
     loadSfx(SoundId::Player_Swim,        {"assets/sounds/player/swim.wav"});
-    loadSfx(SoundId::Player_AttackSwing, {"assets/sounds/player/attack_swing.wav"});
+    loadSfx(SoundId::Player_AttackSwing, {
+        "assets/sounds/player/attack/strong1.wav",
+        "assets/sounds/player/attack/strong2.wav",
+        "assets/sounds/player/attack/strong3.wav",
+        "assets/sounds/player/attack/strong4.wav",
+        "assets/sounds/player/attack/strong5.wav",
+        "assets/sounds/player/attack/strong6.wav",
+        });
     loadSfx(SoundId::UI_Click,           {"assets/sounds/ui/button_click.wav"});
 
     // Per-biome ambient music. Streamed (no full decode in RAM).
@@ -183,10 +298,10 @@ SoLoud::Wav* AudioManager::pickVariation(SoundId id) {
 
 SoundId AudioManager::footstepFor(BlockType b) {
     switch (b) {
-        case BlockType::GRASS:           return SoundId::Footstep_Grass;
+        case BlockType::GRASS:
         case BlockType::DIRT:
         case BlockType::COARSE_DIRT:
-        case BlockType::CLAY:            return SoundId::Footstep_Dirt;
+        case BlockType::CLAY:            return SoundId::Footstep_Grass;
         case BlockType::SAND:
         case BlockType::RED_SAND:
         case BlockType::SOUL_SAND:       return SoundId::Footstep_Sand;
@@ -456,13 +571,21 @@ void AudioManager::updateFootsteps(float dt, Camera& cam, Renderer& world) {
 }
 
 void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
-    // Remote-entity footsteps. Only PLAYERs get them today — creeper/zombie audio plugs in here
-    // later (idle ambient, hurt/death edges). The local player is NOT in `livingEntities`;
-    // it lives on Camera, so we can iterate this list as "everyone but me".
+    // Drives all non-self entity audio: remote-player footsteps, mob idle/footstep/fuse, and
+    // the death/explode one-shots fired when an entity disappears from `livingEntities`.
     //
-    // Server packets don't carry velocity (NetEntityMove), so we derive horizontal speed from
-    // successive snapshot positions. Snapshots arrive at ~TPS, which is enough resolution to
-    // drive the same per-stride trigger we use for the local player.
+    // The local player lives on Camera (not in `livingEntities`), so iterating this list is
+    // effectively "everyone but me". Server packets don't carry velocity (NetEntityMove), so
+    // we derive horizontal speed from successive snapshot positions — same trick as the player
+    // branch above.
+
+    // Stall guard: a long frame (loading screen, freeze, world unload, big teleport) would otherwise
+    // mark every mob as "vanished" the next frame and burst-play a chorus of death sounds. Wipe the
+    // map and skip emission this tick instead.
+    if (dt > 0.2f) {
+        mobStates.clear();
+        return;
+    }
 
     auto localPlayer = cam.getPlayer();
     const void* localKey = localPlayer.get();
@@ -471,11 +594,15 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
         // livingEntities is std::vector<std::shared_ptr<LivingEntity>> — already strong refs.
         auto le = wle;
         if (!le) continue;
-        if (le.get() == localKey) continue;          // skip self (defensive — not normally present)
-        if (le->getLivingEntityType() != PLAYER) continue; // only player footsteps for now
+        if (le.get() == localKey) continue; // skip self (defensive — not normally present)
 
         const void* key = le.get();
         MobAudioState& st = mobStates[key];
+
+        // Stash type + position every tick so the death-edge sweep below can play a 3D one-shot
+        // at the entity's last known location after the entity itself is gone.
+        st.type    = le->getLivingEntityType();
+        st.lastPos = le->getPositionD();
 
         // Need at least two snapshots to derive a speed. Bail until we have history.
         if (le->snapshots.size() < 2) {
@@ -491,32 +618,95 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
         glm::vec2 horiz(static_cast<float>(dpos.x), static_cast<float>(dpos.z));
         float speed = glm::length(horiz) / static_cast<float>(snapDt); // m/s
 
-        if (!le->isOnGround() || speed < 0.05f) {
+        glm::dvec3 epos = st.lastPos;
+
+        // ---- footsteps -----------------------------------------------------
+        bool moving = le->isOnGround() && speed >= 0.05f;
+        if (!moving) {
             st.footstepDist = 0.0f;
-            continue;
+        } else {
+            st.footstepDist += speed * dt;
+            if (st.footstepDist >= kFootstepStrideM) {
+                st.footstepDist = 0.0f;
+
+                glm::ivec3 below = glm::ivec3(glm::floor(epos)) + glm::ivec3(0, -1, 0);
+                BlockType ground = world.getBlockWorld(below);
+                if (ground != BlockType::AIR) {
+                    switch (st.type) {
+                        case PLAYER:
+                            playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.8f);
+                            break;
+                        case ZOMBIE:
+                            // Material-independent zombie shuffle (5 variations on disk).
+                            playSfx3D(SoundId::Zombie_Step, epos, glm::vec3(0.0f), 0.7f);
+                            break;
+                        case CREEPER:
+                            // No creeper-specific step asset; fall back to material footsteps.
+                            playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.5f);
+                            break;
+                    }
+                }
+            }
         }
 
-        st.footstepDist += speed * dt;
-        if (st.footstepDist < kFootstepStrideM) continue;
-        st.footstepDist = 0.0f;
+        // ---- mob-only ambient + per-mob edges ------------------------------
+        if (st.type == ZOMBIE || st.type == CREEPER) {
+            // Seed the cooldown with a random offset so a horde doesn't chirp in lockstep on the
+            // first frame they enter the audio loop.
+            if (!st.initialized) {
+                st.idleCooldown = frand01() * 8.0f;
+                st.initialized  = true;
+            }
 
-        glm::dvec3 epos = le->getPositionD();
-        glm::ivec3 below = glm::ivec3(glm::floor(epos)) + glm::ivec3(0, -1, 0);
-        BlockType ground = world.getBlockWorld(below);
-        if (ground == BlockType::AIR) continue;
+            st.idleCooldown -= dt;
+            if (st.idleCooldown <= 0.0f) {
+                SoundId idleId = (st.type == ZOMBIE) ? SoundId::Zombie_Idle : SoundId::Creeper_Idle;
+                playSfx3D(idleId, epos, glm::vec3(0.0f), 0.7f);
+                // 6–14 s — vanilla cadence. Random within range so two nearby mobs don't sync.
+                st.idleCooldown = 6.0f + frand01() * 8.0f;
+            }
 
-        playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.8f);
+            // Creeper fuse rising-edge. clientPrimed is mirrored from NetEntityMove's 0x08 flag.
+            if (st.type == CREEPER) {
+                bool primed = false;
+                if (auto cc = std::dynamic_pointer_cast<ClientCreeper>(le))
+                    primed = cc->clientPrimed;
+                if (primed && !st.prevPrimed)
+                    playSfx3D(SoundId::Creeper_Fuse, epos, glm::vec3(0.0f), 1.0f);
+                st.prevPrimed = primed;
+            }
+        }
     }
 
-    // Sweep mobStates entries whose entity is gone, so the map doesn't grow forever.
+    // ---- death / explode sweep -------------------------------------------------
+    // Anything in `mobStates` that's no longer in `livingEntities` just disappeared this frame —
+    // fire the appropriate one-shot before erasing. Creepers that exploded were primed at vanish
+    // time; otherwise it's a regular death.
     if (!mobStates.empty()) {
         std::unordered_set<const void*> alive;
         alive.reserve(world.livingEntities.size());
         for (auto& le : world.livingEntities)
             if (le) alive.insert(le.get());
         for (auto it = mobStates.begin(); it != mobStates.end(); ) {
-            if (alive.count(it->first) == 0) it = mobStates.erase(it);
-            else ++it;
+            if (alive.count(it->first) == 0) {
+                const MobAudioState& st = it->second;
+                switch (st.type) {
+                    case CREEPER:
+                        playSfx3D(st.prevPrimed ? SoundId::Creeper_Explode
+                                                : SoundId::Creeper_Death,
+                                  st.lastPos, glm::vec3(0.0f), 1.0f);
+                        break;
+                    case ZOMBIE:
+                        playSfx3D(SoundId::Zombie_Death, st.lastPos, glm::vec3(0.0f), 1.0f);
+                        break;
+                    case PLAYER:
+                        // No remote-player death sound today.
+                        break;
+                }
+                it = mobStates.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
 }

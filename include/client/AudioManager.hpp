@@ -15,6 +15,7 @@
 #include <glm/glm.hpp>
 
 #include "Item.hpp"
+#include "LivingEntity.hpp" // for LivingEntityType in MobAudioState
 
 class Camera;
 class Renderer;
@@ -23,7 +24,6 @@ class Renderer;
 enum class SoundId {
     // Footsteps (one entry per material; manager picks a random variation file).
     Footstep_Grass,
-    Footstep_Dirt,
     Footstep_Stone,
     Footstep_Wood,
     Footstep_Sand,
@@ -37,17 +37,19 @@ enum class SoundId {
     Break_Wood,
     Break_Dirt,
     Break_Sand,
-    Break_Glass,
+    Break_Gravel,
     Break_Leaves,
+    Break_Snow,
     Place_Stone,
     Place_Wood,
     Place_Dirt,
     Place_Sand,
-    Place_Glass,
+	Place_Gravel,
     Place_Leaves,
+    Place_Snow,
 
-    // Mob sounds.
-    Zombie_Idle, Zombie_Hurt, Zombie_Death, Zombie_Attack,
+    // Mob sounds. Zombies have their own footstep set; creepers fall back to material footsteps.
+    Zombie_Idle, Zombie_Hurt, Zombie_Death, Zombie_Step,
     Creeper_Idle, Creeper_Hurt, Creeper_Death, Creeper_Fuse, Creeper_Explode,
 
     // Player.
@@ -123,7 +125,7 @@ private:
 
     // ---- volumes (cached so sliders survive restart of music tracks) ------
     float masterVolume = 1.0f;
-    float musicVolume  = 0.6f;
+    float musicVolume  = 0.0f;
     float sfxVolume    = 1.0f;
 
     // ---- footstep state ---------------------------------------------------
@@ -133,13 +135,15 @@ private:
 
     // ---- mob audio state --------------------------------------------------
     struct MobAudioState {
-        float idleCooldown   = 0.0f;
-        float footstepDist   = 0.0f;
-        float lastHealth     = 0.0f;
-        bool  initialized    = false;
-        bool  prevPrimed     = false;  // creeper edge detect
+        float            idleCooldown = 0.0f;
+        float            footstepDist = 0.0f;
+        float            lastHealth   = 0.0f;     // reserved for a future hurt edge
+        bool             initialized  = false;
+        bool             prevPrimed   = false;    // creeper fuse rising-edge detect
+        LivingEntityType type         = PLAYER;   // survives the entity for the death-edge sweep
+        glm::dvec3       lastPos{};               // last seen position, used for 3D death/explode sfx
     };
-    // Keyed by raw IClientEntity*; entries cleaned up when weak_ptr expires.
+    // Keyed by raw LivingEntity*; entries cleaned up after the entity disappears (see updateMobAudio).
     std::unordered_map<const void*, MobAudioState> mobStates{};
 
     // ---- helpers ----------------------------------------------------------
