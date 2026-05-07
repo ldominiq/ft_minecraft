@@ -146,7 +146,14 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/footsteps/gravel/gravel3.wav",
         "assets/sounds/footsteps/gravel/gravel4.wav",
         });
-    loadSfx(SoundId::Footstep_Leaves,  {"assets/sounds/footsteps/leaves/leaves1.wav"});
+    loadSfx(SoundId::Footstep_Leaves, {
+        "assets/sounds/footsteps/grass/grass1.wav",
+        "assets/sounds/footsteps/grass/grass2.wav",
+        "assets/sounds/footsteps/grass/grass3.wav",
+        "assets/sounds/footsteps/grass/grass4.wav",
+        "assets/sounds/footsteps/grass/grass5.wav",
+        "assets/sounds/footsteps/grass/grass6.wav",
+        });
     loadSfx(SoundId::Footstep_Water,   {"assets/sounds/footsteps/water/splash1.wav"});
 
     // Block break / place — keyed by material group.
@@ -211,7 +218,12 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/blocks/sand/sand3.wav",
         "assets/sounds/blocks/sand/sand4.wav",
         });
-    loadSfx(SoundId::Place_Leaves, {"assets/sounds/blocks/place/leaves.wav"});
+    loadSfx(SoundId::Place_Leaves, {
+        "assets/sounds/blocks/grass/grass1.wav",
+        "assets/sounds/blocks/grass/grass2.wav",
+        "assets/sounds/blocks/grass/grass3.wav",
+        "assets/sounds/blocks/grass/grass4.wav",
+        });
     loadSfx(SoundId::Place_Snow, {
         "assets/sounds/blocks/snow/snow1.wav",
         "assets/sounds/blocks/snow/snow2.wav",
@@ -255,11 +267,32 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/mobs/creeper/explode3.wav",
         "assets/sounds/mobs/creeper/explode4.wav"});
 
-    // Player + UI. jump/splash/swim wavs aren't on disk yet — the loader logs once and
-    // pickVariation() returns null, so the trigger code stays harmless until you drop them in.
     loadSfx(SoundId::Player_Jump,        {"assets/sounds/player/jump.wav"});
-    loadSfx(SoundId::Player_Splash,      {"assets/sounds/player/splash.wav"});
-    loadSfx(SoundId::Player_Swim,        {"assets/sounds/player/swim.wav"});
+    loadSfx(SoundId::Player_Splash,      {
+        "assets/sounds/liquids/splash.wav",
+        "assets/sounds/liquids/splash2.wav",
+        });
+    loadSfx(SoundId::Player_HeavySplash, {"assets/sounds/liquids/heavy_splash.wav"});
+    loadSfx(SoundId::Player_Swim,        {
+        "assets/sounds/liquids/swim1.wav",
+        "assets/sounds/liquids/swim2.wav",
+        "assets/sounds/liquids/swim3.wav",
+        "assets/sounds/liquids/swim4.wav",
+        "assets/sounds/liquids/swim5.wav",
+        "assets/sounds/liquids/swim6.wav",
+        "assets/sounds/liquids/swim7.wav",
+        "assets/sounds/liquids/swim8.wav",
+        "assets/sounds/liquids/swim9.wav",
+        "assets/sounds/liquids/swim10.wav",
+        "assets/sounds/liquids/swim11.wav",
+        "assets/sounds/liquids/swim12.wav",
+        "assets/sounds/liquids/swim13.wav",
+        "assets/sounds/liquids/swim14.wav",
+        "assets/sounds/liquids/swim15.wav",
+        "assets/sounds/liquids/swim16.wav",
+        "assets/sounds/liquids/swim17.wav",
+        "assets/sounds/liquids/swim18.wav",
+        });
     loadSfx(SoundId::Player_AttackSwing, {
         "assets/sounds/player/attack/strong1.wav",
         "assets/sounds/player/attack/strong2.wav",
@@ -274,7 +307,7 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/player/damage/hit1.wav",
         "assets/sounds/player/damage/hit2.wav",
         "assets/sounds/player/damage/hit3.wav"});
-    // Generic Minecraft-style "block pop" used for breaking flowers / tall grass / mushrooms.
+    // Generic Minecraft-style "block pop" used for pickup up items
     loadSfx(SoundId::Block_Pop,          {"assets/sounds/player/pop.wav"});
     loadSfx(SoundId::UI_Click,           {"assets/sounds/ui/button_click.wav"});
 
@@ -376,6 +409,7 @@ static bool isVegetation(BlockType b) {
         case BlockType::HORN_CORAL_FAN:
         case BlockType::TUBE_CORAL:
         case BlockType::TUBE_CORAL_FAN:
+        case BlockType::CACTUS:
             return true;
         default:
             return false;
@@ -383,7 +417,7 @@ static bool isVegetation(BlockType b) {
 }
 
 SoundId AudioManager::breakFor(BlockType b) {
-    if (isVegetation(b)) return SoundId::Block_Pop;
+    if (isVegetation(b)) return SoundId::Break_Dirt;
     switch (b) {
         case BlockType::GRASS:
         case BlockType::DIRT:
@@ -401,7 +435,7 @@ SoundId AudioManager::breakFor(BlockType b) {
         case BlockType::ACACIA_LEAVES:
         case BlockType::SPRUCE_LEAVES:
         case BlockType::JUNGLE_LEAVES:
-        case BlockType::DARK_OAK_LEAVES: return SoundId::Break_Leaves;
+        case BlockType::DARK_OAK_LEAVES: return SoundId::Break_Dirt;
         case BlockType::OAK_LOG:
         case BlockType::BIRCH_LOG:
         case BlockType::ACACIA_LOG:
@@ -455,7 +489,7 @@ void AudioManager::onCreeperExploded(const void* key, glm::dvec3 epos, glm::dvec
 }
 
 SoundId AudioManager::placeFor(BlockType b) {
-    if (isVegetation(b)) return SoundId::Block_Pop;
+    if (isVegetation(b)) return SoundId::Place_Dirt;
     switch (b) {
         case BlockType::GRASS:
         case BlockType::DIRT:
@@ -473,7 +507,7 @@ SoundId AudioManager::placeFor(BlockType b) {
         case BlockType::ACACIA_LEAVES:
         case BlockType::SPRUCE_LEAVES:
         case BlockType::JUNGLE_LEAVES:
-        case BlockType::DARK_OAK_LEAVES: return SoundId::Place_Leaves;
+        case BlockType::DARK_OAK_LEAVES: return SoundId::Place_Dirt;
         case BlockType::OAK_LOG:
         case BlockType::BIRCH_LOG:
         case BlockType::ACACIA_LOG:
@@ -619,6 +653,7 @@ const char* AudioManager::sfxName(SoundId id) {
         case SoundId::Creeper_Explode: return "Creeper Explode";
         case SoundId::Player_Jump:        return "Player Jump";
         case SoundId::Player_Splash:      return "Player Splash";
+        case SoundId::Player_HeavySplash: return "Player Heavy Splash";
         case SoundId::Player_Swim:        return "Player Swim";
         case SoundId::Player_AttackSwing: return "Player Attack Swing";
         case SoundId::Player_FallSmall:   return "Player Fall Small";
@@ -724,10 +759,16 @@ void AudioManager::updateFootsteps(float dt, Camera& cam, Renderer& world) {
     // The local player's own sounds are 2D — playing them as 3D emitters at the feet
     // while the listener sits at the eyes makes every step pan slightly below-and-behind
 
-    // Detect water entry → splash one-shot.
+    // Detect water entry → splash one-shot. Use prevFallDist (latched at the bottom of this
+    // function from last frame's accumulatedFallDistance) — by the time the underwater edge
+    // fires, the server has likely already zeroed the counter, same hazard the fall-landing
+    // block below documents. Threshold matches Player_FallBig's 4-block fall-damage boundary.
     bool underwater = world.isUnderwater(ppos);
     if (underwater && !prevUnderwater) {
-        playSfx2D(SoundId::Player_Splash, 1.0f);
+        if (prevFallDist >= 4.0f)
+            playSfx2D(SoundId::Player_HeavySplash, 1.0f);
+        else
+            playSfx2D(SoundId::Player_Splash, 0.4f);
     }
     prevUnderwater = underwater;
 
@@ -768,7 +809,7 @@ void AudioManager::updateFootsteps(float dt, Camera& cam, Renderer& world) {
             footstepDistance += speed * dt;
             if (footstepDistance >= kSwimStrokeM) {
                 footstepDistance = 0.0f;
-                playSfx2D(SoundId::Player_Swim, 0.7f);
+                playSfx2D(SoundId::Player_Swim, 0.1f);
             }
         }
         return;
@@ -851,34 +892,37 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
         glm::dvec3 dToListener = epos - listenerPos;
         bool audible = glm::dot(dToListener, dToListener) <= kAudibleD2;
 
-        // ---- footsteps (per-snapshot delta from cached last-consumed-pos) --
+        // ---- per-snapshot horizontal delta ---------------------------------
         // Reading dpos from snapshots[size-2..size-1] is unreliable: Renderer.cpp wipes & reseeds
         // the snapshots vector whenever there's a >100ms server-side gap (`stale` path), and the
         // reseed has both entries at the SAME position. Mobs that stop-and-go (zombie chase →
         // attack pause → chase) hit that path every cycle, losing the first move-after-idle.
         // Caching `lastConsumedPos` ourselves survives the reseed and gives us the true distance
-        // travelled since last consumption.
+        // travelled since last consumption. We compute horizDelta unconditionally so both the
+        // footstep stride and the swim stroke (PLAYER underwater) can credit it.
+        float horizDelta = 0.0f;
         if (!le->snapshots.empty()) {
             const auto& s1 = le->snapshots.back();
             if (s1.time != st.lastSnapTime) {
-                if (st.hasLastConsumedPos && le->isOnGround()) {
+                if (st.hasLastConsumedPos) {
                     glm::dvec3 dpos = s1.position - st.lastConsumedPos;
                     glm::vec2  horiz(static_cast<float>(dpos.x), static_cast<float>(dpos.z));
                     float dist = glm::length(horiz);
                     // Sanity cap: a >5m single-snapshot delta is a teleport / chunk-load, not
-                    // walking. Don't credit it as stride distance.
-                    if (dist < 5.0f)
-                        st.footstepDist += dist;
-                } else if (!le->isOnGround()) {
-                    st.footstepDist = 0.0f; // airborne — reset stride accumulator
+                    // walking/swimming. Don't credit it.
+                    if (dist < 5.0f) horizDelta = dist;
                 }
                 st.lastConsumedPos    = s1.position;
                 st.hasLastConsumedPos = true;
                 st.lastSnapTime       = s1.time;
             }
-        } else {
-            st.footstepDist = 0.0f;
         }
+
+        // ---- footstep stride accumulator (on-ground only) ------------------
+        if (le->snapshots.empty() || !le->isOnGround())
+            st.footstepDist = 0.0f; // airborne or no data — reset stride accumulator
+        else
+            st.footstepDist += horizDelta;
 
         if (st.footstepDist >= kFootstepStrideM) {
             st.footstepDist = 0.0f;
@@ -902,6 +946,40 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
                         break;
                 }
             }
+        }
+
+        // ---- water audio (PLAYER only — splash on entry, swim while submerged) ---
+        // Mirrors the local-player branch in updateFootsteps(), but emitted as 3D one-shots at
+        // the remote player's position so they pan/attenuate from the listener's POV.
+        if (st.type == PLAYER) {
+            bool   underwater   = world.isUnderwater(epos);
+            float  curFallDist  = le->getAccumulatedFallDistance();
+
+            // Water-entry rising edge → splash (random of 2 variations) or heavy splash on a
+            // fall-damage-threshold drop. Read prevFallDist (last frame's value) — server zeroes
+            // accumulatedFallDistance on contact with water, same hazard the local code documents.
+            if (underwater && !st.prevUnderwater && audible) {
+                if (st.prevFallDist >= 4.0f)
+                    playSfx3D(SoundId::Player_HeavySplash, epos, glm::vec3(0.0f), 1.0f);
+                else
+                    playSfx3D(SoundId::Player_Splash, epos, glm::vec3(0.0f), 0.4f);
+            }
+
+            // Swim strokes — accumulate horizontal travel ignoring isOnGround() (you're floating
+            // in water, not standing on the bottom). One stroke per kSwimStrokeM blocks.
+            if (underwater) {
+                st.swimDistance += horizDelta;
+                if (st.swimDistance >= kSwimStrokeM) {
+                    st.swimDistance = 0.0f;
+                    if (audible)
+                        playSfx3D(SoundId::Player_Swim, epos, glm::vec3(0.0f), 0.1f);
+                }
+            } else {
+                st.swimDistance = 0.0f;
+            }
+
+            st.prevUnderwater = underwater;
+            st.prevFallDist   = curFallDist;
         }
 
         // ---- mob-only ambient + per-mob edges ------------------------------

@@ -56,6 +56,7 @@ enum class SoundId {
     // Player.
     Player_Jump,
     Player_Splash,
+    Player_HeavySplash,
     Player_Swim,
     Player_AttackSwing,
     Player_FallSmall,    // landing after a short fall (>= 1.5 blocks, no damage)
@@ -201,6 +202,14 @@ private:
         bool             hasLastConsumedPos = false;
         // Time of the latest *consumed* snapshot, used to skip duplicate frames.
         double           lastSnapTime = -1.0;
+        // Water audio (PLAYER only). prevUnderwater latches the underwater state so we can
+        // detect the rising edge into water; prevFallDist mirrors the local-player trick of
+        // reading *last* frame's accumulatedFallDistance because the server resets it to 0 on
+        // water contact. swimDistance accumulates horizontal travel under water and fires a
+        // Player_Swim every kSwimStrokeM blocks.
+        bool             prevUnderwater = false;
+        float            prevFallDist   = 0.0f;
+        float            swimDistance   = 0.0f;
         // Latched from LivingEntity::diedByExplosion the frame before the entity vanishes; the
         // death sweep reads it to choose Creeper_Death vs Creeper_Explode (was guessed from
         // prevPrimed before, which mis-fired when a primed creeper got killed mid-fuse).
