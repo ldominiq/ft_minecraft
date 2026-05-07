@@ -15,7 +15,7 @@ class IClientEntity : public virtual LivingEntity, public virtual Character {
 		// Set by Camera each frame for the local player in third-person so the
 		// mesh position matches the interpolated camera target instead of the
 		// raw physics position, which prevents the shake.
-		glm::vec3 renderPos;
+        glm::dvec3 renderPos;
 		bool hasRenderPos = false;
 
 		// Name of the skin PNG to bind when rendering this entity. Empty string

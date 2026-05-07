@@ -12,7 +12,6 @@ App::App(const std::string& serverIp):
 
             lighting(nullptr),
             textureShader(nullptr),
-            gradientShader(nullptr),
             activeShader(nullptr) {
 
     // Pre-allocate the FPS sample buffer to avoid reallocations at runtime
@@ -47,8 +46,9 @@ void App::init(const std::string& serverIp) {
     }
 
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+	glfwWindowHint(GLFW_SAMPLES, 8); // 8x MSAA
 
     // Monitor infos
     monitor = glfwGetPrimaryMonitor();
@@ -142,6 +142,9 @@ void App::init(const std::string& serverIp) {
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
+
+    glEnable(GL_MULTISAMPLE);
+
 
     lighting->initCSMResources();
 
@@ -585,9 +588,8 @@ void App::setUdpClientPacketCallback()
 
 void App::loadResources() {
     // Load shaders and textures
-
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
-    gradientShader = std::make_shared<Shader>("shaders/gradient.vert", "shaders/gradient.frag");
+    
     // Load individual block textures into a texture array
     textureManager.loadResourcePack("assets");
 
@@ -604,6 +606,12 @@ void App::loadResources() {
     gBufferShader = std::make_shared<Shader>("shaders/ssao_geometry.vert", "shaders/ssao_geometry.frag");
     gBufferShader->use();
     gBufferShader->setInt("blockTextures", 0);
+
+    // Z-prepass shader — minimal vertex transform + alpha-test discard.
+    depthPrepassShader = std::make_shared<Shader>(
+        "shaders/terrain_depth_prepass.vert", "shaders/terrain_depth_prepass.frag");
+    depthPrepassShader->use();
+    depthPrepassShader->setInt("blockTextures", 0);
 
     // Wire the texture manager and shaders to subsystems that need them
     renderer->setTextureManager(&textureManager);
@@ -806,7 +814,9 @@ void App::render() {
 		glm::vec4 clipPlane = glm::vec4(0, -1, 0, 100000);  // No clipping
 
         // Update camera frustum for chunk culling (once per frame, before any render call)
-        renderer->updateFrustum(projection * view);
+     glm::mat4 viewRot = view;
+        viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        renderer->updateFrustum(projection * viewRot, camera->getEyePosD());
 
 
         lighting->setViewportSize(screenWidth, screenHeight);
@@ -819,7 +829,7 @@ void App::render() {
         if (lighting->isShadowsEnabled() && lighting->isSunAboveHorizon()) {
             glBeginQuery(GL_TIME_ELAPSED, queryDrawShadowsPool[currentQueryIndex]);
 
-            lighting->updateCSMShadowMaps(*renderer, view, textureManager);
+         lighting->updateCSMShadowMaps(*renderer, view, camera->getEyePosD(), textureManager);
 
             glEndQuery(GL_TIME_ELAPSED);
             shadowQueryIssuedThisFrame[currentQueryIndex] = true;
@@ -836,10 +846,10 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
-            renderer->render(textureShader);
+            renderer->render(textureShader, view, camera->getEyePosD());
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
 
@@ -851,10 +861,10 @@ void App::render() {
             textureShader->setVec4("clipPlane", clipPlane);
             textureShader->setMat4("view", view);
             textureShader->setMat4("projection", projection);
-            lighting->uploadLightingUniforms(*textureShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+            lighting->uploadLightingUniforms(*textureShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
             glActiveTexture(GL_TEXTURE0);
             textureManager.bind(GL_TEXTURE0);
-            renderer->render(textureShader);
+            renderer->render(textureShader, view, camera->getEyePosD());
             renderTypeFramebuffer->unbindCurrentFrameBuffer();
         }
 
@@ -876,8 +886,10 @@ void App::render() {
             gBufferShader->use();
             gBufferShader->setMat4("view", view);
             gBufferShader->setMat4("projection", projection);
+            gBufferShader->setBool("useAlphaTest",
+                ChunkRenderer::sLeafRenderMode != ChunkRenderer::LeafRenderMode::Fast);
             textureManager.bind(GL_TEXTURE0);
-            renderer->render(gBufferShader);
+            renderer->render(gBufferShader, view, camera->getEyePosD(), false);
 
             gBuffer->unbind();
         }
@@ -946,7 +958,7 @@ void App::render() {
         camera->drawWireframeSelectedBlockFace(renderer, view, projection);
 
         // Draw chunk boundary overlay (if enabled)
-        chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), view, projection, *renderer);
+        chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), camera->getEyePosD(), view, projection, *renderer);
 
         glBindVertexArray(0);
         {
@@ -1140,7 +1152,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     activeShader->setVec4("clipPlane", clipPlane);
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
-    lighting->uploadLightingUniforms(*activeShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+   lighting->uploadLightingUniforms(*activeShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
     lighting->uploadUnderwaterUniforms(*activeShader);
     activeShader->setBool("cameraUnderwater", cameraUnderwater);
     lighting->uploadCSMUniforms(*activeShader, view);
@@ -1173,7 +1185,9 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setVec4("clipPlane", clipPlane);
         vegShader->setMat4("view", view);
         vegShader->setMat4("projection", projection);
-        vegShader->setVec3("viewPos", camera->getPlayer()->getPosition());
+        // Vegetation fragments now use FragPosRel (camera-relative) for fog distances,
+        // so viewPos is the origin of render space — vec3(0).
+        vegShader->setVec3("viewPos", glm::vec3(0.0f));
 
         // Use the same day/night cycle as the main lighting system
         glm::vec3 sunDir = lighting->getDirectionalLightDirection();
@@ -1190,6 +1204,11 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setVec3("ambientColor", ambientColor);
         vegShader->setFloat("time", static_cast<float>(glfwGetTime()));
         vegShader->setFloat("seaLevel", 64.0f);
+
+        // Graphics-quality knobs (sway tier, distance LOD, density skip)
+        vegShader->setInt  ("vegetationSwayQuality",  renderer->getVegetationSwayQuality());
+        vegShader->setFloat("vegetationSwayMaxDist",  renderer->getVegetationSwayMaxDistance());
+        vegShader->setInt  ("vegetationDensity",      renderer->getVegetationDensity());
 
         // Underwater fog for vegetation
         vegShader->setBool("cameraUnderwater", cameraUnderwater);
@@ -1208,11 +1227,47 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         activeShader->use(); // Switch back to main shader
     }
 
+    // Derive the alpha-test flag from the current leaf-render mode.
+    // Fast leaves are opaque (no discard); Fancy/Smart keep the cutout test.
+    const bool leafAlphaTest =
+        (ChunkRenderer::sLeafRenderMode != ChunkRenderer::LeafRenderMode::Fast);
+    activeShader->use();
+    activeShader->setBool("useAlphaTest", leafAlphaTest);
+
     glBeginQuery(GL_TIME_ELAPSED, queryRenderShaderPool[currentQueryIndex]);
-    renderer->render(activeShader);
+    if (depthPrepassEnabled) {
+        // ── Z-prepass ────────────────────────────────────────────────
+        // Render terrain depth-only with color writes off. Subsequent color
+        // pass uses GL_EQUAL so each pixel only runs the heavy lighting
+        // shader once, regardless of overdraw — big win in dense jungle.
+        depthPrepassShader->use();
+        depthPrepassShader->setMat4("projection", projection);
+        depthPrepassShader->setVec4("clipPlane", clipPlane);
+        depthPrepassShader->setBool("useAlphaTest", leafAlphaTest);
+        textureManager.bind(GL_TEXTURE0); // for alpha test on leaves
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        renderer->renderTerrainOnly(depthPrepassShader, view, camera->getEyePosD());
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+        // ── Color pass: terrain only, GL_EQUAL ────────────────────────
+        glDepthFunc(GL_EQUAL);
+        glDepthMask(GL_FALSE);  // prepass already wrote depth; no need to write it again
+        // Tiny tweak: with prepass, the alpha discard in the color shader
+        // is redundant (same texels were already discarded in prepass).
+        // Leaving it in is harmless and avoids a separate shader variant.
+        renderer->renderTerrainOnly(activeShader, view, camera->getEyePosD());
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+
+        // ── Vegetation pass (LESS depth, no prepass) ──────────────────
+        renderer->renderVegetationOnly(view, camera->getEyePosD());
+        activeShader->use();
+    } else {
+        renderer->render(activeShader, view, camera->getEyePosD());
+    }
     glEndQuery(GL_TIME_ELAPSED);
 
-    lighting->drawLightCubes(view, projection);
+    lighting->drawLightCubes(view, projection, camera->getEyePosD());
 
 	// Check if the entity is within the player's load radius
 	auto updateDrawState = [&](auto &entity)
@@ -1238,7 +1293,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		entity->lerp(clientTime + intraTick - delay);
 	}
     glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
-	m_itemPropEntityManager->draw(projection, view, renderer->itemEntities);
+	m_itemPropEntityManager->draw(projection, view, camera->getEyePosD(), renderer->itemEntities);
 	glEndQuery(GL_TIME_ELAPSED);
 
 	//mobs
@@ -1256,7 +1311,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		updateDrawState(entity);
 
 		static bool firstFrame = true;
-		if (!entity->snapshots.empty() && entity->getPosition() == entity->snapshots.back().position && !firstFrame) { 
+     if (!entity->snapshots.empty() && entity->getPositionD() == entity->snapshots.back().position && !firstFrame) {
             entity->positionUpdated = false; 
         }
 		firstFrame = false;
@@ -1267,13 +1322,13 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 	// reconciliation cycle updating the raw physics position mid-frame.
 	auto &localPlayer = *camera->getPlayer();
 	if (camera->isThirdPersonCameraActive()) {
-		localPlayer.renderPos = camera->getInterpolatedPlayerPos();
+		localPlayer.renderPos = camera->getInterpolatedPlayerPosD();
 		localPlayer.hasRenderPos = true;
 	} else {
 		localPlayer.hasRenderPos = false;
 	}
 
-	renderer->drawCharacters(projection, view, deltaTime);
+  renderer->drawCharacters(projection, view, camera->getEyePosD(), deltaTime);
 }
 
 void App::computeDebugStats()
@@ -1292,8 +1347,8 @@ void App::computeDebugStats()
         size_t waterVerts = 0;
         for (auto& weakChunk : renderer->getRenderedChunks()) {
             if (auto chunk = weakChunk.lock()) {
-                solidVerts += chunk->getMeshVerticesSize() / 11;
-                waterVerts += chunk->getWaterMeshVerticesSize() / 11;
+                solidVerts += chunk->getMeshVertexCount();
+                waterVerts += chunk->getWaterMeshVertexCount();
             }
         }
         const size_t totalVerts      = solidVerts + waterVerts;
@@ -1431,7 +1486,7 @@ void App::debugWindow() {
 
                     // Teleport (collapsible)
                     if (ImGui::CollapsingHeader("Teleport")) {
-                        static int tpX = 0;
+                        static int tpX = 5000000;
                         static int tpY = 100;
                         static int tpZ = 0;
 
@@ -1564,6 +1619,169 @@ void App::debugWindow() {
                     ImGui::EndTabItem();
                 }
 
+                if (ImGui::BeginTabItem("Graphics Quality")) {
+                    // Preset buttons — apply shadow + water + vegetation + SSAO together.
+                    if (ImGui::Button("Performance")) {
+                        // Shadows
+                        lighting->setCascadeCount(2);
+                        lighting->setShadowMapResolution(1024);
+                        lighting->setShadowFarPlane(250.0f);
+                        lighting->setPcfQuality(Lighting::PcfQuality::Low);
+                        lighting->setShadowAlphaTest(false);
+                        // Water — disable reflection, half-res refraction without vegetation
+                        waterRenderer->setReflectionEnabled(false);
+                        waterRenderer->setRefractionResolutionScale(0.5f, screenWidth, screenHeight);
+                        waterRenderer->setRefractionVegetationEnabled(false);
+                        waterRenderer->setReflectionMaxDistance(0.0f);
+                        // Vegetation distance limiter (jungle scenes)
+                        renderer->setVegetationMaxDistance(100.0f);
+                        // Vegetation: no sway, half density — biggest jungle win
+                        renderer->setVegetationSwayQuality(0);
+                        renderer->setVegetationSwayMaxDistance(0.0f);
+                        renderer->setVegetationDensity(2);
+                        depthPrepassEnabled = true;
+                        // Performance: solid-cube leaves, no alpha test.
+                        ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Fast;
+                        for (auto &cp : renderer->getRenderedChunks()) if (auto c = cp.lock()) c->buildMesh();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Balanced")) {
+                        lighting->setCascadeCount(3);
+                        lighting->setShadowMapResolution(2048);
+                        lighting->setShadowFarPlane(350.0f);
+                        lighting->setPcfQuality(Lighting::PcfQuality::Medium);
+                        lighting->setShadowAlphaTest(false);
+                        waterRenderer->setReflectionEnabled(true);
+                        waterRenderer->setRefractionResolutionScale(0.5f, screenWidth, screenHeight);
+                        waterRenderer->setRefractionVegetationEnabled(true);
+                        waterRenderer->setReflectionMaxDistance(120.0f);
+                        renderer->setVegetationMaxDistance(200.0f);
+                        // Cheap sway, full density, fade out near the cull distance
+                        renderer->setVegetationSwayQuality(1);
+                        renderer->setVegetationSwayMaxDistance(150.0f);
+                        renderer->setVegetationDensity(1);
+                        depthPrepassEnabled = true;
+                        // Balanced: keep leaf cutouts on outer surfaces, skip internal faces.
+                        ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Smart;
+                        for (auto &cp : renderer->getRenderedChunks()) if (auto c = cp.lock()) c->buildMesh();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("High")) {
+                        lighting->setCascadeCount(3);
+                        lighting->setShadowMapResolution(2048);
+                        lighting->setShadowFarPlane(500.0f);
+                        lighting->setPcfQuality(Lighting::PcfQuality::High);
+                        lighting->setShadowAlphaTest(true);
+                        waterRenderer->setReflectionEnabled(true);
+                        waterRenderer->setRefractionResolutionScale(1.0f, screenWidth, screenHeight);
+                        waterRenderer->setRefractionVegetationEnabled(true);
+                        waterRenderer->setReflectionMaxDistance(0.0f);
+                        renderer->setVegetationMaxDistance(0.0f);
+                        // Full sway, no LOD, full density
+                        renderer->setVegetationSwayQuality(2);
+                        renderer->setVegetationSwayMaxDistance(0.0f);
+                        renderer->setVegetationDensity(1);
+                        depthPrepassEnabled = true;
+                        // High: original look — leaves transparent, every face emitted.
+                        ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Fancy;
+                        for (auto &cp : renderer->getRenderedChunks()) if (auto c = cp.lock()) c->buildMesh();
+                    }
+
+                    ImGui::SeparatorText("Shadow Map");
+                    static const int kRes[] = { 512, 1024, 2048, 4096 };
+                    int curResIdx = 1;
+                    for (int i = 0; i < 4; ++i) if ((int)lighting->getShadowMapResolution() == kRes[i]) curResIdx = i;
+                    if (ImGui::Combo("Resolution", &curResIdx, "512\0001024\0002048\0004096\000"))
+                        lighting->setShadowMapResolution(kRes[curResIdx]);
+
+                    int cascades = lighting->getCascadeCount();
+                    if (ImGui::SliderInt("Cascades", &cascades, 2, 3))
+                        lighting->setCascadeCount(cascades);
+
+                    float farP = lighting->getShadowFarPlane();
+                    if (ImGui::SliderFloat("Shadow Distance", &farP, 100.0f, 1000.0f, "%.0f"))
+                        lighting->setShadowFarPlane(farP);
+
+                    ImGui::SeparatorText("Filtering");
+                    int pcf = static_cast<int>(lighting->getPcfQuality());
+                    if (ImGui::Combo("PCF Quality", &pcf, "Low (1 tap)\0Medium (3x3)\0High (5x5)\0"))
+                        lighting->setPcfQuality(static_cast<Lighting::PcfQuality>(pcf));
+
+                    bool alpha = lighting->getShadowAlphaTest();
+                    if (ImGui::Checkbox("Leaf shadows (alpha-tested)", &alpha))
+                        lighting->setShadowAlphaTest(alpha);
+
+                    ImGui::SeparatorText("Water");
+                    bool reflEnabled = waterRenderer->isReflectionEnabled();
+                    if (ImGui::Checkbox("Water reflection", &reflEnabled))
+                        waterRenderer->setReflectionEnabled(reflEnabled);
+
+                    float reflMax = waterRenderer->getReflectionMaxDistance();
+                    if (ImGui::SliderFloat("Reflection distance (0 = no cap)", &reflMax, 0.0f, 500.0f, "%.0f"))
+                        waterRenderer->setReflectionMaxDistance(reflMax);
+
+                    float refrScale = waterRenderer->getRefractionResolutionScale();
+                    if (ImGui::SliderFloat("Refraction resolution", &refrScale, 0.25f, 1.0f, "%.2fx"))
+                        waterRenderer->setRefractionResolutionScale(refrScale, screenWidth, screenHeight);
+
+                    bool refrVeg = waterRenderer->isRefractionVegetationEnabled();
+                    if (ImGui::Checkbox("Vegetation in refraction", &refrVeg))
+                        waterRenderer->setRefractionVegetationEnabled(refrVeg);
+
+                    ImGui::SeparatorText("Vegetation");
+                    float vegDist = renderer->getVegetationMaxDistance();
+                    if (ImGui::SliderFloat("Vegetation distance (0 = no cap)", &vegDist, 0.0f, 400.0f, "%.0f"))
+                        renderer->setVegetationMaxDistance(vegDist);
+
+                    int swayQ = renderer->getVegetationSwayQuality();
+                    if (ImGui::Combo("Wind sway quality", &swayQ,
+                                     "None (cheapest)\0Low (1 sin)\0High (current)\0"))
+                        renderer->setVegetationSwayQuality(swayQ);
+
+                    float swayDist = renderer->getVegetationSwayMaxDistance();
+                    if (ImGui::SliderFloat("Sway LOD distance (0 = no fade)", &swayDist, 0.0f, 300.0f, "%.0f"))
+                        renderer->setVegetationSwayMaxDistance(swayDist);
+
+                    int density = renderer->getVegetationDensity();
+                    if (ImGui::SliderInt("Density (render every Nth)", &density, 1, 4))
+                        renderer->setVegetationDensity(density);
+
+                    ImGui::SeparatorText("Ambient Occlusion");
+                    bool ssaoOn = ssao->isEnabled();
+                    if (ImGui::Checkbox("SSAO (kills 12 ms when off)", &ssaoOn))
+                        ssao->setEnabled(ssaoOn);
+
+                    ImGui::SeparatorText("Terrain");
+                    ImGui::Checkbox("Z-prepass (kills fragment overdraw)", &depthPrepassEnabled);
+
+                    ImGui::Separator();
+                    ImGui::TextWrapped("Leaf rendering. Switching modes only affects new mesh builds.");
+                    int leafMode = static_cast<int>(ChunkRenderer::sLeafRenderMode);
+                    if (ImGui::Combo("Leaf mode", &leafMode,
+                                     "Fast (opaque leaves, no cutouts)\0"
+                                     "Fancy (transparent, all faces)\0"
+                                     "Smart (cutouts, fewer faces)\0")) {
+                        ChunkRenderer::sLeafRenderMode = static_cast<ChunkRenderer::LeafRenderMode>(leafMode);
+                        for (auto &chunkPtr : renderer->getRenderedChunks())
+                            if (auto chunk = chunkPtr.lock())
+                                chunk->buildMesh();
+                    }
+                    ImGui::SetItemTooltip(
+                        "Fast  — leaves render as solid green cubes. Mesher culls leaf-to-leaf and solid-to-leaf faces. Cheapest.\n"
+                        "Fancy — original look: leaves are alpha-tested, every face emitted (you can see leaves through other leaves). Most expensive.\n"
+                        "Smart — leaves keep alpha cutouts on outer faces, but mesher skips internal faces. Hollow canopies; recommended balance.");
+
+                    if (ImGui::Button("Rebuild all chunk meshes")) {
+                        for (auto &chunkPtr : renderer->getRenderedChunks())
+                            if (auto chunk = chunkPtr.lock())
+                                chunk->buildMesh();
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(or press F3+A)");
+
+                    ImGui::EndTabItem();
+                }
+
                 // ── Rendering ────────────────────────────────────────────
                 if (ImGui::BeginTabItem("Rendering"))
                 {
@@ -1575,8 +1793,6 @@ void App::debugWindow() {
                                 glfwSwapInterval(vsync ? 1 : 0);
                             if (ImGui::Checkbox("Wireframe", &wireframe))
                                 glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-                            if (ImGui::Checkbox("Use Gradient Shader", &useGradientShader))
-                                activeShader = useGradientShader ? gradientShader : textureShader;
                             ImGui::RadioButton("Lighting render", &selectedRenderType, 0); ImGui::SameLine();
                             ImGui::RadioButton("Normals render",  &selectedRenderType, 1); ImGui::SameLine();
                             ImGui::RadioButton("Depth render",    &selectedRenderType, 2);
@@ -1599,6 +1815,10 @@ void App::debugWindow() {
                             bool ssaoEnabled = ssao->isEnabled();
                             if (ImGui::Checkbox("SSAO", &ssaoEnabled))
                                 ssao->setEnabled(ssaoEnabled);
+
+							bool msaaEnabled = renderer->isMSAAEnabled();
+							if (ImGui::Checkbox("MSAA", &msaaEnabled))
+								renderer->setMSAAEnabled(msaaEnabled);
                             
                             ImGui::SliderFloat("Clipping plane Distance", &renderDistance, 100.0f, 2000.0f);
                             
@@ -1705,6 +1925,7 @@ void App::debugWindow() {
                                 lighting->setShadowMapMaxBias(shadowMaxBias);
                             ImGui::EndTabItem();
                         }
+                        
                         if (ImGui::BeginTabItem("Directional Light"))
                         {
                             bool directionalLightOn = lighting->isDirectionalLightOn();
@@ -2422,18 +2643,6 @@ void App::processInput() {
         }
         if (glfwGetKey(window, controlsArray[TOGGLE_WIREFRAME]) == GLFW_RELEASE) {
             f1Held = false;
-        }
-
-        // Toggle Shader (switch between texture and gradient shader).  When
-        // useGradientShader is true we use gradientShader; otherwise we use
-        // textureShader.
-        if (glfwGetKey(window, controlsArray[TOGGLE_SHADER]) == GLFW_PRESS && !f2Held) {
-            useGradientShader = !useGradientShader;
-            activeShader = useGradientShader ? gradientShader : textureShader;
-            f2Held = true;
-        }
-        if (glfwGetKey(window, controlsArray[TOGGLE_SHADER]) == GLFW_RELEASE) {
-            f2Held = false;
         }
 
     }

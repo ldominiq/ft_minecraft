@@ -2,6 +2,7 @@
 
 in VS_OUT {
     vec3 FragPos;
+    vec3 FragPosRel;
     vec3 Normal;
     vec2 TexCoord;
     float TexLayer;
@@ -40,8 +41,9 @@ uniform mat4 lightSpaceMatrices[MAX_CASCADES];
 uniform float cascadePlaneDistances[MAX_CASCADES - 1];
 uniform int cascadeCount;
 uniform float farPlane;
-uniform mat4 view;
+uniform mat4 viewRot;
 uniform bool shadowsEnabled;
+uniform int pcfQuality; // 0=1-tap, 1=3x3, 2=5x5
 
 #include "sky_common.glsl"
 
@@ -72,7 +74,7 @@ void main() {
     // Compute shadow from CSM (if enabled and in sunlight)
     float shadow = 0.0;
     if (shadowsEnabled && fs_in.SkyLight > 0.01 && lightDirNorm.y > 0.0) {
-        shadow = computeVegetationShadow(fs_in.FragPos);
+        shadow = computeVegetationShadow(fs_in.FragPosRel);
     }
 
     // Combine skylight and block light: use the maximum of the two
@@ -96,8 +98,9 @@ void main() {
 
     // Apply camera underwater fog (when viewing from underwater)
     if (cameraUnderwater) {
-        // Distance-based fog for vegetation
-        float distance = length(viewPos - fs_in.FragPos);
+        // Distance-based fog for vegetation. Use FragPosRel so distance stays
+        // accurate at large world coordinates (FragPos at 5M is float-quantized).
+        float distance = length(fs_in.FragPosRel);
         float fogFactor = exp(-distance * underwaterFogDensity);
         fogFactor = clamp(fogFactor, 0.0, 1.0);
 
@@ -106,11 +109,11 @@ void main() {
         result = mix(underwaterFogColor, tintedColor, fogFactor);
     }
 
-    
+
     if (fogEnabled && !cameraUnderwater) {
-        float dist = length(fs_in.FragPos - viewPos);
+        float dist = length(fs_in.FragPosRel);
         float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
-        vec3 fogDir = normalize(fs_in.FragPos - viewPos);
+        vec3 fogDir = normalize(fs_in.FragPosRel);
         result = mix(sampleSkyColor(skyLUT, fogDir, -lightDir, skyExposure), result, fogFactor);
     }
 
@@ -119,13 +122,13 @@ void main() {
 
 // Simplified CSM shadow calculation for vegetation
 // Uses simpler bias and no complex normal offsetting since vegetation uses upward normal
-float computeVegetationShadow(vec3 fragPosWorldSpace)
+float computeVegetationShadow(vec3 fragPosRel)
 {
     if (cascadeCount == 0)
         return 0.0;
 
     // Find fragment depth in view space to select cascade
-    vec4 fragPosViewSpace = view * vec4(fragPosWorldSpace, 1.0);
+    vec4 fragPosViewSpace = viewRot * vec4(fragPosRel, 1.0);
     float depthValue = abs(fragPosViewSpace.z);
 
     // Select cascade layer
@@ -140,7 +143,7 @@ float computeVegetationShadow(vec3 fragPosWorldSpace)
     }
 
     // Transform to light space
-    vec4 fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
+    vec4 fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosRel, 1.0);
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
@@ -159,12 +162,13 @@ float computeVegetationShadow(vec3 fragPosWorldSpace)
 
     float biasedDepth = projCoords.z - bias;
 
-    // PCF sampling: 3x3 for first cascade, 5x5 for others
+    // PCF sampling: quality controlled by pcfQuality uniform (uniform branch = free)
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMapArray, 0));
     float shadow = 0.0;
 
-    if (layer == 0)
-    {
+    if (pcfQuality == 0) {
+        shadow = texture(shadowMapArray, vec4(projCoords.xy, float(layer), biasedDepth));
+    } else if (pcfQuality == 1) {
         for (int x = -1; x <= 1; ++x)
             for (int y = -1; y <= 1; ++y)
             {
@@ -172,9 +176,7 @@ float computeVegetationShadow(vec3 fragPosWorldSpace)
                 shadow += texture(shadowMapArray, vec4(sampleUV, float(layer), biasedDepth));
             }
         shadow /= 9.0;
-    }
-    else
-    {
+    } else {
         for (int x = -2; x <= 2; ++x)
             for (int y = -2; y <= 2; ++y)
             {
@@ -198,7 +200,7 @@ float computeVegetationShadow(vec3 fragPosWorldSpace)
             float blendFactor = clamp((depthValue - blendStart) / (cascadeFar - blendStart), 0.0, 1.0);
 
             // Sample next cascade
-            vec4 nextLightSpace = lightSpaceMatrices[layer + 1] * vec4(fragPosWorldSpace, 1.0);
+            vec4 nextLightSpace = lightSpaceMatrices[layer + 1] * vec4(fragPosRel, 1.0);
             vec3 nextCoords = nextLightSpace.xyz / nextLightSpace.w;
             nextCoords = nextCoords * 0.5 + 0.5;
 
@@ -209,13 +211,26 @@ float computeVegetationShadow(vec3 fragPosWorldSpace)
                 float nextDepth = nextCoords.z - nextBias;
                 float nextShadow = 0.0;
 
-                for (int x = -2; x <= 2; ++x)
-                    for (int y = -2; y <= 2; ++y)
-                    {
-                        vec2 sampleUV = nextCoords.xy + vec2(x, y) * texelSize;
-                        nextShadow += texture(shadowMapArray, vec4(sampleUV, float(layer + 1), nextDepth));
-                    }
-                nextShadow = 1.0 - (nextShadow / 25.0);
+                if (pcfQuality == 0) {
+                    nextShadow = texture(shadowMapArray, vec4(nextCoords.xy, float(layer + 1), nextDepth));
+                } else if (pcfQuality == 1) {
+                    for (int x = -1; x <= 1; ++x)
+                        for (int y = -1; y <= 1; ++y)
+                        {
+                            vec2 sampleUV = nextCoords.xy + vec2(x, y) * texelSize;
+                            nextShadow += texture(shadowMapArray, vec4(sampleUV, float(layer + 1), nextDepth));
+                        }
+                    nextShadow /= 9.0;
+                } else {
+                    for (int x = -2; x <= 2; ++x)
+                        for (int y = -2; y <= 2; ++y)
+                        {
+                            vec2 sampleUV = nextCoords.xy + vec2(x, y) * texelSize;
+                            nextShadow += texture(shadowMapArray, vec4(sampleUV, float(layer + 1), nextDepth));
+                        }
+                    nextShadow /= 25.0;
+                }
+                nextShadow = 1.0 - nextShadow;
 
                 shadow = mix(shadow, nextShadow, blendFactor);
             }

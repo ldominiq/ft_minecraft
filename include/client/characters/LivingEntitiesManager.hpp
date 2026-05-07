@@ -22,7 +22,8 @@ class LivingEntitiesManager
 		~LivingEntitiesManager();
 
 		void add(std::weak_ptr<IClientEntity> character);
-		void draw(const glm::mat4 &projection, const glm::mat4 &view, const float deltatima);
+       void draw(const glm::mat4 &projection, const glm::mat4 &view,
+				  const glm::dvec3& eyePos, const float deltatima);
 };
 
 #endif

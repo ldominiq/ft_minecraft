@@ -16,7 +16,7 @@ void Shape::setSkinBox(const std::array<glm::vec4, 6>& uvs)
 //assumes the shader is already in use
 void Shape::draw(const glm::mat4 &mvp, const Shader &shader)
 {
-	shader.setMat4("uMVP", mvp);
+    shader.setMat4("uModelRel", mvp);
 	shader.setVec3("uColor", color);
 	GLint loc = glGetUniformLocation(shader.ID, "uFaceUVs");
 	if (loc >= 0)
@@ -26,8 +26,9 @@ void Shape::draw(const glm::mat4 &mvp, const Shader &shader)
 
 void Shape::drawScene(const Shader &shader, const glm::mat4& proj, const glm::mat4& view)
 {
-	glm::mat4 pvm = proj * view * transform;
-	draw(pvm, shader);
+    (void)proj;
+	(void)view;
+	draw(transform, shader);
 	for (std::shared_ptr<Space> &child : childs)
 		child->drawScene(shader, proj, view);
 }
@@ -36,8 +37,9 @@ void Shape::compute(const glm::mat4 &parentTransform, const glm::mat4& proj, con
 {
 	transform = parentTransform * extractScaleInverse(totalScale) * rotation * totalScale * scale * translation;
 
-	glm::mat4 pvm = proj * view * transform;
-	draw(pvm, shader);
+    (void)proj;
+	(void)view;
+	draw(transform, shader);
 
 	totalScale = totalScale * scale;
 	for (std::shared_ptr<Space> &child : childs)

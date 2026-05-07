@@ -12,7 +12,7 @@ class ItemPropEntity : public ItemEntity
 	std::vector<float> meshVertices;
 
 	public:
-		void createMesh(std::vector<float> &meshVertices, const TextureManager* texMgr = nullptr) override;
+		void createMesh(std::vector<float> &meshVertices, const glm::dvec3& eyePos, const TextureManager* texMgr = nullptr) override;
 
 		ItemPropEntity(const glm::vec3 &position, float yaw, ItemType type, entityID ID);
 		~ItemPropEntity();

@@ -440,8 +440,8 @@ inline static bool isBlockVegetation(const BlockType &b) {
 	}
 }
 
-inline static bool isBlockTransparent(const BlockType &b) { 
-	switch (b) { 
+inline static bool isBlockTransparent(const BlockType &b) {
+	switch (b) {
 		case BlockType::OAK_LEAVES:
 		case BlockType::BIRCH_LEAVES:
 		case BlockType::ACACIA_LEAVES:
@@ -449,6 +449,20 @@ inline static bool isBlockTransparent(const BlockType &b) {
 		case BlockType::SPRUCE_LEAVES:
 		case BlockType::DARK_OAK_LEAVES:
 		case BlockType::CACTUS:
+			return true;
+		default:
+			return false;
+	}
+}
+
+inline static bool isBlockLeaves(const BlockType &b) {
+	switch (b) {
+		case BlockType::OAK_LEAVES:
+		case BlockType::BIRCH_LEAVES:
+		case BlockType::ACACIA_LEAVES:
+		case BlockType::JUNGLE_LEAVES:
+		case BlockType::SPRUCE_LEAVES:
+		case BlockType::DARK_OAK_LEAVES:
 			return true;
 		default:
 			return false;

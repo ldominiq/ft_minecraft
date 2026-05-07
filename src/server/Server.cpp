@@ -801,9 +801,9 @@ void Server::despawnDistantMobs()
 			pkt.eEntityType = e->getEntityType();
 			pkt.entityID = e->getID();
 			pkt.type = -1;
-			pkt.positionX = e->getPosition().x;
-			pkt.positionY = e->getPosition().y;
-			pkt.positionZ = e->getPosition().z;
+			pkt.positionX = e->getPositionD().x;
+			pkt.positionY = e->getPositionD().y;
+			pkt.positionZ = e->getPositionD().z;
 			pkt.yaw = e->yaw;
 			for (const auto &p : players)
 				sendPacketTo(pkt, p.addr);
@@ -863,9 +863,9 @@ void Server::sendDeaths()
 			pkt.eEntityType = ent->getEntityType();
 			pkt.entityID    = ent->getID();
 			pkt.type        = static_cast<uint16_t>(-1);
-			pkt.positionX   = ent->getPosition().x;
-			pkt.positionY   = ent->getPosition().y;
-			pkt.positionZ   = ent->getPosition().z;
+			pkt.positionX   = ent->getPositionD().x;
+			pkt.positionY   = ent->getPositionD().y;
+			pkt.positionZ   = ent->getPositionD().z;
 			pkt.yaw         = ent->yaw;
 			pkt.pitch		= ent->pitch;
 			pkt.positionFlags = 0;
@@ -982,9 +982,9 @@ void Server::sendPositionDeltas(CPlayerInfo &player)
 
  	pkt.serverClientReconciliationTick = player.movement->getLastAppliedServerClientReconciliationTick();
 
-	pkt.positionX = player.movement->getPosition().x;
-	pkt.positionY = player.movement->getPosition().y;
-	pkt.positionZ = player.movement->getPosition().z;
+	pkt.positionX = player.movement->getPositionD().x;
+	pkt.positionY = player.movement->getPositionD().y;
+	pkt.positionZ = player.movement->getPositionD().z;
 
 	pkt.velocityX = player.movement->getVelocity().x;
 	pkt.velocityY = player.movement->getVelocity().y;
@@ -1027,9 +1027,9 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.entityID = entity->getID();
 			pkt.type = static_cast<LivingEntityType>(entity->getLivingEntityType());
 
-			pkt.positionX = entity->getPosition().x;
-			pkt.positionY = entity->getPosition().y;
-			pkt.positionZ = entity->getPosition().z;
+			pkt.positionX = entity->getPositionD().x;
+			pkt.positionY = entity->getPositionD().y;
+			pkt.positionZ = entity->getPositionD().z;
 
 			pkt.yaw = entity->yaw;
 
@@ -1062,9 +1062,9 @@ void Server::sendEntitiesPositionDeltas()
 
 			pkt.type = entity->getItemID();
 
-			pkt.positionX = entity->getPosition().x;
-			pkt.positionY = entity->getPosition().y;
-			pkt.positionZ = entity->getPosition().z;
+			pkt.positionX = entity->getPositionD().x;
+			pkt.positionY = entity->getPositionD().y;
+			pkt.positionZ = entity->getPositionD().z;
 
 			pkt.yaw = entity->yaw;
 
@@ -1235,9 +1235,9 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			pkt->entityID = entity->getID();
 			pkt->type = static_cast<LivingEntityType>(entity->getLivingEntityType());
 
-			pkt->positionX = entity->getPosition().x;
-			pkt->positionY = entity->getPosition().y;
-			pkt->positionZ = entity->getPosition().z;
+			pkt->positionX = entity->getPositionD().x;
+			pkt->positionY = entity->getPositionD().y;
+			pkt->positionZ = entity->getPositionD().z;
 
 			pkt->yaw = entity->yaw;
 			pkt->pitch = entity->pitch;
@@ -1255,9 +1255,9 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			pkt->entityID = entity->getID();
 			pkt->type = static_cast<ItemID>(entity->getItemID());
 
-			pkt->positionX = entity->getPosition().x;
-			pkt->positionY = entity->getPosition().y;
-			pkt->positionZ = entity->getPosition().z;
+			pkt->positionX = entity->getPositionD().x;
+			pkt->positionY = entity->getPositionD().y;
+			pkt->positionZ = entity->getPositionD().z;
 
 			pkt->yaw = entity->yaw;
 

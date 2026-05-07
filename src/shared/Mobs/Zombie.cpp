@@ -35,10 +35,10 @@ void Zombie::tickAI(const ICommonWorld &world, const std::vector<std::shared_ptr
 
 	isChasing = target != nullptr;
 	if (target) {
-		glm::vec3 d = target->getPosition() - this->position;
-		float distH = std::sqrt(d.x * d.x + d.z * d.z);
+		glm::dvec3 d = target->getPositionD() - this->position;
+		float distH = static_cast<float>(std::sqrt(d.x * d.x + d.z * d.z));
 
-		setYawTracked(glm::degrees(std::atan2(d.z, d.x)));
+		setYawTracked(static_cast<float>(glm::degrees(std::atan2(d.z, d.x))));
 
 		if (distH < ATTACK_RADIUS && std::abs(d.y) < MOB_VERTICAL_TOLERANCE) {
 			aiWantsMove = false;
@@ -49,7 +49,7 @@ void Zombie::tickAI(const ICommonWorld &world, const std::vector<std::shared_ptr
 				attackCooldownTicks = ATTACK_COOLDOWN;
 			}
 		} else {
-			glm::vec2 dirXZ(d.x, d.z);
+			glm::vec2 dirXZ(static_cast<float>(d.x), static_cast<float>(d.z));
 			float len = glm::length(dirXZ);
 			if (len > EPS) {
 				aiMoveDir = dirXZ / len;

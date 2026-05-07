@@ -50,7 +50,7 @@ std::vector<float> VegetationRenderer::generateCrossPatternMesh() {
 
 void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instances, size_t count,
                                         int chunkOriginX, int chunkOriginZ, const Chunk* chunk) {
-    // Build instance data: world position (3), texture layer (1), rotation (1), skylight (1), columnBaseY (1), aoFactor (1), blockLight (1) = 9 floats per instance
+    // Build instance data: chunk-local position (3), texture layer (1), rotation (1), skylight (1), columnBaseY (1), aoFactor (1), blockLight (1) = 9 floats per instance
 
     // First pass: for sea vegetation, find the lowest Y per column (x,z) to use as column base
     // so the shader can compute coherent sway for stacked blocks.
@@ -73,10 +73,12 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
         const auto& veg = instances[i];
 
         constexpr float offset = 0.5f;
-        // Convert local chunk coords to world coords
-        float worldX = static_cast<float>(chunkOriginX + veg.x) + offset ;
-        float worldY = veg.y;
-        float worldZ = static_cast<float>(chunkOriginZ + veg.z) + offset;
+        // Keep instance X/Z chunk-local for precision; world origin is supplied separately per chunk.
+        const int worldBlockX = chunkOriginX + static_cast<int>(veg.x);
+        const int worldBlockZ = chunkOriginZ + static_cast<int>(veg.z);
+        float worldY = static_cast<float>(veg.y);
+        float localX = static_cast<float>(veg.x) + offset;
+        float localZ = static_cast<float>(veg.z) + offset;
 
         // Get texture layer for this vegetation type
         const auto& textures = textureManager->getBlockTextures(veg.type);
@@ -89,8 +91,8 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
         // Uses a cheap integer hash instead of mt19937 to avoid per-instance state init overhead.
         // The whole thing is ~5 CPU instructions vs. 624 array writes for mt19937..
         // Mix X and Z together using two different large primes
-        uint32_t h = static_cast<uint32_t>(static_cast<int>(worldX) * 73856093)
-                   ^ static_cast<uint32_t>(static_cast<int>(worldZ) * 19349663);
+        uint32_t h = static_cast<uint32_t>(worldBlockX * 73856093)
+                   ^ static_cast<uint32_t>(worldBlockZ * 19349663);
 
         // Three-step finalizer: each step breaks up linear patterns left by the multiply
         h ^= h >> 16; // fold high bits onto low bits
@@ -160,9 +162,9 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
         // For now, default to 0 (no block light) - can be extended when torches are added
         float blockLightVal = 0.0f;
 
-        instanceData.push_back(worldX);
+        instanceData.push_back(localX);
         instanceData.push_back(worldY);
-        instanceData.push_back(worldZ);
+        instanceData.push_back(localZ);
         instanceData.push_back(texLayer);
         instanceData.push_back(rotation);
         instanceData.push_back(skyLightVal);
@@ -217,7 +219,7 @@ void VegetationRenderer::uploadMesh() {
     // Instance attributes (per-instance data)
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
 
-    constexpr GLsizei instanceStride = 9 * sizeof(float); // worldPos(3) + texLayer(1) + rotation(1) + skylight(1) + columnBaseY(1) + aoFactor(1) + blockLight(1)
+    constexpr GLsizei instanceStride = 9 * sizeof(float); // localPos(3) + texLayer(1) + rotation(1) + skylight(1) + columnBaseY(1) + aoFactor(1) + blockLight(1)
 
     // Location 3: instance position (vec3)
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, instanceStride, static_cast<void *>(nullptr));

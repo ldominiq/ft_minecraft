@@ -4,7 +4,7 @@ layout (location = 1) in vec2 aTexCoord;  // Texture coordinates
 layout (location = 2) in vec3 aNormal;    // Normal vector
 
 // Per-instance attributes
-layout (location = 3) in vec3 aInstancePos;    // World position of vegetation instance
+layout (location = 3) in vec3 aInstancePos;    // Chunk-local position of vegetation instance
 layout (location = 4) in float aTexLayer;      // Texture layer index for this instance
 layout (location = 5) in float aRotation;      // Random rotation around Y-axis
 layout (location = 6) in float aSkyLight;      // Sky-light level (0.0 = dark, 1.0 = full sun)
@@ -14,6 +14,7 @@ layout (location = 9) in float aBlockLight;    // Block light level (0.0 = no li
 
 out VS_OUT {
     vec3 FragPos;
+    vec3 FragPosRel;
     vec3 Normal;
     vec2 TexCoord;
     float TexLayer;
@@ -25,11 +26,31 @@ out VS_OUT {
 
 uniform mat4 projection;
 uniform mat4 view;
+uniform mat4 viewRot;
+uniform vec3 chunkRel;
+uniform vec3 chunkOriginWorld;
 uniform vec4 clipPlane;
 uniform float time;
 uniform float seaLevel;
 
+// Graphics-quality knobs (all set from Renderer settings):
+//   vegetationSwayQuality  0 = no sway (cheapest), 1 = single sin, 2 = full
+//   vegetationSwayMaxDist  fade sway to zero past this distance; 0 = no fade
+//   vegetationDensity      render every Nth instance (1 = all)
+uniform int   vegetationSwayQuality;
+uniform float vegetationSwayMaxDist;
+uniform int   vegetationDensity;
+
 void main() {
+    // ── Density culling: cheapest path wins ─────────────────────────
+    // Park skipped instances at clip-space (2,2,2,1) so they're trivially
+    // culled — vertex still runs but exits before the expensive math below.
+    if (vegetationDensity > 1 && (gl_InstanceID % vegetationDensity) != 0) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        gl_ClipDistance[0] = -1.0;
+        return;
+    }
+
     // Apply rotation around Y-axis for variety
     float cosRot = cos(aRotation);
     float sinRot = sin(aRotation);
@@ -40,52 +61,83 @@ void main() {
     );
 
     vec3 rotatedPos = rotationMatrix * aPos;
-    vec4 worldPosition = vec4(rotatedPos + aInstancePos, 1.0);
+    vec3 localPos = rotatedPos + aInstancePos;
+    vec3 worldPos = chunkOriginWorld + localPos;
 
     // Determine if this vegetation is underwater
-    bool isUnderwater = (aInstancePos.y < seaLevel);
+    bool isUnderwater = (worldPos.y < seaLevel);
 
-    if (isUnderwater) {
-        // Organic underwater sway — coherent across stacked blocks.
-        float h = (aInstancePos.y + aPos.y) - aColumnBaseY;
+    // ── Sway: skip entirely on quality 0 ────────────────────────────
+    // Uniform branch — coherent across all fragments, so the GPU only
+    // executes the path that's selected; the others cost nothing.
+    if (vegetationSwayQuality > 0) {
+        // Distance-based LOD: fade sway out as we approach the cutoff.
+        // (Cheap dot-product distance, no sqrt needed for the comparison.)
+        float swayFade = 1.0;
+        if (vegetationSwayMaxDist > 0.0) {
+            vec3 camRel = localPos + chunkRel;
+            float distSq = dot(camRel, camRel);
+            float fadeStart = vegetationSwayMaxDist * 0.7;
+            float fadeStartSq = fadeStart * fadeStart;
+            float fadeEndSq   = vegetationSwayMaxDist * vegetationSwayMaxDist;
+            swayFade = 1.0 - clamp((distSq - fadeStartSq) / max(fadeEndSq - fadeStartSq, 1e-3),
+                                   0.0, 1.0);
+        }
 
-        // Quadratic falloff: base is anchored, tip sways most (like a real stalk)
-        float bend = h * h * 0.012;
+        if (swayFade > 0.001) {
+            float plantPhase = aRotation * (isUnderwater ? 2.17 : 1.73);
+            float swayX = 0.0;
+            float swayZ = 0.0;
 
-        // Per-plant phase offset so neighbours don't move in lockstep
-        float plantPhase = aRotation * 2.17;
+            if (isUnderwater) {
+                float h = worldPos.y - aColumnBaseY;
+                float bend = h * h * 0.012;
 
-        // Primary slow current — elliptical motion (X and Z have offset phases)
-        float swayX = bend * sin(time * 0.35 + aInstancePos.x * 0.4 + aInstancePos.z * 0.25 + plantPhase);
-        float swayZ = bend * sin(time * 0.28 + aInstancePos.x * 0.3 + aInstancePos.z * 0.5 + plantPhase + 1.57);
+                if (vegetationSwayQuality == 1) {
+                    // Cheap underwater: one sin, elliptical-ish via phase offset
+                    float s = sin(time * 0.35 + worldPos.x * 0.4 + plantPhase);
+                    swayX = bend * s;
+                    swayZ = bend * 0.7 * s; // reuse the sin to avoid a second call
+                } else {
+                    // Full quality — original 5-sin organic motion
+                    swayX = bend * sin(time * 0.35 + worldPos.x * 0.4 + worldPos.z * 0.25 + plantPhase);
+                    swayZ = bend * sin(time * 0.28 + worldPos.x * 0.3 + worldPos.z * 0.5 + plantPhase + 1.57);
+                    swayX += bend * 0.3  * sin(time * 0.6 + worldPos.z * 0.7 + plantPhase * 0.5);
+                    swayZ += bend * 0.25 * sin(time * 0.5 + worldPos.x * 0.6 + plantPhase * 0.7);
+                    float ripple = h * 0.008 * sin(time * 1.8 - h * 2.0 + plantPhase);
+                    swayX += ripple;
+                    swayZ -= ripple * 0.7;
+                }
+            } else {
+                if (vegetationSwayQuality == 1) {
+                    // Cheap land: single sin, X-only sway
+                    float s = sin(time * 1.5 + worldPos.x * 0.8 + worldPos.z * 0.6 + plantPhase);
+                    swayX = aPos.y * 0.08 * s;
+                    swayZ = swayX * 0.3; // reuse the sin
+                } else {
+                    // Full quality — original 3-sin land sway
+                    float sway = aPos.y * 0.08
+                        * sin(time * 1.5 + worldPos.x * 0.8 + worldPos.z * 0.6 + plantPhase)
+                        + aPos.y * 0.03
+                        * sin(time * 2.3 + worldPos.x * 1.4 + worldPos.z * 1.1 + plantPhase * 0.6);
+                    swayX = sway;
+                    swayZ = sway * 0.5 * sin(time * 1.1 + plantPhase);
+                }
+            }
 
-        // Secondary gentle drift at a different frequency
-        swayX += bend * 0.3 * sin(time * 0.6 + aInstancePos.z * 0.7 + plantPhase * 0.5);
-        swayZ += bend * 0.25 * sin(time * 0.5 + aInstancePos.x * 0.6 + plantPhase * 0.7);
-
-        // Subtle ripple that travels up the stalk (small, high-freq wavelet)
-        float ripple = h * 0.008 * sin(time * 1.8 - h * 2.0 + plantPhase);
-        swayX += ripple;
-        swayZ -= ripple * 0.7;
-
-        worldPosition.x += swayX;
-        worldPosition.z += swayZ;
-    } else {
-        // Wind sway for land vegetation
-        // Per-plant phase offset
-        float plantPhase = aRotation * 1.73;
-        float sway = aPos.y * 0.08
-            * sin(time * 1.5 + aInstancePos.x * 0.8 + aInstancePos.z * 0.6 + plantPhase)
-            + aPos.y * 0.03
-            * sin(time * 2.3 + aInstancePos.x * 1.4 + aInstancePos.z * 1.1 + plantPhase * 0.6);
-
-        worldPosition.x += sway;
-        worldPosition.z += sway * 0.5 * sin(time * 1.1 + plantPhase); // slight figure-8 in Z
-        // uncomment for bouncy vegetation
-        // worldPosition.y += sway * 10;
+            swayX *= swayFade;
+            swayZ *= swayFade;
+            worldPos.x += swayX;
+            worldPos.z += swayZ;
+            localPos.x += swayX;
+            localPos.z += swayZ;
+        }
     }
 
-    vs_out.FragPos = worldPosition.xyz;
+    vec3 cameraRelPos = localPos + chunkRel;
+
+    vs_out.FragPos = worldPos;
+    vs_out.FragPosRel = cameraRelPos;
     vs_out.Normal = rotationMatrix * aNormal;
     vs_out.TexCoord = aTexCoord;
     vs_out.TexLayer = aTexLayer;
@@ -94,6 +146,6 @@ void main() {
     vs_out.AOFactor = aAOFactor;
     vs_out.BlockLight = aBlockLight;
 
-    gl_Position = projection * view * worldPosition;
-    gl_ClipDistance[0] = dot(worldPosition, clipPlane);
+    gl_Position = projection * viewRot * vec4(cameraRelPos, 1.0);
+    gl_ClipDistance[0] = dot(vec4(worldPos, 1.0), clipPlane);
 }

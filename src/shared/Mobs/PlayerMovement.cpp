@@ -12,7 +12,7 @@ PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 	this->entityHeight = 1.8f;
 
     this->Front = glm::vec3(0.0f, 0.0f, -1.0f); //not really needed
-	spawnPosition = position;
+	spawnPosition = glm::vec3(position);
 	yaw = 0;
 	pitch = 0;
 
@@ -58,7 +58,7 @@ void PlayerMovement::updatePosition()
     float deltaTime = MS_TICK_RATE / 1000.0f;
     float velocity = this->movementSpeed * deltaTime;
 
-    glm::vec3 prevPosition = this->position;
+    glm::dvec3 prevPosition = this->position;
 
     // --- Local movement input ---
     float lx = 0.0f;
@@ -113,7 +113,7 @@ void PlayerMovement::applyFallDamage()
 void PlayerMovement::doJump(const ICommonWorld &world)
 {
 	// Determine if on ground by testing a tiny epsilon below feet
-	AABB boxFeetProbe = this->constructAABB(glm::vec3(this->position.x, this->position.y -EPS - 0.01f, this->position.z));
+	AABB boxFeetProbe = this->constructAABB(glm::dvec3(this->position.x, this->position.y - EPS - 0.01, this->position.z));
 	onGround = this->aabbCollidesWithWorld(boxFeetProbe, world);
 
 	// jump
@@ -230,10 +230,10 @@ void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
         this->velocity = glm::normalize(this->velocity) * maxSpeed;
 
     // Check collisions and apply final position
-	glm::vec3 pos = this->position;
+	glm::dvec3 pos = this->position;
 
 	// --- X axis ---
-	glm::vec3 tryX = pos + glm::vec3(this->velocity.x, 0.0f, 0.0f);
+	glm::dvec3 tryX = pos + glm::dvec3(this->velocity.x, 0.0f, 0.0f);
 	if (!aabbCollidesWithWorld(constructAABB(tryX), world)) {
 		pos.x = tryX.x;
 	} else {
@@ -241,7 +241,7 @@ void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
 	}
 
 	// --- Y axis ---
-	glm::vec3 tryY = pos + glm::vec3(0.0f, this->velocity.y, 0.0f);
+	glm::dvec3 tryY = pos + glm::dvec3(0.0f, this->velocity.y, 0.0f);
 	if (!aabbCollidesWithWorld(constructAABB(tryY), world)) {
 		pos.y = tryY.y;
 	} else {
@@ -249,7 +249,7 @@ void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
 	}
 
 	// --- Z axis ---
-	glm::vec3 tryZ = pos + glm::vec3(0.0f, 0.0f, this->velocity.z);
+	glm::dvec3 tryZ = pos + glm::dvec3(0.0f, 0.0f, this->velocity.z);
 	if (!aabbCollidesWithWorld(constructAABB(tryZ), world)) {
 		pos.z = tryZ.z;
 	} else {

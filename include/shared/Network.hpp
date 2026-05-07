@@ -148,6 +148,13 @@ struct BufferWriter {
 		write_u32(bits);             // already writes big-endian
 	}
 
+	void write_f64(double v) {
+		static_assert(sizeof(double) == 8, "double must be 64-bit IEEE 754");
+		uint64_t bits;
+		std::memcpy(&bits, &v, 8);
+		write_u64(bits);
+	}
+
     void write_bytes(const uint8_t* p, size_t n){
         buf.insert(buf.end(), p, p + n);
     }
@@ -203,6 +210,13 @@ struct BufferReader {
 		uint32_t bits = read_u32();  // read big-endian u32
 		float v;
 		std::memcpy(&v, &bits, 4);   // reconstruct the float
+		return v;
+	}
+
+	double read_f64() {
+		uint64_t bits = read_u64();
+		double v;
+		std::memcpy(&v, &bits, 8);
 		return v;
 	}
 

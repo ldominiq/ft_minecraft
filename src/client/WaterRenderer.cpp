@@ -12,6 +12,7 @@
 #include "TextureManager.hpp"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <cmath>
 
 
 // ============================================================
@@ -39,6 +40,17 @@ void WaterRenderer::setDependencies(const std::shared_ptr<Lighting> &lightingRef
     camera = cameraRef;
 }
 
+void WaterRenderer::setRefractionResolutionScale(float scale, int displayWidth, int displayHeight) {
+    if (scale < 0.1f) scale = 0.1f;
+    if (scale > 1.0f) scale = 1.0f;
+    refractionResolutionScale = scale;
+
+    // Recreate the refraction FBO at the new size — one-shot, not per frame.
+    const int w = static_cast<int>(static_cast<float>(displayWidth)  * scale);
+    const int h = static_cast<int>(static_cast<float>(displayHeight) * scale);
+    fbos->resizeRefraction(w, h);
+}
+
 void WaterRenderer::prepareRender() {
     waterShader->use();
     glActiveTexture(GL_TEXTURE0);
@@ -54,24 +66,22 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     glEnable(GL_CLIP_DISTANCE0);
 
     // Calculate reflected view matrix
-    float distance = 2.0f * (camera->getPlayer()->getPosition().y - seaLevel);
-    glm::vec3 reflectCamPos = camera->getPlayer()->getPosition();
-    reflectCamPos.y -= distance;
+    glm::dvec3 reflectCamPosD = camera->getEyePosD();
+    const double distance = 2.0 * (reflectCamPosD.y - static_cast<double>(seaLevel));
+    reflectCamPosD.y -= distance;
+    glm::vec3 reflectCamPos = glm::vec3(reflectCamPosD);
 
     // Construct reflected view matrix with inverted pitch
     const float yaw = camera->getPlayer()->getYaw();
     const float pitch = -camera->getPlayer()->getPitch();  // Inverted pitch for reflection
 
-    glm::vec3 front{};
+    glm::dvec3 front{};
     front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
     front.y = sin(glm::radians(pitch));
     front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
     front = glm::normalize(front);
 
-    const glm::mat4 reflectView = glm::lookAt(reflectCamPos, reflectCamPos + front, glm::vec3(0, 1, 0));
-    distance = 2.0f * (camera->getPlayer()->getPosition().y - seaLevel);
-    reflectCamPos = camera->getPlayer()->getPosition();
-    reflectCamPos.y -= distance;
+    const glm::mat4 reflectView = glm::mat4(glm::lookAt(reflectCamPosD, reflectCamPosD + front, glm::dvec3(0.0, 1.0, 0.0)));
 
     // Set clip plane (only render above water)
     const glm::vec4 clipPlane = glm::vec4(0, 1, 0, -(seaLevel));
@@ -80,12 +90,14 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     sceneShader->setVec4("clipPlane", clipPlane);
     sceneShader->setMat4("view", reflectView);
     sceneShader->setMat4("projection", projection);
+    sceneShader->setBool("useAlphaTest",
+        ChunkRenderer::sLeafRenderMode != ChunkRenderer::LeafRenderMode::Fast);
 
     // Calculate reflected camera direction for lighting
     const glm::vec3 originalDir = camera->getPlayer()->getCameraDir();
     const glm::vec3 reflectedDir = glm::vec3(originalDir.x, -originalDir.y, originalDir.z);
 
-    lighting->uploadLightingUniforms(*sceneShader, reflectCamPos, reflectedDir);
+    lighting->uploadLightingUniforms(*sceneShader, reflectCamPosD, reflectedDir);
     // Skip uploadCSMUniforms: it binds csmDepthMaps which was just written by the shadow pass
     // milliseconds ago — binding it for reading here causes an implicit driver sync stall.
     sceneShader->setInt("ssaoEnabled", 0);
@@ -94,17 +106,36 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     texMgr.bind(GL_TEXTURE0);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
     lighting->drawSky(skyView, projection, reflectCamPos, false);
-    // Update vegetation shader with reflected view/clip before rendering
-    renderer->updateVegetationUniforms(reflectView, projection, clipPlane, reflectCamPos);
-    // Use the reflected view-projection for frustum culling so only chunks
-    // actually visible in the reflection are submitted, not all main-camera chunks.
-    renderer->updateFrustum(projection * reflectView);
-    renderer->render(sceneShader, false); // skip vegetation
+
+    if (reflectionEnabled) {
+        // Update vegetation shader with reflected view/clip before rendering
+        renderer->updateVegetationUniforms(reflectView, projection, clipPlane, reflectCamPos);
+        // Use the reflected view-projection for frustum culling so only chunks
+        // actually visible in the reflection are submitted, not all main-camera chunks.
+        glm::mat4 reflectViewRot = reflectView;
+        reflectViewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        renderer->updateFrustum(projection * reflectViewRot, reflectCamPosD);
+
+        // Optionally cap the per-chunk render distance for reflection only —
+        // distant terrain rarely contributes meaningfully to a reflection but
+        // costs the same draw-call/vertex work as the main pass.
+        const float prevDistCap = renderer->getMaxRenderDistanceOverride();
+        if (reflectionMaxDistance > 0.0f)
+            renderer->setMaxRenderDistanceOverride(reflectionMaxDistance);
+        renderer->render(sceneShader, reflectView, reflectCamPosD, false); // skip vegetation
+        renderer->setMaxRenderDistanceOverride(prevDistCap);
+    }
+    // When reflection is disabled we still ran drawSky() above so the FBO
+    // contains a usable sky-tinted image — water surface will sample it as
+    // a plain reflection of the sky, which is cheap and looks fine.
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();
     // Restore main-camera frustum for all subsequent passes this frame.
-    renderer->updateFrustum(projection * camera->getViewMatrix());
+  glm::mat4 mainView = camera->getViewMatrix();
+    glm::mat4 mainViewRot = mainView;
+    mainViewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    renderer->updateFrustum(projection * mainViewRot, camera->getEyePosD());
 }
 
 void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, const TextureManager& texMgr) {
@@ -120,17 +151,20 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     sceneShader->setVec4("clipPlane", clipPlane);
     sceneShader->setMat4("view", view);
     sceneShader->setMat4("projection", projection);
+    sceneShader->setBool("useAlphaTest",
+        ChunkRenderer::sLeafRenderMode != ChunkRenderer::LeafRenderMode::Fast);
 
     // Render refraction scene
-    lighting->uploadLightingUniforms(*sceneShader, camera->getPlayer()->getPosition(), camera->getPlayer()->getCameraDir());
+    lighting->uploadLightingUniforms(*sceneShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
     // Skip uploadCSMUniforms: same shadow texture hazard as reflection — and underwater
     // fragments don't need shadow computation at all.
     sceneShader->setInt("ssaoEnabled", 0);
     sceneShader->setFloat("shadows.enabled", 0.0f);
     texMgr.bind(GL_TEXTURE0);
-    // Render with vegetation so sea vegetation is visible in the refraction texture
-    renderer->updateVegetationUniforms(view, projection, clipPlane, camera->getPlayer()->getPosition());
-    renderer->render(sceneShader, true);
+    // Sea vegetation in refraction is expensive in dense biomes — toggleable.
+    if (refractionRendersVegetation)
+        renderer->updateVegetationUniforms(view, projection, clipPlane, glm::vec3(camera->getEyePosD()));
+    renderer->render(sceneShader, view, camera->getEyePosD(), refractionRendersVegetation);
 
     glDisable(GL_CLIP_DISTANCE0);
     fbos->unbindCurrentFrameBuffer();
@@ -140,18 +174,39 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     prepareRender();
 
     const glm::mat4 view = camera->getViewMatrix();
-    const glm::vec3 camPos = camera->getPlayer()->getPosition();
+    glm::mat4 viewRot = view;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    const glm::dvec3 eyePosD = camera->getEyePosD();
+    const glm::vec3 sunDir = lighting->getDirectionalLightDirection();
+
+    // Anchor the dudv texture coordinate to an eye-relative origin snapped
+    // to a multiple of the texture's repeat period (1/tiling). This lets
+    // the vertex shader compute the texture coordinate from camera-relative
+    // positions, which keeps the value small (< one period) at any world
+    // coordinate — without it, moveFactor and wave detail would quantize
+    // away at large coords. The snapping aligns to integer multiples of the
+    // period, so the visible texture is identical to the worldspace path.
+    const double period = (dudvTiling > 0.0f) ? (1.0 / static_cast<double>(dudvTiling)) : 1.0;
+    const double anchorX = std::floor(eyePosD.x / period) * period;
+    const double anchorZ = std::floor(eyePosD.z / period) * period;
+    const glm::vec2 texAnchor(static_cast<float>(eyePosD.x - anchorX),
+                              static_cast<float>(eyePosD.z - anchorZ));
 
     // Set water shader uniforms
     waterShader->use();
     waterShader->setMat4("projection", projection);
-    waterShader->setMat4("view", view);
-    waterShader->setVec3("cameraPos", camPos);
+    waterShader->setMat4("viewRot", viewRot);
+    // Sun is a directional light. Pass its direction (toward-sun convention,
+    // matching dirLight) so specular stays correct at any world coordinate.
+    // Set explicitly here too — uploadFogUniforms only sets sunDir when fog is on.
+    waterShader->setVec3("sunDir", sunDir);
     waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
-    waterShader->setVec3("lightPosition", lighting->getLightPos());
-    // Horizon threshold for specular cutoff (sun below horizon → no specular)
-    waterShader->setFloat("horizonY", 55.0f);
-    waterShader->setFloat("twilightBand", 8.0f); // smooth fade band around horizon (units of world Y)
+    // Sun-elevation fade band for specular: sunDir.y in [-1, 1].
+    // Old behavior keyed on lightPos.y in [55±8], where lightPos = dir*200,
+    // i.e. dir.y in [0.235, 0.315]. Preserve that.
+    waterShader->setFloat("twilightLow",  0.235f);
+    waterShader->setFloat("twilightHigh", 0.315f);
+    waterShader->setVec2("texAnchor", texAnchor);
     waterShader->setFloat("moveFactor", waterMoveFactor);
     waterShader->setFloat("waveStrength", waveStrength);
     waterShader->setFloat("tiling", dudvTiling);
@@ -189,7 +244,7 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // Render water meshes
-    renderer->renderWater();
+    renderer->renderWater(waterShader, eyePosD);
 
     glDisable(GL_BLEND);
 }

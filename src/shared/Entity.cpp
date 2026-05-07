@@ -4,13 +4,13 @@
 
 ItemEntityIDManager Entity::idManager;
 
-Entity::Entity(const glm::vec3 &position): position(position), ID(idManager.acquire())
+Entity::Entity(const glm::vec3 &position): position(glm::dvec3(position)), ID(idManager.acquire())
 {
 	yaw = 0;
 	pitch = 0;
 }
 
-Entity::Entity(const glm::vec3 &position, float yaw, entityID ID): position(position), yaw(yaw), ID(ID) {}
+Entity::Entity(const glm::vec3 &position, float yaw, entityID ID): position(glm::dvec3(position)), yaw(yaw), ID(ID) {}
 
 Entity::~Entity()
 {
@@ -18,15 +18,19 @@ Entity::~Entity()
 	idManager.release(ID);
 }
 
-// Build a current-player AABB (min at feet)
-AABB Entity::constructAABB(const glm::vec3 &pos) {
-	glm::vec3 mn(pos.x - entityWidth * 0.5f, pos.y,				pos.z - entityWidth * 0.5f);
-	glm::vec3 mx(pos.x + entityWidth * 0.5f, pos.y + entityHeight, pos.z + entityWidth * 0.5f);
+// Build a current-player AABB (min at feet). Built in double so that
+// collision-bound floors stay correct at large world coordinates.
+AABB Entity::constructAABB(const glm::dvec3 &pos) {
+	const double halfW = static_cast<double>(entityWidth) * 0.5;
+	const double height = static_cast<double>(entityHeight);
+	glm::dvec3 mn(pos.x - halfW, pos.y,         pos.z - halfW);
+	glm::dvec3 mx(pos.x + halfW, pos.y + height, pos.z + halfW);
 	return AABB(mn, mx);
 };
 
 bool Entity::aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world) {
-    // compute block search bounds (floor)
+    // compute block search bounds (floor in double — at 5M, float floor of
+    // min.x + EPS would land on the wrong integer because the LSB is ~0.5m).
     int minX = (int)std::floor(box.min.x + EPS);
     int maxX = (int)std::floor(box.max.x - EPS);
     int minY = (int)std::floor(box.min.y + EPS);
@@ -74,7 +78,10 @@ bool Entity::entityCollidesWithBlock(const glm::vec3 blockPos) {
 
 void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove)
 {
-    glm::vec3 newPos = position;
+    // newPos is double so that small-but-cumulative movement increments
+    // (e.g. 0.01 / frame) at very large world coordinates don't lose to
+    // float quantization.
+    glm::dvec3 newPos = position;
     AABB currentBox = constructAABB(position);
 
     // X axis
@@ -104,7 +111,7 @@ void Entity::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desire
 
 void Entity::calculateNewYPosition(const ICommonWorld &world)
 {
-	glm::vec3 newPos = position;
+	glm::dvec3 newPos = position;
 	AABB currentBox = constructAABB(position);
 
 	// attempt Y movement

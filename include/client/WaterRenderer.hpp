@@ -42,6 +42,21 @@ public:
     float waveStrength = 0.02f;
     float dudvTiling = 0.03f;
 
+    // ── Runtime graphics-quality settings ──────────────────────────────
+    // Toggling these is free at steady state — they're either uniform/CPU
+    // checks or one-shot FBO rebuilds (refraction scale).
+    bool isReflectionEnabled() const           { return reflectionEnabled; }
+    void setReflectionEnabled(bool enabled)    { reflectionEnabled = enabled; }
+
+    bool isRefractionVegetationEnabled() const         { return refractionRendersVegetation; }
+    void setRefractionVegetationEnabled(bool enabled)  { refractionRendersVegetation = enabled; }
+
+    float getRefractionResolutionScale() const { return refractionResolutionScale; }
+    void  setRefractionResolutionScale(float scale, int displayWidth, int displayHeight);
+
+    float getReflectionMaxDistance() const     { return reflectionMaxDistance; }
+    void  setReflectionMaxDistance(float d)    { reflectionMaxDistance = d; }
+
 private:
     std::shared_ptr<Shader> waterShader;
     std::shared_ptr<WaterFramebuffer> fbos;
@@ -59,6 +74,12 @@ private:
     float seaLevel = 65.0f;
     GLuint dudvTexture = 0;
     GLuint waterNormalTexture = 0;
+
+    // Runtime graphics-quality state.
+    bool  reflectionEnabled = true;
+    bool  refractionRendersVegetation = true;
+    float refractionResolutionScale = 1.0f;  // 1.0 = full screen, 0.5 = half-res
+    float reflectionMaxDistance = 0.0f;      // 0 = no cap (use main render distance)
 
     void prepareRender();
 };

@@ -19,10 +19,11 @@ public:
 
     /// Call once per frame.
     /// \p playerPos   current camera/player world position (used to find the chunk).
-    /// \p view        current view matrix.
+    /// \p eyePos      precise camera position; the grid is rendered camera-relative.
+    /// \p view        current view matrix (used only to extract its rotation).
     /// \p projection  current projection matrix.
     /// \p renderer    the world renderer, used to read block data for surface detection.
-    void draw(const glm::vec3& playerPos, const glm::mat4& view,
+    void draw(const glm::vec3& playerPos, const glm::dvec3& eyePos, const glm::mat4& view,
               const glm::mat4& projection, Renderer& renderer);
 
     bool isEnabled() const { return enabled; }

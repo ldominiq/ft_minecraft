@@ -203,21 +203,26 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     glDepthMask(GL_TRUE);
 }
 
-void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection) const {
+void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const {
     lightCubeShader->use();
-    // we now draw as many light bulbs as we have point lights.
+    // Camera-relative rendering: zero the view's translation column and offset
+    // each cube's model matrix by (worldPos - eyePos), computed in double.
+    glm::mat4 viewRot = view;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
     glBindVertexArray(lightCubeVAO);
     for (unsigned int i = 0; i < 3; i++)
     {
+        const glm::dvec3 posRelD = glm::dvec3(pointLightPositions[i]) - eyePos;
         auto model = glm::mat4(1.0f);
-        model = glm::translate(model, pointLightPositions[i]);
+        model = glm::translate(model, glm::vec3(posRelD));
         model = glm::scale(model, glm::vec3(0.2f)); // Make it a smaller cube
         // Set per-cube color here so each light uses its own color
         glm::vec3 cubeCol = pointLightsOn[i] ? pointLightDiffuse[i] : glm::vec3(0.0f);
         lightCubeShader->setVec3("cubeColor", cubeCol);
         lightCubeShader->setMat4("model", model);
         lightCubeShader->setMat4("projection", projection);
-        lightCubeShader->setMat4("view", view);
+        lightCubeShader->setMat4("view", viewRot);
         glDrawArrays(GL_TRIANGLES, 0, 36);
     }
 }
@@ -284,14 +289,15 @@ void Lighting::updateSunDirection(const float deltaTime) {
     cachedShadowLightDir = -directionalLightDir;
 }
 
-void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cameraPos, const glm::vec3 cameraFront) const {
+void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &eyePos, const glm::vec3 cameraFront) const {
     // 2. Render the scene normally, using the generated shadow map to determine shadowed fragments.
     // The following code implements both steps each frame.
     shader.use();
 
-    // set light uniforms
-    shader.setVec3("viewPos", cameraPos);
-    shader.setVec3("lightPos", lightPos);
+    // set light uniforms — subtract in double then narrow, otherwise far-from-origin
+    // coords lose precision via catastrophic cancellation in the f32 difference.
+    shader.setVec3("viewPos", glm::vec3(0.0f));
+    shader.setVec3("lightPos", glm::vec3(glm::dvec3(lightPos) - eyePos));
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     shader.setFloat("shadows.MIN_BIAS", MIN_BIAS);
     shader.setFloat("shadows.MAX_BIAS", MAX_BIAS);
@@ -337,7 +343,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
             shader.setVec3("pointLights[" + std::to_string(i) + "].specular", glm::vec3(0.0f));
             continue;
         }
-        shader.setVec3("pointLights[" + std::to_string(i) + "].position", pointLightPositions[i]);
+        shader.setVec3("pointLights[" + std::to_string(i) + "].position", glm::vec3(glm::dvec3(pointLightPositions[i]) - eyePos));
         shader.setVec3("pointLights[" + std::to_string(i) + "].ambient", pointLightAmbient[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].diffuse", pointLightDiffuse[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].specular", pointLightSpecular[i]);
@@ -347,7 +353,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
     }
     // spotLight (flashlight)
     if (flashlightOn) {
-        shader.setVec3("spotLight.position", cameraPos);
+        shader.setVec3("spotLight.position", glm::vec3(0.0f));
         shader.setVec3("spotLight.direction", cameraFront);
         shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
         shader.setVec3("spotLight.diffuse", glm::vec3(1.0f));
@@ -358,7 +364,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::vec3 &cam
         shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
         shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
     } else {
-        shader.setVec3("spotLight.position", cameraPos);
+        shader.setVec3("spotLight.position", glm::vec3(0.0f));
         shader.setVec3("spotLight.direction", cameraFront);
         shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
         shader.setVec3("spotLight.diffuse", glm::vec3(0.0f));
@@ -923,9 +929,17 @@ std::vector<glm::mat4> Lighting::getLightSpaceMatrices(const glm::mat4& cameraVi
 
 void Lighting::initCSMResources()
 {
-    csmDepthShader = std::make_shared<Shader>(
-        "shaders/csmDepth.vert",
-        "shaders/csmDepth.frag");
+    if (!csmDepthShader) {
+        csmDepthShader = std::make_shared<Shader>(
+            "shaders/csmDepth.vert",
+            "shaders/csmDepth.frag");
+    }
+
+    if (!csmDepthAlphaShader) {
+        csmDepthAlphaShader = std::make_shared<Shader>(
+            "shaders/csmDepth.vert",
+		    "shaders/csmDepthAlpha.frag");
+    }
 
     const int numCascades = static_cast<int>(shadowCascadeLevels.size()) + 1;
 
@@ -981,19 +995,81 @@ void Lighting::initCSMResources()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView, const TextureManager& texMgr)
+void Lighting::rebuildCSMResources() {
+    if (csmDepthMaps) {
+        glDeleteTextures(1, &csmDepthMaps);
+        csmDepthMaps = 0;
+	}
+    if (csmFBO) {
+        glDeleteFramebuffers(1, &csmFBO);
+        csmFBO = 0;
+    }
+	initCSMResources(); // recreate with current depthMapResolution + numCascades
+}
+
+void Lighting::recomputeCascadeSplits()
+{
+    // Derive cascade split distances from cascade count + cameraFarPlane.
+    // Ratios chosen to match the original tuning (25, 100 at far=500 → 0.05, 0.20).
+    const int n = static_cast<int>(shadowCascadeLevels.size()) + 1; // current count
+    shadowCascadeLevels.clear();
+    if (n <= 2) {
+        // 2 cascades → 1 split at ~16% of far plane (e.g. 40 at far=250)
+        shadowCascadeLevels.push_back(cameraFarPlane * 0.16f);
+    } else {
+        // 3 cascades → 2 splits at 5% and 20% of far plane
+        shadowCascadeLevels.push_back(cameraFarPlane * 0.05f);
+        shadowCascadeLevels.push_back(cameraFarPlane * 0.20f);
+    }
+}
+
+void Lighting::setShadowMapResolution(unsigned int res)
+{
+    if (res == depthMapResolution) return;
+    depthMapResolution = res;
+    rebuildCSMResources();
+}
+
+void Lighting::setCascadeCount(int count)
+{
+    if (count < 2) count = 2;
+    if (count > 3) count = 3;
+    const int current = static_cast<int>(shadowCascadeLevels.size()) + 1;
+    if (count == current) return;
+    // Pre-size the splits vector so recomputeCascadeSplits sees the new count
+    shadowCascadeLevels.assign(count - 1, 0.0f);
+    recomputeCascadeSplits();
+    rebuildCSMResources();
+}
+
+void Lighting::setShadowFarPlane(float farPlane)
+{
+    if (farPlane == cameraFarPlane) return;
+    cameraFarPlane = farPlane;
+    // Splits scale with the far plane — recompute to stay proportional.
+    recomputeCascadeSplits();
+    // Texture array dimensions don't depend on far plane, so no rebuild needed.
+}
+
+void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& cameraView,
+                                   const glm::dvec3& eyePos, const TextureManager& texMgr)
 {
     // 1. Compute all light-space matrices for current camera position
     cachedShadowLightDir = -directionalLightDir;
-    csmLightSpaceMatrices = getLightSpaceMatrices(cameraView);
+    glm::mat4 viewRot = cameraView;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    csmLightSpaceMatrices = getLightSpaceMatrices(viewRot);
 
     const int numCascades = static_cast<int>(csmLightSpaceMatrices.size());
 
-    csmDepthShader->use();
+	auto& shader = shadowAlphaTest ? csmDepthAlphaShader : csmDepthShader;
+    shader->use();
 
-    // Bind the texture array so the depth shader can alpha-test leaves
-    texMgr.bind(GL_TEXTURE0);
-    csmDepthShader->setInt("blockTextures", 0);
+    // Bind the texture array only when the alpha-test variant needs it
+    if (shadowAlphaTest) {
+        texMgr.bind(GL_TEXTURE0);
+        shader->setInt("blockTextures", 0);
+    }
 
     glViewport(0, 0, depthMapResolution, depthMapResolution);
     glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
@@ -1004,8 +1080,8 @@ void Lighting::updateCSMShadowMaps(const Renderer& renderer, const glm::mat4& ca
                                   csmDepthMaps, 0, i);
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        csmDepthShader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
-        renderer.renderShadow(csmDepthShader, csmLightSpaceMatrices[i]);
+        shader->setMat4("lightSpaceMatrix", csmLightSpaceMatrices[i]);
+        renderer.renderShadow(shader, csmLightSpaceMatrices[i], eyePos);
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1018,7 +1094,10 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
 {
     shader.use();
 
+    glm::mat4 viewRot = cameraView;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     shader.setMat4("view", cameraView);
+    shader.setMat4("viewRot", viewRot);
 
     // Upload all light-space matrices (guard: may be empty if sun is below horizon on first frame)
     for (size_t i = 0; i < shadowCascadeLevels.size() + 1 && i < csmLightSpaceMatrices.size(); ++i)
@@ -1040,6 +1119,7 @@ void Lighting::uploadCSMUniforms(const Shader& shader, const glm::mat4& cameraVi
 
     shader.setInt("cascadeCount", static_cast<int>(shadowCascadeLevels.size()) + 1);
     shader.setFloat("farPlane", cameraFarPlane);
+	shader.setInt("pcfQuality", static_cast<int>(pcfQuality));
 
     // Bind the CSM depth texture array to texture unit 7.
     glActiveTexture(GL_TEXTURE0 + TextureUnits::CSM_SHADOW);

@@ -1,7 +1,12 @@
 
 #include "ChunkRenderer.hpp"
 
-ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVerticesSize(0), waterMeshVerticesSize(0) {
+// Default to "Smart" — keep alpha cutouts on outer leaf surfaces, but cull
+// the wasted internal faces. Closest match to the original look at a fraction
+// of the vertex count.
+ChunkRenderer::LeafRenderMode ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Smart;
+
+ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVertexCount(0), waterMeshVertexCount(0) {
     vegetationRenderer = std::make_unique<VegetationRenderer>();
     cachedMinP = glm::vec3(static_cast<float>(originX), 0.0f, static_cast<float>(originZ));
     cachedMaxP = glm::vec3(static_cast<float>(originX) + Chunk::WIDTH, static_cast<float>(Chunk::HEIGHT), static_cast<float>(originZ) + Chunk::DEPTH);
@@ -79,9 +84,13 @@ void ChunkRenderer::updateMesh()
 }
 
 void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockType type, const int face, const float skyLightLevel) {
-    const float faceX = static_cast<float>(originX + x);
+    // Mesh vertices are baked in chunk-LOCAL coordinates so that the GPU
+    // never sees the large world coordinate of the chunk origin. The
+    // origin is applied per-draw via the chunkOriginWorld / chunkRel
+    // uniforms. This is what keeps geometry rock-stable far from origin.
+    const float faceX = static_cast<float>(x);
     const float faceY = static_cast<float>(y);
-    const float faceZ = static_cast<float>(originZ + z);
+    const float faceZ = static_cast<float>(z);
 
     static const float faceData[6][18] = {
         // FRONT face (Z+)
@@ -109,39 +118,24 @@ void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockTy
         0,1,1,  0,1,0,  0,0,0 }
     };
 
-    static const float uvCoords[12] = {
-        0, 0,
-        1, 0,
-        1, 1,
-        1, 1,
-        0, 1,
-        0, 0
-    };
-
-    static const glm::vec3 faceNormals[6] = {
-        {  0,  0,  1 }, // front
-        {  0,  0, -1 }, // back
-        {  0,  1,  0 }, // top
-        {  0, -1,  0 }, // bottom
-        {  1,  0,  0 }, // right
-        { -1,  0,  0 }  // left
-    };
-
-    glm::vec3 normal = faceNormals[face];
-
     // Get texture layer for this block face from TextureManager
-    float texLayer = 0.0f;
+    uint32_t texLayer = 0;
     if (textureManager) {
         const BlockTextures& bt = textureManager->getBlockTextures(type);
-        texLayer = static_cast<float>(bt.getLayerForFace(face));
+        texLayer = static_cast<uint32_t>(bt.getLayerForFace(face));
         if (type == BlockType::GRASS && face == 2) {
-            texLayer = textureManager->getGrassTintLayer(getBiomeAt(x, z));
+            texLayer = static_cast<uint32_t>(textureManager->getGrassTintLayer(getBiomeAt(x, z)));
         }
     }
 
     // Build six vertices for this face using the computed light
     bool isCactusSide = (type == BlockType::CACTUS && face != 2 && face != 3);
     constexpr float cactusInset = 1.0f / 16.0f;
+
+    // Quad corner index per quad-vertex. The 6 verts of a face form two
+    // triangles {0,1,2} {0,2,3} so corners go 0,1,2, 2,3,0. UVs are
+    // reconstructed in the vertex shader from CORNERS[cornerIdx].
+    const uint32_t normalIdx = static_cast<uint32_t>(face); // matches NORMALS[] in shader
 
     for (int i = 0; i < 6; ++i) {
         float px = faceX + faceData[face][i * 3 + 0];
@@ -156,30 +150,19 @@ void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockTy
             if (face == 5) px = faceX + cactusInset;           // left  (X-): push inward
         }
 
-        float baseU = uvCoords[i * 2 + 0]; // 0 → 1
-        float baseV = uvCoords[i * 2 + 1]; // 0 → 1
-
-        float u = baseU;
-        float v = baseV;
-
-        meshVertices.push_back(px);        // position.x
-        meshVertices.push_back(py);        // position.y
-        meshVertices.push_back(pz);        // position.z
-        meshVertices.push_back(u);         // texture u
-        meshVertices.push_back(v);         // texture v
-        meshVertices.push_back(texLayer);  // texture array layer
-        meshVertices.push_back(py);        // send Y again for gradient
-        meshVertices.push_back(normal.x);
-        meshVertices.push_back(normal.y);
-        meshVertices.push_back(normal.z);
-        meshVertices.push_back(skyLightLevel); // sky-light (0.0 = dark, 1.0 = full sun)
+        meshVertices.push_back(packed_vertex::pack(
+            px, py, pz,
+            normalIdx,
+            packed_vertex::CORNER_FOR_VERT[i],
+            texLayer,
+            skyLightLevel));
     }
 }
 
 void ChunkRenderer::addWaterFace(const int x, const int y, const int z, const int face, const float skyLightLevel) {
-    const float faceX = static_cast<float>(originX + x);
+    const float faceX = static_cast<float>(x);
     const float faceY = static_cast<float>(y);
-    const float faceZ = static_cast<float>(originZ + z);
+    const float faceZ = static_cast<float>(z);
 
     static const float faceData[6][18] = {
         // FRONT face (Z+)
@@ -207,46 +190,21 @@ void ChunkRenderer::addWaterFace(const int x, const int y, const int z, const in
         0,1,1,  0,1,0,  0,0,0 }
     };
 
-    static const float uvCoords[12] = {
-        0, 0,
-        1, 0,
-        1, 1,
-        1, 1,
-        0, 1,
-        0, 0
-    };
+    // Water shader currently only reads position, but we still encode
+    // normal/corner/skyLight so the format stays uniform with terrain.
+    const uint32_t normalIdx = static_cast<uint32_t>(face);
 
-    static const glm::vec3 faceNormals[6] = {
-        {  0,  0,  1 }, // front
-        {  0,  0, -1 }, // back
-        {  0,  1,  0 }, // top
-        {  0, -1,  0 }, // bottom
-        {  1,  0,  0 }, // right
-        { -1,  0,  0 }  // left
-    };
-
-    glm::vec3 normal = faceNormals[face];
-
-    // Build six vertices for this face
     for (int i = 0; i < 6; ++i) {
         float px = faceX + faceData[face][i * 3 + 0];
         float py = faceY + faceData[face][i * 3 + 1];
         float pz = faceZ + faceData[face][i * 3 + 2];
 
-        float u = uvCoords[i * 2 + 0];
-        float v = uvCoords[i * 2 + 1];
-
-        waterMeshVertices.push_back(px);    // position.x
-        waterMeshVertices.push_back(py);    // position.y
-        waterMeshVertices.push_back(pz);    // position.z
-        waterMeshVertices.push_back(u);     // texture u (unused by water shader)
-        waterMeshVertices.push_back(v);     // texture v (unused by water shader)
-        waterMeshVertices.push_back(0.0f);  // texture layer (unused by water shader)
-        waterMeshVertices.push_back(py);    // Y for gradient
-        waterMeshVertices.push_back(normal.x);
-        waterMeshVertices.push_back(normal.y);
-        waterMeshVertices.push_back(normal.z);
-        waterMeshVertices.push_back(skyLightLevel); // sky-light (0.0 = dark, 1.0 = full sun)
+        waterMeshVertices.push_back(packed_vertex::pack(
+            px, py, pz,
+            normalIdx,
+            packed_vertex::CORNER_FOR_VERT[i],
+            /*texLayer=*/0u,
+            skyLightLevel));
     }
 }
 
@@ -352,16 +310,26 @@ void ChunkRenderer::buildMeshData() {
         return static_cast<float>(lightVal) / 15.0f;
     };
 
+    // In Fast/Smart, leaves are treated as opaque blocks for mesh-emission
+    // decisions: faces between leaves and other leaves (or between leaves
+    // and other solid blocks) are skipped. In Fancy, leaves stay transparent
+    // and every face is emitted — the original behaviour.
+    const bool leavesAreTransparentForMesh =
+        (sLeafRenderMode == LeafRenderMode::Fancy);
+
     for (int x = 0; x < WIDTH; ++x) {
         for (int y = 0; y < HEIGHT; ++y) {
             for (int z = 0; z < DEPTH; ++z) {
                 const int idx = x + WIDTH * (y + HEIGHT * z);
                 BlockType currentBlock = blockTypeVector[idx];
-                
+
                 if (currentBlock == BlockType::AIR) continue;
                 if (isBlockVegetation(currentBlock)) continue;
 
                 const bool isWater = (currentBlock == BlockType::WATER);
+                const bool currentIsLeaf = isBlockLeaves(currentBlock);
+                const bool smartLeavesCullLikeFast = (sLeafRenderMode == LeafRenderMode::Smart);
+                const bool fancyLeaves = (sLeafRenderMode == LeafRenderMode::Fancy);
 
                 for (const FaceDir& face : faces) {
                     BlockType neighborBlock;
@@ -372,6 +340,15 @@ void ChunkRenderer::buildMeshData() {
                     }
 
                     const float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, face.dx, face.dy, face.dz, face.neighborDir));
+                    const bool neighborIsLeaf = isBlockLeaves(neighborBlock);
+                    const bool neighborIsTransparent = isBlockTransparent(neighborBlock);
+
+                    // Treat leaves as transparent (Fancy) or opaque (Fast/Smart)
+                    // for the purposes of the emission test below. Cactus is
+                    // always transparent; this only affects leaf neighbours.
+                    const bool neighborTreatedTransparent =
+                        isBlockTransparent(neighborBlock) &&
+                        (leavesAreTransparentForMesh || !isBlockLeaves(neighborBlock));
 
                     if (isWater) {
                         if (neighborBlock == BlockType::AIR || isBlockTransparent(neighborBlock) || isBlockVegetation(neighborBlock)) {
@@ -382,8 +359,32 @@ void ChunkRenderer::buildMeshData() {
                         if (isSide || !isBlockSolid(neighborBlock) || neighborBlock != BlockType::CACTUS) {
                             addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
                         }
-                    } else if (!isBlockSolid(neighborBlock) || isBlockTransparent(neighborBlock) || neighborBlock == BlockType::CACTUS) {
-                        addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                    }
+                    else if (currentIsLeaf) {
+                        // Leaves:
+                        // - Fast/Smart: cull leaf-to-leaf faces
+                        // - Fancy: keep leaf-to-leaf faces
+                        if (!isBlockSolid(neighborBlock) ||
+                            neighborTreatedTransparent ||
+                            (fancyLeaves && neighborIsLeaf) ||
+                            neighborBlock == BlockType::CACTUS) {
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                        }
+                    }
+                    else {
+                        // Solid blocks:
+                        // - Smart/Fancy: render faces next to leaves
+                        // - Fast: cull them
+                        const bool neighborTreatsAsTransparent =
+                            neighborIsTransparent &&
+                            (fancyLeaves || !neighborIsLeaf);
+
+                        if (!isBlockSolid(neighborBlock) ||
+                            neighborTreatsAsTransparent ||
+                            (smartLeavesCullLikeFast && neighborIsLeaf) ||
+                            neighborBlock == BlockType::CACTUS) {
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                        }
                     }
                 }
             }
@@ -400,35 +401,26 @@ void ChunkRenderer::uploadMesh() {
 
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, meshVertices.size() * sizeof(float), meshVertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, meshVertices.size() * sizeof(PackedVertex), meshVertices.data(), GL_STATIC_DRAW);
 
-    // Vertex layout (11 floats per vertex):
-    //   location 0: position  (vec3)  — floats 0-2
-    //   location 1: texCoord  (vec2)  — floats 3-4
-    //   location 2: texLayer  (float) — float  5
-    //   location 3: gradientY (float) — float  6
-    //   location 4: normal    (vec3)  — floats 7-9
-    //   location 5: skyLight  (float) — float  10
-    GLsizei stride = 11 * sizeof(float);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, static_cast<void *>(nullptr));
+    // Packed terrain vertex layout (8 bytes per vertex). Decoded in
+    // shaders/terrain_vertex_decode.glsl.
+    //   location 0: v0  (uint) — pos.x | pos.y | pos.z (1/16 fixed point)
+    //   location 1: v1  (uint) — normal | corner | texLayer | skyLight
+    // NOTE: glVertexAttribIPointer (the I variant) — integer attributes are
+    // delivered as uint without the float conversion path.
+    GLsizei stride = sizeof(PackedVertex);
+    glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v0)));
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(3 * sizeof(float)));
+    glVertexAttribIPointer(1, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v1)));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(5 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(7 * sizeof(float)));
-    glEnableVertexAttribArray(4);
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(10 * sizeof(float)));
-    glEnableVertexAttribArray(5);
-    
-    meshVerticesSize = meshVertices.size();
+
+    meshVertexCount = static_cast<uint>(meshVertices.size());
     meshVertices.clear();
     meshVertices.shrink_to_fit();
 
-    // Upload water mesh to OpenGL
-    if (waterMeshVertices.size() > 0) {
+    // Upload water mesh — same packed format.
+    if (!waterMeshVertices.empty()) {
         if (waterVAO == 0)
             glGenVertexArrays(1, &waterVAO);
         if (waterVBO == 0)
@@ -436,26 +428,18 @@ void ChunkRenderer::uploadMesh() {
 
         glBindVertexArray(waterVAO);
         glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
-        glBufferData(GL_ARRAY_BUFFER, waterMeshVertices.size() * sizeof(float), waterMeshVertices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, waterMeshVertices.size() * sizeof(PackedVertex), waterMeshVertices.data(), GL_STATIC_DRAW);
 
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, static_cast<void *>(nullptr));
+        glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v0)));
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(3 * sizeof(float)));
+        glVertexAttribIPointer(1, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v1)));
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(5 * sizeof(float)));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(6 * sizeof(float)));
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(7 * sizeof(float)));
-        glEnableVertexAttribArray(4);
-        glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>(10 * sizeof(float)));
-        glEnableVertexAttribArray(5);
-        
-        waterMeshVerticesSize = waterMeshVertices.size();
+
+        waterMeshVertexCount = static_cast<uint>(waterMeshVertices.size());
     } else {
-        waterMeshVerticesSize = 0;
+        waterMeshVertexCount = 0;
     }
-    
+
     waterMeshVertices.clear();
     waterMeshVertices.shrink_to_fit();
 }

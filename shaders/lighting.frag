@@ -2,6 +2,7 @@
 
 in VS_OUT {
     vec3 FragPos;
+    vec3 FragPosRel;
     vec3 Normal;
     vec2 TexCoord;
     float TexLayer;
@@ -82,7 +83,12 @@ uniform mat4 lightSpaceMatrices[MAX_CASCADES];
 uniform float cascadePlaneDistances[MAX_CASCADES - 1]; // N-1 split points for N cascades
 uniform int cascadeCount;
 uniform float farPlane;
-uniform mat4 view;
+uniform mat4 viewRot;
+uniform int pcfQuality; // 0=1-tap, 1=3x3, 2=5x5
+
+// Toggles the texColor.a < 0.1 discard (leaf/glass cutouts).
+// Set to false by Fast leaf-render mode for max early-Z efficiency.
+uniform bool useAlphaTest;
 
 // SSAO
 uniform sampler2D ssaoTexture;
@@ -118,28 +124,30 @@ float LinearizeDepth(float depth)
 vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao, vec3 texCol);
 vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao, vec3 texCol);
 vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, float ao, vec3 texCol);
-float CSMShadowCalculation(vec3 fragPosWorldSpace);
-float sampleCascadeShadow(int layer, vec3 fragPosWorldSpace, vec3 normal, vec3 lightDir);
+float CSMShadowCalculation(vec3 fragPosRel);
+float sampleCascadeShadow(int layer, vec3 fragPosRel, vec3 normal, vec3 lightDir);
 
 void main()
-{    
+{
     // Sample the texture array using (u, v, layer)
     vec4 texColor = texture(blockTextures, vec3(fs_in.TexCoord, fs_in.TexLayer));
 
-    // Discard fully transparent fragments
-    if (texColor.a < 0.1)
+    // Alpha test (cutout discard) — toggleable. In "Fast" leaf mode the host
+    // sets useAlphaTest=false so leaf cubes render fully opaque (no cutouts)
+    // and the GPU keeps early-Z fully effective.
+    if (useAlphaTest && texColor.a < 0.1)
         discard;
 
     // Unpremultiply alpha to get original colors (only for semi-transparent pixels)
     // For opaque or nearly-opaque pixels (alpha > 0.95), skip to avoid precision issues
-    if (texColor.a > 0.01 && texColor.a < 0.95) {
+    if (useAlphaTest && texColor.a > 0.01 && texColor.a < 0.95) {
         texColor.rgb /= texColor.a;
     }
 
     // properties
     vec3 color = texColor.rgb;
     vec3 norm = normalize(fs_in.Normal);
-    vec3 viewDir = normalize(viewPos - fs_in.FragPos);
+    vec3 viewDir = normalize(-fs_in.FragPosRel);
     
     // SSAO
     float AmbientOcclusion = 1.0;
@@ -160,9 +168,9 @@ void main()
     vec3 result = CalcDirLight(dirLight, norm, viewDir, AmbientOcclusion, color);
     // phase 2: point lights
     for(int i = 0; i < NR_POINT_LIGHTS; i++)
-        result += CalcPointLight(pointLights[i], norm, fs_in.FragPos, viewDir, AmbientOcclusion, color);    
+        result += CalcPointLight(pointLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
     // phase 3: spot light
-    result += CalcSpotLight(spotLight, norm, fs_in.FragPos, viewDir, AmbientOcclusion, color);    
+    result += CalcSpotLight(spotLight, norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
 
     if (renderType == 1) {
         FragColor = vec4(norm * 0.5 + 0.5, 1.0); // Visualize normals
@@ -174,9 +182,9 @@ void main()
     } else {
         vec3 finalColor = result * color;
         if (fogEnabled && !cameraUnderwater) {
-            float dist = length(fs_in.FragPos - viewPos);
+            float dist = length(fs_in.FragPosRel);
             float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
-            vec3 fogDir = normalize(fs_in.FragPos - viewPos);
+            vec3 fogDir = normalize(fs_in.FragPosRel);
             finalColor = mix(sampleSkyColor(skyLUT, fogDir, normalize(-dirLight.direction), skyExposure),
                             finalColor, fogFactor);
         }
@@ -207,7 +215,7 @@ void main()
         vec3 tintedColor = FragColor.rgb * underwaterTintColor;
 
         // Distance based fog
-        float distance = length(viewPos - fs_in.FragPos);
+        float distance = length(fs_in.FragPosRel);
         float fogFactor = exp(-distance * underwaterFogDensity);
         fogFactor = clamp(fogFactor, 0.0, 1.0);
 
@@ -218,7 +226,7 @@ void main()
     //FragColor = vec4(fs_in.TexCoord, 0.0, 1.0); // Visualize texture coordinates
 }
 
-float CSMShadowCalculation(vec3 fragPosWorldSpace)
+float CSMShadowCalculation(vec3 fragPosRel)
 {
     if (cascadeCount == 0)
         return 0.0;
@@ -226,7 +234,7 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
     // 1. Find fragment depth in VIEW SPACE.
     //    We need to know how far this fragment is from the camera
     //    so we can pick the right cascade.
-    vec4 fragPosViewSpace = view * vec4(fragPosWorldSpace, 1.0);
+    vec4 fragPosViewSpace = viewRot * vec4(fragPosRel, 1.0);
     float depthValue = abs(fragPosViewSpace.z);
 
     // 2. Select the cascade layer.
@@ -246,7 +254,7 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
     debugCascadeLayer = layer;
 
     // 3. Out-of-bounds check on primary cascade
-    vec4 fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
+    vec4 fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosRel, 1.0);
 
     // Perspective divide (ortho makes w=1, but good practice)
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
@@ -271,7 +279,7 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
     vec3 lightDir = normalize(-dirLight.direction);
 
     // 6. Sample primary cascade
-    float shadow = sampleCascadeShadow(layer, fragPosWorldSpace, normal, lightDir);
+    float shadow = sampleCascadeShadow(layer, fragPosRel, normal, lightDir);
 
     // 7. Blend between cascades near the boundary to hide the seam.
     //    In the last 20% of each cascade's range we linearly blend
@@ -284,7 +292,7 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
         if (depthValue > blendStart)
         {
             float blendFactor = clamp((depthValue - blendStart) / (cascadeFar - blendStart), 0.0, 1.0);
-            float nextShadow = sampleCascadeShadow(layer + 1, fragPosWorldSpace, normal, lightDir);
+            float nextShadow = sampleCascadeShadow(layer + 1, fragPosRel, normal, lightDir);
             shadow = mix(shadow, nextShadow, blendFactor);
         }
     }
@@ -305,7 +313,7 @@ float CSMShadowCalculation(vec3 fragPosWorldSpace)
 
 // Helper: compute shadow for a single cascade layer.
 // Returns shadow in [0,1] where 1 = fully in shadow.
-float sampleCascadeShadow(int layer, vec3 fragPosWorldSpace, vec3 normal, vec3 lightDir)
+float sampleCascadeShadow(int layer, vec3 fragPosRel, vec3 normal, vec3 lightDir)
 {
     float ndotl = max(dot(normal, lightDir), 0.0);
     float baseBias = max(shadows.MAX_BIAS * (1.0 - ndotl), shadows.MIN_BIAS);
@@ -317,7 +325,7 @@ float sampleCascadeShadow(int layer, vec3 fragPosWorldSpace, vec3 normal, vec3 l
 
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMapArray, 0));
     float normalOffsetScale = texelSize.x * cascadeScale * 3.0;
-    vec3 offsetPos = fragPosWorldSpace + normal * normalOffsetScale * (1.0 - ndotl);
+    vec3 offsetPos = fragPosRel + normal * normalOffsetScale * (1.0 - ndotl);
 
     vec4 fragPosLightSpaceOffset = lightSpaceMatrices[layer] * vec4(offsetPos, 1.0);
     vec3 offsetCoords = fragPosLightSpaceOffset.xyz / fragPosLightSpaceOffset.w;
@@ -333,8 +341,9 @@ float sampleCascadeShadow(int layer, vec3 fragPosWorldSpace, vec3 normal, vec3 l
 
     // PCF: 3×3 for cascade 0, 5×5 for farther cascades
     float shadow = 0.0;
-    if (layer == 0)
-    {
+    if (pcfQuality == 0) {
+        shadow = texture(shadowMapArray, vec4(offsetCoords.xy, float(layer), biasedDepth));
+    } else if (pcfQuality == 1) {
         for (int x = -1; x <= 1; ++x)
             for (int y = -1; y <= 1; ++y)
             {
@@ -342,9 +351,7 @@ float sampleCascadeShadow(int layer, vec3 fragPosWorldSpace, vec3 normal, vec3 l
                 shadow += texture(shadowMapArray, vec4(sampleUV, float(layer), biasedDepth));
             }
         shadow /= 9.0;
-    }
-    else
-    {
+    } else {
         for (int x = -2; x <= 2; ++x)
             for (int y = -2; y <= 2; ++y)
             {
@@ -395,7 +402,7 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao, vec3 texC
     if (shadows.enabled)
         if (light.direction.y < 0.0 && fs_in.SkyLight > 0.01)
         {
-            shadow = CSMShadowCalculation(fs_in.FragPos);
+            shadow = CSMShadowCalculation(fs_in.FragPosRel);
         }
 
     // ── Sky-light modulation ────────────────────────────────────
