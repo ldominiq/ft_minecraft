@@ -7,6 +7,7 @@
 #include <soloud_wavstream.h>
 #include <soloud_bus.h>
 
+#include <array>
 #include <unordered_map>
 #include <memory>
 #include <string>
@@ -103,6 +104,12 @@ public:
     float getMusicVolume() const { return musicVolume; }
     float getSfxVolume() const { return sfxVolume; }
 
+    // Per-SoundId multiplier in [0,2], default 1.0. Applied on top of master/sfx volume
+    // and the call-site `volume` argument; tuned at runtime from the audio settings panel.
+    float getSfxScale(SoundId id) const;
+    void  setSfxScale(SoundId id, float v);
+    static const char* sfxName(SoundId id);
+
     // Public material lookups so packet handlers can pick the right break/place sound
     // without exposing the rest of the manager's internals.
     static SoundId footstepFor(BlockType b);
@@ -116,6 +123,12 @@ public:
     // break/place packets that resolve here should be silenced so the only thing the player
     // hears is the explosion itself (otherwise ~30 stone-break voices stack into a "weird noise").
     bool blockSfxSuppressed(glm::dvec3 worldPos) const;
+
+    // Fire explosion sfx + push the block-sfx suppression window. Called from the death
+    // packet handler so audio doesn't lag the visual blast. `key` is the LivingEntity*; it
+    // marks deathSoundFired on the mobStates entry so the later death-edge sweep won't
+    // double-fire (the client's death animation can outlive the suppression window's TTL).
+    void onCreeperExploded(const void* key, glm::dvec3 epos, glm::dvec3 listenerPos);
 
 private:
     // ---- engine + routing -------------------------------------------------
@@ -141,6 +154,9 @@ private:
     float masterVolume = 1.0f;
     float musicVolume  = 0.0f;
     float sfxVolume    = 1.0f;
+
+    // Per-SoundId multiplier; filled with 1.0 in init().
+    std::array<float, static_cast<size_t>(SoundId::_Count)> sfxScale{};
 
     // ---- footstep state ---------------------------------------------------
     float footstepDistance = 0.0f;   // accumulated horizontal distance walked since last step
@@ -193,6 +209,8 @@ private:
         // unprime / death / explode — otherwise the sample keeps playing at the creeper's old
         // position and glitches when the listener jumps (player death + respawn far away).
         SoLoud::handle   fuseHandle   = 0;
+        // Set when the packet handler fires a death sfx; sweep skips it to avoid double-firing.
+        bool             deathSoundFired = false;
     };
     // Keyed by raw LivingEntity*; entries cleaned up after the entity disappears (see updateMobAudio).
     std::unordered_map<const void*, MobAudioState> mobStates{};

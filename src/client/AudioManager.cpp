@@ -17,7 +17,7 @@
 namespace {
     // Distance attenuation envelope. min: full volume, max: silent.
     constexpr float kAttenMin = 1.0f;
-    constexpr float kAttenMax = 64.0f;
+    constexpr float kAttenMax = 24.0f;
 
     // Footstep cadence: trigger one step per ~1.6 m walked. Matches Minecraft-ish feel.
     constexpr float kFootstepStrideM = 1.6f;
@@ -47,6 +47,9 @@ bool AudioManager::init() {
     // Route music & sfx through their own buses so volumes can be controlled independently.
     musicBusHandle = engine.play(musicBus);
     sfxBusHandle   = engine.play(sfxBus);
+
+    // Per-sound multipliers default to 1.0 — the audio settings panel mutates them at runtime.
+    sfxScale.fill(1.0f);
 
     loadAllAssets();
     applyVolumes();
@@ -428,6 +431,29 @@ bool AudioManager::blockSfxSuppressed(glm::dvec3 worldPos) const {
     return false;
 }
 
+void AudioManager::onCreeperExploded(const void* key, glm::dvec3 epos, glm::dvec3 listenerPos) {
+    // operator[] auto-creates a stub for creepers that exploded same-frame as spawning
+    // (never tracked). Type/diedByExplosion populated so the sweep treats it correctly.
+    if (key) {
+        auto& st = mobStates[key];
+        st.deathSoundFired = true;
+        st.diedByExplosion = true;
+        st.type            = CREEPER;
+        if (st.fuseHandle) { engine.stop(st.fuseHandle); st.fuseHandle = 0; }
+    }
+
+    // 2D at point-blank: 3D thins the sample when the listener is on top of the source
+    // and being knocked; positional cue only matters past ~10m.
+    glm::dvec3 d = epos - listenerPos;
+    constexpr double kExplode2DRadius = 10.0;
+    if (glm::dot(d, d) <= kExplode2DRadius * kExplode2DRadius)
+        playSfx2D(SoundId::Creeper_Explode, 1.0f);
+    else
+        playSfx3D(SoundId::Creeper_Explode, epos, glm::vec3(0.0f), 1.0f);
+    // Mutes the crater's MODIFIED_BLOCK_DATA break-sound cascade.
+    explosionWindows.push_back({epos, 6.0f, 0.7f});
+}
+
 SoundId AudioManager::placeFor(BlockType b) {
     if (isVegetation(b)) return SoundId::Block_Pop;
     switch (b) {
@@ -466,24 +492,25 @@ void AudioManager::playSfx3D(SoundId id, glm::dvec3 pos, glm::vec3 vel, float vo
     SoLoud::Wav* w = pickVariation(id);
     if (!w) return;
 
-    // SoLoud takes float coords. Audible range is small (<= kAttenMax meters), so the
-    // double->float cast is fine even at large absolute world coords (relative error <<< 1m).
     const float fx = static_cast<float>(pos.x);
     const float fy = static_cast<float>(pos.y);
     const float fz = static_cast<float>(pos.z);
 
-    // Route through the SFX bus so the SFX volume slider applies. Note: SoLoud's
-    // `engine.play(..., aBus)` parameter is a 0-31 channel index (legacy), NOT a voice
-    // handle — to route through a Bus object you must call bus.play3d(...).
+    volume *= sfxScale[static_cast<size_t>(id)];
+
+    // bus.play3d() routes through the SFX bus; engine.play(..., busIdx) takes a legacy
+    // 0-31 channel index instead, not what we want.
     SoLoud::handle h = sfxBus.play3d(*w, fx, fy, fz, vel.x, vel.y, vel.z, volume);
     engine.set3dSourceMinMaxDistance(h, kAttenMin, kAttenMax);
-    engine.set3dSourceAttenuation(h, SoLoud::AudioSource::INVERSE_DISTANCE, 1.0f);
+    // LINEAR cleanly reaches 0 at kAttenMax. INVERSE floors at ~5% and setMinMaxDistance
+    // clamps distance, so far voices keep mushing forever at the floor.
+    engine.set3dSourceAttenuation(h, SoLoud::AudioSource::LINEAR_DISTANCE, 1.0f);
 }
 
 void AudioManager::playSfx2D(SoundId id, float volume) {
     SoLoud::Wav* w = pickVariation(id);
     if (!w) return;
-    sfxBus.play(*w, volume);
+    sfxBus.play(*w, volume * sfxScale[static_cast<size_t>(id)]);
 }
 
 SoLoud::handle AudioManager::playSfx3DTracked(SoundId id, glm::dvec3 pos, glm::vec3 vel, float volume) {
@@ -494,9 +521,10 @@ SoLoud::handle AudioManager::playSfx3DTracked(SoundId id, glm::dvec3 pos, glm::v
     const float fy = static_cast<float>(pos.y);
     const float fz = static_cast<float>(pos.z);
 
+    volume *= sfxScale[static_cast<size_t>(id)];
     SoLoud::handle h = sfxBus.play3d(*w, fx, fy, fz, vel.x, vel.y, vel.z, volume);
     engine.set3dSourceMinMaxDistance(h, kAttenMin, kAttenMax);
-    engine.set3dSourceAttenuation(h, SoLoud::AudioSource::INVERSE_DISTANCE, 1.0f);
+    engine.set3dSourceAttenuation(h, SoLoud::AudioSource::LINEAR_DISTANCE, 1.0f);
     return h;
 }
 
@@ -546,6 +574,62 @@ void AudioManager::crossfadeTo(BiomeType b, float seconds) {
 void AudioManager::setMasterVolume(float v) { masterVolume = std::clamp(v, 0.0f, 1.0f); applyVolumes(); }
 void AudioManager::setMusicVolume (float v) { musicVolume  = std::clamp(v, 0.0f, 1.0f); applyVolumes(); }
 void AudioManager::setSfxVolume   (float v) { sfxVolume    = std::clamp(v, 0.0f, 1.0f); applyVolumes(); }
+
+float AudioManager::getSfxScale(SoundId id) const {
+    return sfxScale[static_cast<size_t>(id)];
+}
+
+void AudioManager::setSfxScale(SoundId id, float v) {
+    // 0..2: 0 mutes, 1 = call-site default, >1 boosts assets that need headroom.
+    sfxScale[static_cast<size_t>(id)] = std::clamp(v, 0.0f, 2.0f);
+}
+
+const char* AudioManager::sfxName(SoundId id) {
+    switch (id) {
+        case SoundId::Footstep_Grass:  return "Footstep Grass";
+        case SoundId::Footstep_Stone:  return "Footstep Stone";
+        case SoundId::Footstep_Wood:   return "Footstep Wood";
+        case SoundId::Footstep_Sand:   return "Footstep Sand";
+        case SoundId::Footstep_Snow:   return "Footstep Snow";
+        case SoundId::Footstep_Gravel: return "Footstep Gravel";
+        case SoundId::Footstep_Leaves: return "Footstep Leaves";
+        case SoundId::Footstep_Water:  return "Footstep Water";
+        case SoundId::Break_Stone:     return "Break Stone";
+        case SoundId::Break_Wood:      return "Break Wood";
+        case SoundId::Break_Dirt:      return "Break Dirt";
+        case SoundId::Break_Sand:      return "Break Sand";
+        case SoundId::Break_Gravel:    return "Break Gravel";
+        case SoundId::Break_Leaves:    return "Break Leaves";
+        case SoundId::Break_Snow:      return "Break Snow";
+        case SoundId::Place_Stone:     return "Place Stone";
+        case SoundId::Place_Wood:      return "Place Wood";
+        case SoundId::Place_Dirt:      return "Place Dirt";
+        case SoundId::Place_Sand:      return "Place Sand";
+        case SoundId::Place_Gravel:    return "Place Gravel";
+        case SoundId::Place_Leaves:    return "Place Leaves";
+        case SoundId::Place_Snow:      return "Place Snow";
+        case SoundId::Zombie_Idle:     return "Zombie Idle";
+        case SoundId::Zombie_Hurt:     return "Zombie Hurt";
+        case SoundId::Zombie_Death:    return "Zombie Death";
+        case SoundId::Zombie_Step:     return "Zombie Step";
+        case SoundId::Creeper_Idle:    return "Creeper Idle";
+        case SoundId::Creeper_Hurt:    return "Creeper Hurt";
+        case SoundId::Creeper_Death:   return "Creeper Death";
+        case SoundId::Creeper_Fuse:    return "Creeper Fuse";
+        case SoundId::Creeper_Explode: return "Creeper Explode";
+        case SoundId::Player_Jump:        return "Player Jump";
+        case SoundId::Player_Splash:      return "Player Splash";
+        case SoundId::Player_Swim:        return "Player Swim";
+        case SoundId::Player_AttackSwing: return "Player Attack Swing";
+        case SoundId::Player_FallSmall:   return "Player Fall Small";
+        case SoundId::Player_FallBig:     return "Player Fall Big";
+        case SoundId::Player_Hurt:        return "Player Hurt";
+        case SoundId::Block_Pop:          return "Block Pop";
+        case SoundId::UI_Click:           return "UI Click";
+        case SoundId::_Count:             return "?";
+    }
+    return "?";
+}
 
 void AudioManager::applyVolumes() {
     // Master applies globally; per-bus volumes scale music/sfx independently underneath it.
@@ -662,7 +746,7 @@ void AudioManager::updateFootsteps(float dt, Camera& cam, Renderer& world) {
     if (onGround && !prevOnGround) {
         if (prevFallDist >= 4.0f)
             playSfx2D(SoundId::Player_FallBig,   1.0f);
-        else if (prevFallDist >= 2.0f)
+        else if (prevFallDist >= 1.8f)
             playSfx2D(SoundId::Player_FallSmall, 0.8f);
     }
     // Latch *after* the edge check so the value we read is from "the frame before landing".
@@ -802,20 +886,19 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
             glm::ivec3 below = glm::ivec3(glm::floor(epos)) + glm::ivec3(0, -1, 0);
             BlockType ground = world.getBlockWorld(below);
             if (ground != BlockType::AIR && audible) {
-                // Volumes here are pre-attenuation. INVERSE_DISTANCE with kAttenMin=1m halves
-                // the level every doubling of distance, so headroom > 1.0 is fine and is what
-                // makes mobs actually audible past a couple meters.
+                // Pre-attenuation volumes; LINEAR_DISTANCE has high mid-range gain so values
+                // stay <1.0 to keep mob steps from dominating the mix.
                 switch (st.type) {
                     case PLAYER:
-                        playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.8f);
+                        playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.55f);
                         break;
                     case ZOMBIE:
                         // Material-independent zombie shuffle (5 variations on disk).
-                        playSfx3D(SoundId::Zombie_Step, epos, glm::vec3(0.0f), 1.4f);
+                        playSfx3D(SoundId::Zombie_Step, epos, glm::vec3(0.0f), 0.85f);
                         break;
                     case CREEPER:
                         // No creeper-specific step asset; fall back to material footsteps.
-                        playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 1.0f);
+                        playSfx3D(footstepFor(ground), epos, glm::vec3(0.0f), 0.65f);
                         break;
                 }
             }
@@ -834,7 +917,7 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
             if (st.idleCooldown <= 0.0f) {
                 if (audible) {
                     SoundId idleId = (st.type == ZOMBIE) ? SoundId::Zombie_Idle : SoundId::Creeper_Idle;
-                    playSfx3D(idleId, epos, glm::vec3(0.0f), 0.7f);
+                    playSfx3D(idleId, epos, glm::vec3(0.0f), 0.5f);
                 }
                 // 6–14 s — vanilla cadence. Random within range so two nearby mobs don't sync.
                 st.idleCooldown = 6.0f + frand01() * 8.0f;
@@ -850,7 +933,7 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
                     primed = cc->clientPrimed;
                 if (primed && !st.prevPrimed) {
                     if (audible)
-                        st.fuseHandle = playSfx3DTracked(SoundId::Creeper_Fuse, epos, glm::vec3(0.0f), 1.0f);
+                        st.fuseHandle = playSfx3DTracked(SoundId::Creeper_Fuse, epos, glm::vec3(0.0f), 0.75f);
                 } else if (!primed && st.prevPrimed) {
                     if (st.fuseHandle) { engine.stop(st.fuseHandle); st.fuseHandle = 0; }
                 }
@@ -880,30 +963,24 @@ void AudioManager::updateMobAudio(float dt, Camera& cam, Renderer& world) {
                 glm::dvec3 d = st.lastPos - listenerPos;
                 bool deathAudible = glm::dot(d, d) <= kAudibleD2;
 
-                switch (st.type) {
-                    case CREEPER:
-                        // Explosions are loud and "global feeling" in vanilla — keep them audible
-                        // even past the regular envelope. Death is gated normally. Discriminator
-                        // is the server-authoritative diedByExplosion flag (latched by Renderer
-                        // from the death packet's bit 0x20), NOT prevPrimed — a primed creeper
-                        // killed before its fuse expires plays the death sound, not the explode.
-                        if (st.diedByExplosion) {
-                            playSfx3D(SoundId::Creeper_Explode, st.lastPos, glm::vec3(0.0f), 1.0f);
-                            // Suppression window so the cascade of MODIFIED_BLOCK_DATA packets
-                            // from the crater doesn't add ~30 stone-break voices on top of the
-                            // explosion. Vanilla blast radius is ~3 blocks; 6m catches the crater.
-                            explosionWindows.push_back({st.lastPos, 6.0f, 0.7f});
-                        } else if (deathAudible) {
-                            playSfx3D(SoundId::Creeper_Death, st.lastPos, glm::vec3(0.0f), 1.0f);
-                        }
-                        break;
-                    case ZOMBIE:
-                        if (deathAudible)
-                            playSfx3D(SoundId::Zombie_Death, st.lastPos, glm::vec3(0.0f), 1.0f);
-                        break;
-                    case PLAYER:
-                        // No remote-player death sound today.
-                        break;
+                // Fallback for anything that bypassed App.cpp's immediate death-sound path
+                // (which sets deathSoundFired). diedByExplosion picks Explode vs Death — a
+                // primed creeper killed mid-fuse plays Death, not Explode.
+                if (!st.deathSoundFired) {
+                    switch (st.type) {
+                        case CREEPER:
+                            if (st.diedByExplosion)
+                                onCreeperExploded(it->first, st.lastPos, listenerPos);
+                            else if (deathAudible)
+                                playSfx3D(SoundId::Creeper_Death, st.lastPos, glm::vec3(0.0f), 1.0f);
+                            break;
+                        case ZOMBIE:
+                            if (deathAudible)
+                                playSfx3D(SoundId::Zombie_Death, st.lastPos, glm::vec3(0.0f), 1.0f);
+                            break;
+                        case PLAYER:
+                            break;
+                    }
                 }
                 it = mobStates.erase(it);
             } else {

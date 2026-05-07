@@ -36,8 +36,8 @@ void LivingEntity::attack(LivingEntity &victim)
 		std::sin(glm::radians(yaw))
 	};
 
-	constexpr float strength = 0.4f * 25;		//25 is completely arbitrary testing value
-	constexpr float verticalBoost = 0.1 * 5;	//same with 5
+	constexpr float strength = 0.4f * 2;		//2 is knockback attack value
+	constexpr float verticalBoost = 0.1 * 5;	//same with 5 ( testing value)
 
 	victim.health -= damage;
 	victim.applyImpulse(knockbackDir * strength + glm::vec3(0.0f, verticalBoost, 0.0f));

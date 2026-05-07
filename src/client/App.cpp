@@ -498,6 +498,21 @@ void App::setUdpClientPacketCallback()
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
 				renderer->onEntity(p, clientTime);
+				// Explosion death (type==-1, bit 0x20): fire immediately so the boom is in
+				// sync with the visual blast and so the suppression window is pushed before
+				// the same burst's MODIFIED_BLOCK_DATA packets play their crater sounds.
+				if (audio
+				    && p.eEntityType == EEntityTypes::LIVING_ENTITIES
+				    && p.type == static_cast<uint16_t>(-1)
+				    && (p.positionFlags & 0x20)) {
+					glm::dvec3 epos(p.positionX, p.positionY, p.positionZ);
+					glm::dvec3 listenerPos = camera ? camera->getEyePosD() : epos;
+					const void* key = nullptr;
+					for (const auto& le : renderer->livingEntities) {
+						if (le && le->getID() == p.entityID) { key = le.get(); break; }
+					}
+					audio->onCreeperExploded(key, epos, listenerPos);
+				}
 				// Hurt one-shot (server bit 0x10). Skip on the death packet (type == -1) — the
 				// AudioManager's death-edge sweep handles that case with the proper death sfx.
 				if (audio
@@ -531,13 +546,11 @@ void App::setUdpClientPacketCallback()
 				renderer->updateChunk(p);
 
 				if (audio) {
-					// Distance-gate: block updates fan out worldwide (water spread, creeper
-					// explosion fallout, other players mining in their chunk), but a 3D one-shot
-					// past the listener's audible envelope still pops a sub-frame click before
-					// SoLoud kills it for being inaudible. ~48m matches kAttenMax (64m) with
-					// some safety margin so we never start an emitter we'll immediately cull.
+					// Stay inside kAttenMax (24m). LINEAR_DISTANCE gives 0 past it, so SoLoud
+					// would kill the voice mid-buffer with an audible click on every distant
+					// block update (water spread, far players mining, etc).
 					glm::dvec3 center(p.x + 0.5, p.y + 0.5, p.z + 0.5);
-					constexpr double kBlockSfxMaxDist = 48.0;
+					constexpr double kBlockSfxMaxDist = 20.0;
 					glm::dvec3 listener = camera ? camera->getEyePosD() : glm::dvec3(center);
 					glm::dvec3 diff = center - listener;
 					double d2 = glm::dot(diff, diff);
@@ -545,11 +558,24 @@ void App::setUdpClientPacketCallback()
 						break;
 					}
 
-					// Suppress block sfx that fall inside an active creeper-explosion window —
-					// otherwise the crater's ~30-block destruction cascade stacks into a "weird
-					// noise" right when the player hears the explode sound itself.
 					if (audio->blockSfxSuppressed(center))
 						break;
+					// Same-burst defense: server's explodeAt() carves blocks before damaging
+					// entities, so crater MODIFIED_BLOCK_DATA packets land before the death
+					// packet that opens the suppression window. Primed creepers don't otherwise
+					// break blocks, so this check is safe.
+					{
+						bool nearPrimed = false;
+						constexpr double kPrimedSuppressR2 = 6.0 * 6.0;
+						for (const auto& le : renderer->livingEntities) {
+							if (!le) continue;
+							auto cc = std::dynamic_pointer_cast<ClientCreeper>(le);
+							if (!cc || !cc->clientPrimed) continue;
+							glm::dvec3 dd = le->getPositionD() - center;
+							if (glm::dot(dd, dd) <= kPrimedSuppressR2) { nearPrimed = true; break; }
+						}
+						if (nearPrimed) break;
+					}
 
 					// Liquid spread (water/lava) is a constant background of MODIFIED_BLOCK_DATA
 					// packets; playing the default Stone break/place for them is the wrong sound
@@ -2261,6 +2287,47 @@ void App::debugWindow() {
                     if (ImGui::SliderFloat("SFX Volume", &sfxVolume, 0.0f, 1.0f, "%.2f"))
                         audio->setSfxVolume(sfxVolume);
 
+                    // Per-SoundId multipliers (0..2), grouped so the tab isn't 40 flat sliders.
+                    auto soundSliders = [&](const char* groupName, std::initializer_list<SoundId> ids) {
+                        if (ImGui::TreeNode(groupName)) {
+                            for (SoundId id : ids) {
+                                float v = audio->getSfxScale(id);
+                                if (ImGui::SliderFloat(AudioManager::sfxName(id), &v, 0.0f, 2.0f, "%.2f"))
+                                    audio->setSfxScale(id, v);
+                            }
+                            ImGui::TreePop();
+                        }
+                    };
+                    if (ImGui::CollapsingHeader("Per-sound volumes")) {
+                        soundSliders("Footsteps", {
+                            SoundId::Footstep_Grass, SoundId::Footstep_Stone, SoundId::Footstep_Wood,
+                            SoundId::Footstep_Sand, SoundId::Footstep_Snow, SoundId::Footstep_Gravel,
+                            SoundId::Footstep_Leaves, SoundId::Footstep_Water,
+                        });
+                        soundSliders("Block break", {
+                            SoundId::Break_Stone, SoundId::Break_Wood, SoundId::Break_Dirt,
+                            SoundId::Break_Sand, SoundId::Break_Gravel, SoundId::Break_Leaves,
+                            SoundId::Break_Snow,
+                        });
+                        soundSliders("Block place", {
+                            SoundId::Place_Stone, SoundId::Place_Wood, SoundId::Place_Dirt,
+                            SoundId::Place_Sand, SoundId::Place_Gravel, SoundId::Place_Leaves,
+                            SoundId::Place_Snow, SoundId::Block_Pop,
+                        });
+                        soundSliders("Mobs", {
+                            SoundId::Zombie_Idle, SoundId::Zombie_Hurt, SoundId::Zombie_Death,
+                            SoundId::Zombie_Step,
+                            SoundId::Creeper_Idle, SoundId::Creeper_Hurt, SoundId::Creeper_Death,
+                            SoundId::Creeper_Fuse, SoundId::Creeper_Explode,
+                        });
+                        soundSliders("Player", {
+                            SoundId::Player_Jump, SoundId::Player_Splash, SoundId::Player_Swim,
+                            SoundId::Player_AttackSwing, SoundId::Player_FallSmall,
+                            SoundId::Player_FallBig, SoundId::Player_Hurt,
+                        });
+                        soundSliders("UI", { SoundId::UI_Click });
+                    }
+
                     if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
                         style._NextFrameFontSizeBase = style.FontSizeBase;
                     ImGui::Separator();
@@ -2269,6 +2336,22 @@ void App::debugWindow() {
                     {
                         NetMessage pkt;
                         pkt.message = spectator ? "/gamemode survival" : "/gamemode spectator";
+                        udpClient->sendPacket(pkt);
+                    }
+
+                    ImGui::Separator();
+                    ImGui::Text("Debug spawn");
+                    static int debugSpawnCount = 5;
+                    ImGui::SliderInt("Count##spawn", &debugSpawnCount, 1, 50);
+                    if (ImGui::Button("Spawn Zombies")) {
+                        NetMessage pkt;
+                        pkt.message = "/summon zombie " + std::to_string(debugSpawnCount);
+                        udpClient->sendPacket(pkt);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Spawn Creepers")) {
+                        NetMessage pkt;
+                        pkt.message = "/summon creeper " + std::to_string(debugSpawnCount);
                         udpClient->sendPacket(pkt);
                     }
                     ImGui::EndTabItem();

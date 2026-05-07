@@ -624,6 +624,46 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
                 messages.push_back("[server] Usage: /tp <x> <y> <z>");
             }
         }
+        else if (pkt.message.starts_with("summon "))
+        {
+            // Debug spawn /summon <zombie|creeper> [count], capped at 50.
+            auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+            if (player == players.end()) return;
+
+            std::istringstream iss(pkt.message.substr(strlen("summon ")));
+            std::string mobType;
+            int count = 1;
+            if (!(iss >> mobType)) {
+                messages.push_back("[server] Usage: /summon <zombie|creeper> [count]");
+                return;
+            }
+            if (!(iss >> count)) count = 1;
+            count = std::clamp(count, 1, 50);
+
+            const glm::vec3 ppos = player->movement->getPosition();
+            std::uniform_int_distribution<int>   angDeg(0, 359);
+            std::uniform_real_distribution<float> radDist(4.0f, 6.0f);
+
+            auto spawnOne = [&](LivingEntityType type) {
+                const float angle = glm::radians(static_cast<float>(angDeg(spawnRng)));
+                const float r     = radDist(spawnRng);
+                glm::vec3 pos(ppos.x + std::cos(angle) * r, ppos.y, ppos.z + std::sin(angle) * r);
+                if (type == ZOMBIE)
+                    world->livingEntities.push_back(std::make_shared<Zombie>(pos));
+                else if (type == CREEPER)
+                    world->livingEntities.push_back(std::make_shared<Creeper>(pos));
+            };
+
+            if (mobType == "zombie") {
+                for (int i = 0; i < count; ++i) spawnOne(ZOMBIE);
+                messages.push_back("[server] Spawned " + std::to_string(count) + " zombie(s)");
+            } else if (mobType == "creeper") {
+                for (int i = 0; i < count; ++i) spawnOne(CREEPER);
+                messages.push_back("[server] Spawned " + std::to_string(count) + " creeper(s)");
+            } else {
+                messages.push_back("[server] Usage: /summon <zombie|creeper> [count]");
+            }
+        }
 	}
 	else
 		messages.push_back(pkt.message);

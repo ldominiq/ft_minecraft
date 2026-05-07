@@ -16,6 +16,10 @@ enum class TargetType {
     LivingEntity
 };
 
+// Player interaction reach (in blocks)
+constexpr float PLAYER_BLOCK_REACH  = 4.5f;
+constexpr float PLAYER_ENTITY_REACH = 3.0f;
+
 class ICommonWorld {
 public:
 	virtual BlockType getBlockWorld(glm::ivec3 globalCoords) const = 0;
@@ -45,7 +49,9 @@ class CommonWorld : public ICommonWorld{
 
 		bool rayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir, const AABB& box, float maxDistance, float& outT);
 		bool findClosestEntityHit(const LivingEntity& src, float maxDistance, LivingEntity*& outEntity, float& outT);
-		TargetType getTarget(const LivingEntity& src, glm::ivec3 &hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance = 100);
+		TargetType getTarget(const LivingEntity& src, glm::ivec3 &hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity,
+		                    float blockMaxDistance  = PLAYER_BLOCK_REACH,
+		                    float entityMaxDistance = PLAYER_ENTITY_REACH);
 		// bool removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, BlockType &dropped);
 		// bool setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block);
 

@@ -155,11 +155,12 @@ class World final : public CommonWorld<ChunkGeneration>
 		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 		void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
 
-		// Carve a spherical crater at `center` and deal distance-falloff damage to every
-		// LivingEntity inside. `source` is the entity whose action caused the blast
-		// (typically the creeper itself) — it's flagged diedByExplosion on hit so the
-		// server skips its fall-over animation. Pass nullptr for non-entity sources.
-		void explodeAt(const glm::vec3 &center, float radius, float maxDamage, LivingEntity *source);
+		// Carves a sphere of blocks to air and deals falloff damage + knockback to every
+		// LivingEntity inside. `source` (if non-null) is flagged diedByExplosion on hit so
+		// the server skips its fall-over animation. knockH/knockV are peak impulses at
+		// center, linearly falling off to 0 at radius.
+		void explodeAt(const glm::vec3 &center, float radius, float maxDamage,
+		               float knockH, float knockV, LivingEntity *source);
 
 		void advanceSkyTime();
 
