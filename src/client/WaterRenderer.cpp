@@ -13,6 +13,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
+#include <algorithm>
 
 
 // ============================================================
@@ -28,6 +29,26 @@ WaterRenderer::WaterRenderer(int screenWidth, int screenHeight) {
     placedWaterShader = std::make_unique<Shader>("shaders/water_placed.vert", "shaders/water_placed.frag");
     dudvTexture = waterShader->loadTexture("assets/textures/waterDudv.png");
     waterNormalTexture = waterShader->loadTexture("assets/textures/normalMap.png");
+
+	// override default GL_NEAREST filter set by loadTexture() for these two textures
+    // Override to trilinear + max-8 anisotropy on just these two textures.
+    auto setSmoothFilter = [](GLuint tex) {
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    #if defined(GL_TEXTURE_MAX_ANISOTROPY_EXT)
+        float maxAniso = 0.0f;
+        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAniso);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, std::min(8.0f, maxAniso));
+    #elif defined(GL_TEXTURE_MAX_ANISOTROPY)
+        float maxAniso = 0.0f;
+        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &maxAniso);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, std::min(8.0f, maxAniso));
+    #endif
+    };
+    setSmoothFilter(dudvTexture);
+    setSmoothFilter(waterNormalTexture);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
     // connect texture units
     waterShader->use();
