@@ -1,4 +1,7 @@
 
+#ifndef CONTROLS_MENU_HPP
+#define CONTROLS_MENU_HPP
+
 #include "Menu.hpp"
 #include <array>
 
@@ -71,3 +74,5 @@ class ControlsMenu : public Menu {
 		void saveControls(const char* filename = "controls.cfg");
 		void loadControlsFromFile(const char* filename = "controls.cfg");
 };	
+
+#endif

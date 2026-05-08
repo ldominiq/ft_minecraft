@@ -102,7 +102,7 @@ class LivingEntity : public Entity
 		float getAccumulatedFallDistance() const { return accumulatedFallDistance; }
 
 		void setName(const std::string& name) { this->name = name; }
-		std::string getName() const { return name; }
+		const std::string& getName() const { return name; }
 };
 
 #endif

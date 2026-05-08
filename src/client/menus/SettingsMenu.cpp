@@ -34,7 +34,6 @@ void SettingsMenu::build()
 {
 	float centerX = fullscreenWidth / 2.0f;
 	float quarterY = fullscreenHeight / 3.0f;
-	int amountOfButtons = 2; // adjust if more buttons are added
 
 	float btnW = BTN_W * menuScale;
 	float btnH = BTN_H * menuScale;

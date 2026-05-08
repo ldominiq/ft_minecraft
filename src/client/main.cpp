@@ -8,7 +8,12 @@ void handle_sigint(int) {
     if (g_app) {
         g_app->cleanup();
     }
-    exit(0);
+
+	GLFWwindow* w = g_app ? g_app->getWindow() : nullptr;
+	if (w)
+    	glfwSetWindowShouldClose(w, GLFW_TRUE);
+	else
+		std::exit(0);
 }
 
 int main(int argc, char** argv) {

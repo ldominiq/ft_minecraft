@@ -390,14 +390,26 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 
 	std::cout << "New client connecting from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << "...\n";
 
+	pkt.username = pkt.username.substr(0, 15); // enforce max length
+	std::string name = pkt.username;
+	int count = 0;
+	for (const auto &p : players)
+	{
+		if (p.originalName == pkt.username)
+			count++;
+	}
+	if (count > 0) name = "(" + std::to_string(count) + ") " + name;
+	name = name.substr(0, 15); // enforce max length
+
     CPlayerInfo p; //deserializePlayerInfo(pkt.payload);
 	p.id = nextPlayerId++;
+	p.originalName = pkt.username;
 	p.addr = cliaddr;
 	p.connected = true;
 	p.computeSpawnPosition(world->getTerrainParams());
 
 	auto movement = p.movement;
-	p.movement->setName(pkt.username);
+	p.movement->setName(name);
 	players.push_back(std::move(p));
 	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
@@ -827,14 +839,6 @@ void Server::sendDeaths()
 		// Countdown path: already broadcast the death; waiting for the animation window.
 		if (ent->pendingDeathRemovalTicks > 0)
 		{
-			le->get()->onDeath();
-
-			std::string name = le->get()->getName();
-			if (name.empty())
-				messages.push_back("Someone has died miserably");
-			else
-				messages.push_back(name + " has been obliterated");
-
 			ent->pendingDeathRemovalTicks--;
 			if (ent->pendingDeathRemovalTicks == 0)
 			{
@@ -855,10 +859,14 @@ void Server::sendDeaths()
 
 		if (ent->health <= 0 && !ent->deathBroadcast)
 		{
-			messages.push_back("Someone has died miserably");
 			ent->deathBroadcast = true;
 
-			
+			std::string name = le->get()->getName();
+			if (name.empty())
+				messages.push_back("Someone has died miserably");
+			else
+				messages.push_back(name + " has been obliterated");
+
 			NetEntityMove pkt;
 			pkt.eEntityType = ent->getEntityType();
 			pkt.entityID    = ent->getID();

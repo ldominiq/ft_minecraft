@@ -94,6 +94,7 @@ public:
 
     void run();
 	void cleanup();
+	GLFWwindow* getWindow() const { return window; }
 
     GameState gameState = GameState::MainMenu;
 

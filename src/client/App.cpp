@@ -2382,7 +2382,7 @@ void App::cleanup() {
 
 	if (udpClient && clientConnected) {
 		NetDisconnect pkt;
-		pkt.username = "Steve";
+		pkt.username = settingsMenu ? settingsMenu->getUsername() : "";
 		udpClient->sendPacket(pkt);
 	}
 

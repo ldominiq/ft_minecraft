@@ -209,6 +209,7 @@ void Menu::drawInputBox(float x, float y, float w, float h, const std::string& t
 				   glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
 
 	// text inside box
+	float savedScale = textRenderer.getScale();
 	float textScale = 0.5f * menuScale;
 	textRenderer.setScale(textScale);
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
@@ -219,6 +220,7 @@ void Menu::drawInputBox(float x, float y, float w, float h, const std::string& t
 	if (showCursor && focused) displayText += "_";
 
 	textRenderer.renderText(displayText, x + 8.0f * menuScale, y + h * 0.25f, glm::vec3(1.0f));
+	textRenderer.setScale(savedScale);
 }
 
 GLuint Menu::loadTexture2D(const char* path, bool pixelated, int* outWidth, int* outHeight)

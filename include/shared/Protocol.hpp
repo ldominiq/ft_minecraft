@@ -270,7 +270,7 @@ struct NetEntityMove final : public Packet {
 	float yaw;
 	float pitch = 0.0f;
 
-	std::string entityName = "";
+	std::string entityName = ""; //should go to a separate packet send on NetAccept to be sent only once and not take bandwidth every tick.
 
 	// bit 0 = hasHorizontalInput, bit 1 = onGround, bit 2 = armSwing event
 	uint8_t positionFlags = 0;
