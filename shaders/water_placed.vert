@@ -21,9 +21,42 @@ uniform vec3 chunkRel;
 uniform vec2 texAnchor;
 uniform float tiling;
 
+// Gerstner wave inputs
+uniform vec2 waveAnchor;
+uniform float waveTime;
+
+// Smaller-amplitude Gerstner 
+float gerstnerY(vec2 worldXZ) {
+    const vec2  dir1 = vec2( 0.7071,  0.7071);
+    const float len1 = 16.0;
+    const float amp1 = 0.025;
+    const float k1   = 6.28318530718 / len1;
+    float phase1     = k1 * dot(dir1, worldXZ) - waveTime * 1.5;
+
+    const vec2  dir2 = vec2(-0.5,     0.866);
+    const float len2 = 7.0;
+    const float amp2 = 0.012;
+    const float k2   = 6.28318530718 / len2;
+    float phase2     = k2 * dot(dir2, worldXZ) - waveTime * 2.3;
+
+    return amp1 * cos(phase1) + amp2 * cos(phase2);
+}
+
 void main() {
     vec3 aPos = unpackPos(aV0);
     vec3 cameraRelPos = chunkRel + aPos;
+
+    int normalIdx = unpackNormal(aV1);
+    int cornerIdx = unpackCorner(aV1);
+    bool isTopFace    = (normalIdx == 2);
+    bool isBottomFace = (normalIdx == 3);
+    bool isUpperEdge  = (cornerIdx == 2 || cornerIdx == 3);
+    bool displace     = isTopFace || (!isBottomFace && isUpperEdge);
+
+    if (displace) {
+        vec2 worldXZ = cameraRelPos.xz + waveAnchor;
+        cameraRelPos.y += gerstnerY(worldXZ);
+    }
 
     clipSpace = projection * viewRot * vec4(cameraRelPos, 1.0);
     gl_Position = clipSpace;

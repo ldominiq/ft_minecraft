@@ -510,6 +510,7 @@ void App::setUdpClientPacketCallback()
                 const int waterSurfaceY = p.seaLevel + 1;
                 if (waterRenderer) waterRenderer->setSeaLevel(waterSurfaceY);
                 ChunkRenderer::setSeaLevel(waterSurfaceY);
+                if (lighting) lighting->setSeaLevel(static_cast<float>(waterSurfaceY));
                 currentWorldSeed = p.worldSeed;
                 currentContinentalness = p.continentalness;
                 currentErosion = p.erosion;
@@ -906,11 +907,23 @@ void App::render() {
             ssaoQueryIssuedThisFrame[currentQueryIndex] = false;
         }
 
-		static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
-		static float waveSpeed = waterRenderer->waveStrength;
-		waterMoveOffset += waveSpeed * deltaTime;
-		if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
+		static float waterMoveOffset  = waterRenderer->getWaterMoveFactor();
+		static float waterMoveOffset2 = waterRenderer->getWaterMoveFactor2();
+		const float scrollSpeed1 = 0.012f; // ~83s per cycle
+		const float scrollSpeed2 = 0.0078f; // ~128s per cycle (incommensurate)
+		waterMoveOffset  += scrollSpeed1 * deltaTime;
+		waterMoveOffset2 += scrollSpeed2 * deltaTime;
+		if (waterMoveOffset  > 1.0f) waterMoveOffset  -= 1.0f;
+		if (waterMoveOffset2 > 1.0f) waterMoveOffset2 -= 1.0f;
 		waterRenderer->setWaterMoveFactor(waterMoveOffset);
+		waterRenderer->setWaterMoveFactor2(waterMoveOffset2);
+		// Non-wrapping wave phase — drives Gerstner displacement in the
+		// vertex shader. Independent of waterMoveOffset (which wraps for
+		// dudv UV scrolling).
+		waterRenderer->advanceWaveTime(deltaTime);
+		// Share the same phase clock with caustics so the ripples on
+		// underwater terrain swim in lockstep with the surface waves.
+		if (lighting) lighting->setCausticTime(waterRenderer->getWaveTime());
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         

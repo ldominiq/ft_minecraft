@@ -67,6 +67,15 @@ void WaterRenderer::setDependencies(const std::shared_ptr<Lighting> &lightingRef
     camera = cameraRef;
 }
 
+void WaterRenderer::advanceWaveTime(float dt) {
+    // Wrap at 2π * 1024 — large enough that the wrap is invisible (cos is
+    // periodic in 2π), small enough that float precision stays good.
+    constexpr float kTwoPi = 6.28318530717958647692f;
+    constexpr float kWrap  = kTwoPi * 1024.0f;
+    waveTime += dt;
+    if (waveTime > kWrap) waveTime -= kWrap;
+}
+
 void WaterRenderer::setRefractionResolutionScale(float scale, int displayWidth, int displayHeight) {
     if (scale < 0.1f) scale = 0.1f;
     if (scale > 1.0f) scale = 1.0f;
@@ -235,13 +244,36 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     waterShader->setFloat("twilightHigh", 0.315f);
     waterShader->setVec2("texAnchor", texAnchor);
     waterShader->setFloat("moveFactor", waterMoveFactor);
+    waterShader->setFloat("moveFactor2", waterMoveFactor2);
     waterShader->setFloat("waveStrength", waveStrength);
     waterShader->setFloat("tiling", dudvTiling);
     waterShader->setFloat("nearPlane", 0.1f);
     waterShader->setFloat("farPlane", 1000.0f);
 
-    // Fog uniforms
-    uploadFogUniforms(*waterShader, fogEnabled, lighting->getSkyLUTTexture(),
+    // Gerstner wave inputs. waveAnchor is the eye position wrapped to a
+    // large period (1024 world units) so the wave's xz argument stays
+    // small enough for f32 cos/sin, while staying world-stable across
+    // chunks (same value at the same world point regardless of camera).
+    constexpr double kWaveWrap = 1024.0;
+    const double waveAnchorX = std::floor(eyePosD.x / kWaveWrap) * kWaveWrap;
+    const double waveAnchorZ = std::floor(eyePosD.z / kWaveWrap) * kWaveWrap;
+    const glm::vec2 waveAnchor(static_cast<float>(eyePosD.x - waveAnchorX),
+                               static_cast<float>(eyePosD.z - waveAnchorZ));
+    waterShader->setVec2("waveAnchor", waveAnchor);
+    waterShader->setFloat("waveTime", waveTime);
+
+    // The ocean shader now also samples the sky LUT for the distance color
+    // shift (independent of fog), so bind it unconditionally — uploadFogUniforms
+    // only binds when fog is enabled.
+    const GLuint skyLUTTex = lighting->getSkyLUTTexture();
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::SKY_LUT);
+    glBindTexture(GL_TEXTURE_2D, skyLUTTex);
+    waterShader->setInt("skyLUT", TextureUnits::SKY_LUT);
+    waterShader->setFloat("skyExposure", lighting->getSkyExposure());
+
+    // Fog uniforms (sets fogEnabled, fogStart/End/Strength, sunDir, and
+    // re-binds skyLUT on the same unit when fog is on — same texture either way).
+    uploadFogUniforms(*waterShader, fogEnabled, skyLUTTex,
                       lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
                       lighting->getDirectionalLightDirection());
 
@@ -304,8 +336,18 @@ void WaterRenderer::renderPlacedWaterSurface(const glm::mat4& projection) {
     placedWaterShader->setFloat("twilightHigh", 0.315f);
     placedWaterShader->setVec2("texAnchor", texAnchor);
     placedWaterShader->setFloat("moveFactor", waterMoveFactor);
+    placedWaterShader->setFloat("moveFactor2", waterMoveFactor2);
     placedWaterShader->setFloat("waveStrength", waveStrength);
     placedWaterShader->setFloat("tiling", dudvTiling);
+
+    // Gerstner wave inputs (see renderWaterSurface for waveAnchor rationale).
+    constexpr double kWaveWrap = 1024.0;
+    const double waveAnchorX = std::floor(eyePosD.x / kWaveWrap) * kWaveWrap;
+    const double waveAnchorZ = std::floor(eyePosD.z / kWaveWrap) * kWaveWrap;
+    const glm::vec2 waveAnchor(static_cast<float>(eyePosD.x - waveAnchorX),
+                               static_cast<float>(eyePosD.z - waveAnchorZ));
+    placedWaterShader->setVec2("waveAnchor", waveAnchor);
+    placedWaterShader->setFloat("waveTime", waveTime);
 
     // The placed-water shader samples skyLUT for both fog AND the reflection
     // term, so we must bind it unconditionally — uploadFogUniforms skips the

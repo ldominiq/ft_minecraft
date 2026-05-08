@@ -32,6 +32,16 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
     glBindVertexArray(0);
+
+    causticsTexture = skyShader->loadTexture("assets/textures/caustics.jpg");
+    if (causticsTexture) {
+        glBindTexture(GL_TEXTURE_2D, causticsTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 }
 
 Lighting::~Lighting() {
@@ -310,6 +320,14 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
 
 
     shader.setFloat("material.shininess", materialShininess);
+
+    shader.setFloat("seaLevel", seaLevel);
+    shader.setFloat("causticTime", causticTime);
+    if (causticsTexture) {
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::CAUSTICS);
+        glBindTexture(GL_TEXTURE_2D, causticsTexture);
+        shader.setInt("causticsMap", TextureUnits::CAUSTICS);
+    }
 
     // directional light
     if (directionalLightOn) {

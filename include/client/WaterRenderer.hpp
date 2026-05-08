@@ -38,6 +38,16 @@ public:
 
     float getWaterMoveFactor() const { return waterMoveFactor; }
     void setWaterMoveFactor(const float factor) { waterMoveFactor = factor; }
+
+    
+    float getWaterMoveFactor2() const { return waterMoveFactor2; }
+    void  setWaterMoveFactor2(const float factor) { waterMoveFactor2 = factor; }
+
+    // Non-wrapping wave time used for Gerstner displacement. moveFactor wraps
+    // 0->1 every second (which is fine for additive UV scrolling on a tiling
+    // dudv texture) but would cause a visible phase snap if fed into cos/sin.
+    float getWaveTime() const { return waveTime; }
+    void  advanceWaveTime(float dt);
     void setFogParams(bool enabled, float start, float end, float strength = 1.4f) {
         fogEnabled = enabled;
         fogStart = start;
@@ -79,6 +89,9 @@ private:
     std::shared_ptr<Camera> camera;
 
     float waterMoveFactor = 0.0f;
+    float waterMoveFactor2 = 0.0f;
+    // Continuously-accumulating phase for Gerstner waves.
+    float waveTime = 0.0f;
 
     bool  fogEnabled  = false;
     float fogStart    = 500.0f;
