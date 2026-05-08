@@ -575,7 +575,7 @@ void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view
 	              [](const std::shared_ptr<Entity>& e){ return !e || e->removed; });
 }
 
-void Renderer::renderWater(const std::shared_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const {
+void Renderer::renderWater(const std::unique_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const {
 	glDisable(GL_CULL_FACE);
     for (const auto& weakChunk : renderedChunks) {
         if (auto chunk = weakChunk.lock()) {
@@ -616,6 +616,51 @@ bool Renderer::hasVisibleWater() const {
             }
 
 			return true; // Found at least one visible water chunk
+		}
+	}
+	return false;
+}
+
+void Renderer::renderPlacedWater(const std::unique_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const {
+	glDisable(GL_CULL_FACE);
+    for (const auto& weakChunk : renderedChunks) {
+        if (auto chunk = weakChunk.lock()) {
+            if (chunk->getPlacedWaterMeshVertexCount() == 0)
+                continue;
+
+           if (frustumCullingEnabled) {
+                const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - frustumEyePos;
+                const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - frustumEyePos;
+                if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
+                    continue;
+            }
+
+            const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+                                               static_cast<double>(chunk->getOriginZ()));
+            shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - eyePos));
+            shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
+
+            glBindVertexArray(chunk->getPlacedWaterVao());
+            glDrawArrays(GL_TRIANGLES, 0, chunk->getPlacedWaterMeshVertexCount());
+        }
+    }
+	glEnable(GL_CULL_FACE);
+}
+
+bool Renderer::hasVisiblePlacedWater() const {
+	for (const auto& weakChunk : renderedChunks) {
+		if (auto chunk = weakChunk.lock()) {
+			if (chunk->getPlacedWaterMeshVertexCount() == 0)
+				continue;
+
+           if (frustumCullingEnabled) {
+                const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - frustumEyePos;
+                const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - frustumEyePos;
+                if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
+                    continue;
+            }
+
+			return true;
 		}
 	}
 	return false;

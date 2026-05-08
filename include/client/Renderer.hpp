@@ -150,10 +150,18 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
        void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix,
 						 const glm::dvec3& eyePos) const;
-       void renderWater(const std::shared_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const;
+       void renderWater(const std::unique_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const;
+       /// Same as renderWater but iterates the placed-water VAO bucket. Drawn
+       /// with the sky-reflection shader; no FBO sampling.
+       void renderPlacedWater(const std::unique_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const;
 
-		/// Returns true if any water chunk is visible in the current frustum.
+		/// Returns true if any *ocean* (planar) water is visible in the
+		/// current frustum. Used to gate the planar reflection/refraction
+		/// passes — placed-bucket water doesn't need them.
 		bool hasVisibleWater() const;
+		/// Returns true if any *placed* water (sky-reflection bucket) is
+		/// visible in the current frustum.
+		bool hasVisiblePlacedWater() const;
 
 		void buildChunks();
 		void updateChunk(const NetModifiedBlockData &pkt);

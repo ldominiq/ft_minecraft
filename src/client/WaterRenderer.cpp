@@ -19,15 +19,21 @@
 // Water Rendering Helper Methods
 // ============================================================
 
-WaterRenderer::WaterRenderer(const std::shared_ptr<Shader>& shader, const std::shared_ptr<WaterFramebuffer>& fbos) : waterShader(shader), fbos(fbos) {
-    dudvTexture = shader->loadTexture("assets/textures/waterDudv.png");
-    waterNormalTexture = shader->loadTexture("assets/textures/normalMap.png");
+WaterRenderer::WaterRenderer(int screenWidth, int screenHeight) {
+
+    fbos = std::make_unique<WaterFramebuffer>(screenWidth, screenHeight);
+    waterShader = std::make_unique<Shader>("shaders/water.vert", "shaders/water.frag");
+    // Sky-reflection shader for water that isn't on the planar (sea-level)
+    // plane — placed buckets, spread water, exposed deep-ocean side faces.
+    placedWaterShader = std::make_unique<Shader>("shaders/water_placed.vert", "shaders/water_placed.frag");
+    dudvTexture = waterShader->loadTexture("assets/textures/waterDudv.png");
+    waterNormalTexture = waterShader->loadTexture("assets/textures/normalMap.png");
 
     // connect texture units
-    shader->use();
-    shader->setInt("reflectionTexture", 0);
-    shader->setInt("refractionTexture", 1);
-    shader->stop();
+    waterShader->use();
+    waterShader->setInt("reflectionTexture", 0);
+    waterShader->setInt("refractionTexture", 1);
+    waterShader->stop();
 }
 
 WaterRenderer::~WaterRenderer() {
@@ -245,6 +251,67 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
 
     // Render water meshes
     renderer->renderWater(waterShader, eyePosD);
+
+    glDisable(GL_BLEND);
+}
+
+void WaterRenderer::renderPlacedWaterSurface(const glm::mat4& projection) {
+    if (!placedWaterShader) return;
+
+    const glm::mat4 view = camera->getViewMatrix();
+    glm::mat4 viewRot = view;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    const glm::dvec3 eyePosD = camera->getEyePosD();
+    const glm::vec3 sunDir = lighting->getDirectionalLightDirection();
+
+    // Same dudv anchor logic as the ocean pass — keeps the texture coordinate
+    // small at large world coordinates so wave detail doesn't quantize away.
+    const double period = (dudvTiling > 0.0f) ? (1.0 / static_cast<double>(dudvTiling)) : 1.0;
+    const double anchorX = std::floor(eyePosD.x / period) * period;
+    const double anchorZ = std::floor(eyePosD.z / period) * period;
+    const glm::vec2 texAnchor(static_cast<float>(eyePosD.x - anchorX),
+                              static_cast<float>(eyePosD.z - anchorZ));
+
+    placedWaterShader->use();
+    placedWaterShader->setMat4("projection", projection);
+    placedWaterShader->setMat4("viewRot", viewRot);
+    placedWaterShader->setVec3("sunDir", sunDir);
+    placedWaterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
+    // Match the ocean shader's sun-elevation fade band (lightPos.y in [55±8],
+    // i.e. dir.y in [0.235, 0.315]).
+    placedWaterShader->setFloat("twilightLow",  0.235f);
+    placedWaterShader->setFloat("twilightHigh", 0.315f);
+    placedWaterShader->setVec2("texAnchor", texAnchor);
+    placedWaterShader->setFloat("moveFactor", waterMoveFactor);
+    placedWaterShader->setFloat("waveStrength", waveStrength);
+    placedWaterShader->setFloat("tiling", dudvTiling);
+
+    // The placed-water shader samples skyLUT for both fog AND the reflection
+    // term, so we must bind it unconditionally — uploadFogUniforms skips the
+    // bind when fog is disabled. Bind first, then let uploadFogUniforms set
+    // the fog scalars / overwrite the unit if it wants.
+    const GLuint skyLUTTex = lighting->getSkyLUTTexture();
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::SKY_LUT);
+    glBindTexture(GL_TEXTURE_2D, skyLUTTex);
+    placedWaterShader->setInt("skyLUT", TextureUnits::SKY_LUT);
+    placedWaterShader->setFloat("skyExposure", lighting->getSkyExposure());
+
+    uploadFogUniforms(*placedWaterShader, fogEnabled, skyLUTTex,
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
+                      lighting->getDirectionalLightDirection());
+
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_DUDV);
+    glBindTexture(GL_TEXTURE_2D, dudvTexture);
+    placedWaterShader->setInt("dudvMap", TextureUnits::WATER_DUDV);
+
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_NORMAL);
+    glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
+    placedWaterShader->setInt("normalMap", TextureUnits::WATER_NORMAL);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    renderer->renderPlacedWater(placedWaterShader, eyePosD);
 
     glDisable(GL_BLEND);
 }
