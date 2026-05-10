@@ -9,6 +9,8 @@
 #include <sstream>
 
 Server::Server() {
+
+	std::filesystem::create_directory("playerdata"); // ensure directory exists for saving
 #ifdef _WIN32
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -410,6 +412,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 
 	auto movement = p.movement;
 	p.movement->setName(name);
+	p.movement->loadPlayerDataFromFile("playerdata/" + name + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
 	players.push_back(std::move(p));
 	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
@@ -449,6 +452,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 
 		sendPacketTo(pkt, p.addr);
 	}
+
+	player->movement->savePlayerDataToFile("playerdata/" + player->movement->getName() + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
 
 	// Erase rather than clear: ids are never reused, so the entry stays dead.
 	world->PlayerKnownChunks.erase(player->id);
@@ -1230,88 +1235,70 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	std::vector<PacketPtr> groupPkt;
 
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
-	if (player != players.end())
-	{		
-		//gotta exclude current player
-		for (auto &entity : world->livingEntities)
-		{
-			if (entity == player->movement) continue;
-
-			auto pkt = std::make_unique<NetEntityMove>();
-
-			pkt->eEntityType = entity->getEntityType();
-			pkt->entityID = entity->getID();
-			pkt->type = static_cast<LivingEntityType>(entity->getLivingEntityType());
-
-			pkt->positionX = entity->getPositionD().x;
-			pkt->positionY = entity->getPositionD().y;
-			pkt->positionZ = entity->getPositionD().z;
-
-			pkt->yaw = entity->yaw;
-			pkt->pitch = entity->pitch;
-
-			pkt->entityName = entity->getName();
-
-			groupPkt.push_back(std::move(pkt));
-		}
-
-		for (auto &entity : world->itemEntities)
-		{
-			auto pkt = std::make_unique<NetEntityMove>();
-
-			pkt->eEntityType = entity->getEntityType();
-			pkt->entityID = entity->getID();
-			pkt->type = static_cast<ItemID>(entity->getItemID());
-
-			pkt->positionX = entity->getPositionD().x;
-			pkt->positionY = entity->getPositionD().y;
-			pkt->positionZ = entity->getPositionD().z;
-
-			pkt->yaw = entity->yaw;
-
-			groupPkt.push_back(std::move(pkt));
-		}
-
-		int twohundred0 = 200;
-		int twohundred1 = 200;
-		int twohundred2 = 200;
-		int twohundred3 = 200;
-		player->movement->inventory->insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
-		player->movement->inventory->insertItemsToSlot(BlockType::WATER, 8, twohundred1);
-		player->movement->inventory->insertItemsToSlot(BlockType::STONE, 1, twohundred2);
-		player->movement->inventory->insertItemsToSlot(BlockType::CACTUS, 2, twohundred3);
-
-		auto pkt1 = std::make_unique<NetInventory>();
-		pkt1->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt1->amount = 200;
-		pkt1->slot = 0;
-		pkt1->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::DIRT);
-
-		auto pkt2 = std::make_unique<NetInventory>();
-		pkt2->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt2->amount = 200;
-		pkt2->slot = 8;
-		pkt2->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::WATER);
-
-		auto pkt3 = std::make_unique<NetInventory>();
-		pkt3->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt3->amount = 200;
-		pkt3->slot = 1;
-		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);
-
-		auto pkt4 = std::make_unique<NetInventory>();
-		pkt4->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt4->amount = 200;
-		pkt4->slot = 2;
-		pkt4->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::CACTUS);
-
-		groupPkt.push_back(std::move(pkt1));
-		groupPkt.push_back(std::move(pkt2));
-		groupPkt.push_back(std::move(pkt3));
-		groupPkt.push_back(std::move(pkt4));
+	if (player == players.end())
+	{
+		std::cout << "Player not found for accept packet\n";
+		return;
 	}
 
+	//gotta exclude current player
+	for (auto &entity : world->livingEntities)
+	{
+		if (entity == player->movement) continue;
+
+		auto pkt = std::make_unique<NetEntityMove>();
+
+		pkt->eEntityType = entity->getEntityType();
+		pkt->entityID = entity->getID();
+		pkt->type = static_cast<LivingEntityType>(entity->getLivingEntityType());
+
+		pkt->positionX = entity->getPositionD().x;
+		pkt->positionY = entity->getPositionD().y;
+		pkt->positionZ = entity->getPositionD().z;
+
+		pkt->yaw = entity->yaw;
+		pkt->pitch = entity->pitch;
+
+		pkt->entityName = entity->getName();
+
+		groupPkt.push_back(std::move(pkt));
+	}
+
+	for (auto &entity : world->itemEntities)
+	{
+		auto pkt = std::make_unique<NetEntityMove>();
+
+		pkt->eEntityType = entity->getEntityType();
+		pkt->entityID = entity->getID();
+		pkt->type = static_cast<ItemID>(entity->getItemID());
+
+		pkt->positionX = entity->getPositionD().x;
+		pkt->positionY = entity->getPositionD().y;
+		pkt->positionZ = entity->getPositionD().z;
+
+		pkt->yaw = entity->yaw;
+
+		groupPkt.push_back(std::move(pkt));
+	}
+
+	int twohundred0 = 200;
+	int twohundred1 = 200;
+	int twohundred2 = 200;
+	int twohundred3 = 200;
+	player->movement->inventory->setSlot(0, twohundred0, BlockType::DIRT);
+	player->movement->inventory->setSlot(8, twohundred1, BlockType::WATER);
+	player->movement->inventory->setSlot(1, twohundred2, BlockType::STONE);
+	player->movement->inventory->setSlot(2, twohundred3, BlockType::CACTUS);
+
+	player->movement->inventory->createFullInventoryPkt(groupPkt);
+	
+	NetPlayerGameMode gameModePkt;
+	gameModePkt.gamemode = static_cast<uint8_t>(player->movement->gamemode);
+	groupPkt.push_back(std::make_unique<NetPlayerGameMode>(gameModePkt));
+
 	sendNewGroupPacketTo(groupPkt, cliaddr);
+
+	sendPositionDeltas(*player);
 
 	const auto& s = world->getSkyTimeState();
 	NetSkyTime skyPkt;
