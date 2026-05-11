@@ -122,19 +122,23 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     cloudShader->setFloat("cloudSigmaS", cloudSigmaS);
     cloudShader->setFloat("cloudPhaseG", cloudPhaseG);
 
-    // Modulate ambient by sun elevation (darker at night)
+    // Modulate ambient + sun contribution by sun elevation
     glm::vec3 sunDirNorm = glm::normalize(getDirectionalLightDirection());
     float sunElevation = sunDirNorm.y;  // Can be negative (below horizon)
     float dayFactor = glm::smoothstep(-0.2f, 0.1f, sunElevation);  // Fade from -0.2 to 0.1
-    float nightAmbient = 0.01f;  // Very low ambient at night
-    float dayAmbient = 0.5f;     // Full ambient during day
+    // Very dim night ambient — auto-exposure + gamma encode lifts dark linear
+    // values a lot in display space, so the linear floor has to stay tiny.
+    float nightAmbient = 0.002f;
+    float dayAmbient = 0.5f;
     float ambientStrength = glm::mix(nightAmbient, dayAmbient, dayFactor);
 
     cloudShader->setVec3("cloudAmbientColor", glm::vec3(0.65f, 0.72f, 0.85f));
     cloudShader->setFloat("cloudAmbientStrength", ambientStrength);
 
     cloudShader->setVec3("cloudSunColor", glm::vec3(1.0f, 0.98f, 0.95f));
-    cloudShader->setFloat("cloudSunStrength", 25.0f);  // Increased from 15.0f for brighter clouds
+    // Gate the sun-scatter contribution on day factor: at night the sun is
+    // below the horizon, so its in-scattering through clouds should be 0.
+    cloudShader->setFloat("cloudSunStrength", 25.0f * dayFactor);
 
     // TODO: add params to imgui
     cloudShader->setFloat("cloudEdgeFeather", cloudEdgeFeather);
