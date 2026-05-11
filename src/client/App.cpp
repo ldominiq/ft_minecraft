@@ -1332,6 +1332,14 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		entity->lerp(clientTime + intraTick - delay);
 	}
     glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
+	// Upload the same directional/point/shadow uniforms terrain uses so dropped
+	// items react to point lights, get shadowed by CSM, and dim at night.
+	// entity_lighting.glsl reads the exact same uniform names lighting.frag does.
+	{
+		Shader& propShader = m_itemPropEntityManager->getShader();
+		lighting->uploadLightingUniforms(propShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
+		lighting->uploadCSMUniforms(propShader, view);
+	}
 	m_itemPropEntityManager->draw(projection, view, camera->getEyePosD(), renderer->itemEntities);
 	glEndQuery(GL_TIME_ELAPSED);
 
@@ -1367,6 +1375,14 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		localPlayer.hasRenderPos = false;
 	}
 
+  // Upload the same lighting+CSM uniforms the terrain uses so mobs/players
+  // receive directional light, point lights, and CSM shadows just like the
+  // world they're standing in.
+  {
+      Shader& chShader = renderer->livingEntitiesManager.getShader();
+      lighting->uploadLightingUniforms(chShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
+      lighting->uploadCSMUniforms(chShader, view);
+  }
   renderer->drawCharacters(projection, view, camera->getEyePosD(), deltaTime);
 }
 
@@ -1871,7 +1887,10 @@ void App::debugWindow() {
                                 if (ImGui::Checkbox("Show Chunk Boundary", &cb))
                                     chunkBoundaryRenderer->setEnabled(cb);
                             }
-                            
+                            // Toggle per-entity AABB outlines. off by default
+                            ImGui::Checkbox("Show Entity Hitboxes",
+                                            &renderer->livingEntitiesManager.showHitboxes);
+
                             ImGui::EndTabItem();
                         }
                         // ── HDR / Exposure ─────────────────────────────────────────

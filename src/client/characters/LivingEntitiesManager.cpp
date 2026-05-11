@@ -124,7 +124,7 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			continue ;	//character expired. we removed them later
 		if (!c->DoDraw())
 			continue ;
-		if (true)
+		if (showHitboxes)
 		{
             const glm::dvec3 posD = c->hasRenderPos ? c->renderPos : c->getPositionD();
 			const double halfW = static_cast<double>(c->getEntityWidth()) * 0.5;
