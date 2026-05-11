@@ -166,6 +166,8 @@ public:
     float getSkyExposure() const { return skyExposure; };
     bool  isHDREnabled() const { return hdrEnabled; }
     void  setHDREnabled(bool v) { hdrEnabled = v; }
+    float getSkySaturation() const { return skySaturation; }
+    void  setSkySaturation(float v) { skySaturation = v; }
     float getSkyAtmDensity() const { return skyAtmDensity; };
     float getSkyAtmThickness() const { return skyAtmThickness; };
     float getSkyTimeOffset() const { return skyTimeOffset; };
@@ -341,6 +343,10 @@ private:
     float sunStepTimer     = 0.0f;   // progress within the step
     // Simple tone-mapping exposure for sky shader (drives the final composite tonemap in HDR mode).
     float skyExposure = 1.2f;
+    // Post-tonemap saturation applied in clouds_composite. Compensates for the
+    // midtone desaturation introduced by ACES + the fact that block textures
+    // are sRGB-encoded but treated as linear. 1.0 = identity.
+    float skySaturation = 1.20f;
     // When true, the scene framebuffer is RGBA16F and tone-mapping happens once
     // at the very end (clouds_composite). When false, the legacy LDR path is used
     // where the sky and the cloud composite each tone-map their own outputs.

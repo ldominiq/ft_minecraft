@@ -84,7 +84,7 @@ void main() {
 
     // In LDR mode: tone-map + gamma here. In HDR mode: emit linear radiance and
     // let the final composite tonemap once.
-    vec3 tone = tonemapHere ? skyUncharted2(col, exposure) : col;
+    vec3 tone = tonemapHere ? skyTonemap(col, exposure) : col;
 
     // Apply underwater fog to sky. In HDR mode lift the sRGB-display color to
     // linear so it survives the final pow(1/2.2) without darkening.

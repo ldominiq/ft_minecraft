@@ -11,8 +11,8 @@
 //     clouds are HDR (in-scattered light). We tonemap the cloud RGB to LDR and
 //     alpha-blend over the scene. Same behavior as before the HDR refactor.
 //   - HDR (hdrMode=true): scene texture is RGBA16F linear radiance, clouds are
-//     HDR. We blend in linear HDR space, then apply a single Uncharted2
-//     tonemap + gamma at the end.
+//     HDR. We blend in linear HDR space, then apply a single ACES tonemap +
+//     gamma at the end.
 
 in vec2 vUV;
 out vec4 FragColor;
@@ -31,15 +31,25 @@ uniform float cloudLayerMinY;
 uniform float cloudLayerMaxY;
 uniform float exposure;           // matches Lighting::skyExposure used by sky shaders
 uniform bool  hdrMode;            // true = blend in HDR + final tonemap here
+// Post-tonemap saturation (1.0 = identity, >1 = punchier, <1 = washed).
+// Block textures are sRGB-encoded but treated as linear, so the tonemap curve
+// compresses midtone saturation.
+uniform float saturation;
 
-// Uncharted2 filmic tone mapping (same curve as sky_common.glsl::skyUncharted2).
-vec3 uncharted2(vec3 color, float exp_) {
-    const float A=0.15, B=0.50, C=0.10, D=0.20, E=0.02, F=0.30, W=11.2, gamma=2.2;
+// ACES filmic tone mapping — Krzysztof Narkowicz's cheap fit (2015).
+// Returns linear values; the explicit pow(1/2.2) below encodes to display space
+// (we don't use GL_FRAMEBUFFER_SRGB, so gamma is done by hand).
+vec3 tonemap(vec3 color, float exp_) {
     color *= exp_;
-    color = ((color*(A*color+C*B)+D*E)/(color*(A*color+B)+D*F)) - E/F;
-    float white = ((W*(A*W+C*B)+D*E)/(W*(A*W+B)+D*F)) - E/F;
-    color /= white;
-    return pow(max(color, vec3(0.0)), vec3(1.0/gamma));
+    const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+    vec3 tm = clamp((color*(a*color+b)) / (color*(c*color+d)+e), 0.0, 1.0);
+    return pow(max(tm, vec3(0.0)), vec3(1.0/2.2));
+}
+
+// Luminance-preserving saturation in display (post-gamma) space. s=1 is identity.
+vec3 applySaturation(vec3 c, float s) {
+    float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    return max(mix(vec3(lum), c, s), vec3(0.0));
 }
 
 void main() {
@@ -50,7 +60,8 @@ void main() {
 
     // Cloud-free pixel: pass scene through (tonemap if HDR).
     if (cloudOpacity <= 0.001) {
-        FragColor = vec4(hdrMode ? uncharted2(sceneCol, exposure) : sceneCol, 1.0);
+        vec3 c = hdrMode ? tonemap(sceneCol, exposure) : sceneCol;
+        FragColor = vec4(applySaturation(c, saturation), 1.0);
         return;
     }
 
@@ -88,7 +99,8 @@ void main() {
     // crosses the slab boundary at speed).
 
     if (!composite) {
-        FragColor = vec4(hdrMode ? uncharted2(sceneCol, exposure) : sceneCol, 1.0);
+        vec3 c = hdrMode ? tonemap(sceneCol, exposure) : sceneCol;
+        FragColor = vec4(applySaturation(c, saturation), 1.0);
         return;
     }
 
@@ -100,14 +112,14 @@ void main() {
         // Blend in linear HDR, then tonemap+gamma once at the end. This keeps
         // bright cloud highlights inside the same tonemap that handles bright sun.
         vec3 hdrComposited = mix(sceneCol, cloudRgbPure, cloudOpacity);
-        finalRgb = uncharted2(hdrComposited, exposure);
+        finalRgb = tonemap(hdrComposited, exposure);
     } else {
         // Legacy LDR: scene is already tonemapped per-shader; bring clouds to
         // LDR with the same operator and alpha-blend in LDR (preserves the
         // pre-HDR look exactly).
-        vec3 cloudLdr = uncharted2(cloudRgbPure, exposure);
+        vec3 cloudLdr = tonemap(cloudRgbPure, exposure);
         finalRgb = mix(sceneCol, cloudLdr, cloudOpacity);
     }
 
-    FragColor = vec4(finalRgb, 1.0);
+    FragColor = vec4(applySaturation(finalRgb, saturation), 1.0);
 }

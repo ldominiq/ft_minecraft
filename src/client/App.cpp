@@ -1231,7 +1231,9 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         float day = glm::clamp(sunElevation * 2.0f, 0.0f, 1.0f);
         day = glm::smoothstep(0.0f, 1.0f, day);
 
-        constexpr float nightAmbientMin = 0.3f;
+        // Matches the value in Lighting::uploadLightingUniforms — kept in sync
+        // so terrain and vegetation share the same night-time floor.
+        constexpr float nightAmbientMin = 0.05f;
         glm::vec3 ambientColor = lighting->getDirectionalAmbientColor() * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
         glm::vec3 diffuseColor = lighting->getDirectionalDiffuseColor() * day;
 
@@ -1870,6 +1872,47 @@ void App::debugWindow() {
                                     chunkBoundaryRenderer->setEnabled(cb);
                             }
                             
+                            ImGui::EndTabItem();
+                        }
+                        // ── HDR / Exposure ─────────────────────────────────────────
+                        // Owns the toggles wired to sceneFBO::setHDR (RGBA16F<->RGBA8)
+                        // and AutoExposure (PBO readback metering).
+                        if (ImGui::BeginTabItem("HDR / Exposure"))
+                        {
+                            if (ImGui::Checkbox("HDR enabled", &hdrEnabled)) {
+                                sceneFBO->setHDR(hdrEnabled);
+                                lighting->setHDREnabled(hdrEnabled);
+                                // When flipping back to LDR, pull exposure back to a sane
+                                // manual value so the cloud composite (LDR path) doesn't
+                                // inherit a stale auto-exp value.
+                                if (!hdrEnabled)
+                                    lighting->setSkyExposure(manualExposure);
+                            }
+                            // Saturation works in either HDR or LDR mode — it's applied in
+                            // display space at the end of clouds_composite. Default 1.2 to
+                            // compensate for the tonemap's midtone desaturation when fed
+                            // sRGB-encoded textures (see clouds_composite.frag).
+                            {
+                                float sat = lighting->getSkySaturation();
+                                if (ImGui::SliderFloat("Saturation", &sat, 0.0f, 2.0f, "%.2f"))
+                                    lighting->setSkySaturation(sat);
+                            }
+                            ImGui::BeginDisabled(!hdrEnabled);
+                            ImGui::Checkbox("Auto-exposure", &autoExposureEnabled);
+                            ImGui::BeginDisabled(autoExposureEnabled);
+                            if (ImGui::SliderFloat("Manual exposure", &manualExposure, 0.3f, 4.0f, "%.2f"))
+                                lighting->setSkyExposure(manualExposure);
+                            ImGui::EndDisabled();
+                            if (autoExposureEnabled && autoExposure) {
+                                ImGui::SliderFloat("Target luminance", &autoExposure->targetLuminance, 0.05f, 0.4f, "%.3f");
+                                ImGui::SliderFloat("Min exposure",     &autoExposure->minExposure,     0.05f, 1.0f, "%.2f");
+                                ImGui::SliderFloat("Max exposure",     &autoExposure->maxExposure,     1.0f, 8.0f,  "%.2f");
+                                ImGui::SliderFloat("Adapt up (s^-1)",   &autoExposure->adaptSpeedUp,   0.1f, 4.0f, "%.2f");
+                                ImGui::SliderFloat("Adapt down (s^-1)", &autoExposure->adaptSpeedDown, 0.1f, 4.0f, "%.2f");
+                                ImGui::Text("Current exposure: %.2f", lighting->getSkyExposure());
+                                ImGui::Text("Avg scene luminance: %.4f", autoExposure->getLastAvgLuminance());
+                            }
+                            ImGui::EndDisabled();
                             ImGui::EndTabItem();
                         }
                         if (ImGui::BeginTabItem("SSAO"))
