@@ -8,7 +8,15 @@ class SettingsMenu : public Menu {
 public:
 	SettingsMenu(float width, float height, GLuint dirtTex);
 
-	void setDoneCallback(std::function<void()> cb) { onDone = std::move(cb); }
+	void setDoneCallback(std::function<void()> cb) {
+		onDone = [this, cb = std::move(cb)]()
+		{
+			saveUsername();
+
+			if (cb)
+				cb();
+		};
+	}
 	void setChangeControlsCallback(std::function<void()> cb) { changeControls = std::move(cb); }
 
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
@@ -21,6 +29,9 @@ public:
 private:
 	void onRender() override;
 	void build() override;
+
+	void saveUsername(const char* filename = "username.cfg");
+	void loadUsername(const char* filename = "username.cfg");
 
 	std::string username;
 
