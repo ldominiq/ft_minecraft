@@ -315,6 +315,7 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 	}
 }
 
+//Saving / loading yaw and pitch do not work for now because they are getting overriden by the client.
 void PlayerMovement::savePlayerDataToFile(const std::string& filename) const {
 	std::ofstream outFile(filename, std::ios::binary);
 	if (!outFile) {
