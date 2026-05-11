@@ -14,6 +14,7 @@ SettingsMenu::SettingsMenu(float width, float height, GLuint dirtTex)
 	changeControlsButton.label = "Controls";
 	resize(width, height);
 	username = "nameless";
+	loadUsername();
 }
 
 void SettingsMenu::addChar(char c)
@@ -118,4 +119,20 @@ void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, in
 		glY >= changeControlsButton.y && glY <= changeControlsButton.y + changeControlsButton.h) {
 		if (changeControls) changeControls();
 	}
+}
+
+void SettingsMenu::saveUsername(const char* filename)
+{
+	std::ofstream file(filename);
+	if (!file.is_open()) return;
+
+	file << username;
+}
+
+void SettingsMenu::loadUsername(const char* filename)
+{
+	std::ifstream file(filename);
+	if (!file.is_open()) return;
+
+	std::getline(file, username);
 }

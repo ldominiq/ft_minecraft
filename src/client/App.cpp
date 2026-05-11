@@ -237,11 +237,8 @@ void App::init(const std::string& serverIp) {
 
 		// In non-Playing states, handle ESC to go back / don't close window
 		if (app->gameState != GameState::Playing) {
-			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-				if (app->gameState == GameState::Multiplayer || app->gameState == GameState::Settings)
-					app->transitionTo(GameState::MainMenu);
-			}
-			if (key == app->controlsArray[TOGGLE_FULLSCREEN] && action == GLFW_PRESS)
+
+			if (key == app->controlsArray[TOGGLE_FULLSCREEN] && action == GLFW_PRESS && !(app->gameState == GameState::Controls && app->controlsMenu->getChangeRequested()))
 				app->toggleDisplayMode();
 			app->processInputMenus(key, action);
 			return;
@@ -428,6 +425,10 @@ void App::init(const std::string& serverIp) {
 	});
 	settingsMenu->setChangeControlsCallback([this]() {
 		transitionTo(GameState::Controls);
+	});
+
+	controlsMenu->setSaveCallback([this]() {
+		transitionTo(GameState::Settings);
 	});
 
 	transitionTo(GameState::MainMenu);
@@ -2455,7 +2456,7 @@ void App::processInputMenus(int key, int action) {
 	if (gameState == GameState::Multiplayer) {
 		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			multiplayerMenu->removeChar();
-		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
+		else if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
 			if (multiplayerMenu->getIpAddress().empty()) {
 				multiplayerMenu->setErrorMessage("Please enter a server address.");
 				return;
@@ -2466,22 +2467,25 @@ void App::processInputMenus(int key, int action) {
 			multiplayerMenu->setErrorMessage("Connecting...");
 			connectPending = true;
 			connectStartTime = static_cast<float>(glfwGetTime());
-		}
+		} else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::MainMenu);
+
 		return;
 	}
 	else if (gameState == GameState::Settings)
 	{
 		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			settingsMenu->removeChar();
-		
+		else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::MainMenu);
 	}
 	else if (gameState == GameState::Controls)
 	{
 		//just go back to settings menu on escape for now. TODO : make a proper controls menu and handle input there.
-		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-			transitionTo(GameState::Settings);
 		if (controlsMenu->changeControl(key))
 			controlsArray = controlsMenu->getControlsArray();
+		else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::Settings);
 	}
 
 	if (gameState != GameState::Playing) return;
@@ -2498,7 +2502,7 @@ void App::processInputMenus(int key, int action) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 	//close inventory with E too.
-	if (manager && manager == inventoryUI && key == GLFW_KEY_E && action == GLFW_PRESS)
+	if (manager && manager == inventoryUI && key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
 	{
 		menuManager.reset();
 		if (!uiInteractive)
@@ -2528,7 +2532,7 @@ void App::processInputMenus(int key, int action) {
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 			menuManager = chat;
-		if (key == GLFW_KEY_E && action == GLFW_PRESS)
+		if (key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
 		{
 			menuManager = inventoryUI;
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);

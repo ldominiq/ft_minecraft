@@ -5,6 +5,7 @@
 #include "Menu.hpp"
 #include <array>
 
+constexpr int AMOUNT_OF_CONFIGURABLE_CONTROLS = 13;
 #define CONTROL_LIST 		\
     X(FORWARD)       		\
     X(BACKWARD)      		\
@@ -18,7 +19,9 @@
     X(TOGGLE_DEBUG)			\
 	X(THIRD_PERSON_CAMERA)	\
 	X(PLAYER_LIST)			\
+	X(TOGGLE_INVENTORY)		\
 							\
+	/*from here on the controls aren't user-configurable*/	\
     X(DESTROY_BLOCK)       	\
 	X(PLACE_BLOCK)      	\
     X(TOGGLE_SHADER)		\
@@ -45,9 +48,13 @@ class ControlsMenu : public Menu {
 		ControlsMenu(float width, float height, GLuint dirtTex);
 		~ControlsMenu();
 
+		void setSaveCallback(std::function<void()> cb) { onSave = std::move(cb); }
+
 		std::array<int, CONTROL_COUNT> getControlsArray() const { return controlsArray; }
 
 		bool changeControl(int key);
+
+		bool getChangeRequested() const { return changeRequested; }
 
 	private:
 		std::array<int, CONTROL_COUNT> controlsArray;
@@ -73,6 +80,9 @@ class ControlsMenu : public Menu {
 		void loadControlsDefaults();
 		void saveControls(const char* filename = "controls.cfg");
 		void loadControlsFromFile(const char* filename = "controls.cfg");
+
+		std::function<void()> onSave;
+		Button saveButton;
 };	
 
 #endif

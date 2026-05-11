@@ -44,6 +44,10 @@ std::string getKeyName(int key)
         case GLFW_KEY_F11: return "F11";
 		case GLFW_MOUSE_BUTTON_LEFT: return "Left Click";
 		case GLFW_MOUSE_BUTTON_RIGHT: return "Right Click";
+		case GLFW_KEY_RIGHT: return "Right Arrow";
+		case GLFW_KEY_LEFT: return "Left Arrow";
+		case GLFW_KEY_UP: return "Up Arrow";
+		case GLFW_KEY_DOWN: return "Down Arrow";
         default: return "Unknown";
     }
 }
@@ -58,7 +62,7 @@ void ControlsMenu::build()
 	float btnW = BTN_W * menuScale;
 	float btnH = BTN_H * menuScale;
 
-	for (int i = 0; i < CONTROL_COUNT && i < 12; i++)
+	for (int i = 0; i < CONTROL_COUNT && i < AMOUNT_OF_CONFIGURABLE_CONTROLS; i++)
 	{
 		if (i % 3 == 0)
 			controlsButtons[i].x = fourthX - btnW / 2.0f - twelfthX;
@@ -72,6 +76,11 @@ void ControlsMenu::build()
 		controlsButtons[i].y = fullscreenHeight - quarterY - (i/3 + 1) * (controlsButtons[i].h + 25);
 		controlsButtons[i].label = std::string(controlNames[i]) + ": " + (controlsArray[i] >= 0 ? getKeyName(controlsArray[i]) : "Unbound");
 	}
+
+	saveButton.w = btnW;
+	saveButton.h = btnH;
+	saveButton.x = centerX - btnW / 2.0f;
+	saveButton.y = 60.0f * menuScale;
 }
 
 void ControlsMenu::onRender()
@@ -104,6 +113,8 @@ void ControlsMenu::onRender()
 		}
 		drawButton(button.x, button.y, button.w, button.h, label, button.hovered);
 	}
+
+	drawButton(saveButton.x, saveButton.y, saveButton.w, saveButton.h, "Save", saveButton.hovered);
 }
 
 bool ControlsMenu::changeControl(int key)
@@ -127,6 +138,10 @@ void ControlsMenu::handleMouseMove(double mouseX, double mouseY)
 			glX >= button.x && glX <= button.x + button.w &&
 			glY >= button.y && glY <= button.y + button.h;
 	}
+
+	saveButton.hovered =
+		glX >= saveButton.x && glX <= saveButton.x + saveButton.w &&
+		glY >= saveButton.y && glY <= saveButton.y + saveButton.h;
 }
 
 void ControlsMenu::handleMouseClick(double mouseX, double mouseY, int button, int action)
@@ -143,6 +158,11 @@ void ControlsMenu::handleMouseClick(double mouseX, double mouseY, int button, in
 			changeRequested = true;
 			controlToChange = &button - controlsButtons.data(); // index of the button in the array
 		}
+	}
+
+	if (glX >= saveButton.x && glX <= saveButton.x + saveButton.w &&
+		glY >= saveButton.y && glY <= saveButton.y + saveButton.h) {
+		if (onSave) onSave();
 	}
 }
 
@@ -163,6 +183,7 @@ void ControlsMenu::loadControlsDefaults() {
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
 	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
 	controlsArray[PLAYER_LIST]			= GLFW_KEY_TAB;
+	controlsArray[TOGGLE_INVENTORY]		= GLFW_KEY_E;
 	
 	controlsArray[HOTBAR_1]				= GLFW_KEY_1;
 	controlsArray[HOTBAR_2]				= GLFW_KEY_2;
