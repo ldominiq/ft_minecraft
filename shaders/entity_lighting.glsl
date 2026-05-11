@@ -10,6 +10,8 @@
 
 #define ENTITY_NR_POINT_LIGHTS 3
 #define ENTITY_MAX_CASCADES 5
+// Multi-player flashlight slots; must match lighting.frag's MAX_SPOT_LIGHTS.
+#define ENTITY_MAX_SPOT_LIGHTS 16
 
 struct EL_DirLight {
     vec3 direction;
@@ -31,10 +33,24 @@ struct EL_Shadows {
     float MIN_BIAS;
     float MAX_BIAS;
 };
+struct EL_SpotLight {
+    vec3 position;     // camera-relative (eyePos subtracted host-side)
+    vec3 direction;
+    float cutOff;       // cos(inner)
+    float outerCutOff;  // cos(outer)
+    float constant;
+    float linear;
+    float quadratic;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
 
 uniform EL_DirLight dirLight;
 uniform EL_PointLight pointLights[ENTITY_NR_POINT_LIGHTS];
 uniform EL_Shadows shadows;
+uniform EL_SpotLight spotLights[ENTITY_MAX_SPOT_LIGHTS];
+uniform int numSpotLights;
 
 // CSM (same layout terrain uses; uploaded by Lighting::uploadCSMUniforms).
 uniform sampler2DArrayShadow shadowMapArray;
@@ -95,6 +111,32 @@ vec3 entityPointLightsContrib(vec3 fragPosRel, vec3 normal) {
     return sum;
 }
 
+// Spot light (single slot) — Lambertian with attenuation + cone falloff.
+// Mirrors lighting.frag::CalcSpotLight minus specular.
+vec3 entitySpotLightContribOne(EL_SpotLight s, vec3 fragPosRel, vec3 normal) {
+    vec3 toLight = s.position - fragPosRel;
+    float dist = length(toLight);
+    vec3 lightDir = toLight / max(dist, 1e-4);
+    float ndotl = max(dot(normal, lightDir), 0.0);
+
+    float att = 1.0 / (s.constant + s.linear * dist + s.quadratic * dist * dist);
+
+    // Cone falloff: cosCutOff values are pre-cosined host-side.
+    float theta   = dot(lightDir, normalize(-s.direction));
+    float epsilon = s.cutOff - s.outerCutOff;
+    float intensity = clamp((theta - s.outerCutOff) / max(epsilon, 1e-4), 0.0, 1.0);
+
+    return (s.diffuse * ndotl + s.ambient * 0.3) * att * intensity;
+}
+
+// Sum contributions from every active spot light (local + remote players).
+vec3 entitySpotLightContrib(vec3 fragPosRel, vec3 normal) {
+    vec3 sum = vec3(0.0);
+    for (int i = 0; i < numSpotLights; ++i)
+        sum += entitySpotLightContribOne(spotLights[i], fragPosRel, normal);
+    return sum;
+}
+
 // Final lit color. Mirrors lighting.frag's CalcDirLight (without specular):
 //   ambient *= (1 - shadow*0.5)   [shadowed-ambient floor — see lighting.frag:443]
 //   diffuse *= (1 - shadow)
@@ -106,5 +148,6 @@ vec3 entityLitColor(vec3 albedo, vec3 normal, vec3 fragPosRel) {
     vec3 ambient = dirLight.ambient * (1.0 - shadow * 0.5);
     vec3 diffuse = dirLight.diffuse * ndotl * (1.0 - shadow);
     vec3 points  = entityPointLightsContrib(fragPosRel, normal);
-    return albedo * (ambient + diffuse + points);
+    vec3 spot    = entitySpotLightContrib(fragPosRel, normal);
+    return albedo * (ambient + diffuse + points + spot);
 }

@@ -116,6 +116,10 @@ struct NetPlayerInputs final : public Packet {
     float pitch = 0.0f;   // absolute rotation around X axis
     float yaw = 0.0f;     // absolute rotation around Y axis
 	uint8_t loadRadius = 4; // maybe this should go elsewhere. Oh well!
+	// Per-player on/off toggles that aren't keystrokes. Server stashes these on
+	// the player entity and relays through NetEntityMove::positionFlags so other
+	// clients can render them. Bit 0 = flashlight on.
+	uint8_t playerFlags = 0;
 
     NetPlayerInputs() : Packet(ID) {}
 
@@ -126,6 +130,7 @@ struct NetPlayerInputs final : public Packet {
         w.write_f32(pitch);
         w.write_f32(yaw);
 		w.write_u8(loadRadius);
+		w.write_u8(playerFlags);
     }
 
     void decode(BufferReader& r) override {
@@ -135,6 +140,7 @@ struct NetPlayerInputs final : public Packet {
         pitch = r.read_f32();
         yaw = r.read_f32();
 		loadRadius = r.read_u8();
+		playerFlags = r.read_u8();
     }
 };
 inline AutoRegister<NetPlayerInputs> _reg_NetPlayerInput;
@@ -270,7 +276,8 @@ struct NetEntityMove final : public Packet {
 	float yaw;
 	float pitch = 0.0f;
 
-	// bit 0 = hasHorizontalInput, bit 1 = onGround, bit 2 = armSwing event
+	// bit 0 = hasHorizontalInput, bit 1 = onGround, bit 2 = armSwing event,
+	// bit 3 = "fused"/priming (creepers), bit 4 = flashlight on
 	uint8_t positionFlags = 0;
 
 	NetEntityMove() : Packet(ID) {}

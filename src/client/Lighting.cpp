@@ -421,29 +421,31 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
         shader.setFloat("pointLights[" + std::to_string(i) + "].linear", pointLightLinear[i]);
         shader.setFloat("pointLights[" + std::to_string(i) + "].quadratic", pointLightQuadratic[i]);
     }
-    // spotLight (flashlight)
-    if (flashlightOn) {
-        shader.setVec3("spotLight.position", glm::vec3(0.0f));
-        shader.setVec3("spotLight.direction", cameraFront);
-        shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
-        shader.setVec3("spotLight.diffuse", glm::vec3(1.0f));
-        shader.setVec3("spotLight.specular", glm::vec3(1.0f));
-        shader.setFloat("spotLight.constant", spotLightConstant);
-        shader.setFloat("spotLight.linear", spotLightLinear);
-        shader.setFloat("spotLight.quadratic", spotLightQuadratic);
-        shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
-        shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
-    } else {
-        shader.setVec3("spotLight.position", glm::vec3(0.0f));
-        shader.setVec3("spotLight.direction", cameraFront);
-        shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
-        shader.setVec3("spotLight.diffuse", glm::vec3(0.0f));
-        shader.setVec3("spotLight.specular", glm::vec3(0.0f));
-        shader.setFloat("spotLight.constant", spotLightConstant);
-        shader.setFloat("spotLight.linear", spotLightLinear);
-        shader.setFloat("spotLight.quadratic", spotLightQuadratic);
-        shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
-        shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
+    shader.setInt("numSpotLights", 0);
+}
+
+void Lighting::uploadSpotLights(const Shader& shader,
+                                const std::vector<SpotLightUpload>& lights) const
+{
+    shader.use();
+    const int n = std::min(static_cast<int>(lights.size()), MAX_SPOT_LIGHTS);
+    shader.setInt("numSpotLights", n);
+
+    const float cosInner = glm::cos(glm::radians(flashlightCutoff));
+    const float cosOuter = glm::cos(glm::radians(flashlightOuterCutoff));
+
+    for (int i = 0; i < n; ++i) {
+        const std::string p = "spotLights[" + std::to_string(i) + "].";
+        shader.setVec3(p + "position",  lights[i].posRel);
+        shader.setVec3(p + "direction", lights[i].dir);
+        shader.setVec3(p + "ambient",   glm::vec3(0.0f));
+        shader.setVec3(p + "diffuse",   glm::vec3(1.0f));
+        shader.setVec3(p + "specular",  glm::vec3(1.0f));
+        shader.setFloat(p + "constant",    spotLightConstant);
+        shader.setFloat(p + "linear",      spotLightLinear);
+        shader.setFloat(p + "quadratic",   spotLightQuadratic);
+        shader.setFloat(p + "cutOff",      cosInner);
+        shader.setFloat(p + "outerCutOff", cosOuter);
     }
 }
 

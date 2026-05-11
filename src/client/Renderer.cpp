@@ -502,6 +502,11 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 				ice->triggerArmSwing();
 			if (pkt.type == static_cast<uint16_t>(CREEPER))
 				std::static_pointer_cast<ClientCreeper>(ice)->clientPrimed = (pkt.positionFlags & 0x08) != 0;
+			// Bit 0x10 = remote player flashlight on. flashlightOn lives on
+			// LivingEntity; IClientEntity virtually inherits that base so the
+			// assignment goes through `ice`. App.cpp scans these each frame and
+			// uploads the nearest active one when the local flashlight is off.
+			ice->flashlightOn = (pkt.positionFlags & 0x10) != 0;
 		}
 		ent->lastNetUpdateTime = serverTime;
 

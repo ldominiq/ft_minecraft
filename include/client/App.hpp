@@ -153,6 +153,11 @@ private:
     void debugWindow();
     void computeDebugStats();
 
+    // Build the active flashlight set this frame (local if on + every remote
+    // player with flashlightOn) and upload it as the spotLights[] array.
+    // No-op for shaders that don't reference spotLights (vegetation, water).
+    void uploadActiveSpotLights(Shader& shader) const;
+
 
 
     GLFWwindow* window;

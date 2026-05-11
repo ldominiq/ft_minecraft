@@ -1188,6 +1188,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
    lighting->uploadLightingUniforms(*activeShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
+    uploadActiveSpotLights(*activeShader);
     lighting->uploadUnderwaterUniforms(*activeShader);
     activeShader->setBool("cameraUnderwater", cameraUnderwater);
     lighting->uploadCSMUniforms(*activeShader, view);
@@ -1338,6 +1339,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 	{
 		Shader& propShader = m_itemPropEntityManager->getShader();
 		lighting->uploadLightingUniforms(propShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
+		uploadActiveSpotLights(propShader);
 		lighting->uploadCSMUniforms(propShader, view);
 	}
 	m_itemPropEntityManager->draw(projection, view, camera->getEyePosD(), renderer->itemEntities);
@@ -1381,9 +1383,57 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
   {
       Shader& chShader = renderer->livingEntitiesManager.getShader();
       lighting->uploadLightingUniforms(chShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
+      uploadActiveSpotLights(chShader);
       lighting->uploadCSMUniforms(chShader, view);
   }
   renderer->drawCharacters(projection, view, camera->getEyePosD(), deltaTime);
+}
+
+void App::uploadActiveSpotLights(Shader& shader) const
+{
+    std::vector<Lighting::SpotLightUpload> lights;
+    if (!lighting) return;
+
+    // Slot 0: local flashlight (camera-attached) if on.
+    if (lighting->isFlashlightOn() && camera) {
+        lights.push_back({ glm::vec3(0.0f), camera->getPlayer()->getCameraDir() });
+    }
+
+    // Then every remote player whose flashlight is on, sorted by distance so
+    // the nearest ones win if we overflow MAX_SPOT_LIGHTS.
+    if (renderer && camera) {
+        const glm::dvec3 eyePos = camera->getEyePosD();
+        struct RemoteHit { float d2; glm::vec3 posRel; glm::vec3 dir; };
+        std::vector<RemoteHit> remotes;
+        remotes.reserve(4);
+        for (auto& le : renderer->livingEntities) {
+            if (!le || le->getLivingEntityType() != PLAYER) continue;
+            if (!le->flashlightOn) continue;
+            // Local player entity is tagged with id == -1 (see LivingEntitiesManager).
+            if (le->getID() == static_cast<entityID>(-1)) continue;
+
+            glm::vec3 posRel = glm::vec3(le->getPositionD() - eyePos);
+            posRel.y += static_cast<float>(le->getEntityHeight()) * 0.9f;
+
+            // Look direction from yaw/pitch — mirrors PlayerMovement::updateCameraVectors.
+            const float yr = glm::radians(le->yaw);
+            const float pr = glm::radians(le->pitch);
+            glm::vec3 dir = glm::normalize(glm::vec3(
+                std::cos(yr) * std::cos(pr),
+                std::sin(pr),
+                std::sin(yr) * std::cos(pr)
+            ));
+            remotes.push_back({ glm::dot(posRel, posRel), posRel, dir });
+        }
+        std::sort(remotes.begin(), remotes.end(),
+                  [](const RemoteHit& a, const RemoteHit& b) { return a.d2 < b.d2; });
+        for (auto& r : remotes) {
+            if (static_cast<int>(lights.size()) >= Lighting::MAX_SPOT_LIGHTS) break;
+            lights.push_back({ r.posRel, r.dir });
+        }
+    }
+
+    lighting->uploadSpotLights(shader, lights);
 }
 
 void App::computeDebugStats()
@@ -2603,6 +2653,9 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	inputs.loadRadius = camera->getPlayer()->getLoadRadius();
 	inputs.activeHotbarSlot = activeHotbarSlot;
 	inputs.serverClientReconciliationTick = clientTick;
+	// Broadcast our local flashlight state so the server can relay it to other
+	// clients via NetEntityMove::positionFlags bit 0x10.
+	inputs.playerFlags = lighting && lighting->isFlashlightOn() ? 0x01u : 0u;
 
 	return inputs;
 }

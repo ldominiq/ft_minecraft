@@ -98,6 +98,19 @@ public:
     void updateSkyLUT(float cameraPosY);
 
     void uploadLightingUniforms(const Shader& shader, const glm::dvec3& eyePos, glm::vec3 cameraFront) const;
+    // One active flashlight (local or remote player's), in camera-relative space.
+    // `dir` is the world-space look direction (already normalized).
+    struct SpotLightUpload {
+        glm::vec3 posRel;
+        glm::vec3 dir;
+    };
+    // Max simultaneous spot lights — must match MAX_SPOT_LIGHTS in lighting.frag
+    // and ENTITY_MAX_SPOT_LIGHTS in entity_lighting.glsl.
+    static constexpr int MAX_SPOT_LIGHTS = 16;
+    // Upload the active flashlight set into spotLights[0..n-1] + numSpotLights.
+    // Anything past MAX_SPOT_LIGHTS is silently dropped (caller should pick
+    // the closest N if they have more candidates).
+    void uploadSpotLights(const Shader& shader, const std::vector<SpotLightUpload>& lights) const;
     void uploadUnderwaterUniforms(const Shader& shader) const;
     void drawTexturePreviewQuad(unsigned int textureID, bool grayscale = false, glm::vec2 offset = glm::vec2(0.0f));
 

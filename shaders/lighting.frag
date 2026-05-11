@@ -60,6 +60,7 @@ struct Shadows {
 
 #define NR_POINT_LIGHTS 3
 #define MAX_CASCADES 5
+#define MAX_SPOT_LIGHTS 16
 
 uniform bool debugCascades;   // toggle from ImGui
 int debugCascadeLayer = -1;   // set by CSMShadowCalculation
@@ -67,7 +68,8 @@ int debugCascadeLayer = -1;   // set by CSMShadowCalculation
 uniform sampler2DArray blockTextures;
 uniform DirLight dirLight;
 uniform PointLight pointLights[NR_POINT_LIGHTS];
-uniform SpotLight spotLight;
+uniform SpotLight spotLights[MAX_SPOT_LIGHTS];
+uniform int numSpotLights;
 uniform Material material;
 
 uniform vec3 lightPos;
@@ -171,8 +173,10 @@ void main()
     // phase 2: point lights
     for(int i = 0; i < NR_POINT_LIGHTS; i++)
         result += CalcPointLight(pointLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
-    // phase 3: spot light
-    result += CalcSpotLight(spotLight, norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
+    // phase 3: spot lights (local flashlight + any remote players whose
+    // flashlights are on this frame — host caps at MAX_SPOT_LIGHTS).
+    for (int i = 0; i < numSpotLights; ++i)
+        result += CalcSpotLight(spotLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
 
     if (renderType == 1) {
         FragColor = vec4(norm * 0.5 + 0.5, 1.0); // Visualize normals
