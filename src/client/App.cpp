@@ -135,6 +135,9 @@ void App::init(const std::string& serverIp) {
     gBuffer = std::make_shared<GBuffer>(screenWidth, screenHeight);
     ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
+    // Scene FBO (MSAA) — sample count must match the GLFW window hint above.
+    sceneFBO = std::make_unique<SceneFramebuffer>(screenWidth, screenHeight, 8);
+
     glEnable(GL_DEPTH_TEST);
     
     // enable face culling
@@ -932,9 +935,23 @@ void App::render() {
         const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
         renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
         
+        // --- Cloud march: renders to cloudFBO. Must happen BEFORE sceneFBO is bound,
+        // because renderCloudsLowRes() unbinds back to FBO=0 (not sceneFBO).
+        glBeginQuery(GL_TIME_ELAPSED, queryDrawCloudsPool[currentQueryIndex]);
+        lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
+        glEndQuery(GL_TIME_ELAPSED);
+
+        // --- Scene FBO (MSAA): sky, terrain, water, debug overlays ---
+        // Lazy resize (mirrors the gBuffer/ssao pattern below).
+        if (sceneFBO->getWidth() != screenWidth || sceneFBO->getHeight() != screenHeight)
+            sceneFBO->resize(screenWidth, screenHeight);
+
+        sceneFBO->bindMS();
+        glViewport(0, 0, screenWidth, screenHeight);
+
     	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
     	renderScene(view, projection, clipPlane);
-    	
+
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
         if (waterVisible) {
@@ -950,6 +967,19 @@ void App::render() {
 
         // Draw chunk boundary overlay (if enabled)
         chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), camera->getEyePosD(), view, projection, *renderer);
+
+        // Resolve MSAA -> non-MSAA textures, then composite clouds into the backbuffer.
+        sceneFBO->resolve();
+        SceneFramebuffer::unbind();
+        glViewport(0, 0, screenWidth, screenHeight);
+
+        lighting->compositeCloudsToBackbuffer(
+            sceneFBO->getResolvedColorTexture(),
+            sceneFBO->getResolvedDepthTexture(),
+            view, projection,
+            camera->getPlayer()->getPosition(),
+            glm::vec2(screenWidth, screenHeight)
+        );
 
         glBindVertexArray(0);
         {
@@ -1121,9 +1151,6 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     // Render sky/clouds first with proper depth
     glDisable(GL_CLIP_DISTANCE0);
 
-    glBeginQuery(GL_TIME_ELAPSED, queryDrawCloudsPool[currentQueryIndex]);
-    lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
-    glEndQuery(GL_TIME_ELAPSED);
 
 	glm::vec3 camPos = glm::inverse(camera->getViewMatrix())[3]; // Extract camera world position from view matrix
     const bool cameraUnderwater = renderer->isUnderwater(camPos);
