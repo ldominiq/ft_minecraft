@@ -105,7 +105,8 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     // Render reflection scene
     texMgr.bind(GL_TEXTURE0);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
-    lighting->drawSky(skyView, projection, reflectCamPos, false);
+    // Water reflection FBO is an LDR target — sky must tonemap into it itself.
+    lighting->drawSky(skyView, projection, reflectCamPos, false, /*destIsHDR=*/false);
 
     if (reflectionEnabled) {
         // Update vegetation shader with reflected view/clip before rendering
@@ -216,7 +217,8 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     // Fog uniforms
     uploadFogUniforms(*waterShader, fogEnabled, lighting->getSkyLUTTexture(),
                       lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
-                      lighting->getDirectionalLightDirection());
+                      lighting->getDirectionalLightDirection(),
+                      lighting->isHDREnabled());
 
     // Bind water textures
     glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_REFLECT);

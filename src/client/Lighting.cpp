@@ -163,7 +163,7 @@ void Lighting::updateSkyLUT(float cameraPosY) {
     }
 }
 
-void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater) const {
+void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater, bool destIsHDR) const {
     // Choose shader: LUT-based (fast) or full ray-marching (reference)
     const bool useLUT = skyLUTEnabled && skyLUT && skyLUT->getLUTTexture();
     Shader* shader = useLUT ? skyLUTRenderShader.get() : skyShader.get();
@@ -175,6 +175,9 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     shader->setMat4("projection", projection);
     shader->setVec3("cameraPosWorld", cameraPos);
     shader->setFloat("exposure", skyExposure);
+    // HDR pipeline writes linear radiance and tonemaps in the final composite.
+    // LDR pipeline (and any LDR target like the water reflection FBO) tonemaps here.
+    shader->setBool("tonemapHere", !(destIsHDR && hdrEnabled));
     shader->setVec3("sunDir", getDirectionalLightDirection());
 
     // Underwater fog for sky
@@ -243,6 +246,8 @@ void Lighting::compositeCloudsToBackbuffer(GLuint sceneColorTex, GLuint sceneDep
     cloudCompositeShader->setFloat("cloudLayerMinY", cloudLayerMinY);
     cloudCompositeShader->setFloat("cloudLayerMaxY", cloudLayerMaxY);
     cloudCompositeShader->setFloat("exposure", skyExposure);
+    // When HDR is on, this pass becomes the single final tonemap site.
+    cloudCompositeShader->setBool("hdrMode", hdrEnabled);
 
     glBindVertexArray(skyVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -372,8 +377,16 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
 
         // small ambient light at night
         constexpr float nightAmbientMin = 0.3f;
-        const glm::vec3 ambientColor = directionalAmbientColor * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
-        const glm::vec3 diffuseColor = directionalDiffuseColor * day;
+        // HDR mode gives us headroom above 1.0: push direct sun and daytime ambient
+        // higher so the final tonemap has real dynamic range and shadowed areas
+        // (which retain a higher fraction of ambient — see lighting.frag) stay readable.
+        // Both gated by `day`, so night is unchanged.
+        const float ambientDayBoost = hdrEnabled ? 1.6f : 1.0f;
+        const float diffuseDayBoost = hdrEnabled ? 1.8f : 1.0f;
+        const glm::vec3 ambientColor = directionalAmbientColor
+            * (nightAmbientMin + (1.0f - nightAmbientMin) * day)
+            * ambientDayBoost;
+        const glm::vec3 diffuseColor = directionalDiffuseColor * day * diffuseDayBoost;
         const glm::vec3 specularColor = directionalSpecularColor * day;
         shader.setVec3("dirLight.direction", -directionalLightDir);
         shader.setVec3("dirLight.ambient", ambientColor);

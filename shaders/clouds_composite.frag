@@ -1,10 +1,18 @@
 #version 460 core
 
-// Post-terrain cloud composite.
+// Post-terrain cloud composite + (in HDR mode) final tonemap.
+//
 // Reads the resolved (non-MSAA) scene color/depth and the low-res cloud RGBA texture,
 // and composites clouds over the scene per-pixel using actual scene depth — no
-// gl_FragDepth hacks. This kills the "milky-ground when looking down from above clouds"
-// artifact and the hard cloud/terrain silhouette cutoff.
+// gl_FragDepth hacks.
+//
+// Two paths:
+//   - LDR (hdrMode=false): scene texture is RGBA8 already tonemapped per-shader,
+//     clouds are HDR (in-scattered light). We tonemap the cloud RGB to LDR and
+//     alpha-blend over the scene. Same behavior as before the HDR refactor.
+//   - HDR (hdrMode=true): scene texture is RGBA16F linear radiance, clouds are
+//     HDR. We blend in linear HDR space, then apply a single Uncharted2
+//     tonemap + gamma at the end.
 
 in vec2 vUV;
 out vec4 FragColor;
@@ -22,11 +30,10 @@ uniform vec2 resolution;          // unused for now; kept for future bilateral u
 uniform float cloudLayerMinY;
 uniform float cloudLayerMaxY;
 uniform float exposure;           // matches Lighting::skyExposure used by sky shaders
+uniform bool  hdrMode;            // true = blend in HDR + final tonemap here
 
 // Uncharted2 filmic tone mapping (same curve as sky_common.glsl::skyUncharted2).
-// The cloud march outputs HDR in-scattered light; we tone-map it to LDR before
-// blending so the result composites correctly into the LDR scene texture.
-vec3 cloudToneMap(vec3 color, float exp_) {
+vec3 uncharted2(vec3 color, float exp_) {
     const float A=0.15, B=0.50, C=0.10, D=0.20, E=0.02, F=0.30, W=11.2, gamma=2.2;
     color *= exp_;
     color = ((color*(A*color+C*B)+D*E)/(color*(A*color+B)+D*F)) - E/F;
@@ -36,14 +43,14 @@ vec3 cloudToneMap(vec3 color, float exp_) {
 }
 
 void main() {
-    vec3 sceneCol = texture(sceneColor, vUV).rgb;   // LDR (terrain-LDR or tone-mapped sky)
+    vec3 sceneCol = texture(sceneColor, vUV).rgb;   // LDR in legacy path, HDR in hdrMode
     float sceneZ  = texture(sceneDepth, vUV).r;     // [0,1] depth-buffer value
     vec4 cloud    = texture(cloudTex, vUV);         // .rgb = HDR in-scattered light, .a = transmittance
     float cloudOpacity = 1.0 - cloud.a;
 
-    // Cloud-free pixel: pass scene through.
+    // Cloud-free pixel: pass scene through (tonemap if HDR).
     if (cloudOpacity <= 0.001) {
-        FragColor = vec4(sceneCol, 1.0);
+        FragColor = vec4(hdrMode ? uncharted2(sceneCol, exposure) : sceneCol, 1.0);
         return;
     }
 
@@ -81,16 +88,26 @@ void main() {
     // crosses the slab boundary at speed).
 
     if (!composite) {
-        FragColor = vec4(sceneCol, 1.0);
+        FragColor = vec4(hdrMode ? uncharted2(sceneCol, exposure) : sceneCol, 1.0);
         return;
     }
 
-    // Recover the "pure" cloud color (un-premultiply by opacity), tone-map to
-    // LDR, then alpha-blend over the scene. This avoids the saturation that
-    // additive blending would cause in LDR space and matches the previous look
-    // (clouds occlude rather than over-bright when in front of terrain).
+    // Recover the "pure" cloud color (un-premultiply by opacity).
     vec3 cloudRgbPure = cloud.rgb / max(cloudOpacity, 0.001);
-    vec3 cloudLdr = cloudToneMap(cloudRgbPure, exposure);
 
-    FragColor = vec4(mix(sceneCol, cloudLdr, cloudOpacity), 1.0);
+    vec3 finalRgb;
+    if (hdrMode) {
+        // Blend in linear HDR, then tonemap+gamma once at the end. This keeps
+        // bright cloud highlights inside the same tonemap that handles bright sun.
+        vec3 hdrComposited = mix(sceneCol, cloudRgbPure, cloudOpacity);
+        finalRgb = uncharted2(hdrComposited, exposure);
+    } else {
+        // Legacy LDR: scene is already tonemapped per-shader; bring clouds to
+        // LDR with the same operator and alpha-blend in LDR (preserves the
+        // pre-HDR look exactly).
+        vec3 cloudLdr = uncharted2(cloudRgbPure, exposure);
+        finalRgb = mix(sceneCol, cloudLdr, cloudOpacity);
+    }
+
+    FragColor = vec4(finalRgb, 1.0);
 }

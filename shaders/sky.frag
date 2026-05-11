@@ -25,6 +25,10 @@ uniform mat4 projection; // camera projection
 uniform vec3 cameraPosWorld;
 uniform float seaLevel;
 uniform float exposure;  // exposure for simple tone mapping (1 - exp(-exposure * color))
+// When false, the scene framebuffer is HDR (RGBA16F) and the final tonemap is
+// performed once in clouds_composite. We must NOT tonemap here in that case —
+// emit linear radiance instead. Defaults to true for the LDR path.
+uniform bool tonemapHere;
 uniform float atmDensity;    // 1.0 = Earth-like, lower -> closer to space
 uniform float atmThickness;  // scales HR/HM (1.0 = Earth-like)
 uniform float planetScale;
@@ -216,13 +220,14 @@ void main() {
 
     gl_FragDepth = 1.0;
 
-    // Simple exposure: 1 - exp(-exposure * color)
-    vec3 mapped = vec3(1.0) - exp(-exposure * col);
+    // In LDR mode: simple exposure tonemap here. In HDR mode: emit linear radiance
+    // and let the final composite (clouds_composite.frag) tonemap once.
+    vec3 mapped = tonemapHere ? (vec3(1.0) - exp(-exposure * col)) : col;
 
-    // Apply underwater fog to sky
+    // Apply underwater fog to sky. The flat fog color is authored as an sRGB-display
+    // value, so in HDR mode lift it to linear to compensate for the final pow(1/2.2).
     if (cameraUnderwater) {
-        // Replace sky with murky water fog color
-        mapped = underwaterFogColor;
+        mapped = tonemapHere ? underwaterFogColor : pow(underwaterFogColor, vec3(2.2));
     }
 
     FragColor = vec4(mapped, 1.0);

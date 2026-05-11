@@ -29,6 +29,7 @@
 #include "InventoryUI.hpp"
 #include "GBuffer.hpp"
 #include "SceneFramebuffer.hpp"
+#include "AutoExposure.hpp"
 #include "SSAO.hpp"
 #include "TextureManager.hpp"
 #include "ui/TerrainDebugWindow.hpp"
@@ -234,6 +235,14 @@ private:
     // debug overlays) renders into this; clouds are then composited from it to the
     // backbuffer using actual scene depth.
     std::unique_ptr<SceneFramebuffer> sceneFBO;
+
+    // HDR + exposure toggles. When hdrEnabled is true, the sceneFBO is RGBA16F
+    // and tone-mapping happens once in the cloud composite. Turning it off
+    // restores the legacy LDR path (RGBA8 + per-shader tonemap) for safety/regression.
+    bool  hdrEnabled = true;
+    bool  autoExposureEnabled = true;
+    float manualExposure = 1.2f;
+    std::unique_ptr<AutoExposure> autoExposure;
 
     // Z-prepass for terrain. When enabled, terrain is drawn twice in the main
     // scene pass: once depth-only with the prepass shader (color writes off),

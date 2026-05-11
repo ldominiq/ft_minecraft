@@ -115,6 +115,8 @@ void App::init(const std::string& serverIp) {
     guiRenderer = std::make_unique<GuiRenderer>(*loader);
 
     lighting = std::make_unique<Lighting>(screenWidth, screenHeight);
+    lighting->setHDREnabled(hdrEnabled);
+    lighting->setSkyExposure(manualExposure);
 
 	chat = std::make_shared<Chat>(screenWidth, screenHeight);
 	debugHUD = std::make_unique<DebugHUD>(screenWidth, screenHeight);
@@ -136,7 +138,11 @@ void App::init(const std::string& serverIp) {
     ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
     // Scene FBO (MSAA) — sample count must match the GLFW window hint above.
-    sceneFBO = std::make_unique<SceneFramebuffer>(screenWidth, screenHeight, 8);
+    // hdrEnabled selects between GL_RGBA16F (HDR) and GL_RGBA8 (LDR fallback).
+    sceneFBO = std::make_unique<SceneFramebuffer>(screenWidth, screenHeight, 8, hdrEnabled);
+
+    // Auto-exposure: PBO-based luminance readback. Cheap (<0.1ms), 1-frame latency.
+    autoExposure = std::make_unique<AutoExposure>();
 
     glEnable(GL_DEPTH_TEST);
     
@@ -973,6 +979,18 @@ void App::render() {
         SceneFramebuffer::unbind();
         glViewport(0, 0, screenWidth, screenHeight);
 
+        // Auto-exposure: meter the resolved HDR scene (pre-clouds), advance the
+        // smoothed exposure, push into Lighting so the cloud composite tonemap
+        // (and any remaining LDR-fallback paths) use the same exposure value.
+        if (hdrEnabled && autoExposureEnabled) {
+            autoExposure->submit(sceneFBO->getResolvedColorTexture(), screenWidth, screenHeight);
+            const float newExp = autoExposure->update(deltaTime, lighting->getSkyExposure());
+            lighting->setSkyExposure(newExp);
+        } else if (hdrEnabled) {
+            // Manual exposure mode: just track the slider value.
+            lighting->setSkyExposure(manualExposure);
+        }
+
         lighting->compositeCloudsToBackbuffer(
             sceneFBO->getResolvedColorTexture(),
             sceneFBO->getResolvedDepthTexture(),
@@ -1191,7 +1209,8 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     const float fogEnd   = maxChunkDist;
     const float fogStart = maxChunkDist * fogStartFraction;
     uploadFogUniforms(*activeShader, fogEnabled, skyLUTTex,
-                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
+                      lighting->isHDREnabled());
 
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
@@ -1239,7 +1258,8 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 
         // Fog for vegetation
         uploadFogUniforms(*vegShader, fogEnabled, skyLUTTex,
-                          lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
+                          lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
+                          lighting->isHDREnabled());
 
         activeShader->use(); // Switch back to main shader
     }

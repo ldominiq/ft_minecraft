@@ -86,7 +86,10 @@ public:
     explicit Lighting(int screenWidth, int screenHeight);
     ~Lighting();
 
-    void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater = false) const;
+    // destIsHDR: if true, the bound framebuffer is HDR (RGBA16F) and the sky
+    // shader will skip its own tonemap (clouds_composite tonemaps later).
+    // Water reflections render into an LDR FBO, so they pass destIsHDR=false.
+    void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater = false, bool destIsHDR = true) const;
     void drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const;
 
     void updateSunDirection(float deltaTime);
@@ -161,6 +164,8 @@ public:
     float getShadowMapMaxBias() const { return MAX_BIAS; }
 
     float getSkyExposure() const { return skyExposure; };
+    bool  isHDREnabled() const { return hdrEnabled; }
+    void  setHDREnabled(bool v) { hdrEnabled = v; }
     float getSkyAtmDensity() const { return skyAtmDensity; };
     float getSkyAtmThickness() const { return skyAtmThickness; };
     float getSkyTimeOffset() const { return skyTimeOffset; };
@@ -334,8 +339,12 @@ private:
     float sunStepDuration  = 2.0f;   // how long the smooth advance takes
     bool  sunStepping      = false;  // true while the sun is advancing
     float sunStepTimer     = 0.0f;   // progress within the step
-    // Simple tone-mapping exposure for sky shader
+    // Simple tone-mapping exposure for sky shader (drives the final composite tonemap in HDR mode).
     float skyExposure = 1.2f;
+    // When true, the scene framebuffer is RGBA16F and tone-mapping happens once
+    // at the very end (clouds_composite). When false, the legacy LDR path is used
+    // where the sky and the cloud composite each tone-map their own outputs.
+    bool  hdrEnabled = true;
     // Atmospheric density and thickness scalars (1.0 ~ Earth-like)
     float skyAtmDensity = 19.0f;
     float skyAtmThickness = 1.0f;

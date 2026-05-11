@@ -24,12 +24,18 @@ vec3 skyUncharted2(vec3 color, float exposure) {
     return pow(max(color, vec3(0.0)), vec3(1.0/gamma));
 }
 
-// Sample the precomputed scattering LUT at (viewDir, sunDir),
-// apply phase functions, and tone-map.
-vec3 sampleSkyColor(sampler2D lut, vec3 viewDir, vec3 sunDir, float exposure) {
+// Linear (un-tonemapped) variant: returns raw HDR radiance from the LUT after
+// applying phase functions. Used when the caller will tonemap once later (HDR
+// pipeline). The tonemapped variant below is kept for LDR callers.
+vec3 sampleSkyColorLinear(sampler2D lut, vec3 viewDir, vec3 sunDir) {
     vec2 lutUV = vec2(viewDir.y * 0.5 + 0.5, sunDir.y * 0.5 + 0.5);
     vec4 scatter = texture(lut, lutUV);
     float mu = dot(viewDir, sunDir);
-    vec3 color = scatter.rgb * skyRayleighPhase(mu) + vec3(scatter.a) * skyMiePhase(mu);
-    return skyUncharted2(color, exposure);
+    return scatter.rgb * skyRayleighPhase(mu) + vec3(scatter.a) * skyMiePhase(mu);
+}
+
+// Sample the precomputed scattering LUT at (viewDir, sunDir),
+// apply phase functions, and tone-map.
+vec3 sampleSkyColor(sampler2D lut, vec3 viewDir, vec3 sunDir, float exposure) {
+    return skyUncharted2(sampleSkyColorLinear(lut, viewDir, sunDir), exposure);
 }
