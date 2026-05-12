@@ -218,6 +218,12 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/blocks/sand/sand3.wav",
         "assets/sounds/blocks/sand/sand4.wav",
         });
+    loadSfx(SoundId::Place_Gravel, {
+        "assets/sounds/blocks/gravel/gravel1.wav",
+        "assets/sounds/blocks/gravel/gravel2.wav",
+        "assets/sounds/blocks/gravel/gravel3.wav",
+        "assets/sounds/blocks/gravel/gravel4.wav",
+        });
     loadSfx(SoundId::Place_Leaves, {
         "assets/sounds/blocks/grass/grass1.wav",
         "assets/sounds/blocks/grass/grass2.wav",
@@ -373,8 +379,8 @@ SoundId AudioManager::footstepFor(BlockType b) {
     }
 }
 
-// Vegetation (flowers, tall grass, kelp, coral, dead bush, etc.). Breaks/places use the
-// soft Block_Pop one-shot in vanilla. Listed once and reused by both breakFor and placeFor.
+// Vegetation (flowers, tall grass, kelp, coral, dead bush, etc.). Breaks/places route to
+// Break_Dirt / Place_Dirt
 static bool isVegetation(BlockType b) {
     switch (b) {
         case BlockType::SHORT_GRASS:

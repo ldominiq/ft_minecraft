@@ -70,7 +70,13 @@ void App::init(const std::string& serverIp) {
     }
     
     audio = std::make_unique<AudioManager>();
-    audio->init();
+    // If SoLoud can't open a backend (headless / no audio device / driver mismatch),
+    // drop the manager rather than leave it half-initialised — every playSfx*/update
+    // call later guards on `if (audio)`, so the game runs silent instead of crashing.
+    if (!audio->init()) {
+        std::cerr << "[Audio] disabled (init failed)" << std::endl;
+        audio.reset();
+    }
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
@@ -523,6 +529,17 @@ void App::setUdpClientPacketCallback()
 					audio->playSfx3D(
 						AudioManager::hurtSoundFor(static_cast<LivingEntityType>(p.type)),
 						epos, glm::vec3(0.0f), 1.0f);
+				}
+				// Item pickup: server tags the entity-removal packet for an ITEMS entity by
+				// setting type == -1 and rewriting the position to the picker's location
+				// (see World::pickupItem). Play the generic block-pop one-shot there so both
+				// the local player and nearby remote players get audible feedback. 3D so it
+				// attenuates if it was someone else picking up an item across the map.
+				if (audio
+				    && p.eEntityType == EEntityTypes::ITEMS
+				    && p.type == static_cast<uint16_t>(-1)) {
+					glm::dvec3 epos(p.positionX, p.positionY, p.positionZ);
+					audio->playSfx3D(SoundId::Block_Pop, epos, glm::vec3(0.0f), 0.6f);
 				}
 				break;
 			}
@@ -2277,6 +2294,9 @@ void App::debugWindow() {
 
                 // ── Settings ─────────────────────────────────────────────
                 if (ImGui::BeginTabItem("Settings")) {
+                    // Audio sliders are skipped entirely when init() failed and we nulled
+                    // the manager — the rest of the Settings tab is unrelated and still useful.
+                    if (audio) {
                     float masterVolume = audio->getMasterVolume();
                     float musicVolume = audio->getMusicVolume();
                     float sfxVolume = audio->getSfxVolume();
@@ -2327,6 +2347,7 @@ void App::debugWindow() {
                         });
                         soundSliders("UI", { SoundId::UI_Click });
                     }
+                    } // if (audio)
 
                     if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
                         style._NextFrameFontSizeBase = style.FontSizeBase;
@@ -2556,7 +2577,10 @@ void App::cleanup() {
 		menuDirtTex = 0;
 	}
 
-    audio->shutdown();
+    if (audio) {
+        audio->shutdown();
+        audio.reset();
+    }
 
     glfwTerminate();
     saveControls();

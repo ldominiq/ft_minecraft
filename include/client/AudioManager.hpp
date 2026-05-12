@@ -63,7 +63,8 @@ enum class SoundId {
     Player_FallBig,      // landing after a damaging fall (>= 4 blocks)
     Player_Hurt,         // generic player damage one-shot (hit*.wav)
 
-    // Generic block-pop one-shot used for vegetation breaks/places.
+    // Generic Minecraft-style "block pop" one-shot fired when the player picks up
+    // a dropped item entity.
     Block_Pop,
 
     // UI.
