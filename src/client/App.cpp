@@ -100,7 +100,9 @@ void App::init(const std::string& serverIp) {
 	renderer = std::make_unique<Renderer>();
 
 	// ********************Water Renderer setup******************************
-	waterFramebuffer = std::make_shared<WaterFramebuffer>(screenWidth, screenHeight);
+	// Match the scene FBO's HDR state so the reflection/refraction targets
+	// don't clamp linear-HDR radiance to [0,1] before water.frag samples them.
+	waterFramebuffer = std::make_shared<WaterFramebuffer>(screenWidth, screenHeight, hdrEnabled);
 	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
 	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
 
@@ -1951,6 +1953,12 @@ void App::debugWindow() {
                             if (ImGui::Checkbox("HDR enabled", &hdrEnabled)) {
                                 sceneFBO->setHDR(hdrEnabled);
                                 lighting->setHDREnabled(hdrEnabled);
+                                // Water reflection/refraction targets must match the scene's
+                                // color space — otherwise HDR scene radiance gets clamped to
+                                // [0,1] in those FBOs and water.frag then samples LDR values
+                                // back into the HDR scene buffer.
+                                if (waterFramebuffer)
+                                    waterFramebuffer->setHDR(hdrEnabled);
                                 // When flipping back to LDR, pull exposure back to a sane
                                 // manual value so the cloud composite (LDR path) doesn't
                                 // inherit a stale auto-exp value.

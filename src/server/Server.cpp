@@ -460,7 +460,10 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	// Stash flashlight state from playerFlags bit 0 onto the player entity;
 	// sendEntitiesPositionDeltas will relay it to the other clients via
 	// NetEntityMove::positionFlags bit 0x10.
-	player->movement->flashlightOn = (pkt.playerFlags & 0x01u) != 0;
+	const bool newFlashlightOn = (pkt.playerFlags & 0x01u) != 0;
+	if (newFlashlightOn != player->movement->flashlightOn)
+		player->movement->rotationUpdated = true;
+	player->movement->flashlightOn = newFlashlightOn;
 
 	if (pkt.keys & IN_DROP)
 	{

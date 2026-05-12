@@ -37,8 +37,9 @@ uniform bool  hdrMode;            // true = blend in HDR + final tonemap here
 uniform float saturation;
 
 // ACES filmic tone mapping — Krzysztof Narkowicz's cheap fit (2015).
-// Returns linear values; the explicit pow(1/2.2) below encodes to display space
-// (we don't use GL_FRAMEBUFFER_SRGB, so gamma is done by hand).
+// Returns gamma-encoded (display-space) values: the ACES curve is applied to
+// linear input, then pow(1/2.2) encodes to display space (we don't use
+// GL_FRAMEBUFFER_SRGB, so gamma is done by hand).
 vec3 tonemap(vec3 color, float exp_) {
     color *= exp_;
     const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
