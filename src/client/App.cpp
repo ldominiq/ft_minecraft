@@ -458,6 +458,14 @@ void App::setUdpClientPacketCallback()
 				break;
 			}
 
+			case PacketType::NET_SET_NAME: {
+				auto& p = static_cast<NetSetName&>(*pkt);
+				camera->getPlayer()->setName(p.username);
+				chat->updateChatlog("Your name has been changed to " + p.username);
+				settingsMenu->setUsername(p.username);
+				break;
+			}
+
 			case PacketType::CHUNK_HEADER: {
 				auto& p = static_cast<NetChunkHeader&>(*pkt);
 				// handle chunk data (append to buffer, etc.)

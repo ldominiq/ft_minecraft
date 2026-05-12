@@ -106,6 +106,21 @@ struct NetAccept final : public Packet {
 };
 inline AutoRegister<NetAccept> _reg_NetAccept;
 
+struct NetSetName final : public Packet {
+	static constexpr PacketType ID = PacketType::NET_SET_NAME;
+	std::string username;
+
+	NetSetName() : Packet(ID) { flags = PacketFlags::Reliable; }
+
+	void encode(BufferWriter& w) const override {
+		w.write_string(username);
+	}
+	void decode(BufferReader& r) override {
+		username = r.read_string();
+	}
+};
+inline AutoRegister<NetSetName> _reg_NetSetName;
+
 struct NetPlayerInputs final : public Packet {
     static constexpr PacketType ID = PacketType::PLAYER_INPUT;
 

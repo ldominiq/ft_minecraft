@@ -392,6 +392,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 
 	std::cout << "New client connecting from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << "...\n";
 
+	std::string rcvName = pkt.username;
 	pkt.username = pkt.username.substr(0, 15); // enforce max length
 	std::string name = pkt.username;
 	int count = 0;
@@ -416,7 +417,16 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	players.push_back(std::move(p));
 	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
-	
+
+	messages.push_back(name + " joined the game.");
+
+	if (name != rcvName)
+	{
+		NetSetName pkt;
+		pkt.username = name;
+		sendPacketTo(pkt, cliaddr);
+	}
+
 	sendAccept(cliaddr);
 }
 
@@ -454,6 +464,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 	}
 
 	player->movement->savePlayerDataToFile("playerdata/" + player->movement->getName() + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
+
+	messages.push_back(player->movement->getName() + " left the game.");
 
 	// Erase rather than clear: ids are never reused, so the entry stays dead.
 	world->PlayerKnownChunks.erase(player->id);
@@ -867,10 +879,9 @@ void Server::sendDeaths()
 			ent->deathBroadcast = true;
 
 			std::string name = le->get()->getName();
-			if (name.empty())
-				messages.push_back("Someone has died miserably");
-			else
-				messages.push_back(name + " has been obliterated");
+
+			if (le->get()->getLivingEntityType() == PLAYER)
+				messages.push_back(name + " died.");
 
 			NetEntityMove pkt;
 			pkt.eEntityType = ent->getEntityType();

@@ -23,6 +23,7 @@
 enum class PacketType : uint8_t {
 	NET_CONNECT = 1,		// C2S
 	NET_ACCEPT,				// S2C
+	NET_SET_NAME,			// S2C set name when there's already an existing player with the same name.
 	PLAYER_INPUT,			// C2S
 	PLAYER_MOUSE_INPUT,		// C2S
 	PLAYER_MOVE,			// S2C

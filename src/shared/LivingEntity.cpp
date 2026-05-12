@@ -39,6 +39,13 @@ void LivingEntity::attack(LivingEntity &victim)
 	constexpr float strength = 0.4f * 25;		//25 is completely arbitrary testing value
 	constexpr float verticalBoost = 0.1 * 5;	//same with 5
 
+	if (victim.getLivingEntityType() == PLAYER)
+	{
+		auto *pm = dynamic_cast<PlayerMovement *>(&victim); //meh dynamic cast
+		if (pm && pm->gamemode == GAMEMODES::SPECTATOR)
+			return; //no knockback or damage for spectators
+	}
+
 	victim.health -= damage;
 	victim.applyImpulse(knockbackDir * strength + glm::vec3(0.0f, verticalBoost, 0.0f));
 }
