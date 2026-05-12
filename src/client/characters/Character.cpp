@@ -265,13 +265,14 @@ void Character::triggerDeath()
 void Character::deathAnimation(float deltaTime)
 {
     constexpr float DEATH_DURATION = 1.0f;
-    if (characterBodyParts.dyingDone)
-        return;
-    characterBodyParts.dyingPhase += deltaTime / DEATH_DURATION;
-    if (characterBodyParts.dyingPhase >= 1.0f)
+    if (!characterBodyParts.dyingDone)
     {
-        characterBodyParts.dyingPhase = 1.0f;
-        characterBodyParts.dyingDone = true;
+        characterBodyParts.dyingPhase += deltaTime / DEATH_DURATION;
+        if (characterBodyParts.dyingPhase >= 1.0f)
+        {
+            characterBodyParts.dyingPhase = 1.0f;
+            characterBodyParts.dyingDone = true;
+        }
     }
     float angle = static_cast<float>(M_PI) * 0.5f * characterBodyParts.dyingPhase;
     // Root Space transform is translation * rotation * scale, so rotation pivots at

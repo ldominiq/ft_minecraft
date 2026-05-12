@@ -814,7 +814,7 @@ void Server::despawnDistantMobs()
 void Server::sendDeaths()
 {
 	// How many server ticks the body lingers so clients can play the fall-over animation.
-	constexpr int32_t DEATH_ANIMATION_TICKS = static_cast<int32_t>(TPS * 1); // ~1s at 20 TPS
+	constexpr int32_t DEATH_ANIMATION_TICKS = static_cast<int32_t>(TPS * 3); // ~3s at 20 TPS
 
 	for (auto le = world->livingEntities.begin(); le != world->livingEntities.end();)
 	{

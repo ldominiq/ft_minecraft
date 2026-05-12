@@ -140,6 +140,11 @@ class InventoryUI : public Menu
 	double mouseX = 0;
 	double mouseY = 0;
 
+	// Death screen bookkeeping. -1 means "not currently dead"; otherwise stores
+	// the glfwGetTime() value at which the death animation began so the fade-in
+	// is wall-clock based rather than frame-count based.
+	double deathStartTime = -1.0;
+
 	public:
 
 		InventoryUI(int width,
@@ -154,6 +159,10 @@ class InventoryUI : public Menu
 		bool checkInventoryDrag(NetInventoryAction &pkt);
 		void drawHotbar();
 		void drawHealth(float health) const;
+		// Red vignette + "YOU DIED" overlay shown while local health<=0; fades in
+		// from the moment of death and resets once we respawn. Cheap: a few quads
+		// plus two text draws. Safe to call every frame regardless of state.
+		void drawDeathScreen(float health);
 		void drawInventory() const;
 
 		std::optional<NetInventoryAction> lastAction; //awful solution
