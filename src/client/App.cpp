@@ -701,8 +701,16 @@ void App::loadResources() {
     // Load shaders and textures
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     
-    // Load individual block textures into a texture array
-    textureManager.loadResourcePack("assets");
+    // Load individual block textures into a texture array. A false return
+    // means the resource pack is missing/empty; TextureManager still builds a
+    // checker-only atlas so we can keep launching (everything renders
+    // magenta), but flag it loudly here so the cause is obvious.
+    if (!textureManager.loadResourcePack("assets")) {
+        std::cerr << "[App] Resource pack 'assets' missing or empty, "
+                     "the world will render entirely as the missing-texture "
+                     "checker. Restore assets/textures/block/ and "
+                     "assets/textures/item/ to fix." << std::endl;
+    }
 
     activeShader = textureShader;
 

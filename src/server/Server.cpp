@@ -8,7 +8,6 @@
 #include <random>
 #include <sstream>
 
-static std::mt19937 spawnRng(std::random_device{}());
 Server::Server() {
 #ifdef _WIN32
     WSADATA wsaData;
@@ -330,7 +329,7 @@ void Server::gameTick()
 
 	// Attempt mob spawning every 5 seconds
 	if (tick > 0 && tick % (static_cast<int>(TPS) * 5) == 0)
-		trySpawnNightMobs();
+		world->trySpawnNightMobs(players);
 
 	// Despawn mobs with no player nearby once per second.
 	if (tick > 0 && tick % static_cast<int>(TPS) == 0)
@@ -814,100 +813,6 @@ void Server::sendAll()
 	world->rdyChunks.clear();
 }
 
-void Server::trySpawnNightMobs()
-{
-	// Night-time check: sun elevation is cos(skyTimeOffset * 0.1) (see Lighting.cpp).
-	// Negative elevation means the sun is below the horizon — i.e. night.
-	// Using this formulation avoids wrap-around issues as skyTimeOffset accumulates.
-	const float skyT = world->getSkyTimeState().skyTimeOffset;
-	if (std::cos(skyT * 0.1f) >= 0.0f)
-		return;
-	if (players.empty())
-		return;
-
-	constexpr int MAX_ZOMBIES_PER_PLAYER  = 10;
-	constexpr int MAX_CREEPERS_PER_PLAYER = 50;
-	constexpr int MIN_SPAWN_DIST = 40;
-	constexpr int MAX_SPAWN_DIST = 80;
-	constexpr int SCAN_TOP_Y = 200;
-	constexpr int SCAN_BOTTOM_Y = 4;
-
-	// Count current hostile mobs.
-	int zombieCount  = 0;
-	int creeperCount = 0;
-	for (auto &e : world->livingEntities) {
-		if (!e) continue;
-		if (e->getLivingEntityType() == ZOMBIE)  zombieCount++;
-		if (e->getLivingEntityType() == CREEPER) creeperCount++;
-	}
-
-	auto findGroundSpawn = [&](const glm::vec3 &ppos, glm::vec3 &out) -> bool {
-		float angle = glm::radians(static_cast<float>(std::uniform_int_distribution<int>(0, 359)(spawnRng)));
-		int dist = std::uniform_int_distribution<int>(MIN_SPAWN_DIST, MAX_SPAWN_DIST - 1)(spawnRng);
-		int sx = static_cast<int>(std::floor(ppos.x + std::cos(angle) * dist));
-		int sz = static_cast<int>(std::floor(ppos.z + std::sin(angle) * dist));
-
-		auto isAir = [&](int y) {
-			BlockType b = world->getBlockWorld({sx, y, sz});
-			return b == BlockType::AIR;
-		};
-		auto isSpawnableGround = [&](int y) {
-			BlockType b = world->getBlockWorld({sx, y, sz});
-			return b != BlockType::END && isBlockSolid(b);
-		};
-
-		int groundY = -1;
-		bool airAbove1 = isAir(SCAN_TOP_Y + 1);
-		bool airAbove2 = isAir(SCAN_TOP_Y);
-		for (int y = SCAN_TOP_Y; y >= SCAN_BOTTOM_Y; --y) {
-			if (isSpawnableGround(y) && airAbove1 && airAbove2) {
-				groundY = y;
-				break;
-			}
-			airAbove2 = airAbove1;
-			airAbove1 = isAir(y);
-		}
-		if (groundY < 0) return false;
-
-		glm::vec3 spawnPos(sx + 0.5f, static_cast<float>(groundY + 1), sz + 0.5f);
-		glm::vec3 d = spawnPos - ppos;
-		if (d.x * d.x + d.z * d.z < float(MIN_SPAWN_DIST * MIN_SPAWN_DIST) * 0.25f) return false;
-		out = spawnPos;
-		return true;
-	};
-
-	for (auto &player : players) {
-		if (!player.movement) continue;
-
-		// Zombies: unchanged rate.
-		if (zombieCount < MAX_ZOMBIES_PER_PLAYER * static_cast<int>(players.size())) {
-			for (int attempt = 0; attempt < 5; ++attempt) {
-				glm::vec3 spawnPos;
-				if (!findGroundSpawn(player.movement->getPosition(), spawnPos)) continue;
-				auto zombie = std::make_shared<Zombie>(spawnPos);
-				world->livingEntities.push_back(zombie);
-				zombieCount++;
-				break;
-			}
-		}
-
-		// Creepers: lower cap AND a probability gate — only ~25% of attempts are allowed
-		// to actually result in a spawn, so creepers are clearly rarer than zombies.
-		if (creeperCount < MAX_CREEPERS_PER_PLAYER * static_cast<int>(players.size()) &&
-			std::uniform_int_distribution<int>(0, 3)(spawnRng) == 0)
-		{
-			for (int attempt = 0; attempt < 5; ++attempt) {
-				glm::vec3 spawnPos;
-				if (!findGroundSpawn(player.movement->getPosition(), spawnPos)) continue;
-				auto creeper = std::make_shared<Creeper>(spawnPos);
-				world->livingEntities.push_back(creeper);
-				creeperCount++;
-				break;
-			}
-		}
-	}
-}
-
 void Server::despawnDistantMobs()
 {
 	// Remove any non-player living entity that has no player within DESPAWN_RADIUS (horizontal).
@@ -1388,43 +1293,21 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			groupPkt.push_back(std::move(pkt));
 		}
 
-		int twohundred0 = 200;
-		int twohundred1 = 200;
-		int twohundred2 = 200;
-		int twohundred3 = 200;
-		player->movement->inventory->insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
-		player->movement->inventory->insertItemsToSlot(BlockType::WATER, 8, twohundred1);
-		player->movement->inventory->insertItemsToSlot(BlockType::STONE, 1, twohundred2);
-		player->movement->inventory->insertItemsToSlot(BlockType::CACTUS, 2, twohundred3);
+		// Starter inventory.
+		auto give = [&](int slot, ItemType item, int amount) {
+			int amt = amount;
+			player->movement->inventory->insertItemsToSlot(item, slot, amt);
+			groupPkt.push_back(player->movement->inventory->createNetInventoryPkt(slot));
+		};
 
-		auto pkt1 = std::make_unique<NetInventory>();
-		pkt1->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt1->amount = 200;
-		pkt1->slot = 0;
-		pkt1->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::DIRT);
+		give(0, BlockType::DIRT,       200);
+		give(1, BlockType::STONE,      200);
+		give(2, BlockType::CACTUS,     200);
+		give(8, BlockType::WATER,      200);
 
-		auto pkt2 = std::make_unique<NetInventory>();
-		pkt2->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt2->amount = 200;
-		pkt2->slot = 8;
-		pkt2->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::WATER);
-
-		auto pkt3 = std::make_unique<NetInventory>();
-		pkt3->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt3->amount = 200;
-		pkt3->slot = 1;
-		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);
-
-		auto pkt4 = std::make_unique<NetInventory>();
-		pkt4->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt4->amount = 200;
-		pkt4->slot = 2;
-		pkt4->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::CACTUS);
-
-		groupPkt.push_back(std::move(pkt1));
-		groupPkt.push_back(std::move(pkt2));
-		groupPkt.push_back(std::move(pkt3));
-		groupPkt.push_back(std::move(pkt4));
+		give(3, MiscType::IRON_INGOT,  64);
+		give(4, MiscType::GOLD_INGOT,  64);
+		give(5, MiscType::DIAMOND,     64);
 	}
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);
