@@ -73,6 +73,19 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     if (!cloudFBO)
         return;
 
+    // Save the caller's framebuffer + viewport so we can restore them on exit.
+    // This keeps the pass self-contained: callers don't need to know that we
+    // temporarily bind a low-res FBO and shrink the viewport.
+    GLint prevDrawFBO = 0;
+    GLint prevViewport[4] = {0, 0, width, height};
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevDrawFBO);
+    glGetIntegerv(GL_VIEWPORT, prevViewport);
+
+    auto restoreCallerState = [&]() {
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevDrawFBO));
+        glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    };
+
     cloudFBO->bind();
     glViewport(0, 0, cloudFBO->getWidth(), cloudFBO->getHeight());
     glDisable(GL_DEPTH_TEST);
@@ -89,8 +102,7 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     if (!cloudsEnabled || !cloudShader) {
         glDepthMask(GL_TRUE);
         glEnable(GL_DEPTH_TEST);
-        CloudFramebuffer::unbind();
-        glViewport(0, 0, width, height);
+        restoreCallerState();
         return;
     }
 
@@ -151,10 +163,7 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
 
-    CloudFramebuffer::unbind();
-
-    // Restore default viewport for subsequent passes
-    glViewport(0, 0, width, height);
+    restoreCallerState();
 }
 
 void Lighting::updateSkyLUT(float cameraPosY) {

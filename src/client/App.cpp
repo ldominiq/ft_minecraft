@@ -935,10 +935,12 @@ void App::render() {
         const int currentChunkZ = static_cast<int>(std::floor(camera->getPlayer()->getPosition().z / Chunk::DEPTH));
         renderer->organizeChunks(Chunk::toKey(currentChunkX, currentChunkZ), camera->getPlayer()->getLoadRadius(), deltaTime);
         
-        // --- Cloud march: renders to cloudFBO. Must happen BEFORE sceneFBO is bound,
-        // because renderCloudsLowRes() unbinds back to FBO=0 (not sceneFBO).
+        // --- Cloud march: renders to cloudFBO. renderCloudsLowRes() saves and
+        // restores the caller's framebuffer + viewport internally, so the call
+        // is order-independent w.r.t. sceneFBO.
+        const glm::vec3 cameraEyeWorld = glm::vec3(camera->getEyePosD());
         glBeginQuery(GL_TIME_ELAPSED, queryDrawCloudsPool[currentQueryIndex]);
-        lighting->renderCloudsLowRes(view, projection, camera->getPlayer()->getPosition());
+        lighting->renderCloudsLowRes(view, projection, cameraEyeWorld);
         glEndQuery(GL_TIME_ELAPSED);
 
         // --- Scene FBO (MSAA): sky, terrain, water, debug overlays ---
@@ -973,11 +975,15 @@ void App::render() {
         SceneFramebuffer::unbind();
         glViewport(0, 0, screenWidth, screenHeight);
 
+        // cameraEyeWorld must match the eye encoded in `view` — the composite
+        // shader reconstructs the view ray via inverse(projection*view) and
+        // computes (farWorld - cameraPosWorld). Mismatches also skew the
+        // inside-layer check used to skip the depth-plane comparison.
         lighting->compositeCloudsToBackbuffer(
             sceneFBO->getResolvedColorTexture(),
             sceneFBO->getResolvedDepthTexture(),
             view, projection,
-            camera->getPlayer()->getPosition(),
+            cameraEyeWorld,
             glm::vec2(screenWidth, screenHeight)
         );
 
