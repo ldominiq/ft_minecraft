@@ -620,7 +620,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
                 player->movement->setVelocity(glm::vec3(0.0f));
                 player->movement->accumulatedFallDistance = 0.0f;
             } else {
-                messages.push_back("[server] Usage: /tp <x> <y> <z>");
+				player->targettedMessages.push_back("[server] Usage: /tp <x> <y> <z>");
             }
         }
 	}
@@ -763,7 +763,14 @@ void Server::sendAll()
 		sendImGuiData(p);
 		sendNewlyUpdatedBlocks(p);
 		sendMessage(p);
-		//hit/dmg ..
+
+		for (const auto& msg : p.targettedMessages)
+		{
+			NetMessage pkt;
+			pkt.message = msg;
+			sendPacketTo(pkt, p.addr);
+		}
+		p.targettedMessages.clear();
 	}
 	sendEntitiesPositionDeltas();
 	world->updatedBlocks.clear();
@@ -1262,6 +1269,14 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		give(3, MiscType::IRON_INGOT,  64);
 		give(4, MiscType::GOLD_INGOT,  64);
 		give(5, MiscType::DIAMOND,     64);
+
+		give(6, WeaponType::IRON_SWORD,  1);
+
+		give(10, BlockType::OAK_LOG, 200);
+		give(11, BlockType::SNOW,    200);
+		give(12, BlockType::URANIUM, 200);
+		give(13, BlockType::GRASS,  200);
+
 	}
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);

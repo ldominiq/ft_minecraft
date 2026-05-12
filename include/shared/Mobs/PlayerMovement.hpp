@@ -31,7 +31,7 @@ struct PlayerMovement : public virtual LivingEntity {
 	std::deque<NetPlayerInputs> pendingInputs; // server-side queue: one physics step per entry
 	uint8_t loadRadius = 16;
 
-	GAMEMODES gamemode = GAMEMODES::SPECTATOR;
+	GAMEMODES gamemode = GAMEMODES::SURVIVAL;
 
 	glm::vec3 spawnPosition{};
 
@@ -45,6 +45,7 @@ struct PlayerMovement : public virtual LivingEntity {
 	void updateCameraVectors();
 	void applyFallDamage() override;
 	void calculateNewPosition(const ICommonWorld &world) override;
+	void attack(LivingEntity &victim) override;
 
 	inline const glm::vec3 getVelocity() const { return this->velocity; }
 	inline const glm::vec3 getCameraDir() const { return this->Front; }
@@ -63,6 +64,7 @@ struct PlayerMovement : public virtual LivingEntity {
 	inline void setGamemode(GAMEMODES mode) {gamemode = mode; }
 	inline void setLoadRadius(uint8_t radius) { loadRadius = radius; }
 	inline void setJumpBoostApplied(bool value) { jumpBoostApplied = value; }
+	inline void setSpawnPosition(const glm::vec3 &pos) { spawnPosition = pos; }
 
 	PlayerMovement();
 	PlayerMovement(const glm::vec3 &position, float yaw, entityID ID);

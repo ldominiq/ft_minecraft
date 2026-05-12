@@ -13,6 +13,7 @@ PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 	spawnPosition = glm::vec3(position);
 	yaw = 0;
 	pitch = 0;
+	damage = 3.0f;
 
 	eyesheight = entityHeight - forehead;
 }
@@ -309,4 +310,18 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 
 		updatePos();
 	}
+}
+
+void PlayerMovement::attack(LivingEntity &victim)
+{
+	ItemType type = inventory->getItemAtSlot(inventory->activeHotbarSlot);
+
+	damage = 3.0f; // base unarmed damage
+	if (auto* w = std::get_if<WeaponType>(&type))
+	{
+		const WeaponDef& wepDef = ItemRegistry::getWeapon(*w);
+		damage += wepDef.damage;
+	}
+
+	LivingEntity::attack(victim);
 }

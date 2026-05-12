@@ -26,8 +26,9 @@ class CPlayerInfo
 		CPlayerInfo();
 
 		int32_t id;
-     int32_t serverClientReconciliationTick = -1; // last sequence number received from this player, used for loss detection (possibly packet ordering..)
+     	int32_t serverClientReconciliationTick = -1; // last sequence number received from this player, used for loss detection (possibly packet ordering..)
 
+		std::deque<std::string> targettedMessages;
 		sockaddr_in addr;
 
 		std::string name;

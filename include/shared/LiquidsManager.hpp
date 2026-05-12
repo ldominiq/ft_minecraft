@@ -34,7 +34,7 @@ struct s_waterPath
 };
 
 struct s_liquid {
-	int currPropagation = std::get<LiquidDef>(ItemRegistry::getLiquid(BlockType::WATER).data).maxPropagation;
+	int currPropagation = ItemRegistry::getLiquid(BlockType::WATER).maxPropagation;
 	std::weak_ptr<s_liquid> source;
 	BlockType liquidType = BlockType::WATER;
 	glm::ivec3 position{};

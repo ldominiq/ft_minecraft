@@ -124,7 +124,7 @@ bool CommonWorld<ChunkT>::findClosestEntityHit(const LivingEntity& src, float ma
 }
 
 template <typename ChunkT>
-TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance)
+TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance, bool ignoreLiquids)
 {
 	bool entityHit = false;
 	float entityT = maxDistance;
@@ -180,6 +180,12 @@ TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& h
             hitBlock = blockPos;
             return TargetType::Block;
         }
+
+		if (ignoreLiquids == false && isBlockLiquid(getBlockWorld(blockPos)))
+		{
+			hitBlock = blockPos;
+			return TargetType::Block;
+		}
     }
 
     return TargetType::None;

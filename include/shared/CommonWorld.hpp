@@ -45,7 +45,7 @@ class CommonWorld : public ICommonWorld{
 
 		bool rayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir, const AABB& box, float maxDistance, float& outT);
 		bool findClosestEntityHit(const LivingEntity& src, float maxDistance, LivingEntity*& outEntity, float& outT);
-		TargetType getTarget(const LivingEntity& src, glm::ivec3 &hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance = 100);
+		TargetType getTarget(const LivingEntity& src, glm::ivec3 &hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance = 5, bool ignoreLiquids = true);
 		// bool removeTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, BlockType &dropped);
 		// bool setTargettedBlock(const glm::vec3 &rayOrigin, const glm::vec3 &rayDir, const BlockType block);
 
