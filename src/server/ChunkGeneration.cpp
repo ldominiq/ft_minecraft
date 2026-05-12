@@ -442,9 +442,14 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
 
             if (branchY >= HEIGHT) continue;
 
-            // Branch starts from the edge of the trunk
-            int curX = canopyCX + bdx[dir] * (trunkW / 2 + 1);
-            int curZ = canopyCZ + bdz[dir] * (trunkW / 2 + 1);
+            // Branch starts from the edge of the trunk, adjacent to it.
+            // canopyCX/CZ sit on the far (+) side of an even-width trunk, so the
+            // offset is asymmetric: 1 block past the far edge in +dir, 1 block
+            // past the near edge in -dir. (For odd trunkW these are equal.)
+            const int offPos = (trunkW + 1) / 2;
+            const int offNeg = trunkW / 2 + 1;
+            int curX = canopyCX + (bdx[dir] > 0 ? offPos : (bdx[dir] < 0 ? -offNeg : 0));
+            int curZ = canopyCZ + (bdz[dir] > 0 ? offPos : (bdz[dir] < 0 ? -offNeg : 0));
             placeLog(curX, curZ, branchY);
             for (int seg = 1; seg < branchLen; ++seg) {
                 curX += bdx[dir]; curZ += bdz[dir];
@@ -635,14 +640,14 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
             int treeHeight;
             switch (biome) {
                 case BiomeType::DARK_FOREST:
-                    if (chanceRoll >= 8) continue;  // 1.0%
+                    if (chanceRoll >= 8) continue;  // 0.8%
                     treeHeight = 8 + static_cast<int>(rng() % 19); // 8..26, tip up to 27 blocks
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
                     placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::DARK_OAK_LOG, BlockType::DARK_OAK_LEAVES, 0, 3, rng);
                     break;
                 case BiomeType::JUNGLE:
-                    if (chanceRoll >= 10) continue;  // 2.0%
+                    if (chanceRoll >= 8) continue;  // 0.8%
                     treeHeight = 12 + static_cast<int>(rng() % 13); // 12..24, canopy tip up to 27 blocks
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
@@ -656,7 +661,7 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
                     placeTree(blocks, worldX, worldZ, surfaceY, treeHeight, BlockType::ACACIA_LOG, BlockType::ACACIA_LEAVES, 1, 1, rng);
                     break;
                 case BiomeType::BIRCH_FOREST:
-                    if (chanceRoll >= 6) continue;  // 1.2%
+                    if (chanceRoll >= 6) continue;  // 0.6%
                     treeHeight = 5 + static_cast<int>(rng() % 5);
                     if (localTrunkX < -TREE_REACH || localTrunkX >= WIDTH + TREE_REACH ||
                         localTrunkZ < -TREE_REACH || localTrunkZ >= DEPTH + TREE_REACH) continue;
