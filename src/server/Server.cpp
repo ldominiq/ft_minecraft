@@ -640,12 +640,13 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
             count = std::clamp(count, 1, 50);
 
             const glm::vec3 ppos = player->movement->getPosition();
+            static std::mt19937 summonRng(std::random_device{}());
             std::uniform_int_distribution<int>   angDeg(0, 359);
             std::uniform_real_distribution<float> radDist(4.0f, 6.0f);
 
             auto spawnOne = [&](LivingEntityType type) {
-                const float angle = glm::radians(static_cast<float>(angDeg(spawnRng)));
-                const float r     = radDist(spawnRng);
+                const float angle = glm::radians(static_cast<float>(angDeg(summonRng)));
+                const float r     = radDist(summonRng);
                 glm::vec3 pos(ppos.x + std::cos(angle) * r, ppos.y, ppos.z + std::sin(angle) * r);
                 if (type == ZOMBIE)
                     world->livingEntities.push_back(std::make_shared<Zombie>(pos));
