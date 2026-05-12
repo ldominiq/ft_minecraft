@@ -215,11 +215,19 @@ void WaterRenderer::setupSurfaceShader(Shader& shader,
     // to a multiple of the texture's repeat period (1/tiling). Lets the
     // vertex shader build texture coords from camera-relative positions
     // without losing wave detail at large world coordinates.
+    //
+    // Y is also anchored: side faces of placed-water blocks use Y for V,
+    // and without this the texture would translate vertically as the eye
+    // moves up/down (since cameraRelPos.y = worldY - eye.y). The ocean
+    // shader only uses XZ and ignores the Y component — uniform is a
+    // silent no-op there.
     const double period = (dudvTiling > 0.0f) ? (1.0 / static_cast<double>(dudvTiling)) : 1.0;
     const double anchorX = std::floor(eyePosD.x / period) * period;
     const double anchorZ = std::floor(eyePosD.z / period) * period;
+    const double anchorY = std::floor(eyePosD.y / period) * period;
     const glm::vec2 texAnchor(static_cast<float>(eyePosD.x - anchorX),
                               static_cast<float>(eyePosD.z - anchorZ));
+    const float texAnchorY = static_cast<float>(eyePosD.y - anchorY);
 
     shader.use();
     shader.setMat4("projection", projection);
@@ -233,6 +241,7 @@ void WaterRenderer::setupSurfaceShader(Shader& shader,
     shader.setFloat("twilightLow",  0.235f);
     shader.setFloat("twilightHigh", 0.315f);
     shader.setVec2("texAnchor", texAnchor);
+    shader.setFloat("texAnchorY", texAnchorY);
     shader.setFloat("moveFactor", waterMoveFactor);
     shader.setFloat("moveFactor2", waterMoveFactor2);
     shader.setFloat("waveStrength", waveStrength);

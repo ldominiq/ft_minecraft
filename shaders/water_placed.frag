@@ -11,6 +11,10 @@
 in vec4 clipSpace;
 in vec3 toCameraVector;
 in vec2 textureCoords;
+// Vertex shader emits the cube-face index (0..5). We rebuild the face TBN
+// from it so the normal map is interpreted as tangent-space rather than
+// the +Y-up world space the ocean shader assumes.
+flat in int faceNormalIdx;
 
 out vec4 FragColor;
 
@@ -53,26 +57,51 @@ vec2 sampleDistortion(vec2 baseUV) {
           + (texture(dudvMap, c2).rg * 2.0 - 1.0) * 0.5);
 }
 
-vec3 sampleNormal(vec2 distortedUV) {
+// Tangent-space normal from two octaves of the dudv-distorted normal map.
+// Channels follow the ocean shader's convention: r → tangent, g → bitangent,
+// b → face normal (scaled to keep the perturbation weak relative to the
+// geometric normal).
+vec3 sampleTangentNormal(vec2 distortedUV) {
     vec4 n1 = texture(normalMap, distortedUV);
     vec4 n2 = texture(normalMap, distortedUV * 4.0 + vec2(moveFactor2, -moveFactor2));
-    vec3 N1 = vec3(n1.r * 2.0 - 1.0, n1.b * 3.0, n1.g * 2.0 - 1.0);
-    vec3 N2 = vec3(n2.r * 2.0 - 1.0, n2.b * 3.0, n2.g * 2.0 - 1.0);
-    return normalize(N1 + N2 * 0.5);
+    vec3 t1 = vec3(n1.r * 2.0 - 1.0, n1.g * 2.0 - 1.0, n1.b * 3.0);
+    vec3 t2 = vec3(n2.r * 2.0 - 1.0, n2.g * 2.0 - 1.0, n2.b * 3.0);
+    return normalize(t1 + t2 * 0.5);
+}
+
+// Axis-aligned TBN for one of the six cube faces. The U axis of the
+// face-UV (see water_placed.vert) becomes T, V becomes B, and the outward
+// face normal becomes N.
+void getFaceTBN(int idx, out vec3 N, out vec3 T, out vec3 B) {
+    if      (idx == 0) { N = vec3( 0, 0, 1); T = vec3( 1, 0, 0); B = vec3(0, 1, 0); }
+    else if (idx == 1) { N = vec3( 0, 0,-1); T = vec3(-1, 0, 0); B = vec3(0, 1, 0); }
+    else if (idx == 2) { N = vec3( 0, 1, 0); T = vec3( 1, 0, 0); B = vec3(0, 0, 1); }
+    else if (idx == 3) { N = vec3( 0,-1, 0); T = vec3( 1, 0, 0); B = vec3(0, 0,-1); }
+    else if (idx == 4) { N = vec3( 1, 0, 0); T = vec3( 0, 0,-1); B = vec3(0, 1, 0); }
+    else               { N = vec3(-1, 0, 0); T = vec3( 0, 0, 1); B = vec3(0, 1, 0); }
 }
 
 void main() {
     vec2 totalDistortion = sampleDistortion(textureCoords) * waveStrength;
     vec2 distortedTexCoords = textureCoords + totalDistortion;
 
-    vec3 normal = sampleNormal(distortedTexCoords);
+    // Build the face-local TBN, sample tangent-space normal, transform to
+    // world space. For top faces this gives the same world normal the old
+    // sampleNormal() returned directly; for side faces it now points along
+    // the correct face axis instead of +Y.
+    vec3 faceN, faceT, faceB;
+    getFaceTBN(faceNormalIdx, faceN, faceT, faceB);
+    vec3 nT = sampleTangentNormal(distortedTexCoords);
+    vec3 normal = normalize(faceT * nT.x + faceB * nT.y + faceN * nT.z);
 
     vec3 viewVector = normalize(toCameraVector);
     vec3 viewIncoming = -viewVector;
 
-    // Sky reflection
+    // Sky reflection. Perturb in the face's tangent plane (T, B) so the
+    // jitter is consistent across face orientations — the old `reflectDir.xz`
+    // shake assumed a horizontal surface.
     vec3 reflectDir = reflect(viewIncoming, normal);
-    reflectDir.xz += totalDistortion;
+    reflectDir += (faceT * totalDistortion.x + faceB * totalDistortion.y);
     reflectDir = normalize(reflectDir);
     vec3 reflectColor = sampleSkyColor(skyLUT, reflectDir, sunDir, skyExposure);
 
