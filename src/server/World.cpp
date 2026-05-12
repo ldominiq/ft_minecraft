@@ -492,7 +492,7 @@ std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialB
 
 				BlockType type = getBlockWorld(newPosition);
 
-				if (type == BlockType::AIR || isBlockVegetation(type))
+				if (type == BlockType::AIR || type == BlockType::WATER || isBlockVegetation(type))
 				{
 					if (dir == down)
 					{
