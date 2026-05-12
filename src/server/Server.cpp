@@ -1247,43 +1247,21 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 			groupPkt.push_back(std::move(pkt));
 		}
 
-		int twohundred0 = 200;
-		int twohundred1 = 200;
-		int twohundred2 = 200;
-		int twohundred3 = 200;
-		player->movement->inventory->insertItemsToSlot(BlockType::DIRT, 0, twohundred0);
-		player->movement->inventory->insertItemsToSlot(BlockType::WATER, 8, twohundred1);
-		player->movement->inventory->insertItemsToSlot(BlockType::STONE, 1, twohundred2);
-		player->movement->inventory->insertItemsToSlot(BlockType::CACTUS, 2, twohundred3);
+		// Starter inventory.
+		auto give = [&](int slot, ItemType item, int amount) {
+			int amt = amount;
+			player->movement->inventory->insertItemsToSlot(item, slot, amt);
+			groupPkt.push_back(player->movement->inventory->createNetInventoryPkt(slot));
+		};
 
-		auto pkt1 = std::make_unique<NetInventory>();
-		pkt1->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt1->amount = 200;
-		pkt1->slot = 0;
-		pkt1->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::DIRT);
+		give(0, BlockType::DIRT,       200);
+		give(1, BlockType::STONE,      200);
+		give(2, BlockType::CACTUS,     200);
+		give(8, BlockType::WATER,      200);
 
-		auto pkt2 = std::make_unique<NetInventory>();
-		pkt2->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt2->amount = 200;
-		pkt2->slot = 8;
-		pkt2->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::WATER);
-
-		auto pkt3 = std::make_unique<NetInventory>();
-		pkt3->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt3->amount = 200;
-		pkt3->slot = 1;
-		pkt3->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::STONE);
-
-		auto pkt4 = std::make_unique<NetInventory>();
-		pkt4->inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		pkt4->amount = 200;
-		pkt4->slot = 2;
-		pkt4->type = static_cast<std::underlying_type_t<BlockType>>(BlockType::CACTUS);
-
-		groupPkt.push_back(std::move(pkt1));
-		groupPkt.push_back(std::move(pkt2));
-		groupPkt.push_back(std::move(pkt3));
-		groupPkt.push_back(std::move(pkt4));
+		give(3, MiscType::IRON_INGOT,  64);
+		give(4, MiscType::GOLD_INGOT,  64);
+		give(5, MiscType::DIAMOND,     64);
 	}
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);

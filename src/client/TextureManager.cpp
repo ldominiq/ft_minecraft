@@ -33,28 +33,35 @@ std::vector<unsigned char> TextureManager::loadImage(const std::string& path, in
 bool TextureManager::loadResourcePack(const std::string& path, int textureSize) {
     this->textureSize = textureSize;
 
-    std::string textureDir = path + "/textures/block/";
-    if (!fs::exists(textureDir)) {
-        std::cerr << "Texture directory not found: " << textureDir << std::endl;
+    std::string blockTextureDir = path + "/textures/block/";
+    if (!fs::exists(blockTextureDir)) {
+        std::cerr << "Texture directory not found: " << blockTextureDir << std::endl;
         return false;
     }
 
-    // Step 1: collect all .png files
+    // Step 1: collect all .png files from block/ and item/.
+    // Both folders share the same atlas: a single sorted name → layer mapping.
+    // This lets blocks and items use the same sampler2DArray throughout.
     struct TextureEntry {
-        std::string name; // "stone"
+        std::string name; // "stone", "iron_ingot", ...
         std::string path; // full path to the file
     };
     std::vector<TextureEntry> entries;
 
-    for (const auto& entry : fs::directory_iterator(textureDir)) {
-        if (entry.path().extension() == ".png") {
-            std::string name = entry.path().stem().string();
-            entries.push_back({ name, entry.path().string() });
+    auto collect = [&entries](const std::string& dir) {
+        if (!fs::exists(dir)) return;
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            if (entry.path().extension() == ".png") {
+                std::string name = entry.path().stem().string();
+                entries.push_back({ name, entry.path().string() });
+            }
         }
-    }
+    };
+    collect(blockTextureDir);
+    collect(path + "/textures/item/");
 
     if (entries.empty()) {
-        std::cerr << "No textures found in: " << textureDir << std::endl;
+        std::cerr << "No textures found in: " << blockTextureDir << std::endl;
         return false;
     }
 
@@ -155,8 +162,9 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
 
     // step4: map block types to texture layers
     setupBlockTextureMapping();
+    setupItemTextureMapping();
 
-    std::cout << "Loaded " << layerCount << " textures into array from: " << textureDir << std::endl;
+    std::cout << "Loaded " << layerCount << " textures into array from: " << blockTextureDir << std::endl;
     return true;
 }
 
@@ -418,8 +426,47 @@ void TextureManager::setupBlockTextureMapping() {
     blockTextureMap[BlockType::SANDSTONE]  = BlockTextures::topBottomSides(
                                             layer("sandstone_top"),
                                             layer("sandstone_bottom"),
-                                            layer("sandstone"));                                            
+                                            layer("sandstone"));
 
+}
+
+void TextureManager::setupItemTextureMapping() {
+    // Resolve every non-block ItemDef's texturePath to an atlas layer.
+    // Texture names live in textures/item/<name>.png; missing textures fall
+    // back to layer 0 so the game still runs while assets are being added.
+    auto bind = [&](const ItemType& id, const std::string& texName) {
+        if (texName.empty()) return;
+        auto it = textureNameToLayer.find(texName);
+        if (it == textureNameToLayer.end()) {
+            std::cerr << "Item texture not found: " << texName
+                      << " (drop assets/textures/item/" << texName << ".png)" << std::endl;
+            return;
+        }
+        itemSpriteLayerMap[itemTypeToItemID(id)] = it->second;
+    };
+
+    for (const auto& def : ItemRegistry::weapons) {
+        if (auto* wd = std::get_if<WeaponDef>(&def.data))
+            bind(def.id, wd->texturePath);
+    }
+    for (const auto& def : ItemRegistry::miscs) {
+        if (auto* md = std::get_if<MiscDef>(&def.data))
+            bind(def.id, md->texturePath);
+    }
+}
+
+int TextureManager::getItemSpriteLayer(const ItemType& type) const {
+    return std::visit([&](auto&& v) -> int {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, BlockType>) {
+            // Vegetation/coral are registered with uniform() so any face works;
+            // use TOP for clarity. Returns 0 for unknown blocks.
+            return getBlockTextures(v).getLayerForFace(2);
+        } else {
+            auto it = itemSpriteLayerMap.find(static_cast<ItemID>(v));
+            return it != itemSpriteLayerMap.end() ? it->second : 0;
+        }
+    }, type);
 }
 
 int TextureManager::getGrassTintLayer(BiomeType biome) const {

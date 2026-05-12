@@ -130,5 +130,11 @@ void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 
 	shader->setMat4("projection", projection);
 	shader->setMat4("view", viewRot);
+
+	// Sprite-style drops (vegetation, weapons, misc) are emitted as a cross
+	// of two flat quads; disable backface culling so they're visible from
+	// every angle.
+	glDisable(GL_CULL_FACE);
 	glDrawArrays(GL_TRIANGLES, 0, entities.size() * 36);
+	glEnable(GL_CULL_FACE);
 }

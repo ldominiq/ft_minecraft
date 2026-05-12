@@ -66,6 +66,12 @@ class TextureManager {
         // Get the textures for a block type
         const BlockTextures& getBlockTextures(BlockType type) const;
 
+        // Get the atlas layer used to draw an item as a flat sprite (drop entity
+        // or inventory icon). For vegetation blocks this is the block's texture
+        // layer; for weapons/misc this comes from their texturePath in the
+        // ItemRegistry. Returns 0 if the texture wasn't found.
+        int getItemSpriteLayer(const ItemType& type) const;
+
         void bind(GLenum textureUnit = GL_TEXTURE0) const;
 
         int getGrassTintLayer(BiomeType biome) const;
@@ -79,13 +85,19 @@ class TextureManager {
 
         std::unordered_map<std::string, int> textureNameToLayer; // Map texture name to layer index
 
-        std::unordered_map<BlockType, BlockTextures> blockTextureMap; // Map block type 
+        std::unordered_map<BlockType, BlockTextures> blockTextureMap; // Map block type
+
+        // Item (non-block) sprite layer, keyed by ItemID (works for both
+        // WeaponType and MiscType because their numeric ranges are disjoint).
+        std::unordered_map<ItemID, int> itemSpriteLayerMap;
 
         // load a single image file and return raw RGBA pixels
         std::vector<unsigned char> loadImage(const std::string& path, int& width, int& height);
 
         // Define which textures each block type uses
         void setupBlockTextureMapping();
+        // Define which texture each non-block item uses (weapons, misc).
+        void setupItemTextureMapping();
 
         // tint a texture and upload it as a new layer return the new layer index
         int addTintedLayer(const std::string& sourceTexture, unsigned char r, unsigned char g, unsigned char b);
