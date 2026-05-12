@@ -113,6 +113,16 @@ private:
     float reflectionMaxDistance = 0.0f;      // 0 = no cap (use main render distance)
 
     void prepareRender();
+
+    // Common surface-shader setup shared by ocean / placed-water passes.
+    // Sets the projection / view / wave / sun / fog / sky-LUT / dudv / normal
+    // uniforms; ocean and placed-water paths only diverge in the extra FBO
+    // sampler binds and the draw call, which the callers handle directly.
+    void setupSurfaceShader(Shader& shader,
+                            const glm::mat4& projection,
+                            const glm::mat4& viewRot,
+                            const glm::dvec3& eyePosD,
+                            const glm::vec3& sunDir);
 };
 
 

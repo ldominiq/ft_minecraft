@@ -74,7 +74,13 @@ void main() {
     // Multi-octave dudv distortion
     vec2 totalDistortion = sampleDistortion(textureCoords) * waveStrength * clamp(waterDepth/20.0, 0.0, 1.0);
 
-    
+    // Refraction also bends through the rippled surface — use a smaller
+    // factor so the underwater silhouette stays readable while still
+    // tracking the surface dudv, then clamp to keep the sample inside the
+    // refraction FBO (otherwise we'd read the above-water clipped region).
+    refractTexCoords += totalDistortion * 0.5;
+    refractTexCoords = clamp(refractTexCoords, 0.001, 0.999);
+
     reflectTexCoords += totalDistortion;
 
     vec4 waterColor = vec4(0.0, 0.3, 0.5, 1.0);

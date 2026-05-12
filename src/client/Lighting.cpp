@@ -59,6 +59,8 @@ Lighting::~Lighting() {
         glDeleteTextures(1, &csmDepthMaps);
         glDeleteFramebuffers(1, &csmFBO);
 
+        if (causticsTexture)
+            glDeleteTextures(1, &causticsTexture);
     } else {
         lightCubeVAO = 0;
         lightCubeVBO = 0;
@@ -69,6 +71,7 @@ Lighting::~Lighting() {
         cloudFBO = nullptr;
         csmDepthMaps = 0;
         csmFBO = 0;
+        causticsTexture = 0;
     }
 }
 

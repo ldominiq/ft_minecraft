@@ -240,12 +240,12 @@ void ChunkRenderer::buildMeshData() {
 	waterMeshVertices.clear();
 	placedWaterMeshVertices.clear();
 
-	// A water block belongs to the "ocean" bucket when its top face sits
-	// exactly on the sea-level plane, i.e., (y + 1) == surface Y. Those
-	// faces still shade correctly with the planar reflection/refraction
-	// textures. Everything else — placed buckets, spread blocks, and the
-	// occasional exposed deep-ocean side face — uses the sky-reflection
-	// shader, which is independent of any global plane.
+	// Only the *top* face of a water block whose top sits exactly on the
+	// sea-level plane goes to the "ocean" bucket: that's the face the
+	// planar reflection/refraction FBOs were rendered for. Side faces of
+	// the same sea-level block, placed/spread water, and deeper top faces
+	// all go to the sky-reflection bucket — that shader is independent of
+	// any global plane and works for arbitrarily-oriented water.
 	const int waterSurfaceY = sSeaLevel;
 
 	std::vector<BlockType> blockTypeVector;	// unpacked block indices
@@ -378,13 +378,18 @@ void ChunkRenderer::buildMeshData() {
 
                     if (isWater) {
                         if (neighborBlock == BlockType::AIR || isBlockTransparent(neighborBlock) || isBlockVegetation(neighborBlock)) {
-                            // World-space Y of this block, used to bucket the
-                            // face. originY is implicit (chunks span the full
-                            // vertical column starting at y=0), so the local y
-                            // is already the world y.
+                            // Only the *top* face of a water block sitting
+                            // exactly on the sea-level plane goes into the
+                            // planar-reflection bucket — that face is the one
+                            // sampled by the reflection/refraction FBOs.
+                            // Everything else (side faces of sea-level blocks,
+                            // placed/spread water, deeper top faces) uses the
+                            // sky-reflection shader, which is independent of
+                            // any global plane.
                             const bool topAtSea = (y + 1 == waterSurfaceY);
+                            const bool isPlanarFace = topAtSea && face.faceIndex == 2;
                             std::vector<PackedVertex>& bucket =
-                                topAtSea ? waterMeshVertices : placedWaterMeshVertices;
+                                isPlanarFace ? waterMeshVertices : placedWaterMeshVertices;
                             addWaterFace(x, y, z, face.faceIndex, faceSkyLight, bucket);
                         }
                     } else if (currentBlock == BlockType::CACTUS) {
