@@ -33,29 +33,42 @@ std::vector<unsigned char> TextureManager::loadImage(const std::string& path, in
 bool TextureManager::loadResourcePack(const std::string& path, int textureSize) {
     this->textureSize = textureSize;
 
-    std::string textureDir = path + "/textures/block/";
-    if (!fs::exists(textureDir)) {
-        std::cerr << "Texture directory not found: " << textureDir << std::endl;
-        return false;
-    }
+    std::string blockTextureDir = path + "/textures/block/";
+    std::string itemTextureDir  = path + "/textures/item/";
 
-    // Step 1: collect all .png files
+    // Step 1: collect all .png files from block/ and item/.
+    // Both folders share the same atlas: a single sorted name → layer mapping.
+    // This lets blocks and items use the same sampler2DArray throughout.
     struct TextureEntry {
-        std::string name; // "stone"
+        std::string name; // "stone", "iron_ingot", ...
         std::string path; // full path to the file
     };
     std::vector<TextureEntry> entries;
 
-    for (const auto& entry : fs::directory_iterator(textureDir)) {
-        if (entry.path().extension() == ".png") {
-            std::string name = entry.path().stem().string();
-            entries.push_back({ name, entry.path().string() });
+    auto collect = [&entries](const std::string& dir) {
+        if (!fs::exists(dir)) return;
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            if (entry.path().extension() == ".png") {
+                std::string name = entry.path().stem().string();
+                entries.push_back({ name, entry.path().string() });
+            }
         }
-    }
+    };
+    collect(blockTextureDir);
+    collect(itemTextureDir);
 
-    if (entries.empty()) {
-        std::cerr << "No textures found in: " << textureDir << std::endl;
-        return false;
+    // Missing texture dirs / no PNGs aren't fatal: we still allocate the atlas
+    // with just the magenta-checker fallback at layer 0 and run the block/item
+    // mapping setup. Every name lookup then resolves to the checker, so the
+    // game launches and renders entirely magenta instead of crashing
+    const bool hasAnyTexture = !entries.empty();
+    if (!fs::exists(blockTextureDir)) {
+        std::cerr << "Texture directory not found: " << blockTextureDir
+                  << ", continuing with the missing-texture checker only." << std::endl;
+    } else if (!hasAnyTexture) {
+        std::cerr << "No textures found in: " << blockTextureDir
+                  << " or " << itemTextureDir
+                  << ", continuing with the missing-texture checker only." << std::endl;
     }
 
     // sort for deterministic layer ordering
@@ -63,7 +76,12 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
         return a.name < b.name;
     });
 
-    layerCount = static_cast<int>(entries.size());
+    const int realTextureCount = static_cast<int>(entries.size());
+
+    // Layer 0 is reserved for the "missing texture" magenta/black checker.
+    // Real textures live at layers [1 .. realTextureCount].
+    missingTextureLayer = 0;
+    layerCount = realTextureCount + 1;
 
     // reserve extra layers for tinted variants
     maxLayers = layerCount + 32;
@@ -77,10 +95,35 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
 
     layerPixels.resize(maxLayers); // prepare storage for pixel data of each layer
 
-    // Step 3: load each texture into its layer
-    for (int i = 0; i < layerCount; i++) {
+    // Build & upload the missing-texture checker at layer 0.
+    {
+        std::vector<unsigned char> checker(textureSize * textureSize * 4);
+        const int cellSize = std::max(1, textureSize / 2);
+        for (int y = 0; y < textureSize; ++y) {
+            for (int x = 0; x < textureSize; ++x) {
+                const bool magenta = (((x / cellSize) ^ (y / cellSize)) & 1) != 0;
+                const int idx = (y * textureSize + x) * 4;
+                checker[idx + 0] = magenta ? 255 : 0;
+                checker[idx + 1] = 0;
+                checker[idx + 2] = magenta ? 255 : 0;
+                checker[idx + 3] = 255;
+            }
+        }
+        glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
+                         0, 0, missingTextureLayer,
+                         textureSize, textureSize, 1,
+                         GL_RGBA, GL_UNSIGNED_BYTE,
+                         checker.data());
+        layerPixels[missingTextureLayer] = std::move(checker);
+    }
+    fallbackBlockTextures = BlockTextures::uniform(missingTextureLayer);
+
+    // Step 3: load each texture into its layer (offset by 1 to skip the
+    // reserved missing-texture slot at layer 0).
+    for (int e = 0; e < realTextureCount; e++) {
+        const int i = e + 1; // atlas layer for this entry
         int width, height;
-        auto pixels = loadImage(entries[i].path, width, height);
+        auto pixels = loadImage(entries[e].path, width, height);
         if (pixels.empty()) continue;
 
         // Resize if needed (simple nearest-neighbor for pixel art)
@@ -127,7 +170,7 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
                          GL_RGBA, GL_UNSIGNED_BYTE,
                          pixels.data());
 
-        textureNameToLayer[entries[i].name] = i;
+        textureNameToLayer[entries[e].name] = i;
         layerPixels[i] = std::move(pixels);
     }
 
@@ -155,9 +198,18 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
 
     // step4: map block types to texture layers
     setupBlockTextureMapping();
+    setupItemTextureMapping();
 
-    std::cout << "Loaded " << layerCount << " textures into array from: " << textureDir << std::endl;
-    return true;
+    // layerCount already includes the reserved missing-texture slot; report
+    // just the real assets to match what's actually on disk, and mention both
+    // directories so missing-asset triage isn't misled.
+    std::cout << "Loaded " << realTextureCount << " textures into array from: "
+              << blockTextureDir << " and " << itemTextureDir
+              << " (+1 missing-texture checker, " << layerCount << " base layers)" << std::endl;
+    // Return false when we couldn't find any real textures — callers that want
+    // to abort or warn the user can still do so, while the renderer below
+    // operates on the checker-only atlas without crashing.
+    return hasAnyTexture;
 }
 
 int TextureManager::addTintedLayer(const std::string& sourceTexture, unsigned char r, unsigned char g, unsigned char b) {
@@ -176,18 +228,18 @@ int TextureManager::addTintedLayer(const std::string& sourceTexture, unsigned ch
     auto srcIt = textureNameToLayer.find(sourceTexture);
     if (srcIt == textureNameToLayer.end()) {
         std::cerr << "Tint error: Source texture not found for tinting: " << sourceTexture << std::endl;
-        return 0;
+        return missingTextureLayer;
     }
 
     int srcLayer = srcIt->second;
     if (layerPixels[srcLayer].empty()) {
         std::cerr << "Tint error: No pixel data for source texture layer: " << sourceTexture << std::endl;
-        return 0;
+        return missingTextureLayer;
     }
 
     if (layerCount >= maxLayers) {
         std::cerr << "Tint error: Maximum number of texture layers reached, cannot add tinted variant: " << maxLayers << " layers" << std::endl;
-        return 0;
+        return missingTextureLayer;
     }
 
     // create tinted pixels
@@ -222,16 +274,17 @@ int TextureManager::getTextureLayer(const std::string& name) const {
     auto it = textureNameToLayer.find(name);
     if (it != textureNameToLayer.end())
         return it->second;
-    // TODO : add magenta checker and return its layer index instead of defaulting to 0
-    return 0; // default to layer 0 if not found
+    // Layer 0 is the reserved magenta/black checker, so unknown names render
+    // obviously wrong instead of stealing whatever sits at layer 0.
+    return missingTextureLayer;
 }
 
 const BlockTextures& TextureManager::getBlockTextures(BlockType type) const {
-    static BlockTextures fallback = BlockTextures::uniform(0); // default to layer 0
     auto it = blockTextureMap.find(type);
     if (it != blockTextureMap.end())
         return it->second;
-    return fallback;
+    // Unmapped block type → magenta/black checker on every face.
+    return fallbackBlockTextures;
 }
 
 void TextureManager::bind(GLenum textureUnit) const {
@@ -418,8 +471,50 @@ void TextureManager::setupBlockTextureMapping() {
     blockTextureMap[BlockType::SANDSTONE]  = BlockTextures::topBottomSides(
                                             layer("sandstone_top"),
                                             layer("sandstone_bottom"),
-                                            layer("sandstone"));                                            
+                                            layer("sandstone"));
 
+}
+
+void TextureManager::setupItemTextureMapping() {
+    // Resolve every non-block ItemDef's texturePath to an atlas layer.
+    // Texture names live in textures/item/<name>.png. Items with an empty or
+    // unresolved texturePath stay out of the map; getItemSpriteLayer() then
+    // hands back the reserved magenta/black checker so missing assets are
+    // visually obvious rather than silently rendering as some other texture.
+    auto bind = [&](const ItemType& id, const std::string& texName) {
+        if (texName.empty()) return;
+        auto it = textureNameToLayer.find(texName);
+        if (it == textureNameToLayer.end()) {
+            std::cerr << "Item texture not found: " << texName
+                      << " (drop assets/textures/item/" << texName << ".png)" << std::endl;
+            return;
+        }
+        itemSpriteLayerMap[itemTypeToItemID(id)] = it->second;
+    };
+
+    for (const auto& def : ItemRegistry::weapons) {
+        if (auto* wd = std::get_if<WeaponDef>(&def.data))
+            bind(def.id, wd->texturePath);
+    }
+    for (const auto& def : ItemRegistry::miscs) {
+        if (auto* md = std::get_if<MiscDef>(&def.data))
+            bind(def.id, md->texturePath);
+    }
+}
+
+int TextureManager::getItemSpriteLayer(const ItemType& type) const {
+    return std::visit([&](auto&& v) -> int {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, BlockType>) {
+            // Vegetation/coral are registered with uniform() so any face works;
+            // use TOP for clarity. Unknown blocks fall through to the
+            // missing-texture checker via getBlockTextures()'s fallback.
+            return getBlockTextures(v).getLayerForFace(2);
+        } else {
+            auto it = itemSpriteLayerMap.find(static_cast<ItemID>(v));
+            return it != itemSpriteLayerMap.end() ? it->second : missingTextureLayer;
+        }
+    }, type);
 }
 
 int TextureManager::getGrassTintLayer(BiomeType biome) const {

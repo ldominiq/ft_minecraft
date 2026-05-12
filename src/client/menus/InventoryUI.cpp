@@ -2,6 +2,29 @@
 
 constexpr float textScale = 0.3f;
 
+// Append the inventory icon for one item to the vertex stream. Routes to a
+// flat sprite for vegetation/weapons/misc and to an isometric cube for full
+// blocks, so blocks still look 3D and items look like 2D Minecraft items.
+// Position arguments mirror the existing build2DInventoryCube call sites.
+static void buildInventoryIcon(
+	std::vector<float>& meshVertices,
+	const ItemType& item,
+	glm::vec2 origin,
+	float scale,
+	const TextureManager* texMgr)
+{
+	// Skip empty/sentinel block slots (BlockType::BEGIN == 0).
+	if (auto* b = std::get_if<BlockType>(&item); b && *b == BlockType::BEGIN)
+		return;
+
+	if (isItemFlat(item)) {
+		const int layer = texMgr ? texMgr->getItemSpriteLayer(item) : 0;
+		build2DInventorySprite(meshVertices, origin, scale, layer);
+	} else if (auto* b = std::get_if<BlockType>(&item)) {
+		build2DInventoryCube(meshVertices, origin, scale, *b, texMgr);
+	}
+}
+
 InventoryUI::InventoryUI(int width,
 						int height,
 						const TextureManager* texMgr,
@@ -254,17 +277,9 @@ void InventoryUI::drawHotbar()
 		textRenderer.renderText(std::to_string(inv->getSlot(i).second), hotbarSlotCoord.x, hotbarSlotCoord.y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
-		std::visit([&](const auto& value) {
-			using T = std::decay_t<decltype(value)>;
-			if constexpr (std::is_same_v<T, BlockType>) {
-				if (value != BlockType::BEGIN)
-					build2DInventoryCube(meshVertices, glm::vec2(hotbarSlotCoord.x + 18 * menuScale, hotbarSlotCoord.y + 5 * menuScale), 40 * menuScale, value, textureManager);
-			} else if constexpr (std::is_same_v<T, WeaponType>) {
-				// handle WeaponType
-			} else {
-				// handle MiscType
-			}
-		}, inv->getItemAtSlot(i));
+		buildInventoryIcon(meshVertices, inv->getItemAtSlot(i),
+			glm::vec2(hotbarSlotCoord.x + 18 * menuScale, hotbarSlotCoord.y + 5 * menuScale),
+			40 * menuScale, textureManager);
 		i++;
 	}
 
@@ -592,17 +607,9 @@ void InventoryUI::onRender()
 			textRenderer.renderText(std::to_string(inv->getSlot(i).second), inventorySlots[i].x, inventorySlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
-		std::visit([&](const auto& value) {
-			using T = std::decay_t<decltype(value)>;
-				if constexpr (std::is_same_v<T, BlockType>) {
-					if (value != BlockType::BEGIN)
-						build2DInventoryCube(meshVertices, glm::vec2(inventorySlots[i].x + 18 * menuScale, inventorySlots[i].y + 5 * menuScale), 40 * menuScale, value, textureManager);
-				} else if constexpr (std::is_same_v<T, WeaponType>) {
-					// handle WeaponType
-				} else {
-					// handle MiscType
-				}
-			}, inv->getItemAtSlot(i));
+		buildInventoryIcon(meshVertices, inv->getItemAtSlot(i),
+			glm::vec2(inventorySlots[i].x + 18 * menuScale, inventorySlots[i].y + 5 * menuScale),
+			40 * menuScale, textureManager);
 	}
 
 	//crafting station cubes/text
@@ -616,17 +623,9 @@ void InventoryUI::onRender()
 			textRenderer.renderText(std::to_string(inv->getSlot(i).second), craftingStationSlots[i].x, craftingStationSlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
-		std::visit([&](const auto& value) {
-			using T = std::decay_t<decltype(value)>;
-				if constexpr (std::is_same_v<T, BlockType>) {
-					if (value != BlockType::BEGIN)
-						build2DInventoryCube(meshVertices, glm::vec2(craftingStationSlots[i].x + 11 * menuScale, craftingStationSlots[i].y + 5 * menuScale), 40 * menuScale, value, textureManager);
-				} else if constexpr (std::is_same_v<T, WeaponType>) {
-					// handle WeaponType
-				} else {
-					// handle MiscType
-				}
-			}, inv->getItemAtSlot(i));
+		buildInventoryIcon(meshVertices, inv->getItemAtSlot(i),
+			glm::vec2(craftingStationSlots[i].x + 11 * menuScale, craftingStationSlots[i].y + 5 * menuScale),
+			40 * menuScale, textureManager);
 	}
 
 	if (craftingStationInv.lock())
@@ -635,33 +634,18 @@ void InventoryUI::onRender()
 		if (!inv)
 			return ;
 
-		std::visit([&](const auto& value) {
-			using T = std::decay_t<decltype(value)>;
-				if constexpr (std::is_same_v<T, BlockType>) {
-					if (value != BlockType::BEGIN)
-						build2DInventoryCube(meshVertices, glm::vec2(craftingResultSlot.x + 18 * menuScale, craftingResultSlot.y + 5 * menuScale), 40 * menuScale, value, textureManager);
-				} else if constexpr (std::is_same_v<T, WeaponType>) {
-					// handle WeaponType
-				} else {
-					// handle MiscType
-				}
-			}, craftingStationInv.lock()->getSlot(craftingStationInv.lock()->getResultSlotID()).first);
+		buildInventoryIcon(meshVertices,
+			inv->getSlot(inv->getResultSlotID()).first,
+			glm::vec2(craftingResultSlot.x + 18 * menuScale, craftingResultSlot.y + 5 * menuScale),
+			40 * menuScale, textureManager);
 	}
 
 	//cube in hand
 	if (handPtr.lock() && handPtr.lock()->second != 0)
 	{
-		std::visit([&](const auto& value) {
-			using T = std::decay_t<decltype(value)>;
-			if constexpr (std::is_same_v<T, BlockType>) {
-				if (value != BlockType::BEGIN)
-					build2DInventoryCube(meshVertices, glm::vec2(mouseX - 10 * menuScale, fullscreenHeight - mouseY - 10 * menuScale), 40 * menuScale, value, textureManager);
-			} else if constexpr (std::is_same_v<T, WeaponType>) {
-				// handle WeaponType
-			} else {
-				// handle MiscType
-			}
-		}, handPtr.lock()->first);
+		buildInventoryIcon(meshVertices, handPtr.lock()->first,
+			glm::vec2(mouseX - 10 * menuScale, fullscreenHeight - mouseY - 10 * menuScale),
+			40 * menuScale, textureManager);
 	}
 
 	setupCubes(meshVertices);
