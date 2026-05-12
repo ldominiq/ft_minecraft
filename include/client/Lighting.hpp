@@ -384,6 +384,24 @@ private:
     float pointLightLinear[3] = { 0.09f, 0.09f, 0.09f };
     float pointLightQuadratic[3] = { 0.032f, 0.032f, 0.032f };
 
+    // Per-frame animation clock for the spawn light cubes.
+    // Advanced unconditionally in updateSunDirection() so the cubes never
+    // freeze when sky time is paused.
+    float lightCubeAnimTime = 0.0f;
+
+    // Glowing trail behind each cube. Ring buffer of the last N frame
+    // positions, rendered additively in drawLightCubes() so colors bloom
+    // and overlap.
+    static constexpr int kLightCubeTrailLength = 360;
+    glm::vec3 lightCubeTrail[3][kLightCubeTrailLength] = {};
+    int  lightCubeTrailHead = 0;
+    bool lightCubeTrailInitialized = false;
+
+    // Tilted, slowly-precessing "swirling triad" orbit around the cubes'
+    // shared centroid. Used by both the rendered cube and the actual
+    // point-light upload so illumination tracks the swirl.
+    glm::vec3 getAnimatedLightCubePosition(int i) const;
+
     // Flashlight
     bool flashlightOn = false;
     float spotLightConstant = 1.0f;
