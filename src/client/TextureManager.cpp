@@ -35,10 +35,6 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
 
     std::string blockTextureDir = path + "/textures/block/";
     std::string itemTextureDir  = path + "/textures/item/";
-    if (!fs::exists(blockTextureDir)) {
-        std::cerr << "Texture directory not found: " << blockTextureDir << std::endl;
-        return false;
-    }
 
     // Step 1: collect all .png files from block/ and item/.
     // Both folders share the same atlas: a single sorted name → layer mapping.
@@ -61,10 +57,18 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
     collect(blockTextureDir);
     collect(itemTextureDir);
 
-    if (entries.empty()) {
+    // Missing texture dirs / no PNGs aren't fatal: we still allocate the atlas
+    // with just the magenta-checker fallback at layer 0 and run the block/item
+    // mapping setup. Every name lookup then resolves to the checker, so the
+    // game launches and renders entirely magenta instead of crashing
+    const bool hasAnyTexture = !entries.empty();
+    if (!fs::exists(blockTextureDir)) {
+        std::cerr << "Texture directory not found: " << blockTextureDir
+                  << ", continuing with the missing-texture checker only." << std::endl;
+    } else if (!hasAnyTexture) {
         std::cerr << "No textures found in: " << blockTextureDir
-                  << " or " << itemTextureDir << std::endl;
-        return false;
+                  << " or " << itemTextureDir
+                  << ", continuing with the missing-texture checker only." << std::endl;
     }
 
     // sort for deterministic layer ordering
@@ -202,7 +206,10 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
     std::cout << "Loaded " << realTextureCount << " textures into array from: "
               << blockTextureDir << " and " << itemTextureDir
               << " (+1 missing-texture checker, " << layerCount << " base layers)" << std::endl;
-    return true;
+    // Return false when we couldn't find any real textures — callers that want
+    // to abort or warn the user can still do so, while the renderer below
+    // operates on the checker-only atlas without crashing.
+    return hasAnyTexture;
 }
 
 int TextureManager::addTintedLayer(const std::string& sourceTexture, unsigned char r, unsigned char g, unsigned char b) {
