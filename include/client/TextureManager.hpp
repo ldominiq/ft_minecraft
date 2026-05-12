@@ -61,16 +61,25 @@ class TextureManager {
         GLuint getTextureArray() const { return textureArray; }
 
         // Get the layer index for a named texture (e.g., "grass_top", "dirt_side", etc.)
+        // Returns the dedicated "missing texture" layer (a magenta/black checker)
+        // when the name isn't registered, so missing assets are visually obvious.
         int getTextureLayer(const std::string& name) const;
 
-        // Get the textures for a block type
+        // Get the textures for a block type. Falls back to the magenta/black
+        // "missing texture" checker on all faces if the type isn't mapped.
         const BlockTextures& getBlockTextures(BlockType type) const;
 
         // Get the atlas layer used to draw an item as a flat sprite (drop entity
         // or inventory icon). For vegetation blocks this is the block's texture
         // layer; for weapons/misc this comes from their texturePath in the
-        // ItemRegistry. Returns 0 if the texture wasn't found.
+        // ItemRegistry. Returns the "missing texture" layer if not found, so
+        // unassigned items show up as a magenta/black checker rather than a
+        // random sibling texture.
         int getItemSpriteLayer(const ItemType& type) const;
+
+        // Layer index of the magenta/black checker reserved for missing
+        // assets. Useful for call sites that want to detect/skip rendering.
+        int getMissingTextureLayer() const { return missingTextureLayer; }
 
         void bind(GLenum textureUnit = GL_TEXTURE0) const;
 
@@ -82,6 +91,14 @@ class TextureManager {
         int textureSize { 16 };
         int layerCount { 0 };
         int maxLayers { 0 }; // total layers including tinted variants
+
+        // Layer reserved for the "missing texture" magenta/black checker.
+        // Filled in by loadResourcePack(); used as the fallback for every
+        // lookup that fails so missing assets render obviously broken.
+        int missingTextureLayer { 0 };
+        // Pre-built BlockTextures pointing every face at missingTextureLayer,
+        // returned by reference from getBlockTextures() on a miss.
+        BlockTextures fallbackBlockTextures = BlockTextures::uniform(0);
 
         std::unordered_map<std::string, int> textureNameToLayer; // Map texture name to layer index
 
