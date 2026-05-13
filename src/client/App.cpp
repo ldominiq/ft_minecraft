@@ -69,6 +69,14 @@ void App::init(const std::string& serverIp) {
         image.pixels = nullptr;
     }
     
+    audio = std::make_unique<AudioManager>();
+    // If SoLoud can't open a backend (headless / no audio device / driver mismatch),
+    // drop the manager rather than leave it half-initialised — every playSfx*/update
+    // call later guards on `if (audio)`, so the game runs silent instead of crashing.
+    if (!audio->init()) {
+        std::cerr << "[Audio] disabled (init failed)" << std::endl;
+        audio.reset();
+    }
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
@@ -342,6 +350,24 @@ void App::init(const std::string& serverIp) {
 		if (mouseButtons && app->camera && app->camera->getPlayer())
 			app->camera->getPlayer()->triggerArmSwing();
 
+		// Self-feedback on left-click: play the attack swing ONLY when the click would actually
+		// hit a mob/player. Server resolves the hit via the same getTarget raycast at attack-tick
+		// time, so client and server agree (modulo ~1 tick of network desync, acceptable for sfx).
+		// Empty swings stay silent; vanilla does the same. The victim's hurt sound (bit 0x10) is
+		// what tells the player "you connected" and arrives from the server moments later.
+		if ((mouseButtons & IN_LEFT_CLICK) && app->audio && app->renderer && app->camera) {
+			auto local = app->camera->getPlayer();
+			if (local) {
+				glm::ivec3 hitBlock{}, faceNormal{};
+				LivingEntity* victim = nullptr;
+				if (app->renderer->getTarget(*local, hitBlock, faceNormal, victim) == TargetType::LivingEntity
+				    && victim != nullptr
+				    && victim != local.get()) {
+					app->audio->playSfx2D(SoundId::Player_AttackSwing, 0.7f);
+				}
+			}
+		}
+
 		NetPlayerMouseInputs pkt;
 		pkt.mouseButtons = mouseButtons;
 		app->udpClient->sendPacket(pkt);
@@ -488,6 +514,43 @@ void App::setUdpClientPacketCallback()
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
 				renderer->onEntity(p, clientTime);
+				// Explosion death (type==-1, bit 0x20): fire immediately so the boom is in
+				// sync with the visual blast and so the suppression window is pushed before
+				// the same burst's MODIFIED_BLOCK_DATA packets play their crater sounds.
+				if (audio
+				    && p.eEntityType == EEntityTypes::LIVING_ENTITIES
+				    && p.type == static_cast<uint16_t>(-1)
+				    && (p.positionFlags & 0x20)) {
+					glm::dvec3 epos(p.positionX, p.positionY, p.positionZ);
+					glm::dvec3 listenerPos = camera ? camera->getEyePosD() : epos;
+					const void* key = nullptr;
+					for (const auto& le : renderer->livingEntities) {
+						if (le && le->getID() == p.entityID) { key = le.get(); break; }
+					}
+					audio->onCreeperExploded(key, epos, listenerPos);
+				}
+				// Hurt one-shot (server bit 0x10). Skip on the death packet (type == -1) — the
+				// AudioManager's death-edge sweep handles that case with the proper death sfx.
+				if (audio
+				    && p.eEntityType == EEntityTypes::LIVING_ENTITIES
+				    && p.type != static_cast<uint16_t>(-1)
+				    && (p.positionFlags & 0x10)) {
+					glm::dvec3 epos(p.positionX, p.positionY, p.positionZ);
+					audio->playSfx3D(
+						AudioManager::hurtSoundFor(static_cast<LivingEntityType>(p.type)),
+						epos, glm::vec3(0.0f), 1.0f);
+				}
+				// Item pickup: server tags the entity-removal packet for an ITEMS entity by
+				// setting type == -1 and rewriting the position to the picker's location
+				// (see World::pickupItem). Play the generic block-pop one-shot there so both
+				// the local player and nearby remote players get audible feedback. 3D so it
+				// attenuates if it was someone else picking up an item across the map.
+				if (audio
+				    && p.eEntityType == EEntityTypes::ITEMS
+				    && p.type == static_cast<uint16_t>(-1)) {
+					glm::dvec3 epos(p.positionX, p.positionY, p.positionZ);
+					audio->playSfx3D(SoundId::Block_Pop, epos, glm::vec3(0.0f), 0.6f);
+				}
 				break;
 			}
 
@@ -503,7 +566,59 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::MODIFIED_BLOCK_DATA: {
 				auto& p = static_cast<NetModifiedBlockData&>(*pkt);
+				// Look up the OLD block before applying the chunk update so we can pick the
+				// right break/place sound (break = use the old block's material).
+				BlockType oldBlock = renderer->getBlockWorld({p.x, p.y, p.z});
+				BlockType newBlock = static_cast<BlockType>(p.blockType);
 				renderer->updateChunk(p);
+
+				if (audio) {
+					// Stay inside kAttenMax (24m). LINEAR_DISTANCE gives 0 past it, so SoLoud
+					// would kill the voice mid-buffer with an audible click on every distant
+					// block update (water spread, far players mining, etc).
+					glm::dvec3 center(p.x + 0.5, p.y + 0.5, p.z + 0.5);
+					constexpr double kBlockSfxMaxDist = 20.0;
+					glm::dvec3 listener = camera ? camera->getEyePosD() : glm::dvec3(center);
+					glm::dvec3 diff = center - listener;
+					double d2 = glm::dot(diff, diff);
+					if (d2 > kBlockSfxMaxDist * kBlockSfxMaxDist) {
+						break;
+					}
+
+					if (audio->blockSfxSuppressed(center))
+						break;
+					// Same-burst defense: server's explodeAt() carves blocks before damaging
+					// entities, so crater MODIFIED_BLOCK_DATA packets land before the death
+					// packet that opens the suppression window. Primed creepers don't otherwise
+					// break blocks, so this check is safe.
+					{
+						bool nearPrimed = false;
+						constexpr double kPrimedSuppressR2 = 6.0 * 6.0;
+						for (const auto& le : renderer->livingEntities) {
+							if (!le) continue;
+							auto cc = std::dynamic_pointer_cast<ClientCreeper>(le);
+							if (!cc || !cc->clientPrimed) continue;
+							glm::dvec3 dd = le->getPositionD() - center;
+							if (glm::dot(dd, dd) <= kPrimedSuppressR2) { nearPrimed = true; break; }
+						}
+						if (nearPrimed) break;
+					}
+
+					// Liquid spread (water/lava) is a constant background of MODIFIED_BLOCK_DATA
+					// packets; playing the default Stone break/place for them is the wrong sound
+					// AND noisy. Skip the audio for liquid changes; everything else falls through.
+					auto isLiquid = [](BlockType b) {
+						return b == BlockType::WATER || b == BlockType::LAVA;
+					};
+
+					if (newBlock == BlockType::AIR && oldBlock != BlockType::AIR) {
+						if (!isLiquid(oldBlock))
+							audio->playSfx3D(AudioManager::breakFor(oldBlock), center);
+					} else if (oldBlock == BlockType::AIR && newBlock != BlockType::AIR) {
+						if (!isLiquid(newBlock))
+							audio->playSfx3D(AudioManager::placeFor(newBlock), center);
+					}
+				}
 				break;
 			}
 
@@ -515,6 +630,11 @@ void App::setUdpClientPacketCallback()
 
             case PacketType::NET_IMGUI: {
                 auto& p = static_cast<NetImGui&>(*pkt);
+                // Push every biome packet to the audio manager
+                // We can't gate on p.currentBiome != currentBiome here because
+                // the very first packet may match the default 0 (PLAINS) and skip
+                // starting the music entirely.
+                if (audio) audio->setBiome(static_cast<BiomeType>(p.currentBiome));
                 currentBiome = p.currentBiome;
                 currentTerrainHeight = p.terrainHeight;
                 currentSeaLevel = p.seaLevel;
@@ -675,6 +795,9 @@ void App::render() {
 			auto manager = menuManager.lock();
 			if (manager) manager->render();
 
+			// Pause/keep music silent while in menus. camera/renderer may be null pre-spawn.
+			if (audio && camera && renderer) audio->update(deltaTime, false, *camera, *renderer);
+
 			glfwSwapBuffers(window);
 			glfwPollEvents();
 			continue;
@@ -739,6 +862,9 @@ void App::render() {
 		udpClient->reliabilityKeepalive();
 		udpClient->receivePacket();
         camera->flushPendingSnapshot(*renderer, clientTick);
+
+        // Per-frame audio update: refresh listener pose, drive music + footstep triggers.
+        if (audio) audio->update(deltaTime, gameState == GameState::Playing, *camera, *renderer);
 
         if (clientConnected && udpClient) {
             float now = static_cast<float>(glfwGetTime());
@@ -1389,8 +1515,8 @@ void App::debugWindow() {
             }
 
             glm::vec3 pos = camera->getPlayer()->getPosition();
-            int wx = static_cast<int>(std::floor(pos.x));
-            int wz = static_cast<int>(std::floor(pos.z));
+            double wx = static_cast<double>(std::floor(pos.x));
+            double wz = static_cast<double>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
             ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
             if (!uiInteractive) {
@@ -1468,7 +1594,7 @@ void App::debugWindow() {
 
                     // World
                     ImGui::SeparatorText("World");
-                    ImGui::Text("Position:  x=%d  y=%d  z=%d", wx, wy, wz);
+                    ImGui::Text("Position:  x=%f  y=%d  z=%f", wx, wy, wz);
                     ImGui::Text("Seed: %d", currentWorldSeed);
                     ImGui::Text("Height: %d  (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
                     {
@@ -1495,20 +1621,20 @@ void App::debugWindow() {
 
                     // Teleport (collapsible)
                     if (ImGui::CollapsingHeader("Teleport")) {
-                        static int tpX = 5000000;
+                        static double tpX = 5000000;
                         static int tpY = 100;
-                        static int tpZ = 0;
+                        static double tpZ = 0;
 
                         // Negative width = "extend to N pixels from the right edge",
                         // so the field grows/shrinks with the window while leaving
                         // room for the label and the +/- steppers.
                         const float tpFieldTrailing = -60.0f;
                         ImGui::SetNextItemWidth(tpFieldTrailing);
-                        ImGui::InputInt("X##tp", &tpX);
+                        ImGui::InputDouble("X##tp", &tpX);
                         ImGui::SetNextItemWidth(tpFieldTrailing);
                         ImGui::InputInt("Y##tp", &tpY);
                         ImGui::SetNextItemWidth(tpFieldTrailing);
-                        ImGui::InputInt("Z##tp", &tpZ);
+                        ImGui::InputDouble("Z##tp", &tpZ);
 
                         if (ImGui::Button("Copy current")) {
                             tpX = wx; tpY = wy; tpZ = wz;
@@ -2187,6 +2313,61 @@ void App::debugWindow() {
 
                 // ── Settings ─────────────────────────────────────────────
                 if (ImGui::BeginTabItem("Settings")) {
+                    // Audio sliders are skipped entirely when init() failed and we nulled
+                    // the manager — the rest of the Settings tab is unrelated and still useful.
+                    if (audio) {
+                    float masterVolume = audio->getMasterVolume();
+                    float musicVolume = audio->getMusicVolume();
+                    float sfxVolume = audio->getSfxVolume();
+                    if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f, "%.2f"))
+                        audio->setMasterVolume(masterVolume);
+                    if (ImGui::SliderFloat("Music Volume", &musicVolume, 0.0f, 1.0f, "%.2f"))
+                        audio->setMusicVolume(musicVolume);
+                    if (ImGui::SliderFloat("SFX Volume", &sfxVolume, 0.0f, 1.0f, "%.2f"))
+                        audio->setSfxVolume(sfxVolume);
+
+                    // Per-SoundId multipliers (0..2), grouped so the tab isn't 40 flat sliders.
+                    auto soundSliders = [&](const char* groupName, std::initializer_list<SoundId> ids) {
+                        if (ImGui::TreeNode(groupName)) {
+                            for (SoundId id : ids) {
+                                float v = audio->getSfxScale(id);
+                                if (ImGui::SliderFloat(AudioManager::sfxName(id), &v, 0.0f, 2.0f, "%.2f"))
+                                    audio->setSfxScale(id, v);
+                            }
+                            ImGui::TreePop();
+                        }
+                    };
+                    if (ImGui::CollapsingHeader("Per-sound volumes")) {
+                        soundSliders("Footsteps", {
+                            SoundId::Footstep_Grass, SoundId::Footstep_Stone, SoundId::Footstep_Wood,
+                            SoundId::Footstep_Sand, SoundId::Footstep_Snow, SoundId::Footstep_Gravel,
+                            SoundId::Footstep_Leaves, SoundId::Footstep_Water,
+                        });
+                        soundSliders("Block break", {
+                            SoundId::Break_Stone, SoundId::Break_Wood, SoundId::Break_Dirt,
+                            SoundId::Break_Sand, SoundId::Break_Gravel, SoundId::Break_Leaves,
+                            SoundId::Break_Snow,
+                        });
+                        soundSliders("Block place", {
+                            SoundId::Place_Stone, SoundId::Place_Wood, SoundId::Place_Dirt,
+                            SoundId::Place_Sand, SoundId::Place_Gravel, SoundId::Place_Leaves,
+                            SoundId::Place_Snow, SoundId::Block_Pop,
+                        });
+                        soundSliders("Mobs", {
+                            SoundId::Zombie_Idle, SoundId::Zombie_Hurt, SoundId::Zombie_Death,
+                            SoundId::Zombie_Step,
+                            SoundId::Creeper_Idle, SoundId::Creeper_Hurt, SoundId::Creeper_Death,
+                            SoundId::Creeper_Fuse, SoundId::Creeper_Explode,
+                        });
+                        soundSliders("Player", {
+                            SoundId::Player_Jump, SoundId::Player_Splash, SoundId::Player_Swim,
+                            SoundId::Player_AttackSwing, SoundId::Player_FallSmall,
+                            SoundId::Player_FallBig, SoundId::Player_Hurt,
+                        });
+                        soundSliders("UI", { SoundId::UI_Click });
+                    }
+                    } // if (audio)
+
                     if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
                         style._NextFrameFontSizeBase = style.FontSizeBase;
                     ImGui::Separator();
@@ -2195,6 +2376,22 @@ void App::debugWindow() {
                     {
                         NetMessage pkt;
                         pkt.message = spectator ? "/gamemode survival" : "/gamemode spectator";
+                        udpClient->sendPacket(pkt);
+                    }
+
+                    ImGui::Separator();
+                    ImGui::Text("Debug spawn");
+                    static int debugSpawnCount = 5;
+                    ImGui::SliderInt("Count##spawn", &debugSpawnCount, 1, 50);
+                    if (ImGui::Button("Spawn Zombies")) {
+                        NetMessage pkt;
+                        pkt.message = "/summon zombie " + std::to_string(debugSpawnCount);
+                        udpClient->sendPacket(pkt);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Spawn Creepers")) {
+                        NetMessage pkt;
+                        pkt.message = "/summon creeper " + std::to_string(debugSpawnCount);
                         udpClient->sendPacket(pkt);
                     }
                     ImGui::EndTabItem();
@@ -2405,6 +2602,11 @@ void App::cleanup() {
 		glDeleteTextures(1, &menuDirtTex);
 		menuDirtTex = 0;
 	}
+
+    if (audio) {
+        audio->shutdown();
+        audio.reset();
+    }
 
     glfwTerminate();
 }

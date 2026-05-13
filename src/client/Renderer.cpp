@@ -509,6 +509,10 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 		{
 			if (ice)
 			{
+				// Latch the explosion flag before the audio layer reads it next frame —
+				// otherwise the death sweep can't tell "killed while primed" from "fuse expired".
+				if (auto le = std::dynamic_pointer_cast<LivingEntity>(ent))
+					le->diedByExplosion = (pkt.positionFlags & 0x20) != 0;
 				// Start the fall-over death animation instead of erasing immediately.
 				// The LivingEntitiesManager flips `removed` once dyingDone, and
 				// Renderer::drawCharacters sweeps removed entries afterwards.

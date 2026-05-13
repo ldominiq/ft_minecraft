@@ -68,6 +68,7 @@
 #include "MainMenu.hpp"
 #include "MultiplayerMenu.hpp"
 #include "SettingsMenu.hpp"
+#include "AudioManager.hpp"
 #include "ControlsMenu.hpp"
 
 // Read a GPU timer query result and apply exponential moving average.
@@ -126,6 +127,7 @@ private:
 	float lastMouseMoveTime = 0;
 
     TextureManager textureManager;
+    std::unique_ptr<AudioManager> audio;
 
     enum class DisplayMode {
         Windowed,
