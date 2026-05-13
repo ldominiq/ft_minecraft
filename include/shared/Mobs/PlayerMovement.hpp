@@ -66,6 +66,9 @@ struct PlayerMovement : public virtual LivingEntity {
 	inline void setJumpBoostApplied(bool value) { jumpBoostApplied = value; }
 	inline void setSpawnPosition(const glm::vec3 &pos) { spawnPosition = pos; }
 
+	void savePlayerDataToFile(const std::string& filename) const;
+	void loadPlayerDataFromFile(const std::string& filename);
+
 	PlayerMovement();
 	PlayerMovement(const glm::vec3 &position, float yaw, entityID ID);
 	virtual ~PlayerMovement();

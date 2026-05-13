@@ -4,6 +4,8 @@
 
 PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 {
+	name = "nameless";
+
 	type = PLAYER;
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;
@@ -21,6 +23,8 @@ PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 //client
 PlayerMovement::PlayerMovement(const glm::vec3 &position, float yaw, entityID ID): LivingEntity(position, yaw ,ID)
 {
+	name = "nameless";
+
 	type = PLAYER;
 
 	this->entityWidth = 0.6f;
@@ -324,4 +328,45 @@ void PlayerMovement::attack(LivingEntity &victim)
 	}
 
 	LivingEntity::attack(victim);
+}
+
+//Saving / loading yaw and pitch do not work for now because they are getting overriden by the client.
+void PlayerMovement::savePlayerDataToFile(const std::string& filename) const {
+	std::ofstream outFile(filename, std::ios::binary);
+	if (!outFile) {
+		std::cerr << "Error opening file for writing: " << filename << std::endl;
+		return;
+	}
+
+	outFile.write(reinterpret_cast<const char*>(&position), sizeof(position));
+	outFile.write(reinterpret_cast<const char*>(&velocity), sizeof(velocity));
+	outFile.write(reinterpret_cast<const char*>(&yaw), sizeof(yaw));
+	outFile.write(reinterpret_cast<const char*>(&pitch), sizeof(pitch));
+	outFile.write(reinterpret_cast<const char*>(&health), sizeof(health));
+	outFile.write(reinterpret_cast<const char*>(&gamemode), sizeof(gamemode));
+
+	inventory->saveToStream(outFile);
+	// craftingStation->saveToStream(outFile);
+
+	outFile.close();
+}
+
+void PlayerMovement::loadPlayerDataFromFile(const std::string& filename) {
+	std::ifstream inFile(filename, std::ios::binary);
+	if (!inFile) {
+		//no file to load from yet.
+		return;
+	}
+
+	inFile.read(reinterpret_cast<char*>(&position), sizeof(position));
+	inFile.read(reinterpret_cast<char*>(&velocity), sizeof(velocity));
+	inFile.read(reinterpret_cast<char*>(&yaw), sizeof(yaw));
+	inFile.read(reinterpret_cast<char*>(&pitch), sizeof(pitch));
+	inFile.read(reinterpret_cast<char*>(&health), sizeof(health));
+	inFile.read(reinterpret_cast<char*>(&gamemode), sizeof(gamemode));
+
+	inventory->loadFromStream(inFile);
+	// craftingStation->loadFromStream(inFile);
+
+	inFile.close();
 }

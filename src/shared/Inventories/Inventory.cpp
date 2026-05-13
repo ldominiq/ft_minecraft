@@ -109,6 +109,16 @@ std::unique_ptr<NetInventory> Inventory<ROWS, COLS, N>::createNetInventoryPkt(in
 }
 
 template<int ROWS, int COLS, int N>
+void Inventory<ROWS, COLS, N>::createFullInventoryPkt(std::vector<PacketPtr>& pktsToSend)
+{
+	for (int i = 0; i < grid.size(); i++)
+	{
+		auto pkt = createNetInventoryPkt(i);
+		pktsToSend.push_back(std::move(pkt));
+	}
+}
+
+template<int ROWS, int COLS, int N>
 void Inventory<ROWS, COLS, N>::addDraggedSlot(NetInventoryAction &pkt)
 {
 	uint8_t slot = pkt.slot;
@@ -570,6 +580,30 @@ void Inventory<ROWS, COLS, N>::swapSlots(int slot1, int slot2)
 
 	setSlot(slot1, s.second, s.first);
 	setSlot(slot2, tempSlot.second, tempSlot.first);
+}
+
+template<int ROWS, int COLS, int N>
+void Inventory<ROWS, COLS, N>::saveToStream(std::ofstream& out) const
+{
+    if (!out) {
+        std::cerr << "Error opening file for writing while saving inventory to stream" << std::endl;
+        return;
+    }
+
+    out.write(reinterpret_cast<const char*>(grid.data()),
+              sizeof(std::pair<ItemType, itemStackSize_t>) * grid.size());
+}
+
+template<int ROWS, int COLS, int N>
+void Inventory<ROWS, COLS, N>::loadFromStream(std::ifstream& in)
+{
+    if (!in) {
+        std::cerr << "Error opening file for reading while loading inventory from stream" << std::endl;
+        return;
+    }
+
+    in.read(reinterpret_cast<char*>(grid.data()),
+            sizeof(std::pair<ItemType, itemStackSize_t>) * grid.size());
 }
 
 template class Inventory<4, 9, 1>; // PlayerInventory

@@ -31,7 +31,7 @@ class CPlayerInfo
 		std::deque<std::string> targetedMessages;
 		sockaddr_in addr;
 
-		std::string name;
+		std::string originalName; // for name conflict resolution on join
 
 		std::shared_ptr<PlayerMovement> movement = std::make_shared<PlayerMovement>();
 
