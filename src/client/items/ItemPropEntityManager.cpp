@@ -23,7 +23,7 @@ ItemPropEntityManager::~ItemPropEntityManager()
 	}
 }
 
-void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities, const glm::dvec3& eyePos)
+size_t ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities, const glm::dvec3& eyePos)
 {
 	int i = -1;
 	bool itemsRemoved = false; //Needed because when 1 element is removed the order of the elements change. So when 1 element is removed we redo EVERY prop. Shitty solution but it is what is is.
@@ -83,6 +83,10 @@ void ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> 
 		memcpy(ptr, buffer.data(), MAX_CAPACITY * ITEM_SIZE);
 		glUnmapBuffer(GL_ARRAY_BUFFER);
 	}
+
+	// After the post-loop ++i, i equals the number of drawn entity slots
+	// written into the buffer. draw() multiplies this by 36 (verts/item).
+	return static_cast<size_t>(i);
 }
 
 // In your constructor or init function:
@@ -111,7 +115,7 @@ void ItemPropEntityManager::initGL()
 
 void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::dvec3& eyePos, std::vector<std::shared_ptr<ItemEntity>> &entities)
 {
-	updateMesh(entities, eyePos);
+	const size_t drawnEntityCount = updateMesh(entities, eyePos);
 
 	shader->use();
 
@@ -130,5 +134,14 @@ void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 
 	shader->setMat4("projection", projection);
 	shader->setMat4("view", viewRot);
-	glDrawArrays(GL_TRIANGLES, 0, entities.size() * 36);
+
+	// Sprite-style drops (vegetation, weapons, misc) are emitted as a cross
+	// of two flat quads; disable backface culling so they're visible from
+	// every angle.
+	// Draw only the slots updateMesh actually wrote — non-drawable entities
+	// are skipped during compaction, so issuing entities.size() vertices would
+	// waste CPU/GPU work emitting zeroed/padded triangles for them.
+	glDisable(GL_CULL_FACE);
+	glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(drawnEntityCount * 36));
+	glEnable(GL_CULL_FACE);
 }

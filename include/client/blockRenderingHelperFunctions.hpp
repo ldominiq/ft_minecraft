@@ -57,4 +57,23 @@ void build2DInventoryCube(std::vector<float>& meshVertices, glm::vec2 origin, fl
 void addFace(std::vector<float>& meshVertices, float x, float y, float z, int originX, int originZ, BlockType type, int face, const TextureManager* texMgr = nullptr, bool isIlluminated = false); // Add a face to the mesh vertices
 void addInventoryFace(std::vector<float>& meshVertices, glm::vec2 origin, float scale, BlockType type, int face, const TextureManager* texMgr = nullptr);
 
+// Dropped vegetation rendered as a 2D-looking sprite (cross of two
+// perpendicular quads, like world vegetation). Vertices are emitted in
+// camera-relative space and the buffer is padded to 36 verts to match
+// ItemPropEntityManager::ITEM_SIZE. Format matches buildCube:
+// pos(3) + uv(2) + texLayer(1) per vertex.
+void buildItemSprite(std::vector<float>& meshVertices, float x, float y, float z, int texLayer);
+
+// Dropped tool / ingot / misc item rendered as a Y-axis-billboarded quad
+// (single flat sprite that always faces the camera horizontally). Same
+// vertex format and padding rules as buildItemSprite. itemRel is the item
+// position in camera-relative space (item - eye, double-precision cancel),
+// which doubles as the "to-camera" direction (negated and projected on XZ).
+void buildItemBillboard(std::vector<float>& meshVertices, const glm::dvec3& itemRel, int texLayer);
+
+// Inventory icon for items (vegetation, weapons, misc): a single flat quad,
+// no isometric perspective. Same vertex format as addInventoryFace:
+// pos(2) + uv(2) + texLayer(1) per vertex, 6 verts (two triangles).
+void build2DInventorySprite(std::vector<float>& meshVertices, glm::vec2 origin, float scale, int texLayer);
+
 #endif

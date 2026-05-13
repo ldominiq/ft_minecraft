@@ -1281,14 +1281,21 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		groupPkt.push_back(std::move(pkt));
 	}
 
-	int twohundred0 = 200;
-	int twohundred1 = 200;
-	int twohundred2 = 200;
-	int twohundred3 = 200;
-	player->movement->inventory->setSlot(0, twohundred0, BlockType::DIRT);
-	player->movement->inventory->setSlot(8, twohundred1, BlockType::WATER);
-	player->movement->inventory->setSlot(1, twohundred2, BlockType::STONE);
-	player->movement->inventory->setSlot(2, twohundred3, BlockType::CACTUS);
+	// Starter inventory.
+	auto give = [&](int slot, ItemType item, int amount) {
+		int amt = amount;
+		player->movement->inventory->insertItemsToSlot(item, slot, amt);
+		groupPkt.push_back(player->movement->inventory->createNetInventoryPkt(slot));
+	};
+
+	give(0, BlockType::DIRT,       200);
+	give(1, BlockType::STONE,      200);
+	give(2, BlockType::CACTUS,     200);
+	give(8, BlockType::WATER,      200);
+
+	give(3, MiscType::IRON_INGOT,  64);
+	give(4, MiscType::GOLD_INGOT,  64);
+	give(5, MiscType::DIAMOND,     64);
 
 	player->movement->inventory->createFullInventoryPkt(groupPkt);
 	
