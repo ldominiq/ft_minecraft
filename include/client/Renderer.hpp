@@ -67,6 +67,17 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::shared_ptr<Shader> vegetationShader = nullptr;
 
 	void linkNeighbors(int chunkX, int chunkZ, std::shared_ptr<ChunkRenderer> &chunk);
+
+	// Water-pass helpers. Both render entry points iterate the same chunk
+	// list with the same cull/uniform logic, differing only in which VAO
+	// they bind and which vertex count they draw — factored out so the two
+	// flavors (ocean / placed) share the loop body.
+	bool waterChunkCulled(const ChunkRenderer& chunk) const;
+	template <typename BucketFn>
+	void drawWaterBucket(Shader& shaderProgram, const glm::dvec3& eyePos, BucketFn bucket) const;
+	template <typename CountFn>
+	bool anyVisibleWater(CountFn count) const;
+
 	std::unordered_map<ItemID, std::weak_ptr<Entity>> entitiesMap; //fast lookup
 
 	mutable size_t m_drawCallCount = 0; // for debug stats
@@ -150,10 +161,18 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		/// Render only chunks visible inside a light-space ortho frustum (for CSM shadow passes).
        void renderShadow(const std::shared_ptr<Shader> &shaderProgram, const glm::mat4 &lightSpaceMatrix,
 						 const glm::dvec3& eyePos) const;
-       void renderWater(const std::shared_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const;
+       void renderWater(Shader& shaderProgram, const glm::dvec3& eyePos) const;
+       /// Same as renderWater but iterates the placed-water VAO bucket. Drawn
+       /// with the sky-reflection shader; no FBO sampling.
+       void renderPlacedWater(Shader& shaderProgram, const glm::dvec3& eyePos) const;
 
-		/// Returns true if any water chunk is visible in the current frustum.
+		/// Returns true if any *ocean* (planar) water is visible in the
+		/// current frustum. Used to gate the planar reflection/refraction
+		/// passes — placed-bucket water doesn't need them.
 		bool hasVisibleWater() const;
+		/// Returns true if any *placed* water (sky-reflection bucket) is
+		/// visible in the current frustum.
+		bool hasVisiblePlacedWater() const;
 
 		void buildChunks();
 		void updateChunk(const NetModifiedBlockData &pkt);

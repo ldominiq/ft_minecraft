@@ -109,9 +109,8 @@ void App::init(const std::string& serverIp) {
 	renderer = std::make_unique<Renderer>();
 
 	// ********************Water Renderer setup******************************
-	waterFramebuffer = std::make_shared<WaterFramebuffer>(screenWidth, screenHeight);
-	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
-	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
+	
+	waterRenderer = std::make_unique<WaterRenderer>(screenWidth, screenHeight);
 
 	// ********************Chunk Boundary Renderer**************************
 	chunkBoundaryRenderer = std::make_unique<ChunkBoundaryRenderer>();
@@ -638,6 +637,10 @@ void App::setUdpClientPacketCallback()
                 currentBiome = p.currentBiome;
                 currentTerrainHeight = p.terrainHeight;
                 currentSeaLevel = p.seaLevel;
+                const int waterSurfaceY = p.seaLevel + 1;
+                if (waterRenderer) waterRenderer->setSeaLevel(waterSurfaceY);
+                ChunkRenderer::setSeaLevel(waterSurfaceY);
+                if (lighting) lighting->setSeaLevel(static_cast<float>(waterSurfaceY));
                 currentWorldSeed = p.worldSeed;
                 currentContinentalness = p.continentalness;
                 currentErosion = p.erosion;
@@ -1048,11 +1051,23 @@ void App::render() {
             ssaoQueryIssuedThisFrame[currentQueryIndex] = false;
         }
 
-		static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
-		static float waveSpeed = waterRenderer->waveStrength;
-		waterMoveOffset += waveSpeed * deltaTime;
-		if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
+		static float waterMoveOffset  = waterRenderer->getWaterMoveFactor();
+		static float waterMoveOffset2 = waterRenderer->getWaterMoveFactor2();
+		const float scrollSpeed1 = 0.012f; // ~83s per cycle
+		const float scrollSpeed2 = 0.0078f; // ~128s per cycle (incommensurate)
+		waterMoveOffset  += scrollSpeed1 * deltaTime;
+		waterMoveOffset2 += scrollSpeed2 * deltaTime;
+		if (waterMoveOffset  > 1.0f) waterMoveOffset  -= 1.0f;
+		if (waterMoveOffset2 > 1.0f) waterMoveOffset2 -= 1.0f;
 		waterRenderer->setWaterMoveFactor(waterMoveOffset);
+		waterRenderer->setWaterMoveFactor2(waterMoveOffset2);
+		// Non-wrapping wave phase — drives Gerstner displacement in the
+		// vertex shader. Independent of waterMoveOffset (which wraps for
+		// dudv UV scrolling).
+		waterRenderer->advanceWaveTime(deltaTime);
+		// Share the same phase clock with caustics so the ripples on
+		// underwater terrain swim in lockstep with the surface waves.
+		if (lighting) lighting->setCausticTime(waterRenderer->getWaveTime());
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
@@ -1081,10 +1096,19 @@ void App::render() {
     	
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
-        if (waterVisible) {
+        const bool placedWaterVisible = renderer->hasVisiblePlacedWater();
+        if (waterVisible || placedWaterVisible) {
             const float chunkDist = renderer->getMaxRenderedChunkDist();
             waterRenderer->setFogParams(fogEnabled, chunkDist * fogStartFraction, chunkDist, fogStrength);
-    	    waterRenderer->renderWaterSurface(projection);
+            // Ocean surface — needs the planar reflection/refraction textures
+            // produced by the passes above; only run when there's any to draw.
+            if (waterVisible)
+                waterRenderer->renderWaterSurface(projection);
+            // Placed/spread water surface — sky-reflection shader, independent
+            // of any global plane. Drawn after ocean so its own depth writes
+            // sort against ocean fragments at the same Y.
+            if (placedWaterVisible)
+                waterRenderer->renderPlacedWaterSurface(projection);
         }
         glEndQuery(GL_TIME_ELAPSED);
 
@@ -1100,13 +1124,13 @@ void App::render() {
     		// Dynamically build GUI textures based on debug flags
     		guis.clear();
     		if (showReflectionTexture) {
-    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.48f, 0.75f), glm::vec2(0.2f, 0.2f));
+    			guis.emplace_back(waterRenderer->getReflectionTexture(), glm::vec2(0.48f, 0.75f), glm::vec2(0.2f, 0.2f));
     		}
     		if (showRefractionTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(0.48f, 0.3f), glm::vec2(0.2f, 0.2f), true);
+    			guis.emplace_back(waterRenderer->getRefractionTexture(), glm::vec2(0.48f, 0.3f), glm::vec2(0.2f, 0.2f), true);
     		}
     		if (showRefractionDepthTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.48f, -0.15f), glm::vec2(0.2f, 0.2f), true, true);
+    			guis.emplace_back(waterRenderer->getRefractionDepthTexture(), glm::vec2(0.48f, -0.15f), glm::vec2(0.2f, 0.2f), true, true);
     		}
     		if (showNormalsTexture && renderTypeFramebuffer) {
     			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.05f, 0.75f), glm::vec2(0.2f, 0.2f), true);

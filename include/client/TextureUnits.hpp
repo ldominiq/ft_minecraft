@@ -16,4 +16,5 @@ namespace TextureUnits {
     constexpr int CSM_SHADOW    = 7;
     constexpr int CLOUDS        = 8;
     constexpr int SKY_LUT       = 9;
+    constexpr int CAUSTICS      = 10;
 }

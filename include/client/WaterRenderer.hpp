@@ -20,7 +20,7 @@ class TextureManager;
 
 class WaterRenderer {
 public:
-    WaterRenderer(const std::shared_ptr<Shader>& shader, const std::shared_ptr<WaterFramebuffer>& fbos);
+    WaterRenderer(int screenWidth, int screenHeight);
     ~WaterRenderer();
     
     // Set dependencies
@@ -31,8 +31,23 @@ public:
     void renderWaterRefractionPass(const std::shared_ptr<Shader>& sceneShader, const glm::mat4& view, const glm::mat4& projection, const TextureManager& texMgr);
     void renderWaterSurface(const glm::mat4& projection);
 
+    // Sky-reflection pass for water that isn't on the sea-level plane. Cheap;
+    // shares the dudv/normal map and skyLUT with the ocean pass but binds no
+    // reflection/refraction FBO textures.
+    void renderPlacedWaterSurface(const glm::mat4& projection);
+
     float getWaterMoveFactor() const { return waterMoveFactor; }
     void setWaterMoveFactor(const float factor) { waterMoveFactor = factor; }
+
+    
+    float getWaterMoveFactor2() const { return waterMoveFactor2; }
+    void  setWaterMoveFactor2(const float factor) { waterMoveFactor2 = factor; }
+
+    // Non-wrapping wave time used for Gerstner displacement. moveFactor wraps
+    // 0->1 every second (which is fine for additive UV scrolling on a tiling
+    // dudv texture) but would cause a visible phase snap if fed into cos/sin.
+    float getWaveTime() const { return waveTime; }
+    void  advanceWaveTime(float dt);
     void setFogParams(bool enabled, float start, float end, float strength = 1.4f) {
         fogEnabled = enabled;
         fogStart = start;
@@ -57,20 +72,36 @@ public:
     float getReflectionMaxDistance() const     { return reflectionMaxDistance; }
     void  setReflectionMaxDistance(float d)    { reflectionMaxDistance = d; }
 
+    int  getSeaLevel() const                   { return static_cast<int>(seaLevel); }
+    void setSeaLevel(int sl)                   { seaLevel = static_cast<float>(sl); }
+
+    // FBO texture accessors for debug GUI overlays.
+    GLuint getReflectionTexture()      const { return fbos->getReflectionTexture(); }
+    GLuint getRefractionTexture()      const { return fbos->getRefractionTexture(); }
+    GLuint getRefractionDepthTexture() const { return fbos->getRefractionDepthTexture(); }
+
 private:
-    std::shared_ptr<Shader> waterShader;
-    std::shared_ptr<WaterFramebuffer> fbos;
+    std::unique_ptr<Shader> waterShader;
+    std::unique_ptr<Shader> placedWaterShader;
+    std::unique_ptr<WaterFramebuffer> fbos;
     std::shared_ptr<Lighting> lighting;
     std::shared_ptr<Renderer> renderer;
     std::shared_ptr<Camera> camera;
 
     float waterMoveFactor = 0.0f;
+    float waterMoveFactor2 = 0.0f;
+    // Continuously-accumulating phase for Gerstner waves.
+    float waveTime = 0.0f;
 
     bool  fogEnabled  = false;
     float fogStart    = 500.0f;
     float fogEnd      = 950.0f;
     float fogStrength = 1.4f;
 
+    // Water *surface* Y (= TerrainGenerationParams::seaLevel + 1). The
+    // terrain generator fills water blocks up to and including its
+    // `seaLevel` index, so a block at y=64 has its top face at y=65. The
+    // planar mirror and refraction clip plane both align to that surface.
     float seaLevel = 65.0f;
     GLuint dudvTexture = 0;
     GLuint waterNormalTexture = 0;
@@ -82,6 +113,16 @@ private:
     float reflectionMaxDistance = 0.0f;      // 0 = no cap (use main render distance)
 
     void prepareRender();
+
+    // Common surface-shader setup shared by ocean / placed-water passes.
+    // Sets the projection / view / wave / sun / fog / sky-LUT / dudv / normal
+    // uniforms; ocean and placed-water paths only diverge in the extra FBO
+    // sampler binds and the draw call, which the callers handle directly.
+    void setupSurfaceShader(Shader& shader,
+                            const glm::mat4& projection,
+                            const glm::mat4& viewRot,
+                            const glm::dvec3& eyePosD,
+                            const glm::vec3& sunDir);
 };
 
 

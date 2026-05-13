@@ -178,12 +178,6 @@ private:
 	std::vector<GuiTexture> guis;
 	std::unique_ptr<GuiRenderer> guiRenderer;
 
-
-	// Water
-	std::shared_ptr<WaterFramebuffer> waterFramebuffer;
-	std::shared_ptr<Shader> waterShader;
-    GLuint dudvTexture, waterNormalTexture;
-
 	// Render type debug framebuffers
 	std::unique_ptr<RenderTypeFramebuffer> renderTypeFramebuffer;
 
