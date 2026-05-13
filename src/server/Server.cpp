@@ -9,6 +9,8 @@
 #include <sstream>
 
 Server::Server() {
+
+	std::filesystem::create_directory("playerdata"); // ensure directory exists for saving
 #ifdef _WIN32
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -410,6 +412,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 
 	auto movement = p.movement;
 	p.movement->setName(name);
+	p.movement->loadPlayerDataFromFile("playerdata/" + name + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
 	players.push_back(std::move(p));
 	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
@@ -449,6 +452,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 
 		sendPacketTo(pkt, p.addr);
 	}
+
+	player->movement->savePlayerDataToFile("playerdata/" + player->movement->getName() + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
 
 	// Erase rather than clear: ids are never reused, so the entry stays dead.
 	world->PlayerKnownChunks.erase(player->id);
@@ -1230,66 +1235,77 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	std::vector<PacketPtr> groupPkt;
 
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
-	if (player != players.end())
-	{		
-		//gotta exclude current player
-		for (auto &entity : world->livingEntities)
-		{
-			if (entity == player->movement) continue;
-
-			auto pkt = std::make_unique<NetEntityMove>();
-
-			pkt->eEntityType = entity->getEntityType();
-			pkt->entityID = entity->getID();
-			pkt->type = static_cast<LivingEntityType>(entity->getLivingEntityType());
-
-			pkt->positionX = entity->getPositionD().x;
-			pkt->positionY = entity->getPositionD().y;
-			pkt->positionZ = entity->getPositionD().z;
-
-			pkt->yaw = entity->yaw;
-			pkt->pitch = entity->pitch;
-
-			pkt->entityName = entity->getName();
-
-			groupPkt.push_back(std::move(pkt));
-		}
-
-		for (auto &entity : world->itemEntities)
-		{
-			auto pkt = std::make_unique<NetEntityMove>();
-
-			pkt->eEntityType = entity->getEntityType();
-			pkt->entityID = entity->getID();
-			pkt->type = static_cast<ItemID>(entity->getItemID());
-
-			pkt->positionX = entity->getPositionD().x;
-			pkt->positionY = entity->getPositionD().y;
-			pkt->positionZ = entity->getPositionD().z;
-
-			pkt->yaw = entity->yaw;
-
-			groupPkt.push_back(std::move(pkt));
-		}
-
-		// Starter inventory.
-		auto give = [&](int slot, ItemType item, int amount) {
-			int amt = amount;
-			player->movement->inventory->insertItemsToSlot(item, slot, amt);
-			groupPkt.push_back(player->movement->inventory->createNetInventoryPkt(slot));
-		};
-
-		give(0, BlockType::DIRT,       200);
-		give(1, BlockType::STONE,      200);
-		give(2, BlockType::CACTUS,     200);
-		give(8, BlockType::WATER,      200);
-
-		give(3, MiscType::IRON_INGOT,  64);
-		give(4, MiscType::GOLD_INGOT,  64);
-		give(5, MiscType::DIAMOND,     64);
+	if (player == players.end())
+	{
+		std::cout << "Player not found for accept packet\n";
+		return;
 	}
 
+	//gotta exclude current player
+	for (auto &entity : world->livingEntities)
+	{
+		if (entity == player->movement) continue;
+
+		auto pkt = std::make_unique<NetEntityMove>();
+
+		pkt->eEntityType = entity->getEntityType();
+		pkt->entityID = entity->getID();
+		pkt->type = static_cast<LivingEntityType>(entity->getLivingEntityType());
+
+		pkt->positionX = entity->getPositionD().x;
+		pkt->positionY = entity->getPositionD().y;
+		pkt->positionZ = entity->getPositionD().z;
+
+		pkt->yaw = entity->yaw;
+		pkt->pitch = entity->pitch;
+
+		pkt->entityName = entity->getName();
+
+		groupPkt.push_back(std::move(pkt));
+	}
+
+	for (auto &entity : world->itemEntities)
+	{
+		auto pkt = std::make_unique<NetEntityMove>();
+
+		pkt->eEntityType = entity->getEntityType();
+		pkt->entityID = entity->getID();
+		pkt->type = static_cast<ItemID>(entity->getItemID());
+
+		pkt->positionX = entity->getPositionD().x;
+		pkt->positionY = entity->getPositionD().y;
+		pkt->positionZ = entity->getPositionD().z;
+
+		pkt->yaw = entity->yaw;
+
+		groupPkt.push_back(std::move(pkt));
+	}
+
+	// Starter inventory.
+	auto give = [&](int slot, ItemType item, int amount) {
+		int amt = amount;
+		player->movement->inventory->insertItemsToSlot(item, slot, amt);
+		groupPkt.push_back(player->movement->inventory->createNetInventoryPkt(slot));
+	};
+
+	give(0, BlockType::DIRT,       200);
+	give(1, BlockType::STONE,      200);
+	give(2, BlockType::CACTUS,     200);
+	give(8, BlockType::WATER,      200);
+
+	give(3, MiscType::IRON_INGOT,  64);
+	give(4, MiscType::GOLD_INGOT,  64);
+	give(5, MiscType::DIAMOND,     64);
+
+	player->movement->inventory->createFullInventoryPkt(groupPkt);
+	
+	NetPlayerGameMode gameModePkt;
+	gameModePkt.gamemode = static_cast<std::underlying_type_t<GAMEMODES>>(player->movement->gamemode);
+	groupPkt.push_back(std::make_unique<NetPlayerGameMode>(gameModePkt));
+
 	sendNewGroupPacketTo(groupPkt, cliaddr);
+
+	sendPositionDeltas(*player);
 
 	const auto& s = world->getSkyTimeState();
 	NetSkyTime skyPkt;

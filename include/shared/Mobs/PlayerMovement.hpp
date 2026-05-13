@@ -64,6 +64,9 @@ struct PlayerMovement : public virtual LivingEntity {
 	inline void setLoadRadius(uint8_t radius) { loadRadius = radius; }
 	inline void setJumpBoostApplied(bool value) { jumpBoostApplied = value; }
 
+	void savePlayerDataToFile(const std::string& filename) const;
+	void loadPlayerDataFromFile(const std::string& filename);
+
 	PlayerMovement();
 	PlayerMovement(const glm::vec3 &position, float yaw, entityID ID);
 	virtual ~PlayerMovement();
