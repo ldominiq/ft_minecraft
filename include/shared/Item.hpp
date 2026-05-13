@@ -175,6 +175,9 @@ enum class WeaponType : ItemID {
 
 enum class MiscType : ItemID {
 	BEGIN = (ItemID)WeaponType::END + 1,
+	IRON_INGOT,
+	GOLD_INGOT,
+	DIAMOND,
 	END
 };
 
@@ -182,8 +185,10 @@ using ItemType = std::variant<BlockType, WeaponType, MiscType>;
 
 struct BlockDef { uint8_t toughness; };
 struct LiquidDef { uint8_t maxPropagation; };
+// texturePath is the base name (without extension) of a PNG in assets/textures/item/.
+// Sprite items are rendered as flat 2D quads both in the world and in the inventory.
 struct WeaponDef { std::string texturePath; int damage; };
-struct MiscDef {};
+struct MiscDef    { std::string texturePath; };
 
 using ItemData = std::variant<BlockDef, LiquidDef, WeaponDef, MiscDef>;
 
@@ -205,8 +210,8 @@ public:
     static ItemDef makeWeapon(WeaponType id, std::string name, std::string texPath, int dmg ) {
         return { id, std::move(name), WeaponDef{ std::move(texPath), dmg } };
     }
-    static ItemDef makeMisc(MiscType id, std::string name) {
-        return { id, std::move(name), MiscDef{} };
+    static ItemDef makeMisc(MiscType id, std::string name, std::string texPath = "") {
+        return { id, std::move(name), MiscDef{ std::move(texPath) } };
     }
 
 	static inline std::vector<ItemDef> blocks = {
@@ -292,7 +297,22 @@ public:
 	// };
 
 	static inline std::vector<ItemDef> weapons = {
+		// texturePath = PNG base name in assets/textures/item/ (no extension).
+		// Empty string = no texture; drop e.g. wooden_sword.png in that folder
+		// and change "" to "wooden_sword" to get an icon and dropped sprite.
 		ItemDef{ makeWeapon(WeaponType::SWORD, "Sword", "", 4) }
+	};
+
+	// To add a new item (ingot, stick, etc):
+	//   1. Add an entry to MiscType above (between BEGIN and END).
+	//   2. Drop the PNG in assets/textures/item/.
+	//   3. Append a line here with makeMisc(MiscType::X, "Display Name", "tex_name").
+	// The texture is auto-loaded by TextureManager and the item renders as a
+	// flat 2D sprite in the world and the inventory.
+	static inline std::vector<ItemDef> miscs = {
+		ItemDef{ makeMisc(MiscType::IRON_INGOT, "Iron Ingot", "iron_ingot") },
+		ItemDef{ makeMisc(MiscType::GOLD_INGOT, "Gold Ingot", "gold_ingot") },
+		ItemDef{ makeMisc(MiscType::DIAMOND,    "Diamond",    "diamond")    },
 	};
 
 	static inline std::vector<ItemDef> items = [] {
@@ -300,6 +320,7 @@ public:
 		v.insert(v.end(), blocks.begin(), blocks.end());
 		// v.insert(v.end(), liquids.begin(), liquids.end());
 		v.insert(v.end(), weapons.begin(), weapons.end());
+		v.insert(v.end(), miscs.begin(), miscs.end());
 		return v;
 	}();
 
@@ -471,6 +492,17 @@ inline static bool isBlockLeaves(const BlockType &b) {
 
 inline static bool isBlockSolid(const BlockType &b) {
 	return b != BlockType::AIR && b != BlockType::WATER && !isBlockVegetation(b);
+}
+
+// True when the item should be rendered as a flat 2D sprite rather than a 3D
+// cube. Used both for dropped items in the world and for inventory icons.
+// Sprites: vegetation/coral blocks, all weapons, all misc items.
+inline static bool isItemFlat(const ItemType &t) {
+	if (auto* b = std::get_if<BlockType>(&t)) {
+		return isBlockVegetation(*b) || isSeaVegetation(*b);
+	}
+	// WeaponType and MiscType are always flat sprites.
+	return true;
 }
 
 template<typename Enum>

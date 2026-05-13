@@ -18,4 +18,5 @@ namespace TextureUnits {
     constexpr int SKY_LUT       = 9;
     constexpr int SCENE_COLOR   = 10;
     constexpr int SCENE_DEPTH   = 11;
+    constexpr int CAUSTICS      = 12;
 }

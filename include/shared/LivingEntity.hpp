@@ -32,6 +32,8 @@ class LivingEntity : public Entity
 	std::chrono::steady_clock::time_point lastVoidDamageTime{};
 
 	protected :
+		std::string name = "";
+
 		bool jump = false;
 		float SAFE_FALL_DISTANCE = 3.0f;
 
@@ -81,7 +83,7 @@ class LivingEntity : public Entity
 		bool networkedPrimed = false;
 
 		// Player flashlight on/off, set server-side from NetPlayerInputs::playerFlags
-		// bit 0 and relayed to all clients via NetEntityMove::positionFlags bit 0x10.
+		// bit 0 and relayed to all clients via NetEntityMove::positionFlags bit 0x40.
 		// Receiving clients render a spotlight attached to this entity's head.
 		bool flashlightOn = false;
 
@@ -103,6 +105,9 @@ class LivingEntity : public Entity
 		inline float getEyesHeight() const { return eyesheight; }
 		glm::vec3 getDesiredMove() override;
 		float getAccumulatedFallDistance() const { return accumulatedFallDistance; }
+
+		void setName(const std::string& name) { this->name = name; }
+		const std::string& getName() const { return name; }
 };
 
 #endif

@@ -33,6 +33,16 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
     glBindVertexArray(0);
+
+    causticsTexture = skyShader->loadTexture("assets/textures/caustics.jpg");
+    if (causticsTexture) {
+        glBindTexture(GL_TEXTURE_2D, causticsTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 }
 
 Lighting::~Lighting() {
@@ -50,6 +60,8 @@ Lighting::~Lighting() {
         glDeleteTextures(1, &csmDepthMaps);
         glDeleteFramebuffers(1, &csmFBO);
 
+        if (causticsTexture)
+            glDeleteTextures(1, &causticsTexture);
     } else {
         lightCubeVAO = 0;
         lightCubeVBO = 0;
@@ -60,6 +72,7 @@ Lighting::~Lighting() {
         cloudFBO = nullptr;
         csmDepthMaps = 0;
         csmFBO = 0;
+        causticsTexture = 0;
     }
 }
 
@@ -72,6 +85,19 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
 {
     if (!cloudFBO)
         return;
+
+    // Save the caller's framebuffer + viewport so we can restore them on exit.
+    // This keeps the pass self-contained: callers don't need to know that we
+    // temporarily bind a low-res FBO and shrink the viewport.
+    GLint prevDrawFBO = 0;
+    GLint prevViewport[4] = {0, 0, width, height};
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevDrawFBO);
+    glGetIntegerv(GL_VIEWPORT, prevViewport);
+
+    auto restoreCallerState = [&]() {
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevDrawFBO));
+        glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    };
 
     cloudFBO->bind();
     glViewport(0, 0, cloudFBO->getWidth(), cloudFBO->getHeight());
@@ -89,8 +115,7 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     if (!cloudsEnabled || !cloudShader) {
         glDepthMask(GL_TRUE);
         glEnable(GL_DEPTH_TEST);
-        CloudFramebuffer::unbind();
-        glViewport(0, 0, width, height);
+        restoreCallerState();
         return;
     }
 
@@ -155,10 +180,7 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
 
-    CloudFramebuffer::unbind();
-
-    // Restore default viewport for subsequent passes
-    glViewport(0, 0, width, height);
+    restoreCallerState();
 }
 
 void Lighting::updateSkyLUT(float cameraPosY) {
@@ -371,6 +393,14 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
 
 
     shader.setFloat("material.shininess", materialShininess);
+
+    shader.setFloat("seaLevel", seaLevel);
+    shader.setFloat("causticTime", causticTime);
+    if (causticsTexture) {
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::CAUSTICS);
+        glBindTexture(GL_TEXTURE_2D, causticsTexture);
+        shader.setInt("causticsMap", TextureUnits::CAUSTICS);
+    }
 
     // directional light
     if (directionalLightOn) {

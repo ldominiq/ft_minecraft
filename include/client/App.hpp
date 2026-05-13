@@ -70,40 +70,8 @@
 #include "MainMenu.hpp"
 #include "MultiplayerMenu.hpp"
 #include "SettingsMenu.hpp"
-
-#define CONTROL_LIST 		\
-    X(FORWARD)       		\
-    X(BACKWARD)      		\
-    X(LEFT)          		\
-    X(RIGHT)         		\
-    X(UP)            		\
-    X(DOWN)             	\
-    X(MOVE_FAST)        	\
-    X(LEFT_CLICK)       	\
-    X(TOGGLE_FULLSCREEN)	\
-    X(TOGGLE_WIREFRAME)		\
-    X(TOGGLE_SHADER)		\
-    X(TOGGLE_DEBUG)			\
-    X(CLOSE_WINDOW)			\
-	X(THIRD_PERSON_CAMERA)	\
-	X(PLAYER_LIST)			\
-							\
-	X(HOTBAR_1)				\
-	X(HOTBAR_2)				\
-	X(HOTBAR_3)				\
-	X(HOTBAR_4)				\
-	X(HOTBAR_5)				\
-	X(HOTBAR_6)				\
-	X(HOTBAR_7)				\
-	X(HOTBAR_8)				\
-	X(HOTBAR_9)				\
-
-enum controls {
-#define X(name) name,
-    CONTROL_LIST
-#undef X
-    CONTROL_COUNT
-};
+#include "AudioManager.hpp"
+#include "ControlsMenu.hpp"
 
 // Read a GPU timer query result and apply exponential moving average.
 // Returns true if a new sample was read, false if query wasn't ready.
@@ -115,6 +83,7 @@ public:
         MainMenu,
         Multiplayer,
         Settings,
+        Controls,
         Playing
     };
 
@@ -127,6 +96,8 @@ public:
     ~App();
 
     void run();
+	void cleanup();
+	GLFWwindow* getWindow() const { return window; }
 
     GameState gameState = GameState::MainMenu;
 
@@ -136,7 +107,6 @@ private:
     void render();
 	void renderScene(const glm::mat4 &view, const glm::mat4 &projection, glm::vec4 clipPlane) const;
 
-    void cleanup();
     void setUdpClientPacketCallback();
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
@@ -146,10 +116,6 @@ private:
     void updateWindowTitle();
     void toggleDisplayMode();
 
-    void loadControlsDefaults();
-	void saveControls(const char* filename = "controls.cfg");
-	void loadControlsFromFile(const char* filename = "controls.cfg");
-
     void debugWindow();
     void computeDebugStats();
 
@@ -157,8 +123,6 @@ private:
     // player with flashlightOn) and upload it as the spotLights[] array.
     // No-op for shaders that don't reference spotLights (vegetation, water).
     void uploadActiveSpotLights(Shader& shader) const;
-
-
 
     GLFWwindow* window;
 
@@ -170,6 +134,7 @@ private:
 	float lastMouseMoveTime = 0;
 
     TextureManager textureManager;
+    std::unique_ptr<AudioManager> audio;
 
     enum class DisplayMode {
         Windowed,
@@ -204,6 +169,7 @@ private:
 	std::shared_ptr<MainMenu> mainMenu;
 	std::shared_ptr<MultiplayerMenu> multiplayerMenu;
 	std::shared_ptr<SettingsMenu> settingsMenu;
+	std::shared_ptr<ControlsMenu> controlsMenu;
 	GLuint menuDirtTex = 0;
 
 	std::unique_ptr<PlayerListHUD> playerListHUD;
@@ -218,12 +184,6 @@ private:
 	// GUI
 	std::vector<GuiTexture> guis;
 	std::unique_ptr<GuiRenderer> guiRenderer;
-
-
-	// Water
-	std::shared_ptr<WaterFramebuffer> waterFramebuffer;
-	std::shared_ptr<Shader> waterShader;
-    GLuint dudvTexture, waterNormalTexture;
 
 	// Render type debug framebuffers
 	std::unique_ptr<RenderTypeFramebuffer> renderTypeFramebuffer;
@@ -328,7 +288,7 @@ private:
     bool uiInteractive = false;
     // Internal flag to handle key debounce for toggling the interactive mode.
     bool uiToggleHeld = false;
-	bool showDebugWindow = true;
+	bool showDebugWindow = false;
 
 	//TODO: put in struct
 	// Debug framebuffer view toggles
@@ -346,13 +306,7 @@ private:
     int selectedRenderType = 0; // 0 = none, 1 = normals, 2 = depth
 
 	//keeps track of control GLFW values
-    int controlsArray[CONTROL_COUNT];
-	//keeps track of control names so they can be inserted/read from the .config file
-	const char* controlNames[CONTROL_COUNT] = {
-	#define X(name) #name,
-		CONTROL_LIST
-	#undef X
-	};
+	std::array<int, CONTROL_COUNT> controlsArray;
 
     // PROFILING
     bool profilingEnabled = false;

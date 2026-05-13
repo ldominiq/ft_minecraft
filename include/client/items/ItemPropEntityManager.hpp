@@ -23,7 +23,11 @@ class ItemPropEntityManager {
 	const TextureManager* textureManager = nullptr;
 	GLuint VAO, VBO, EBO;
 
-	void updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities, const glm::dvec3& eyePos);
+	// Repack the per-entity vertex slots into the GPU buffer, skipping entities
+	// whose DoDraw() returns false. Returns the number of slots actually
+	// written — draw() uses this so glDrawArrays issues vertices only for
+	// rendered items instead of dragging the whole vector through the GPU.
+	size_t updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities, const glm::dvec3& eyePos);
 	void initGL();
 
 	public:

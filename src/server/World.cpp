@@ -492,7 +492,7 @@ std::vector<s_waterPath> World::findShortestWaterPath(const glm::ivec3 &initialB
 
 				BlockType type = getBlockWorld(newPosition);
 
-				if (type == BlockType::AIR || isBlockVegetation(type))
+				if (type == BlockType::AIR || type == BlockType::WATER || isBlockVegetation(type))
 				{
 					if (dir == down)
 					{
@@ -1006,7 +1006,8 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 		}
 	}
 	for (Creeper *creeper : exploding)
-		explodeAt(creeper->getPosition(), creeper->explodeRadius, creeper->explodeDamage, creeper);
+		explodeAt(creeper->getPosition(), creeper->explodeRadius, creeper->explodeDamage,
+		          creeper->explodeKnockH, creeper->explodeKnockV, creeper);
 
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{
@@ -1111,7 +1112,8 @@ void World::setSkyTime(const SkyTimeState &newState) {
     skyTimeState.sunStepTimer  = 0.0f;
 }
 
-void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage, LivingEntity *source)
+void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage,
+                      float knockH, float knockV, LivingEntity *source)
 {
     const float r2 = radius * radius;
     const int r = static_cast<int>(std::ceil(radius));
@@ -1150,7 +1152,7 @@ void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage, Li
             entity->diedByExplosion = true;
 
         glm::vec3 knockDir = dist > EPS ? diff / dist : glm::vec3(0, 1, 0);
-        entity->applyImpulse(knockDir * (falloff * 10.0f) + glm::vec3(0.0f, 0.3f * falloff, 0.0f));
+        entity->applyImpulse(knockDir * (falloff * knockH) + glm::vec3(0.0f, knockV * falloff, 0.0f));
     }
 }
 

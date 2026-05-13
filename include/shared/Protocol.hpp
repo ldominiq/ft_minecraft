@@ -106,6 +106,21 @@ struct NetAccept final : public Packet {
 };
 inline AutoRegister<NetAccept> _reg_NetAccept;
 
+struct NetSetName final : public Packet {
+	static constexpr PacketType ID = PacketType::NET_SET_NAME;
+	std::string username;
+
+	NetSetName() : Packet(ID) { flags = PacketFlags::Reliable; }
+
+	void encode(BufferWriter& w) const override {
+		w.write_string(username);
+	}
+	void decode(BufferReader& r) override {
+		username = r.read_string();
+	}
+};
+inline AutoRegister<NetSetName> _reg_NetSetName;
+
 struct NetPlayerInputs final : public Packet {
     static constexpr PacketType ID = PacketType::PLAYER_INPUT;
 
@@ -276,8 +291,12 @@ struct NetEntityMove final : public Packet {
 	float yaw;
 	float pitch = 0.0f;
 
-	// bit 0 = hasHorizontalInput, bit 1 = onGround, bit 2 = armSwing event,
-	// bit 3 = "fused"/priming (creepers), bit 4 = flashlight on
+	std::string entityName = ""; //should go to a separate packet send on NetAccept to be sent only once and not take bandwidth every tick.
+	
+    // bit 0 = hasHorizontalInput, bit 1 = onGround, bit 2 = armSwing event,
+	// bit 3 = primed (creeper fuse), bit 4 = hurt event (entity took damage this tick),
+	// bit 5 = diedByExplosion (only meaningful when type == -1, i.e. the death packet),
+	// bit 6 = flashlightOn
 	uint8_t positionFlags = 0;
 
 	NetEntityMove() : Packet(ID) {}
@@ -292,6 +311,7 @@ struct NetEntityMove final : public Packet {
 		w.write_f32(yaw);
 		w.write_f32(pitch);
 		w.write_u8(positionFlags);
+		w.write_string(entityName);
     }
     void decode(BufferReader& r) override {
 		eEntityType = static_cast<EEntityTypes>(r.read_u8());
@@ -303,6 +323,7 @@ struct NetEntityMove final : public Packet {
 		yaw = r.read_f32();
 		pitch = r.read_f32();
 		positionFlags = r.read_u8();
+		entityName = r.read_string();
     }
 };
 inline AutoRegister<NetEntityMove> _reg_NetEntityMove;
