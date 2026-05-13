@@ -250,6 +250,9 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
     constexpr float kTwoPiOverThree = 2.0943951023931953f;
     const float t = lightCubeAnimTime;
 
+    lightCubeShader->setMat4("projection", projection);
+    lightCubeShader->setMat4("view", viewRot);
+
     glBindVertexArray(lightCubeVAO);
     for (unsigned int i = 0; i < 3; i++)
     {
@@ -274,8 +277,6 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
         glm::vec3 cubeCol = pointLightsOn[i] ? pointLightDiffuse[i] : glm::vec3(0.0f);
         lightCubeShader->setVec3("cubeColor", cubeCol);
         lightCubeShader->setMat4("model", model);
-        lightCubeShader->setMat4("projection", projection);
-        lightCubeShader->setMat4("view", viewRot);
         glDrawArrays(GL_TRIANGLES, 0, 36);
     }
 
@@ -290,9 +291,15 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
     GLboolean prevDepthMask;
     glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
     GLboolean prevBlend = glIsEnabled(GL_BLEND);
-    GLint prevBlendSrc, prevBlendDst;
-    glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevBlendSrc);
-    glGetIntegerv(GL_BLEND_DST_ALPHA, &prevBlendDst);
+    // Capture RGB and alpha factors separately — the caller may have set
+    // them via glBlendFuncSeparate with differing values, and restoring with
+    // plain glBlendFunc would silently collapse RGB to whatever the alpha
+    // factors were. We restore with glBlendFuncSeparate below.
+    GLint prevBlendSrcRGB, prevBlendDstRGB, prevBlendSrcAlpha, prevBlendDstAlpha;
+    glGetIntegerv(GL_BLEND_SRC_RGB,   &prevBlendSrcRGB);
+    glGetIntegerv(GL_BLEND_DST_RGB,   &prevBlendDstRGB);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevBlendSrcAlpha);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &prevBlendDstAlpha);
 
     glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
@@ -331,15 +338,14 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
             // newest segments dominate while the tail melts into the scene.
             lightCubeShader->setVec3("cubeColor", baseCol * fade * 0.7f);
             lightCubeShader->setMat4("model", model);
-            lightCubeShader->setMat4("projection", projection);
-            lightCubeShader->setMat4("view", viewRot);
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
     }
 
     // Restore prior GL state.
     if (!prevBlend) glDisable(GL_BLEND);
-    glBlendFunc(prevBlendSrc, prevBlendDst);
+    glBlendFuncSeparate(prevBlendSrcRGB,   prevBlendDstRGB,
+                        prevBlendSrcAlpha, prevBlendDstAlpha);
     glDepthMask(prevDepthMask);
 
     glBindVertexArray(0);

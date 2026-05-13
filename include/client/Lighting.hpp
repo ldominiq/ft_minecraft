@@ -392,7 +392,7 @@ private:
     // Glowing trail behind each cube. Ring buffer of the last N frame
     // positions, rendered additively in drawLightCubes() so colors bloom
     // and overlap.
-    static constexpr int kLightCubeTrailLength = 360;
+    static constexpr int kLightCubeTrailLength = 180;
     glm::vec3 lightCubeTrail[3][kLightCubeTrailLength] = {};
     int  lightCubeTrailHead = 0;
     bool lightCubeTrailInitialized = false;
