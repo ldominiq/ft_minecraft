@@ -396,6 +396,11 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
 
     shader.setFloat("seaLevel", seaLevel);
     shader.setFloat("causticTime", causticTime);
+    // Default ON; passes that render with shadows disabled (e.g., the
+    // water refraction texture) override this to 0 so caustics aren't
+    // drawn without a valid shadow gate, which would put them on
+    // underwater terrain the sun can't actually reach.
+    shader.setFloat("causticsEnabled", 1.0f);
     if (causticsTexture) {
         glActiveTexture(GL_TEXTURE0 + TextureUnits::CAUSTICS);
         glBindTexture(GL_TEXTURE_2D, causticsTexture);

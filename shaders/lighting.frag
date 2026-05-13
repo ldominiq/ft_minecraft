@@ -108,6 +108,10 @@ uniform float underwaterFogDensity;
 uniform float seaLevel;
 uniform float causticTime;
 uniform sampler2D causticsMap;
+// Off in passes that render without shadow info (water refraction), where
+// the caustic block can't gate by sun occlusion and would otherwise light
+// shadowed underwater terrain that's visible through the water surface.
+uniform float causticsEnabled;
 
 // Distance fog (sky LUT blending)
 uniform sampler2D skyLUT;
@@ -200,7 +204,7 @@ void main()
     // neighbour is water). This is stricter than "below sea level" (which
     // lit cave floors) and stricter than SkyLight (which leaks sideways
     // into caves through the chunk light map).
-    if (fs_in.WaterAbove > 0.5 && dirLight.direction.y < 0.0) {
+    if (causticsEnabled > 0.5 && fs_in.WaterAbove > 0.5 && dirLight.direction.y < 0.0) {
         float c = computeCaustic(fs_in.FragPos.xz, causticTime);
         float depthBelow = max(seaLevel - fs_in.FragPos.y, 0.0);
         float nearFade = smoothstep(0.0, 0.8, depthBelow);
@@ -211,7 +215,13 @@ void main()
         // Sun-elevation gate, matching the day/night fade used by directional light.
         float sunUp      = clamp(-dirLight.direction.y, 0.0, 1.0);
         // AO modulates so caustics don't blast through occluded crevices.
-        float strength   = c * depthFade * upFactor * sunUp * 2.0 * AmbientOcclusion;
+        // prevent the caustics to show in shadowed areas
+        float shadow = 0.0;
+        if (shadows.enabled && fs_in.SkyLight > 0.01) {
+            shadow = CSMShadowCalculation(fs_in.FragPosRel);
+        }
+        float shadowGate = 1.0 - shadow;
+        float strength   = c * depthFade * upFactor * sunUp * shadowGate * 2.0 * AmbientOcclusion;
         result += dirLight.diffuse * strength;
     }
 
