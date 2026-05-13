@@ -1158,14 +1158,16 @@ void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage,
 
 void World::trySpawnNightMobs(const std::vector<CPlayerInfo> &players)
 {
+	if (players.empty())
+		return;
+
 	// Night-time check: sun elevation is cos(skyTimeOffset * 0.1) (see Lighting.cpp).
 	// Negative elevation means the sun is below the horizon — i.e. night.
 	// Using this formulation avoids wrap-around issues as skyTimeOffset accumulates.
+	// Surface spawning is gated on night; cave spawning runs regardless so mining
+	// stays hazardous during the day too.
 	const float skyT = getSkyTimeState().skyTimeOffset;
-	if (std::cos(skyT * 0.1f) >= 0.0f)
-		return;
-	if (players.empty())
-		return;
+	const bool isNight = std::cos(skyT * 0.1f) < 0.0f;
 
 	constexpr int MAX_ZOMBIES_PER_PLAYER  = 10;
 	constexpr int MAX_CREEPERS_PER_PLAYER = 50;
@@ -1173,6 +1175,17 @@ void World::trySpawnNightMobs(const std::vector<CPlayerInfo> &players)
 	constexpr int MAX_SPAWN_DIST = 80;
 	constexpr int SCAN_TOP_Y = 200;
 	constexpr int SCAN_BOTTOM_Y = 4;
+
+	// Cave spawning parameters — closer than surface spawns so mobs actually
+	// show up near a mining player, and biased to Y bands around the player.
+	constexpr int CAVE_MIN_DIST = 16;
+	constexpr int CAVE_MAX_DIST = 48;
+	// Floor must sit at least this many blocks below the column's surface to
+	// count as a cave (rejects overhangs and shallow dirt cover).
+	constexpr int CAVE_MIN_DEPTH = 8;
+	// Vertical search band around the player
+	constexpr int CAVE_Y_BELOW = 24;
+	constexpr int CAVE_Y_ABOVE = 4;
 
 	// Count current hostile mobs.
 	int zombieCount  = 0;
@@ -1218,33 +1231,108 @@ void World::trySpawnNightMobs(const std::vector<CPlayerInfo> &players)
 		return true;
 	};
 
+	// Picks a spawn position inside a cave near the player. Runs day or night.
+	// Validates that the air pocket is genuinely below the surface (not just an overhang) before accepting.
+	auto findCaveSpawn = [&](const glm::vec3 &ppos, glm::vec3 &out) -> bool {
+		float angle = glm::radians(static_cast<float>(std::uniform_int_distribution<int>(0, 359)(spawnRng)));
+		int dist = std::uniform_int_distribution<int>(CAVE_MIN_DIST, CAVE_MAX_DIST - 1)(spawnRng);
+		int sx = static_cast<int>(std::floor(ppos.x + std::cos(angle) * dist));
+		int sz = static_cast<int>(std::floor(ppos.z + std::sin(angle) * dist));
+
+		auto block = [&](int y) { return getBlockWorld({sx, y, sz}); };
+		auto isAir = [&](int y) { return block(y) == BlockType::AIR; };
+		auto isCaveFloor = [&](int y) {
+			BlockType b = block(y);
+			// Bedrock floors would dump mobs at the world bottom; END is a non-spawnable marker.
+			return b != BlockType::END && b != BlockType::BEDROCK && isBlockSolid(b);
+		};
+
+		// Locate the column's surface (topmost solid block). If the chunk is
+		// unloaded the whole column reads as air and we bail.
+		int surfaceY = -1;
+		for (int y = SCAN_TOP_Y; y >= SCAN_BOTTOM_Y; --y) {
+			BlockType b = block(y);
+			if (b != BlockType::AIR && isBlockSolid(b)) { surfaceY = y; break; }
+		}
+		if (surfaceY < 0) return false;
+
+		const int pY = static_cast<int>(std::floor(ppos.y));
+		int yHi = std::min(surfaceY - CAVE_MIN_DEPTH, pY + CAVE_Y_ABOVE);
+		int yLo = std::max(SCAN_BOTTOM_Y, pY - CAVE_Y_BELOW);
+		if (yHi - yLo < 2) return false;
+
+		// Scan downward from a random Y in the band looking for an air pocket
+		// (2+ air blocks) sitting on a solid floor — somewhere a mob can stand.
+		int startY = std::uniform_int_distribution<int>(yLo, yHi)(spawnRng);
+		bool airAbove1 = isAir(startY + 2);
+		bool airAbove2 = isAir(startY + 1);
+		for (int y = startY; y >= yLo; --y) {
+			if (isCaveFloor(y) && airAbove1 && airAbove2 && (surfaceY - y) >= CAVE_MIN_DEPTH) {
+				glm::vec3 spawnPos(sx + 0.5f, static_cast<float>(y + 1), sz + 0.5f);
+				glm::vec3 d = spawnPos - ppos;
+				// Reject candidates right on top of the player (3D distance).
+				if (d.x * d.x + d.y * d.y + d.z * d.z < 64.0f) return false;
+				out = spawnPos;
+				return true;
+			}
+			airAbove2 = airAbove1;
+			airAbove1 = isAir(y);
+		}
+		return false;
+	};
+
 	for (auto &player : players) {
 		if (!player.movement) continue;
+		const glm::vec3 ppos = player.movement->getPosition();
+		const int playerCap = static_cast<int>(players.size());
 
-		// Zombies: unchanged rate.
-		if (zombieCount < MAX_ZOMBIES_PER_PLAYER * static_cast<int>(players.size())) {
-			for (int attempt = 0; attempt < 5; ++attempt) {
-				glm::vec3 spawnPos;
-				if (!findGroundSpawn(player.movement->getPosition(), spawnPos)) continue;
-				auto zombie = std::make_shared<Zombie>(spawnPos);
-				livingEntities.push_back(zombie);
-				zombieCount++;
-				break;
+		// Zombies: try surface (night only) then a cave spawn, so an underground
+		// player still gets one nearby spawn attempt per cycle.
+		if (zombieCount < MAX_ZOMBIES_PER_PLAYER * playerCap) {
+			bool spawned = false;
+			if (isNight) {
+				for (int attempt = 0; attempt < 5 && !spawned; ++attempt) {
+					glm::vec3 spawnPos;
+					if (!findGroundSpawn(ppos, spawnPos)) continue;
+					livingEntities.push_back(std::make_shared<Zombie>(spawnPos));
+					zombieCount++;
+					spawned = true;
+				}
+			}
+			if (!spawned && zombieCount < MAX_ZOMBIES_PER_PLAYER * playerCap) {
+				for (int attempt = 0; attempt < 5; ++attempt) {
+					glm::vec3 spawnPos;
+					if (!findCaveSpawn(ppos, spawnPos)) continue;
+					livingEntities.push_back(std::make_shared<Zombie>(spawnPos));
+					zombieCount++;
+					break;
+				}
 			}
 		}
 
-		// Creepers: lower cap AND a probability gate — only ~25% of attempts are allowed
-		// to actually result in a spawn, so creepers are clearly rarer than zombies.
-		if (creeperCount < MAX_CREEPERS_PER_PLAYER * static_cast<int>(players.size()) &&
+		// Creepers: higher cap AND a probability gate, only ~25% of cycles are
+		// allowed to spawn a creeper at all, so they stay rarer than zombies.
+		if (creeperCount < MAX_CREEPERS_PER_PLAYER * playerCap &&
 			std::uniform_int_distribution<int>(0, 3)(spawnRng) == 0)
 		{
-			for (int attempt = 0; attempt < 5; ++attempt) {
-				glm::vec3 spawnPos;
-				if (!findGroundSpawn(player.movement->getPosition(), spawnPos)) continue;
-				auto creeper = std::make_shared<Creeper>(spawnPos);
-				livingEntities.push_back(creeper);
-				creeperCount++;
-				break;
+			bool spawned = false;
+			if (isNight) {
+				for (int attempt = 0; attempt < 5 && !spawned; ++attempt) {
+					glm::vec3 spawnPos;
+					if (!findGroundSpawn(ppos, spawnPos)) continue;
+					livingEntities.push_back(std::make_shared<Creeper>(spawnPos));
+					creeperCount++;
+					spawned = true;
+				}
+			}
+			if (!spawned && creeperCount < MAX_CREEPERS_PER_PLAYER * playerCap) {
+				for (int attempt = 0; attempt < 5; ++attempt) {
+					glm::vec3 spawnPos;
+					if (!findCaveSpawn(ppos, spawnPos)) continue;
+					livingEntities.push_back(std::make_shared<Creeper>(spawnPos));
+					creeperCount++;
+					break;
+				}
 			}
 		}
 	}
