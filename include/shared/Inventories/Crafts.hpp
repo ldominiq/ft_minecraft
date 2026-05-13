@@ -64,7 +64,7 @@ constexpr std::array<std::pair<Grid, RecipeResult>, 12> orderedRecipes = {{
 		BlockType::BEGIN, MiscType::GOLD_INGOT, BlockType::BEGIN,
 		BlockType::BEGIN, MiscType::GOLD_INGOT, BlockType::BEGIN,
 		BlockType::BEGIN, MiscType::STICK, BlockType::BEGIN
-	}, {BlockType::DIRT, 1}},
+	}, {WeaponType::GOLDEN_SWORD, 1}},
 	{{
 		BlockType::BEGIN, MiscType::DIAMOND, BlockType::BEGIN,
 		BlockType::BEGIN, MiscType::DIAMOND, BlockType::BEGIN,

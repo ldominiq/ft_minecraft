@@ -977,7 +977,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			if (getBlockWorld(blockPos) == BlockType::BEACON)
 			{
 				player.movement->setSpawnPosition(blockPos + glm::ivec3(0, 1, 0));
-				player.targettedMessages.push_back("[server] Spawn point set!");
+				player.targetedMessages.push_back("[server] Spawn point set!");
 				return false;
 			}
 

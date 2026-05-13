@@ -378,7 +378,7 @@ public:
 	{
 		const ItemDef& def =
 			weapons[static_cast<ItemID>(id)
-				- static_cast<ItemID>(WeaponType::BEGIN)];
+				- static_cast<ItemID>(WeaponType::BEGIN) - 1];
 
 		return std::get<WeaponDef>(def.data);
 	}

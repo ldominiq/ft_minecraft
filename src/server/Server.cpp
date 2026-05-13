@@ -620,7 +620,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
                 player->movement->setVelocity(glm::vec3(0.0f));
                 player->movement->accumulatedFallDistance = 0.0f;
             } else {
-				player->targettedMessages.push_back("[server] Usage: /tp <x> <y> <z>");
+				player->targetedMessages.push_back("[server] Usage: /tp <x> <y> <z>");
             }
         }
 	}
@@ -764,13 +764,13 @@ void Server::sendAll()
 		sendNewlyUpdatedBlocks(p);
 		sendMessage(p);
 
-		for (const auto& msg : p.targettedMessages)
+		for (const auto& msg : p.targetedMessages)
 		{
 			NetMessage pkt;
 			pkt.message = msg;
 			sendPacketTo(pkt, p.addr);
 		}
-		p.targettedMessages.clear();
+		p.targetedMessages.clear();
 	}
 	sendEntitiesPositionDeltas();
 	world->updatedBlocks.clear();
