@@ -274,7 +274,7 @@ private:
     bool uiInteractive = false;
     // Internal flag to handle key debounce for toggling the interactive mode.
     bool uiToggleHeld = false;
-	bool showDebugWindow = true;
+	bool showDebugWindow = false;
 
 	//TODO: put in struct
 	// Debug framebuffer view toggles

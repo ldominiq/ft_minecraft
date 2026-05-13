@@ -25,6 +25,7 @@ public:
 	void addChar(char c);
 	void removeChar();
 	std::string getUsername() const { return username; }
+	void setUsername(const std::string& name) { username = name; saveUsername(); }
 
 private:
 	void onRender() override;
