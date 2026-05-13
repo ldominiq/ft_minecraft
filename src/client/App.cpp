@@ -69,6 +69,14 @@ void App::init(const std::string& serverIp) {
         image.pixels = nullptr;
     }
     
+    audio = std::make_unique<AudioManager>();
+    // If SoLoud can't open a backend (headless / no audio device / driver mismatch),
+    // drop the manager rather than leave it half-initialised — every playSfx*/update
+    // call later guards on `if (audio)`, so the game runs silent instead of crashing.
+    if (!audio->init()) {
+        std::cerr << "[Audio] disabled (init failed)" << std::endl;
+        audio.reset();
+    }
 
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
@@ -89,6 +97,7 @@ void App::init(const std::string& serverIp) {
 		if (app->mainMenu) app->mainMenu->resize(width, height);
 		if (app->multiplayerMenu) app->multiplayerMenu->resize(width, height);
 		if (app->settingsMenu) app->settingsMenu->resize(width, height);
+		if (app->controlsMenu) app->controlsMenu->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -100,9 +109,8 @@ void App::init(const std::string& serverIp) {
 	renderer = std::make_unique<Renderer>();
 
 	// ********************Water Renderer setup******************************
-	waterFramebuffer = std::make_shared<WaterFramebuffer>(screenWidth, screenHeight);
-	waterShader = std::make_shared<Shader>("shaders/water.vert", "shaders/water.frag");
-	waterRenderer = std::make_unique<WaterRenderer>(waterShader, waterFramebuffer);
+	
+	waterRenderer = std::make_unique<WaterRenderer>(screenWidth, screenHeight);
 
 	// ********************Chunk Boundary Renderer**************************
 	chunkBoundaryRenderer = std::make_unique<ChunkBoundaryRenderer>();
@@ -222,6 +230,10 @@ void App::init(const std::string& serverIp) {
 			app->multiplayerMenu->addChar(static_cast<char>(codepoint));
 			return;
 		}
+		else if (app->gameState == GameState::Settings) {
+			app->settingsMenu->addChar(static_cast<char>(codepoint));
+			return;
+		}
 
 		auto manager = app->menuManager.lock();
 		if (manager != app->chat) return ;
@@ -235,11 +247,8 @@ void App::init(const std::string& serverIp) {
 
 		// In non-Playing states, handle ESC to go back / don't close window
 		if (app->gameState != GameState::Playing) {
-			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-				if (app->gameState == GameState::Multiplayer || app->gameState == GameState::Settings)
-					app->transitionTo(GameState::MainMenu);
-			}
-			if (key == app->controlsArray[TOGGLE_FULLSCREEN] && action == GLFW_PRESS)
+
+			if (key == app->controlsArray[TOGGLE_FULLSCREEN] && action == GLFW_PRESS && !(app->gameState == GameState::Controls && app->controlsMenu->getChangeRequested()))
 				app->toggleDisplayMode();
 			app->processInputMenus(key, action);
 			return;
@@ -309,6 +318,7 @@ void App::init(const std::string& serverIp) {
 
 			if (app->gameState != GameState::Playing) {
 				manager->handleMouseClick(mouseX, mouseY, button, action);
+
 				return;
 			}
 
@@ -330,9 +340,9 @@ void App::init(const std::string& serverIp) {
 		//kinda weird way to do it.
 		uint8_t mouseButtons = 0;
 		if (action == GLFW_PRESS) {
-			if (button == GLFW_MOUSE_BUTTON_LEFT) {
+			if (button == app->controlsArray[DESTROY_BLOCK]) {
 				mouseButtons |= IN_LEFT_CLICK;
-			} else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+			} else if (button == app->controlsArray[PLACE_BLOCK]) {
 				mouseButtons |= IN_RIGHT_CLICK;
 			}
 		}
@@ -341,6 +351,24 @@ void App::init(const std::string& serverIp) {
 
 		if (mouseButtons && app->camera && app->camera->getPlayer())
 			app->camera->getPlayer()->triggerArmSwing();
+
+		// Self-feedback on left-click: play the attack swing ONLY when the click would actually
+		// hit a mob/player. Server resolves the hit via the same getTarget raycast at attack-tick
+		// time, so client and server agree (modulo ~1 tick of network desync, acceptable for sfx).
+		// Empty swings stay silent; vanilla does the same. The victim's hurt sound (bit 0x10) is
+		// what tells the player "you connected" and arrives from the server moments later.
+		if ((mouseButtons & IN_LEFT_CLICK) && app->audio && app->renderer && app->camera) {
+			auto local = app->camera->getPlayer();
+			if (local) {
+				glm::ivec3 hitBlock{}, faceNormal{};
+				LivingEntity* victim = nullptr;
+				if (app->renderer->getTarget(*local, hitBlock, faceNormal, victim) == TargetType::LivingEntity
+				    && victim != nullptr
+				    && victim != local.get()) {
+					app->audio->playSfx2D(SoundId::Player_AttackSwing, 0.7f);
+				}
+			}
+		}
 
 		NetPlayerMouseInputs pkt;
 		pkt.mouseButtons = mouseButtons;
@@ -369,8 +397,6 @@ void App::init(const std::string& serverIp) {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 460");
 
-	loadControlsFromFile();
-
 	renderer->livingEntitiesManager.add(camera->getPlayer());
 
     // Generate query pools
@@ -390,6 +416,8 @@ void App::init(const std::string& serverIp) {
 	mainMenu = std::make_shared<MainMenu>(screenWidth, screenHeight, menuDirtTex);
 	multiplayerMenu = std::make_shared<MultiplayerMenu>(screenWidth, screenHeight, menuDirtTex);
 	settingsMenu = std::make_shared<SettingsMenu>(screenWidth, screenHeight, menuDirtTex);
+	controlsMenu = std::make_shared<ControlsMenu>(screenWidth, screenHeight, menuDirtTex);
+	controlsArray = controlsMenu->getControlsArray();
 
 	mainMenu->setButtonCallback([this](int btn) {
 		switch (btn) {
@@ -422,6 +450,13 @@ void App::init(const std::string& serverIp) {
 
 	settingsMenu->setDoneCallback([this]() {
 		transitionTo(GameState::MainMenu);
+	});
+	settingsMenu->setChangeControlsCallback([this]() {
+		transitionTo(GameState::Controls);
+	});
+
+	controlsMenu->setSaveCallback([this]() {
+		transitionTo(GameState::Settings);
 	});
 
 	transitionTo(GameState::MainMenu);
@@ -481,6 +516,43 @@ void App::setUdpClientPacketCallback()
 			case PacketType::NET_ENTITY_MOVE: {
 				auto& p = static_cast<NetEntityMove&>(*pkt);
 				renderer->onEntity(p, clientTime);
+				// Explosion death (type==-1, bit 0x20): fire immediately so the boom is in
+				// sync with the visual blast and so the suppression window is pushed before
+				// the same burst's MODIFIED_BLOCK_DATA packets play their crater sounds.
+				if (audio
+				    && p.eEntityType == EEntityTypes::LIVING_ENTITIES
+				    && p.type == static_cast<uint16_t>(-1)
+				    && (p.positionFlags & 0x20)) {
+					glm::dvec3 epos(p.positionX, p.positionY, p.positionZ);
+					glm::dvec3 listenerPos = camera ? camera->getEyePosD() : epos;
+					const void* key = nullptr;
+					for (const auto& le : renderer->livingEntities) {
+						if (le && le->getID() == p.entityID) { key = le.get(); break; }
+					}
+					audio->onCreeperExploded(key, epos, listenerPos);
+				}
+				// Hurt one-shot (server bit 0x10). Skip on the death packet (type == -1) — the
+				// AudioManager's death-edge sweep handles that case with the proper death sfx.
+				if (audio
+				    && p.eEntityType == EEntityTypes::LIVING_ENTITIES
+				    && p.type != static_cast<uint16_t>(-1)
+				    && (p.positionFlags & 0x10)) {
+					glm::dvec3 epos(p.positionX, p.positionY, p.positionZ);
+					audio->playSfx3D(
+						AudioManager::hurtSoundFor(static_cast<LivingEntityType>(p.type)),
+						epos, glm::vec3(0.0f), 1.0f);
+				}
+				// Item pickup: server tags the entity-removal packet for an ITEMS entity by
+				// setting type == -1 and rewriting the position to the picker's location
+				// (see World::pickupItem). Play the generic block-pop one-shot there so both
+				// the local player and nearby remote players get audible feedback. 3D so it
+				// attenuates if it was someone else picking up an item across the map.
+				if (audio
+				    && p.eEntityType == EEntityTypes::ITEMS
+				    && p.type == static_cast<uint16_t>(-1)) {
+					glm::dvec3 epos(p.positionX, p.positionY, p.positionZ);
+					audio->playSfx3D(SoundId::Block_Pop, epos, glm::vec3(0.0f), 0.6f);
+				}
 				break;
 			}
 
@@ -496,7 +568,59 @@ void App::setUdpClientPacketCallback()
 
 			case PacketType::MODIFIED_BLOCK_DATA: {
 				auto& p = static_cast<NetModifiedBlockData&>(*pkt);
+				// Look up the OLD block before applying the chunk update so we can pick the
+				// right break/place sound (break = use the old block's material).
+				BlockType oldBlock = renderer->getBlockWorld({p.x, p.y, p.z});
+				BlockType newBlock = static_cast<BlockType>(p.blockType);
 				renderer->updateChunk(p);
+
+				if (audio) {
+					// Stay inside kAttenMax (24m). LINEAR_DISTANCE gives 0 past it, so SoLoud
+					// would kill the voice mid-buffer with an audible click on every distant
+					// block update (water spread, far players mining, etc).
+					glm::dvec3 center(p.x + 0.5, p.y + 0.5, p.z + 0.5);
+					constexpr double kBlockSfxMaxDist = 20.0;
+					glm::dvec3 listener = camera ? camera->getEyePosD() : glm::dvec3(center);
+					glm::dvec3 diff = center - listener;
+					double d2 = glm::dot(diff, diff);
+					if (d2 > kBlockSfxMaxDist * kBlockSfxMaxDist) {
+						break;
+					}
+
+					if (audio->blockSfxSuppressed(center))
+						break;
+					// Same-burst defense: server's explodeAt() carves blocks before damaging
+					// entities, so crater MODIFIED_BLOCK_DATA packets land before the death
+					// packet that opens the suppression window. Primed creepers don't otherwise
+					// break blocks, so this check is safe.
+					{
+						bool nearPrimed = false;
+						constexpr double kPrimedSuppressR2 = 6.0 * 6.0;
+						for (const auto& le : renderer->livingEntities) {
+							if (!le) continue;
+							auto cc = std::dynamic_pointer_cast<ClientCreeper>(le);
+							if (!cc || !cc->clientPrimed) continue;
+							glm::dvec3 dd = le->getPositionD() - center;
+							if (glm::dot(dd, dd) <= kPrimedSuppressR2) { nearPrimed = true; break; }
+						}
+						if (nearPrimed) break;
+					}
+
+					// Liquid spread (water/lava) is a constant background of MODIFIED_BLOCK_DATA
+					// packets; playing the default Stone break/place for them is the wrong sound
+					// AND noisy. Skip the audio for liquid changes; everything else falls through.
+					auto isLiquid = [](BlockType b) {
+						return b == BlockType::WATER || b == BlockType::LAVA;
+					};
+
+					if (newBlock == BlockType::AIR && oldBlock != BlockType::AIR) {
+						if (!isLiquid(oldBlock))
+							audio->playSfx3D(AudioManager::breakFor(oldBlock), center);
+					} else if (oldBlock == BlockType::AIR && newBlock != BlockType::AIR) {
+						if (!isLiquid(newBlock))
+							audio->playSfx3D(AudioManager::placeFor(newBlock), center);
+					}
+				}
 				break;
 			}
 
@@ -508,9 +632,18 @@ void App::setUdpClientPacketCallback()
 
             case PacketType::NET_IMGUI: {
                 auto& p = static_cast<NetImGui&>(*pkt);
+                // Push every biome packet to the audio manager
+                // We can't gate on p.currentBiome != currentBiome here because
+                // the very first packet may match the default 0 (PLAINS) and skip
+                // starting the music entirely.
+                if (audio) audio->setBiome(static_cast<BiomeType>(p.currentBiome));
                 currentBiome = p.currentBiome;
                 currentTerrainHeight = p.terrainHeight;
                 currentSeaLevel = p.seaLevel;
+                const int waterSurfaceY = p.seaLevel + 1;
+                if (waterRenderer) waterRenderer->setSeaLevel(waterSurfaceY);
+                ChunkRenderer::setSeaLevel(waterSurfaceY);
+                if (lighting) lighting->setSeaLevel(static_cast<float>(waterSurfaceY));
                 currentWorldSeed = p.worldSeed;
                 currentContinentalness = p.continentalness;
                 currentErosion = p.erosion;
@@ -584,8 +717,16 @@ void App::loadResources() {
     // Load shaders and textures
     textureShader = std::make_shared<Shader>("shaders/lighting.vert", "shaders/lighting.frag");
     
-    // Load individual block textures into a texture array
-    textureManager.loadResourcePack("assets");
+    // Load individual block textures into a texture array. A false return
+    // means the resource pack is missing/empty; TextureManager still builds a
+    // checker-only atlas so we can keep launching (everything renders
+    // magenta), but flag it loudly here so the cause is obvious.
+    if (!textureManager.loadResourcePack("assets")) {
+        std::cerr << "[App] Resource pack 'assets' missing or empty, "
+                     "the world will render entirely as the missing-texture "
+                     "checker. Restore assets/textures/block/ and "
+                     "assets/textures/item/ to fix." << std::endl;
+    }
 
     activeShader = textureShader;
 
@@ -660,6 +801,9 @@ void App::render() {
 			auto manager = menuManager.lock();
 			if (manager) manager->render();
 
+			// Pause/keep music silent while in menus. camera/renderer may be null pre-spawn.
+			if (audio && camera && renderer) audio->update(deltaTime, false, *camera, *renderer);
+
 			glfwSwapBuffers(window);
 			glfwPollEvents();
 			continue;
@@ -724,6 +868,9 @@ void App::render() {
 		udpClient->reliabilityKeepalive();
 		udpClient->receivePacket();
         camera->flushPendingSnapshot(*renderer, clientTick);
+
+        // Per-frame audio update: refresh listener pose, drive music + footstep triggers.
+        if (audio) audio->update(deltaTime, gameState == GameState::Playing, *camera, *renderer);
 
         if (clientConnected && udpClient) {
             float now = static_cast<float>(glfwGetTime());
@@ -907,11 +1054,23 @@ void App::render() {
             ssaoQueryIssuedThisFrame[currentQueryIndex] = false;
         }
 
-		static float waterMoveOffset = waterRenderer->getWaterMoveFactor();
-		static float waveSpeed = waterRenderer->waveStrength;
-		waterMoveOffset += waveSpeed * deltaTime;
-		if (waterMoveOffset > 1.0f) waterMoveOffset = 0.0f;
+		static float waterMoveOffset  = waterRenderer->getWaterMoveFactor();
+		static float waterMoveOffset2 = waterRenderer->getWaterMoveFactor2();
+		const float scrollSpeed1 = 0.012f; // ~83s per cycle
+		const float scrollSpeed2 = 0.0078f; // ~128s per cycle (incommensurate)
+		waterMoveOffset  += scrollSpeed1 * deltaTime;
+		waterMoveOffset2 += scrollSpeed2 * deltaTime;
+		if (waterMoveOffset  > 1.0f) waterMoveOffset  -= 1.0f;
+		if (waterMoveOffset2 > 1.0f) waterMoveOffset2 -= 1.0f;
 		waterRenderer->setWaterMoveFactor(waterMoveOffset);
+		waterRenderer->setWaterMoveFactor2(waterMoveOffset2);
+		// Non-wrapping wave phase — drives Gerstner displacement in the
+		// vertex shader. Independent of waterMoveOffset (which wraps for
+		// dudv UV scrolling).
+		waterRenderer->advanceWaveTime(deltaTime);
+		// Share the same phase clock with caustics so the ripples on
+		// underwater terrain swim in lockstep with the surface waves.
+		if (lighting) lighting->setCausticTime(waterRenderer->getWaveTime());
 
         glBeginQuery(GL_TIME_ELAPSED, queryDrawWaterReflectionPool[currentQueryIndex]);
         
@@ -956,10 +1115,19 @@ void App::render() {
 
     	// Render water with proper shader setup
         glBeginQuery(GL_TIME_ELAPSED, queryRenderWaterPool[currentQueryIndex]);
-        if (waterVisible) {
+        const bool placedWaterVisible = renderer->hasVisiblePlacedWater();
+        if (waterVisible || placedWaterVisible) {
             const float chunkDist = renderer->getMaxRenderedChunkDist();
             waterRenderer->setFogParams(fogEnabled, chunkDist * fogStartFraction, chunkDist, fogStrength);
-    	    waterRenderer->renderWaterSurface(projection);
+            // Ocean surface — needs the planar reflection/refraction textures
+            // produced by the passes above; only run when there's any to draw.
+            if (waterVisible)
+                waterRenderer->renderWaterSurface(projection);
+            // Placed/spread water surface — sky-reflection shader, independent
+            // of any global plane. Drawn after ocean so its own depth writes
+            // sort against ocean fragments at the same Y.
+            if (placedWaterVisible)
+                waterRenderer->renderPlacedWaterSurface(projection);
         }
         glEndQuery(GL_TIME_ELAPSED);
 
@@ -992,13 +1160,13 @@ void App::render() {
     		// Dynamically build GUI textures based on debug flags
     		guis.clear();
     		if (showReflectionTexture) {
-    			guis.emplace_back(waterFramebuffer->getReflectionTexture(), glm::vec2(0.48f, 0.75f), glm::vec2(0.2f, 0.2f));
+    			guis.emplace_back(waterRenderer->getReflectionTexture(), glm::vec2(0.48f, 0.75f), glm::vec2(0.2f, 0.2f));
     		}
     		if (showRefractionTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionTexture(), glm::vec2(0.48f, 0.3f), glm::vec2(0.2f, 0.2f), true);
+    			guis.emplace_back(waterRenderer->getRefractionTexture(), glm::vec2(0.48f, 0.3f), glm::vec2(0.2f, 0.2f), true);
     		}
     		if (showRefractionDepthTexture) {
-    			guis.emplace_back(waterFramebuffer->getRefractionDepthTexture(), glm::vec2(0.48f, -0.15f), glm::vec2(0.2f, 0.2f), true, true);
+    			guis.emplace_back(waterRenderer->getRefractionDepthTexture(), glm::vec2(0.48f, -0.15f), glm::vec2(0.2f, 0.2f), true, true);
     		}
     		if (showNormalsTexture && renderTypeFramebuffer) {
     			guis.emplace_back(renderTypeFramebuffer->getNormalsTexture(), glm::vec2(0.05f, 0.75f), glm::vec2(0.2f, 0.2f), true);
@@ -1072,7 +1240,7 @@ void App::render() {
 
 		if (playerListVisible && clientConnected) {
 			std::vector<PlayerEntry> entries;
-			entries.push_back({ localPlayerListId, true, pingMs });
+			entries.push_back({ localPlayerListId, settingsMenu->getUsername(), true, pingMs });
 			for (auto& le : renderer->livingEntities) {
 				if (!le || le->getLivingEntityType() != PLAYER) continue;
 				if (le->getID() == localClientId) continue;
@@ -1084,7 +1252,8 @@ void App::render() {
 				auto pit = entityToPlayerListId.find(le->getID());
 				if (pit != entityToPlayerListId.end())
 					plId = pit->second;
-				entries.push_back({ plId, false, remPing });
+				std::string name = le->getName();
+				entries.push_back({ plId, name, false, remPing });
 			}
 			playerListHUD->update(entries);
 			playerListHUD->render();
@@ -1403,8 +1572,8 @@ void App::debugWindow() {
             }
 
             glm::vec3 pos = camera->getPlayer()->getPosition();
-            int wx = static_cast<int>(std::floor(pos.x));
-            int wz = static_cast<int>(std::floor(pos.z));
+            double wx = static_cast<double>(std::floor(pos.x));
+            double wz = static_cast<double>(std::floor(pos.z));
             int wy = static_cast<int>(std::floor(pos.y));
             ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
             if (!uiInteractive) {
@@ -1482,7 +1651,7 @@ void App::debugWindow() {
 
                     // World
                     ImGui::SeparatorText("World");
-                    ImGui::Text("Position:  x=%d  y=%d  z=%d", wx, wy, wz);
+                    ImGui::Text("Position:  x=%f  y=%d  z=%f", wx, wy, wz);
                     ImGui::Text("Seed: %d", currentWorldSeed);
                     ImGui::Text("Height: %d  (Sea Level: %d)", currentTerrainHeight, currentSeaLevel);
                     {
@@ -1509,20 +1678,20 @@ void App::debugWindow() {
 
                     // Teleport (collapsible)
                     if (ImGui::CollapsingHeader("Teleport")) {
-                        static int tpX = 5000000;
+                        static double tpX = 5000000;
                         static int tpY = 100;
-                        static int tpZ = 0;
+                        static double tpZ = 0;
 
                         // Negative width = "extend to N pixels from the right edge",
                         // so the field grows/shrinks with the window while leaving
                         // room for the label and the +/- steppers.
                         const float tpFieldTrailing = -60.0f;
                         ImGui::SetNextItemWidth(tpFieldTrailing);
-                        ImGui::InputInt("X##tp", &tpX);
+                        ImGui::InputDouble("X##tp", &tpX);
                         ImGui::SetNextItemWidth(tpFieldTrailing);
                         ImGui::InputInt("Y##tp", &tpY);
                         ImGui::SetNextItemWidth(tpFieldTrailing);
-                        ImGui::InputInt("Z##tp", &tpZ);
+                        ImGui::InputDouble("Z##tp", &tpZ);
 
                         if (ImGui::Button("Copy current")) {
                             tpX = wx; tpY = wy; tpZ = wz;
@@ -2201,6 +2370,61 @@ void App::debugWindow() {
 
                 // ── Settings ─────────────────────────────────────────────
                 if (ImGui::BeginTabItem("Settings")) {
+                    // Audio sliders are skipped entirely when init() failed and we nulled
+                    // the manager — the rest of the Settings tab is unrelated and still useful.
+                    if (audio) {
+                    float masterVolume = audio->getMasterVolume();
+                    float musicVolume = audio->getMusicVolume();
+                    float sfxVolume = audio->getSfxVolume();
+                    if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f, "%.2f"))
+                        audio->setMasterVolume(masterVolume);
+                    if (ImGui::SliderFloat("Music Volume", &musicVolume, 0.0f, 1.0f, "%.2f"))
+                        audio->setMusicVolume(musicVolume);
+                    if (ImGui::SliderFloat("SFX Volume", &sfxVolume, 0.0f, 1.0f, "%.2f"))
+                        audio->setSfxVolume(sfxVolume);
+
+                    // Per-SoundId multipliers (0..2), grouped so the tab isn't 40 flat sliders.
+                    auto soundSliders = [&](const char* groupName, std::initializer_list<SoundId> ids) {
+                        if (ImGui::TreeNode(groupName)) {
+                            for (SoundId id : ids) {
+                                float v = audio->getSfxScale(id);
+                                if (ImGui::SliderFloat(AudioManager::sfxName(id), &v, 0.0f, 2.0f, "%.2f"))
+                                    audio->setSfxScale(id, v);
+                            }
+                            ImGui::TreePop();
+                        }
+                    };
+                    if (ImGui::CollapsingHeader("Per-sound volumes")) {
+                        soundSliders("Footsteps", {
+                            SoundId::Footstep_Grass, SoundId::Footstep_Stone, SoundId::Footstep_Wood,
+                            SoundId::Footstep_Sand, SoundId::Footstep_Snow, SoundId::Footstep_Gravel,
+                            SoundId::Footstep_Leaves, SoundId::Footstep_Water,
+                        });
+                        soundSliders("Block break", {
+                            SoundId::Break_Stone, SoundId::Break_Wood, SoundId::Break_Dirt,
+                            SoundId::Break_Sand, SoundId::Break_Gravel, SoundId::Break_Leaves,
+                            SoundId::Break_Snow,
+                        });
+                        soundSliders("Block place", {
+                            SoundId::Place_Stone, SoundId::Place_Wood, SoundId::Place_Dirt,
+                            SoundId::Place_Sand, SoundId::Place_Gravel, SoundId::Place_Leaves,
+                            SoundId::Place_Snow, SoundId::Block_Pop,
+                        });
+                        soundSliders("Mobs", {
+                            SoundId::Zombie_Idle, SoundId::Zombie_Hurt, SoundId::Zombie_Death,
+                            SoundId::Zombie_Step,
+                            SoundId::Creeper_Idle, SoundId::Creeper_Hurt, SoundId::Creeper_Death,
+                            SoundId::Creeper_Fuse, SoundId::Creeper_Explode,
+                        });
+                        soundSliders("Player", {
+                            SoundId::Player_Jump, SoundId::Player_Splash, SoundId::Player_Swim,
+                            SoundId::Player_AttackSwing, SoundId::Player_FallSmall,
+                            SoundId::Player_FallBig, SoundId::Player_Hurt,
+                        });
+                        soundSliders("UI", { SoundId::UI_Click });
+                    }
+                    } // if (audio)
+
                     if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
                         style._NextFrameFontSizeBase = style.FontSizeBase;
                     ImGui::Separator();
@@ -2209,6 +2433,22 @@ void App::debugWindow() {
                     {
                         NetMessage pkt;
                         pkt.message = spectator ? "/gamemode survival" : "/gamemode spectator";
+                        udpClient->sendPacket(pkt);
+                    }
+
+                    ImGui::Separator();
+                    ImGui::Text("Debug spawn");
+                    static int debugSpawnCount = 5;
+                    ImGui::SliderInt("Count##spawn", &debugSpawnCount, 1, 50);
+                    if (ImGui::Button("Spawn Zombies")) {
+                        NetMessage pkt;
+                        pkt.message = "/summon zombie " + std::to_string(debugSpawnCount);
+                        udpClient->sendPacket(pkt);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Spawn Creepers")) {
+                        NetMessage pkt;
+                        pkt.message = "/summon creeper " + std::to_string(debugSpawnCount);
                         udpClient->sendPacket(pkt);
                     }
                     ImGui::EndTabItem();
@@ -2350,6 +2590,9 @@ bool App::connectToServer(const std::string& ip) {
 			multiplayerMenu->setErrorMessage(std::string("Could not connect: ") + e.what());
 		return false;
 	}
+
+	udpClient->sendConnect(settingsMenu->getUsername());
+
 	serverIp = ip;
 	setUdpClientPacketCallback();
 	return true;
@@ -2371,6 +2614,10 @@ void App::transitionTo(GameState newState) {
 			menuManager = settingsMenu;
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			break;
+		case GameState::Controls:
+			menuManager = controlsMenu;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
 		case GameState::Playing:
 			menuManager.reset();
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -2380,7 +2627,6 @@ void App::transitionTo(GameState newState) {
 }
 
 void App::cleanup() {
-
     // Shutdown ImGui before terminating GLFW
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -2397,9 +2643,9 @@ void App::cleanup() {
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
 
-	if (udpClient) {
+	if (udpClient && clientConnected) {
 		NetDisconnect pkt;
-		pkt.username = "Steve";
+		pkt.username = settingsMenu ? settingsMenu->getUsername() : "";
 		udpClient->sendPacket(pkt);
 	}
 
@@ -2408,78 +2654,18 @@ void App::cleanup() {
 	mainMenu.reset();
 	multiplayerMenu.reset();
 	settingsMenu.reset();
+	controlsMenu.reset();
 	if (menuDirtTex) {
 		glDeleteTextures(1, &menuDirtTex);
 		menuDirtTex = 0;
 	}
 
+    if (audio) {
+        audio->shutdown();
+        audio.reset();
+    }
+
     glfwTerminate();
-    saveControls();
-}
-
-void App::loadControlsDefaults() {
-	controlsArray[FORWARD]				= GLFW_KEY_W;
-	controlsArray[BACKWARD]        		= GLFW_KEY_S;
-	controlsArray[LEFT]					= GLFW_KEY_A;
-	controlsArray[RIGHT]				= GLFW_KEY_D;
-    controlsArray[UP]					= GLFW_KEY_SPACE;
-    controlsArray[DOWN]					= GLFW_KEY_LEFT_SHIFT;
-    controlsArray[LEFT_CLICK]			= GLFW_MOUSE_BUTTON_LEFT;
-    controlsArray[TOGGLE_FULLSCREEN]	= GLFW_KEY_F11;
-    controlsArray[TOGGLE_WIREFRAME]		= GLFW_KEY_F1;
-    controlsArray[TOGGLE_SHADER]		= GLFW_KEY_F2;
-    controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_F6;
-    controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
-    controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
-	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
-	controlsArray[PLAYER_LIST]			= GLFW_KEY_TAB;
-	
-	controlsArray[HOTBAR_1]				= GLFW_KEY_1;
-	controlsArray[HOTBAR_2]				= GLFW_KEY_2;
-	controlsArray[HOTBAR_3]				= GLFW_KEY_3;
-	controlsArray[HOTBAR_4]				= GLFW_KEY_4;
-	controlsArray[HOTBAR_5]				= GLFW_KEY_5;
-	controlsArray[HOTBAR_6]				= GLFW_KEY_6;
-	controlsArray[HOTBAR_7]				= GLFW_KEY_7;
-	controlsArray[HOTBAR_8]				= GLFW_KEY_8;
-	controlsArray[HOTBAR_9]				= GLFW_KEY_9;
-}
-
-void App::loadControlsFromFile(const char* filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        loadControlsDefaults();
-        return;
-    }
-
-    // Initialize defaults first
-    loadControlsDefaults();
-
-    std::string line;
-    while (std::getline(file, line)) {
-        std::istringstream iss(line);
-        std::string keyName;
-        int keyValue;
-        if (!(iss >> keyName >> keyValue)) continue;
-
-        for (int i = 0; i < CONTROL_COUNT; ++i) {
-            if (keyName == controlNames[i]) {
-                controlsArray[i] = keyValue;
-                break;
-            }
-        }
-    }
-}
-
-void App::saveControls(const char* filename) {
-    std::ofstream file(filename);
-    if (!file.is_open()) return; // handle errors as you want
-
-    for (int i = 0; i < CONTROL_COUNT; ++i) {
-        file << controlNames[i] << " " << controlsArray[i] << "\n";
-    }
-
-	file << "\n\n# see 'https://www.glfw.org/docs/latest/group__keys.html' for key values" << '\n';
 }
 
 NetPlayerInputs App::buildPlayerInputsPacket()
@@ -2537,7 +2723,7 @@ void App::processInputMenus(int key, int action) {
 	if (gameState == GameState::Multiplayer) {
 		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			multiplayerMenu->removeChar();
-		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
+		else if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
 			if (multiplayerMenu->getIpAddress().empty()) {
 				multiplayerMenu->setErrorMessage("Please enter a server address.");
 				return;
@@ -2548,8 +2734,25 @@ void App::processInputMenus(int key, int action) {
 			multiplayerMenu->setErrorMessage("Connecting...");
 			connectPending = true;
 			connectStartTime = static_cast<float>(glfwGetTime());
-		}
+		} else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::MainMenu);
+
 		return;
+	}
+	else if (gameState == GameState::Settings)
+	{
+		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
+			settingsMenu->removeChar();
+		else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::MainMenu);
+	}
+	else if (gameState == GameState::Controls)
+	{
+		//just go back to settings menu on escape for now. TODO : make a proper controls menu and handle input there.
+		if (controlsMenu->changeControl(key))
+			controlsArray = controlsMenu->getControlsArray();
+		else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::Settings);
 	}
 
 	if (gameState != GameState::Playing) return;
@@ -2566,7 +2769,7 @@ void App::processInputMenus(int key, int action) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 	//close inventory with E too.
-	if (manager && manager == inventoryUI && key == GLFW_KEY_E && action == GLFW_PRESS)
+	if (manager && manager == inventoryUI && key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
 	{
 		menuManager.reset();
 		if (!uiInteractive)
@@ -2596,7 +2799,7 @@ void App::processInputMenus(int key, int action) {
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 			menuManager = chat;
-		if (key == GLFW_KEY_E && action == GLFW_PRESS)
+		if (key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
 		{
 			menuManager = inventoryUI;
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);

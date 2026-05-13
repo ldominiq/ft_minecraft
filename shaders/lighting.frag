@@ -101,6 +101,11 @@ uniform vec3 underwaterTintColor;
 uniform vec3 underwaterFogColor;
 uniform float underwaterFogDensity;
 
+// caustics
+uniform float seaLevel;
+uniform float causticTime;
+uniform sampler2D causticsMap;
+
 // Distance fog (sky LUT blending)
 uniform sampler2D skyLUT;
 uniform float skyExposure;
@@ -110,6 +115,17 @@ uniform float fogStrength; // exponent: 1=linear ramp, >1=fog concentrated at ed
 uniform bool fogEnabled;
 
 #include "sky_common.glsl"
+
+// Caustics from a texture (assets/textures/caustics.jpg). Two layers panning
+// in different directions and at different scales
+float computeCaustic(vec2 worldXZ, float t) {
+    float ts = t * 0.04;
+    vec2 uv1 = worldXZ * 0.06 + vec2( ts,  ts * 0.7);
+    vec2 uv2 = worldXZ * 0.10 + vec2(-ts * 0.6, ts * 0.4);
+    float c1 = texture(causticsMap, uv1).r;
+    float c2 = texture(causticsMap, uv2).r;
+    return max(c1, c2);
+}
 
 float near = 0.1;
 float far  = 100.0;
@@ -171,6 +187,22 @@ void main()
         result += CalcPointLight(pointLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
     // phase 3: spot light
     result += CalcSpotLight(spotLight, norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
+
+    // Caustics
+    if (fs_in.FragPos.y < seaLevel && dirLight.direction.y < 0.0) {
+        float c = computeCaustic(fs_in.FragPos.xz, causticTime);
+        float depthBelow = seaLevel - fs_in.FragPos.y;
+        float nearFade = smoothstep(0.0, 0.8, depthBelow);
+        float farFade  = clamp(1.0 - depthBelow / 20.0, 0.0, 1.0);
+        float depthFade = nearFade * farFade;
+        // Only upward-facing surfaces receive caustics; cave ceilings get nothing.
+        float upFactor   = max(norm.y, 0.0);
+        // Sun-elevation gate, matching the day/night fade used by directional light.
+        float sunUp      = clamp(-dirLight.direction.y, 0.0, 1.0);
+        // AO modulates so caustics don't blast through occluded crevices.
+        float strength   = c * depthFade * upFactor * sunUp * 2.0 * AmbientOcclusion;
+        result += dirLight.diffuse * strength;
+    }
 
     if (renderType == 1) {
         FragColor = vec4(norm * 0.5 + 0.5, 1.0); // Visualize normals

@@ -263,6 +263,8 @@ public:
     void setUnderwaterTintColor(const glm::vec3 &tint) { underwaterTintColor = tint; };
     void setUnderwaterFogColor(const glm::vec3 &color) { underwaterFogColor = color; };
     void setUnderwaterFogDensity(const float density) { underwaterFogDensity = density; };
+    void setSeaLevel(const float y) { seaLevel = y; }
+    void setCausticTime(const float t) { causticTime = t; }
 
     void setPointLightEnabled(int index, bool enabled);
     void setPointLightPosition(int index, const glm::vec3& pos);
@@ -416,7 +418,11 @@ private:
     float MIN_BIAS = 0.001;
     float MAX_BIAS = 0.005;
 
-    float seaLevel = 64.0f;
+    float seaLevel = 65.0f;
+    // Caustics animation phase. Driven from outside (App passes
+    // WaterRenderer::getWaveTime()) so caustic ripples are visually coherent
+    float causticTime = 0.0f;
+    GLuint causticsTexture = 0;
 
     // DEBUG
     bool showShadowMap = false;
