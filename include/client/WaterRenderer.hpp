@@ -80,6 +80,10 @@ public:
     GLuint getRefractionTexture()      const { return fbos->getRefractionTexture(); }
     GLuint getRefractionDepthTexture() const { return fbos->getRefractionDepthTexture(); }
 
+    void setHDR(bool enabled) {
+        fbos->setHDR(enabled);
+    }
+
 private:
     std::unique_ptr<Shader> waterShader;
     std::unique_ptr<Shader> placedWaterShader;

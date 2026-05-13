@@ -2139,8 +2139,8 @@ void App::debugWindow() {
                                 // color space — otherwise HDR scene radiance gets clamped to
                                 // [0,1] in those FBOs and water.frag then samples LDR values
                                 // back into the HDR scene buffer.
-                                if (waterFramebuffer)
-                                    waterFramebuffer->setHDR(hdrEnabled);
+                                if (waterRenderer)
+                                    waterRenderer->setHDR(hdrEnabled);
                                 // When flipping back to LDR, pull exposure back to a sane
                                 // manual value so the cloud composite (LDR path) doesn't
                                 // inherit a stale auto-exp value.
