@@ -828,6 +828,8 @@ void App::render() {
 
 		if (camera)
 			camera->updateSmoothing(deltaTime);
+		if (camera && renderer)
+			camera->updateThirdPersonCollision(*renderer, deltaTime);
 
 		NetPlayerInputs inputs = buildPlayerInputsPacket();
 		auto manager = menuManager.lock();
