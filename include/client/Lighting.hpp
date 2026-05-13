@@ -100,6 +100,14 @@ public:
 
     void renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const;
 
+    // Post-terrain pass: samples (sceneColor, sceneDepth, cloudTex) and composites
+    // clouds over the scene using per-pixel depth comparison. Draws into the currently
+    // bound framebuffer (FBO=0 in the typical case).
+    void compositeCloudsToBackbuffer(GLuint sceneColorTex, GLuint sceneDepthTex,
+                                     const glm::mat4& view, const glm::mat4& projection,
+                                     const glm::vec3& cameraPosWorld,
+                                     const glm::vec2& resolution) const;
+
     // CSM
     static std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
     glm::mat4 getLightSpaceMatrix(const float nearPlane, const float farPlane, const glm::mat4& view) const;
@@ -282,6 +290,7 @@ private:
     std::unique_ptr<Shader> lightCubeShader;
     std::shared_ptr<Shader> debugFBOShader;
     std::shared_ptr<Shader> cloudShader;
+    std::shared_ptr<Shader> cloudCompositeShader;
 
     // Sky scattering LUT
     std::unique_ptr<SkyLUT> skyLUT;
@@ -337,19 +346,21 @@ private:
 
     // Cloud controls
     bool cloudsEnabled = true;
-    float cloudDensity = 0.08f; // overall cloud density (increased for more visible clouds)
+    float cloudLayerMinY = 260.0f; // cloud layer altitude (shared between cloud march and sky depth composite)
+    float cloudLayerMaxY = 310.0f;
+    float cloudDensity = 0.135f; // overall cloud density (increased for more visible clouds)
     float cloudSigmaT = 2.0f; // extinction coefficient (lower = less absorption, brighter clouds)
     glm::vec3 cloudAlbedo = glm::vec3(1.0f); // cloud albedo (reflectivity)
     float cloudStepCount = 48.0f; // number of steps (lower for performance, still good quality)
 
-    float cloudSigmaS = 2.0f; // scattering coefficient
+    float cloudSigmaS = 3.6f; // scattering coefficient
     float cloudPhaseG = 0.4f; // phase function (lower = more uniform scattering, less directional)
 
     int cloudDownscale = 4; // downscaling factor for cloud rendering (higher = faster but blurrier)
 
-    float cloudEdgeFeather = 8.0f;      // smaller feather = sharper edges
-    float cloudNoiseScale = 0.005f;     // lower frequency = bigger, chunkier clouds
-    float cloudNoiseContrastLo = 0.58f; // tighter contrast range for more defined shapes
+    float cloudEdgeFeather = 10.0f;      // smaller feather = sharper edges
+    float cloudNoiseScale = 0.006f;     // lower frequency = bigger, chunkier clouds
+    float cloudNoiseContrastLo = 0.59f; // tighter contrast range for more defined shapes
     float cloudNoiseContrastHi = 1.0f;
     float cloudWindSpeed = 100.0f;
     glm::vec2 cloudWindDir = glm::vec2(1.0f, 0.2f); // mostly horizontal drift

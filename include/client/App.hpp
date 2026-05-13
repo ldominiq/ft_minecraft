@@ -28,6 +28,7 @@
 #include "GuiTexture.hpp"
 #include "InventoryUI.hpp"
 #include "GBuffer.hpp"
+#include "SceneFramebuffer.hpp"
 #include "SSAO.hpp"
 #include "TextureManager.hpp"
 #include "ui/TerrainDebugWindow.hpp"
@@ -188,6 +189,11 @@ private:
     std::shared_ptr<GBuffer> gBuffer;
     std::shared_ptr<SSAO> ssao;
     std::shared_ptr<Shader> gBufferShader;
+
+    // Offscreen scene FBO (MSAA + resolved). The whole scene (sky, terrain, water,
+    // debug overlays) renders into this; clouds are then composited from it to the
+    // backbuffer using actual scene depth.
+    std::unique_ptr<SceneFramebuffer> sceneFBO;
 
     // Z-prepass for terrain. When enabled, terrain is drawn twice in the main
     // scene pass: once depth-only with the prepass shader (color writes off),

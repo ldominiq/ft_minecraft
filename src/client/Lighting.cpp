@@ -16,6 +16,7 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
     skyLUTRenderShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/skyLUT_render.frag");
     lightCubeShader = std::make_unique<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
     cloudShader = std::make_shared<Shader>("shaders/clouds.vert", "shaders/clouds.frag");
+    cloudCompositeShader = std::make_shared<Shader>("shaders/clouds_composite.vert", "shaders/clouds_composite.frag");
 
     skyLUT = std::make_unique<SkyLUT>(256, 128);
 
@@ -82,17 +83,41 @@ GLuint Lighting::getCloudTexture() const
 
 void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const
 {
-    if (!cloudsEnabled || !cloudFBO || !cloudShader)
+    if (!cloudFBO)
         return;
+
+    // Save the caller's framebuffer + viewport so we can restore them on exit.
+    // This keeps the pass self-contained: callers don't need to know that we
+    // temporarily bind a low-res FBO and shrink the viewport.
+    GLint prevDrawFBO = 0;
+    GLint prevViewport[4] = {0, 0, width, height};
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevDrawFBO);
+    glGetIntegerv(GL_VIEWPORT, prevViewport);
+
+    auto restoreCallerState = [&]() {
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevDrawFBO));
+        glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    };
 
     cloudFBO->bind();
     glViewport(0, 0, cloudFBO->getWidth(), cloudFBO->getHeight());
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
 
-    // Clear to "no cloud": rgb=0, transmittance=1 (alpha=1)
+    // Clear to "no cloud": rgb=0, transmittance=1 (alpha=1).
+    // We always do this so a stale cloud texture doesn't linger after clouds are
+    // toggled off; the composite shader then early-outs on cloudOpacity ~ 0.
     glClearColor(0.f, 0.f, 0.f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // When clouds are disabled or the shader isn't available, leave the FBO cleared
+    // and bail before drawing.
+    if (!cloudsEnabled || !cloudShader) {
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        restoreCallerState();
+        return;
+    }
 
     cloudShader->use();
 
@@ -107,8 +132,8 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     // Cloud box follows camera for infinite clouds
     // Keep clouds at fixed altitude but extend horizontally around camera
     const float cloudRadius = 500.0f;  // Horizontal extent around camera
-    const float cloudMinY = 260.0f;     // Bottom of cloud layer
-    const float cloudMaxY = 310.0f;     // Top of cloud layer
+    const float cloudMinY = cloudLayerMinY;     // Bottom of cloud layer
+    const float cloudMaxY = cloudLayerMaxY;     // Top of cloud layer
     const glm::vec3 bmin(cameraPos.x - cloudRadius, cloudMinY, cameraPos.z - cloudRadius);
     const glm::vec3 bmax(cameraPos.x + cloudRadius, cloudMaxY, cameraPos.z + cloudRadius);
     cloudShader->setVec3("cloudBoxMinWorld", bmin);
@@ -151,10 +176,7 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
 
-    CloudFramebuffer::unbind();
-
-    // Restore default viewport for subsequent passes
-    glViewport(0, 0, width, height);
+    restoreCallerState();
 }
 
 void Lighting::updateSkyLUT(float cameraPosY) {
@@ -195,16 +217,6 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
         shader->setFloat("atmThickness", skyAtmThickness);
     }
 
-    // Cloud composite
-    const bool composite = cloudsEnabled && (getCloudTexture() != 0);
-    shader->setInt("cloudsCompositeEnabled", composite ? 1 : 0);
-
-    if (composite) {
-        glActiveTexture(GL_TEXTURE0 + TextureUnits::CLOUDS);
-        glBindTexture(GL_TEXTURE_2D, getCloudTexture());
-        shader->setInt("cloudTex", TextureUnits::CLOUDS);
-    }
-
     // Render sky with depth = far plane, terrain will render in front
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -214,6 +226,52 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     glBindVertexArray(0);
     glDepthFunc(GL_LESS);    // Restore default
     glDepthMask(GL_TRUE);
+}
+
+void Lighting::compositeCloudsToBackbuffer(GLuint sceneColorTex, GLuint sceneDepthTex,
+                                           const glm::mat4& view, const glm::mat4& projection,
+                                           const glm::vec3& cameraPosWorld,
+                                           const glm::vec2& resolution) const
+{
+    if (!cloudCompositeShader) return;
+
+    // Fullscreen post-pass: no depth test, no depth write.
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    cloudCompositeShader->use();
+
+    // Scene color
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::SCENE_COLOR);
+    glBindTexture(GL_TEXTURE_2D, sceneColorTex);
+    cloudCompositeShader->setInt("sceneColor", TextureUnits::SCENE_COLOR);
+
+    // Scene depth (raw, GL_TEXTURE_COMPARE_MODE = GL_NONE on the texture)
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::SCENE_DEPTH);
+    glBindTexture(GL_TEXTURE_2D, sceneDepthTex);
+    cloudCompositeShader->setInt("sceneDepth", TextureUnits::SCENE_DEPTH);
+
+    // Cloud texture (low-res RGBA from the volumetric march). If clouds are disabled
+    // or the FBO isn't ready, bind 0 — the shader's cloudOpacity early-out handles it.
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::CLOUDS);
+    glBindTexture(GL_TEXTURE_2D, getCloudTexture());
+    cloudCompositeShader->setInt("cloudTex", TextureUnits::CLOUDS);
+
+    cloudCompositeShader->setMat4("view", view);
+    cloudCompositeShader->setMat4("projection", projection);
+    cloudCompositeShader->setMat4("invViewProj", glm::inverse(projection * view));
+    cloudCompositeShader->setVec3("cameraPosWorld", cameraPosWorld);
+    cloudCompositeShader->setVec2("resolution", resolution);
+    cloudCompositeShader->setFloat("cloudLayerMinY", cloudLayerMinY);
+    cloudCompositeShader->setFloat("cloudLayerMaxY", cloudLayerMaxY);
+    cloudCompositeShader->setFloat("exposure", skyExposure);
+
+    glBindVertexArray(skyVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
 }
 
 void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const {
