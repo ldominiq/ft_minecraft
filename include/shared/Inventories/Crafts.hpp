@@ -149,8 +149,8 @@ constexpr std::array<std::pair<Grid, RecipeResult>, 13> shapelessRecipes = {{
 	//beacon used for set spawn point.
 	{{
 		BlockType::IRON_BLOCK, BlockType::DIAMOND_BLOCK, BlockType::GOLD_BLOCK,
-		BlockType::URANIUM_BLOCK, BlockType::STONE, BlockType::DIRT,
-		BlockType::GRASS, BlockType::OAK_LOG, BlockType::SNOW
+		BlockType::URANIUM_BLOCK, BlockType::STONE, BlockType::WITHER_ROSE,
+		BlockType::SAND, BlockType::NETHERRACK, BlockType::SNOW
 	}, {BlockType::BEACON, 1}}
 
 }};

@@ -1303,6 +1303,15 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	give(3, MiscType::IRON_INGOT,  64);
 	give(4, MiscType::GOLD_INGOT,  64);
 	give(5, MiscType::DIAMOND,     64);
+	give(6, BlockType::IRON_BLOCK,     64);
+	give(7, BlockType::DIAMOND_BLOCK,     64);
+	give(8,  BlockType::GOLD_BLOCK,     64);
+	give(9,  BlockType::URANIUM_BLOCK,     64);
+	give(10, BlockType::WITHER_ROSE,     64);
+	give(11, BlockType::SAND,     64);
+	give(12, BlockType::NETHERRACK,     64);
+	give(13, BlockType::BEACON,     64);
+
 
 	player->movement->inventory->createFullInventoryPkt(groupPkt);
 	
