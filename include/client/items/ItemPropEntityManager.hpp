@@ -34,7 +34,12 @@ class ItemPropEntityManager {
 		ItemPropEntityManager(const TextureManager* texMgr);
 		~ItemPropEntityManager();
 
-	void draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::dvec3& eyePos, std::vector<std::shared_ptr<ItemEntity>> &entities);
+	void draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::dvec3& eyePos,
+	          std::vector<std::shared_ptr<ItemEntity>> &entities);
+
+	// Exposed so App.cpp can upload dirLight/pointLights/CSM uniforms before draw().
+	// entity_lighting.glsl reuses the same uniform names lighting.frag does.
+	Shader& getShader() { return *shader; }
 };
 
 #endif

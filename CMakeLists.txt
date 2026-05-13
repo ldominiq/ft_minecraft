@@ -173,6 +173,10 @@ target_compile_definitions(soloud_static PUBLIC
   WITH_MINIAUDIO
 )
 
+if(UNIX AND NOT APPLE)
+  target_compile_definitions(soloud_static PRIVATE MA_NO_PULSEAUDIO)
+endif()
+
 # MiniAudio needs threads + (on Linux) dl/m
 if(UNIX AND NOT APPLE)
   target_link_libraries(soloud_static PUBLIC pthread dl m)

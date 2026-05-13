@@ -490,6 +490,14 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
 		player->movement->inventory->activeHotbarSlot = pkt.activeHotbarSlot;
 
+	// Stash flashlight state from playerFlags bit 0 onto the player entity;
+	// sendEntitiesPositionDeltas will relay it to the other clients via
+	// NetEntityMove::positionFlags bit 0x40.
+	const bool newFlashlightOn = (pkt.playerFlags & 0x01u) != 0;
+	if (newFlashlightOn != player->movement->flashlightOn)
+		player->movement->rotationUpdated = true;
+	player->movement->flashlightOn = newFlashlightOn;
+
 	if (pkt.keys & IN_DROP)
 	{
 		ItemType type = player->movement->inventory->getItemAtSlot(player->movement->inventory->activeHotbarSlot);
@@ -1105,11 +1113,14 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.entityName = entity->getName();
 
 			pkt.pitch = entity->pitch;
+			// Bit layout: see NetEntityMove::positionFlags in Protocol.hpp.
+			// 0x20 (diedByExplosion) is set on death packets only, in the (type == -1) path.
 			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
-			                  | (entity->isOnGround() ? 0x02u : 0u)
-			                  | (entity->pendingArmSwing ? 0x04u : 0u)
-			                  | (entity->networkedPrimed ? 0x08u : 0u)
-			                  | (entity->pendingHurt ? 0x10u : 0u);
+							  | (entity->isOnGround()       ? 0x02u : 0u)
+							  | (entity->pendingArmSwing    ? 0x04u : 0u)
+							  | (entity->networkedPrimed    ? 0x08u : 0u)
+							  | (entity->pendingHurt        ? 0x10u : 0u)
+							  | (entity->flashlightOn       ? 0x40u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}

@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <vector>
+#include <glm/glm.hpp>
 
 #include "IClientEntity.hpp"
 #include "HitboxRenderer.hpp"
@@ -22,8 +23,16 @@ class LivingEntitiesManager
 		~LivingEntitiesManager();
 
 		void add(std::weak_ptr<IClientEntity> character);
-       void draw(const glm::mat4 &projection, const glm::mat4 &view,
+		void draw(const glm::mat4 &projection, const glm::mat4 &view,
 				  const glm::dvec3& eyePos, const float deltatima);
+
+		// Exposed so App.cpp can call lighting->uploadLightingUniforms/uploadCSMUniforms
+		// on the entity shader before draw() — entity_lighting.glsl uses the same
+		// uniform names as lighting.frag so nothing else has to change.
+		Shader& getShader() { return characterShader; }
+
+		// Debug toggle for the per-entity AABB outline. Off by default
+		bool showHitboxes = false;
 };
 
 #endif

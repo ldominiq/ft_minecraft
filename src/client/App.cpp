@@ -109,7 +109,8 @@ void App::init(const std::string& serverIp) {
 	renderer = std::make_unique<Renderer>();
 
 	// ********************Water Renderer setup******************************
-	
+	// Match the scene FBO's HDR state so the reflection/refraction targets
+	// don't clamp linear-HDR radiance to [0,1] before water.frag samples them.
 	waterRenderer = std::make_unique<WaterRenderer>(screenWidth, screenHeight);
 
 	// ********************Chunk Boundary Renderer**************************
@@ -123,6 +124,8 @@ void App::init(const std::string& serverIp) {
     guiRenderer = std::make_unique<GuiRenderer>(*loader);
 
     lighting = std::make_unique<Lighting>(screenWidth, screenHeight);
+    lighting->setHDREnabled(hdrEnabled);
+    lighting->setSkyExposure(manualExposure);
 
 	chat = std::make_shared<Chat>(screenWidth, screenHeight);
 	debugHUD = std::make_unique<DebugHUD>(screenWidth, screenHeight);
@@ -144,7 +147,11 @@ void App::init(const std::string& serverIp) {
     ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
     // Scene FBO (MSAA) — sample count must match the GLFW window hint above.
-    sceneFBO = std::make_unique<SceneFramebuffer>(screenWidth, screenHeight, 8);
+    // hdrEnabled selects between GL_RGBA16F (HDR) and GL_RGBA8 (LDR fallback).
+    sceneFBO = std::make_unique<SceneFramebuffer>(screenWidth, screenHeight, 8, hdrEnabled);
+
+    // Auto-exposure: PBO-based luminance readback. Cheap (<0.1ms), 1-frame latency.
+    autoExposure = std::make_unique<AutoExposure>();
 
     glEnable(GL_DEPTH_TEST);
     
@@ -1151,6 +1158,18 @@ void App::render() {
         SceneFramebuffer::unbind();
         glViewport(0, 0, screenWidth, screenHeight);
 
+        // Auto-exposure: meter the resolved HDR scene (pre-clouds), advance the
+        // smoothed exposure, push into Lighting so the cloud composite tonemap
+        // (and any remaining LDR-fallback paths) use the same exposure value.
+        if (hdrEnabled && autoExposureEnabled) {
+            autoExposure->submit(sceneFBO->getResolvedColorTexture(), screenWidth, screenHeight);
+            const float newExp = autoExposure->update(deltaTime, lighting->getSkyExposure());
+            lighting->setSkyExposure(newExp);
+        } else if (hdrEnabled) {
+            // Manual exposure mode: just track the slider value.
+            lighting->setSkyExposure(manualExposure);
+        }
+
         // cameraEyeWorld must match the eye encoded in `view` — the composite
         // shader reconstructs the view ray via inverse(projection*view) and
         // computes (farWorld - cameraPosWorld). Mismatches also skew the
@@ -1353,6 +1372,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     activeShader->setMat4("view", view);
     activeShader->setMat4("projection", projection);
    lighting->uploadLightingUniforms(*activeShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
+    uploadActiveSpotLights(*activeShader);
     lighting->uploadUnderwaterUniforms(*activeShader);
     activeShader->setBool("cameraUnderwater", cameraUnderwater);
     lighting->uploadCSMUniforms(*activeShader, view);
@@ -1374,7 +1394,8 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
     const float fogEnd   = maxChunkDist;
     const float fogStart = maxChunkDist * fogStartFraction;
     uploadFogUniforms(*activeShader, fogEnabled, skyLUTTex,
-                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
+                      lighting->isHDREnabled());
 
     glActiveTexture(GL_TEXTURE0);
     textureManager.bind(GL_TEXTURE0);
@@ -1395,7 +1416,9 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         float day = glm::clamp(sunElevation * 2.0f, 0.0f, 1.0f);
         day = glm::smoothstep(0.0f, 1.0f, day);
 
-        constexpr float nightAmbientMin = 0.3f;
+        // Matches the value in Lighting::uploadLightingUniforms — kept in sync
+        // so terrain and vegetation share the same night-time floor.
+        constexpr float nightAmbientMin = 0.05f;
         glm::vec3 ambientColor = lighting->getDirectionalAmbientColor() * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
         glm::vec3 diffuseColor = lighting->getDirectionalDiffuseColor() * day;
 
@@ -1422,7 +1445,8 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 
         // Fog for vegetation
         uploadFogUniforms(*vegShader, fogEnabled, skyLUTTex,
-                          lighting->getSkyExposure(), fogStart, fogEnd, fogStrength);
+                          lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
+                          lighting->isHDREnabled());
 
         activeShader->use(); // Switch back to main shader
     }
@@ -1493,6 +1517,15 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		entity->lerp(clientTime + intraTick - delay);
 	}
     glBeginQuery(GL_TIME_ELAPSED, queryDrawEntities[currentQueryIndex]);
+	// Upload the same directional/point/shadow uniforms terrain uses so dropped
+	// items react to point lights, get shadowed by CSM, and dim at night.
+	// entity_lighting.glsl reads the exact same uniform names lighting.frag does.
+	{
+		Shader& propShader = m_itemPropEntityManager->getShader();
+		lighting->uploadLightingUniforms(propShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
+		uploadActiveSpotLights(propShader);
+		lighting->uploadCSMUniforms(propShader, view);
+	}
 	m_itemPropEntityManager->draw(projection, view, camera->getEyePosD(), renderer->itemEntities);
 	glEndQuery(GL_TIME_ELAPSED);
 
@@ -1528,7 +1561,63 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		localPlayer.hasRenderPos = false;
 	}
 
+  // Upload the same lighting+CSM uniforms the terrain uses so mobs/players
+  // receive directional light, point lights, and CSM shadows just like the
+  // world they're standing in.
+  {
+      Shader& chShader = renderer->livingEntitiesManager.getShader();
+      lighting->uploadLightingUniforms(chShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
+      uploadActiveSpotLights(chShader);
+      lighting->uploadCSMUniforms(chShader, view);
+  }
   renderer->drawCharacters(projection, view, camera->getEyePosD(), deltaTime);
+}
+
+void App::uploadActiveSpotLights(Shader& shader) const
+{
+    std::vector<Lighting::SpotLightUpload> lights;
+    if (!lighting) return;
+
+    // Slot 0: local flashlight (camera-attached) if on.
+    if (lighting->isFlashlightOn() && camera) {
+        lights.push_back({ glm::vec3(0.0f), camera->getPlayer()->getCameraDir() });
+    }
+
+    // Then every remote player whose flashlight is on, sorted by distance so
+    // the nearest ones win if we overflow MAX_SPOT_LIGHTS.
+    if (renderer && camera) {
+        const glm::dvec3 eyePos = camera->getEyePosD();
+        struct RemoteHit { float d2; glm::vec3 posRel; glm::vec3 dir; };
+        std::vector<RemoteHit> remotes;
+        remotes.reserve(4);
+        for (auto& le : renderer->livingEntities) {
+            if (!le || le->getLivingEntityType() != PLAYER) continue;
+            if (!le->flashlightOn) continue;
+            // Local player entity is tagged with id == -1 (see LivingEntitiesManager).
+            if (le->getID() == static_cast<entityID>(-1)) continue;
+
+            glm::vec3 posRel = glm::vec3(le->getPositionD() - eyePos);
+            posRel.y += static_cast<float>(le->getEntityHeight()) * 0.9f;
+
+            // Look direction from yaw/pitch — mirrors PlayerMovement::updateCameraVectors.
+            const float yr = glm::radians(le->yaw);
+            const float pr = glm::radians(le->pitch);
+            glm::vec3 dir = glm::normalize(glm::vec3(
+                std::cos(yr) * std::cos(pr),
+                std::sin(pr),
+                std::sin(yr) * std::cos(pr)
+            ));
+            remotes.push_back({ glm::dot(posRel, posRel), posRel, dir });
+        }
+        std::sort(remotes.begin(), remotes.end(),
+                  [](const RemoteHit& a, const RemoteHit& b) { return a.d2 < b.d2; });
+        for (auto& r : remotes) {
+            if (static_cast<int>(lights.size()) >= Lighting::MAX_SPOT_LIGHTS) break;
+            lights.push_back({ r.posRel, r.dir });
+        }
+    }
+
+    lighting->uploadSpotLights(shader, lights);
 }
 
 void App::computeDebugStats()
@@ -2032,7 +2121,57 @@ void App::debugWindow() {
                                 if (ImGui::Checkbox("Show Chunk Boundary", &cb))
                                     chunkBoundaryRenderer->setEnabled(cb);
                             }
-                            
+                            // Toggle per-entity AABB outlines. off by default
+                            ImGui::Checkbox("Show Entity Hitboxes",
+                                            &renderer->livingEntitiesManager.showHitboxes);
+
+                            ImGui::EndTabItem();
+                        }
+                        // ── HDR / Exposure ─────────────────────────────────────────
+                        // Owns the toggles wired to sceneFBO::setHDR (RGBA16F<->RGBA8)
+                        // and AutoExposure (PBO readback metering).
+                        if (ImGui::BeginTabItem("HDR / Exposure"))
+                        {
+                            if (ImGui::Checkbox("HDR enabled", &hdrEnabled)) {
+                                sceneFBO->setHDR(hdrEnabled);
+                                lighting->setHDREnabled(hdrEnabled);
+                                // Water reflection/refraction targets must match the scene's
+                                // color space — otherwise HDR scene radiance gets clamped to
+                                // [0,1] in those FBOs and water.frag then samples LDR values
+                                // back into the HDR scene buffer.
+                                if (waterRenderer)
+                                    waterRenderer->setHDR(hdrEnabled);
+                                // When flipping back to LDR, pull exposure back to a sane
+                                // manual value so the cloud composite (LDR path) doesn't
+                                // inherit a stale auto-exp value.
+                                if (!hdrEnabled)
+                                    lighting->setSkyExposure(manualExposure);
+                            }
+                            // Saturation works in either HDR or LDR mode — it's applied in
+                            // display space at the end of clouds_composite. Default 1.2 to
+                            // compensate for the tonemap's midtone desaturation when fed
+                            // sRGB-encoded textures (see clouds_composite.frag).
+                            {
+                                float sat = lighting->getSkySaturation();
+                                if (ImGui::SliderFloat("Saturation", &sat, 0.0f, 2.0f, "%.2f"))
+                                    lighting->setSkySaturation(sat);
+                            }
+                            ImGui::BeginDisabled(!hdrEnabled);
+                            ImGui::Checkbox("Auto-exposure", &autoExposureEnabled);
+                            ImGui::BeginDisabled(autoExposureEnabled);
+                            if (ImGui::SliderFloat("Manual exposure", &manualExposure, 0.3f, 4.0f, "%.2f"))
+                                lighting->setSkyExposure(manualExposure);
+                            ImGui::EndDisabled();
+                            if (autoExposureEnabled && autoExposure) {
+                                ImGui::SliderFloat("Target luminance", &autoExposure->targetLuminance, 0.05f, 0.4f, "%.3f");
+                                ImGui::SliderFloat("Min exposure",     &autoExposure->minExposure,     0.05f, 1.0f, "%.2f");
+                                ImGui::SliderFloat("Max exposure",     &autoExposure->maxExposure,     1.0f, 8.0f,  "%.2f");
+                                ImGui::SliderFloat("Adapt up (s^-1)",   &autoExposure->adaptSpeedUp,   0.1f, 4.0f, "%.2f");
+                                ImGui::SliderFloat("Adapt down (s^-1)", &autoExposure->adaptSpeedDown, 0.1f, 4.0f, "%.2f");
+                                ImGui::Text("Current exposure: %.2f", lighting->getSkyExposure());
+                                ImGui::Text("Avg scene luminance: %.4f", autoExposure->getLastAvgLuminance());
+                            }
+                            ImGui::EndDisabled();
                             ImGui::EndTabItem();
                         }
                         if (ImGui::BeginTabItem("SSAO"))
@@ -2721,6 +2860,9 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	inputs.loadRadius = camera->getPlayer()->getLoadRadius();
 	inputs.activeHotbarSlot = activeHotbarSlot;
 	inputs.serverClientReconciliationTick = clientTick;
+	// Broadcast our local flashlight state so the server can relay it to other
+	// clients via NetEntityMove::positionFlags bit 0x40.
+	inputs.playerFlags = lighting && lighting->isFlashlightOn() ? 0x01u : 0u;
 
 	return inputs;
 }

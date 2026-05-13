@@ -25,6 +25,10 @@ uniform mat4 projection; // camera projection
 uniform vec3 cameraPosWorld;
 uniform float seaLevel;
 uniform float exposure;  // exposure for simple tone mapping (1 - exp(-exposure * color))
+// When false, the scene framebuffer is HDR (RGBA16F) and the final tonemap is
+// performed once in clouds_composite. We must NOT tonemap here in that case —
+// emit linear radiance instead. Defaults to true for the LDR path.
+uniform bool tonemapHere;
 uniform float atmDensity;    // 1.0 = Earth-like, lower -> closer to space
 uniform float atmThickness;  // scales HR/HM (1.0 = Earth-like)
 uniform float planetScale;
@@ -64,23 +68,6 @@ const vec3 invWavelength4 = vec3(
 // -----------------------------
 // Helpers
 // -----------------------------
-vec3 Uncharted2ToneMapping(vec3 color) {
-    float gamma = 2.2;
-    float A = 0.15;
-    float B = 0.50;
-    float C = 0.10;
-    float D = 0.20;
-    float E = 0.02;
-    float F = 0.30;
-    float W = 11.2;
-    //float exposure = 2.0;
-    color *= exposure;
-    color = ((color * (A * color + C * B) + D * E) / (color * (A * color + B) + D * F)) - E / F;
-    float white = ((W * (A * W + C * B) + D * E) / (W * (A * W + B) + D * F)) - E / F;
-    color /= white;
-    color = pow(color, vec3(1.0 / gamma));
-    return color;
-}
 
 bool intersectSphere(vec3 ro, vec3 rd, float radius, out float t0, out float t1) {
     // Solve |ro + rd*t|^2 = r^2
@@ -216,13 +203,14 @@ void main() {
 
     gl_FragDepth = 1.0;
 
-    // Simple exposure: 1 - exp(-exposure * color)
-    vec3 mapped = vec3(1.0) - exp(-exposure * col);
+    // In LDR mode: simple exposure tonemap here. In HDR mode: emit linear radiance
+    // and let the final composite (clouds_composite.frag) tonemap once.
+    vec3 mapped = tonemapHere ? (vec3(1.0) - exp(-exposure * col)) : col;
 
-    // Apply underwater fog to sky
+    // Apply underwater fog to sky. The flat fog color is authored as an sRGB-display
+    // value, so in HDR mode lift it to linear to compensate for the final pow(1/2.2).
     if (cameraUnderwater) {
-        // Replace sky with murky water fog color
-        mapped = underwaterFogColor;
+        mapped = tonemapHere ? underwaterFogColor : pow(underwaterFogColor, vec3(2.2));
     }
 
     FragColor = vec4(mapped, 1.0);

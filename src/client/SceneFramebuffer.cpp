@@ -2,9 +2,18 @@
 #include <algorithm>
 #include <cstdio>
 
-SceneFramebuffer::SceneFramebuffer(int width, int height, int samples_)
-: w(std::max(1, width)), h(std::max(1, height)), samples(std::max(1, samples_))
+SceneFramebuffer::SceneFramebuffer(int width, int height, int samples_, bool hdr)
+: w(std::max(1, width)), h(std::max(1, height)), samples(std::max(1, samples_)),
+  hdrEnabled(hdr)
 {
+    create();
+}
+
+void SceneFramebuffer::setHDR(bool enabled)
+{
+    if (enabled == hdrEnabled) return;
+    hdrEnabled = enabled;
+    destroy();
     create();
 }
 
@@ -22,13 +31,18 @@ void SceneFramebuffer::destroy()
 
 void SceneFramebuffer::create()
 {
+    // GL 4.2+ guarantees RGBA16F is color-renderable with multisample, so this
+    // is safe on any desktop GL 4.6 target.
+    const GLenum colorInternalFmt = hdrEnabled ? GL_RGBA16F : GL_RGBA8;
+    const GLenum colorPixelType   = hdrEnabled ? GL_HALF_FLOAT : GL_UNSIGNED_BYTE;
+
     // --- MSAA FBO: color + depth as multisample textures so we can blit both ---
     glGenFramebuffers(1, &fboMS);
     glBindFramebuffer(GL_FRAMEBUFFER, fboMS);
 
     glGenTextures(1, &colorTexMS);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, colorTexMS);
-    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, GL_RGBA8, w, h, GL_TRUE);
+    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, colorInternalFmt, w, h, GL_TRUE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, colorTexMS, 0);
 
     glGenTextures(1, &depthTexMS);
@@ -46,7 +60,7 @@ void SceneFramebuffer::create()
 
     glGenTextures(1, &colorTexResolve);
     glBindTexture(GL_TEXTURE_2D, colorTexResolve);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, colorInternalFmt, w, h, 0, GL_RGBA, colorPixelType, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

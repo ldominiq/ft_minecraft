@@ -34,6 +34,7 @@ uniform float fogStart;
 uniform float fogEnd;
 uniform float fogStrength;
 uniform bool fogEnabled;
+uniform bool hdrMode; // HDR: keep fog linear, tonemap once at the end.
 uniform vec3 sunDir;
 
 #include "sky_common.glsl"
@@ -139,7 +140,9 @@ void main() {
     if (fogEnabled) {
         float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, viewDist), fogStrength);
         vec3 viewDir = normalize(-toCameraVector); // direction from camera toward water
-        vec3 fogColor = sampleSkyColor(skyLUT, viewDir, sunDir, skyExposure);
+        vec3 fogColor = hdrMode
+            ? sampleSkyColorLinear(skyLUT, viewDir, sunDir)
+            : sampleSkyColor(skyLUT, viewDir, sunDir, skyExposure);
         FragColor.rgb = mix(fogColor, FragColor.rgb, fogFactor);
         // Also fade alpha so water edge softens into fog
         FragColor.a *= fogFactor;

@@ -86,7 +86,10 @@ public:
     explicit Lighting(int screenWidth, int screenHeight);
     ~Lighting();
 
-    void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater = false) const;
+    // destIsHDR: if true, the bound framebuffer is HDR (RGBA16F) and the sky
+    // shader will skip its own tonemap (clouds_composite tonemaps later).
+    // Water reflections render into an LDR FBO, so they pass destIsHDR=false.
+    void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater = false, bool destIsHDR = true) const;
     void drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const;
 
     void updateSunDirection(float deltaTime);
@@ -95,6 +98,19 @@ public:
     void updateSkyLUT(float cameraPosY);
 
     void uploadLightingUniforms(const Shader& shader, const glm::dvec3& eyePos, glm::vec3 cameraFront) const;
+    // One active flashlight (local or remote player's), in camera-relative space.
+    // `dir` is the world-space look direction (already normalized).
+    struct SpotLightUpload {
+        glm::vec3 posRel;
+        glm::vec3 dir;
+    };
+    // Max simultaneous spot lights — must match MAX_SPOT_LIGHTS in lighting.frag
+    // and ENTITY_MAX_SPOT_LIGHTS in entity_lighting.glsl.
+    static constexpr int MAX_SPOT_LIGHTS = 16;
+    // Upload the active flashlight set into spotLights[0..n-1] + numSpotLights.
+    // Anything past MAX_SPOT_LIGHTS is silently dropped (caller should pick
+    // the closest N if they have more candidates).
+    void uploadSpotLights(const Shader& shader, const std::vector<SpotLightUpload>& lights) const;
     void uploadUnderwaterUniforms(const Shader& shader) const;
     void drawTexturePreviewQuad(unsigned int textureID, bool grayscale = false, glm::vec2 offset = glm::vec2(0.0f));
 
@@ -161,6 +177,10 @@ public:
     float getShadowMapMaxBias() const { return MAX_BIAS; }
 
     float getSkyExposure() const { return skyExposure; };
+    bool  isHDREnabled() const { return hdrEnabled; }
+    void  setHDREnabled(bool v) { hdrEnabled = v; }
+    float getSkySaturation() const { return skySaturation; }
+    void  setSkySaturation(float v) { skySaturation = v; }
     float getSkyAtmDensity() const { return skyAtmDensity; };
     float getSkyAtmThickness() const { return skyAtmThickness; };
     float getSkyTimeOffset() const { return skyTimeOffset; };
@@ -336,8 +356,16 @@ private:
     float sunStepDuration  = 2.0f;   // how long the smooth advance takes
     bool  sunStepping      = false;  // true while the sun is advancing
     float sunStepTimer     = 0.0f;   // progress within the step
-    // Simple tone-mapping exposure for sky shader
+    // Simple tone-mapping exposure for sky shader (drives the final composite tonemap in HDR mode).
     float skyExposure = 1.2f;
+    // Post-tonemap saturation applied in clouds_composite. Compensates for the
+    // midtone desaturation introduced by ACES + the fact that block textures
+    // are sRGB-encoded but treated as linear. 1.0 = identity.
+    float skySaturation = 1.20f;
+    // When true, the scene framebuffer is RGBA16F and tone-mapping happens once
+    // at the very end (clouds_composite). When false, the legacy LDR path is used
+    // where the sky and the cloud composite each tone-map their own outputs.
+    bool  hdrEnabled = true;
     // Atmospheric density and thickness scalars (1.0 ~ Earth-like)
     float skyAtmDensity = 19.0f;
     float skyAtmThickness = 1.0f;

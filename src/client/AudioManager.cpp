@@ -37,7 +37,14 @@ AudioManager::~AudioManager() {
 bool AudioManager::init() {
     SoLoud::result r = engine.init();
     if (r != SoLoud::SO_NO_ERROR) {
-        std::cerr << "[Audio] SoLoud init failed: " << r << std::endl;
+        std::cerr << "[Audio] SoLoud init failed: " << r
+                  << " — continuing with no sound" << std::endl;
+        // Last-resort: NOSOUND keeps the engine API usable so the rest of
+        // the app doesn't have to special-case a null engine.
+        r = engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NOSOUND);
+    }
+    if (r != SoLoud::SO_NO_ERROR) {
+        std::cerr << "[Audio] SoLoud init failed (even NOSOUND): " << r << std::endl;
         return false;
     }
 

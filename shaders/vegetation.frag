@@ -33,6 +33,7 @@ uniform float fogStart;
 uniform float fogEnd;
 uniform float fogStrength;
 uniform bool fogEnabled;
+uniform bool hdrMode; // HDR: keep fog linear, tonemap once at the end.
 
 // CSM shadow uniforms
 #define MAX_CASCADES 5
@@ -106,7 +107,9 @@ void main() {
 
         vec3 tintedColor = result * underwaterTintColor;
 
-        result = mix(underwaterFogColor, tintedColor, fogFactor);
+        // Lift sRGB-authored fog color to linear in HDR (final gamma is applied later).
+        vec3 fogCol = hdrMode ? pow(underwaterFogColor, vec3(2.2)) : underwaterFogColor;
+        result = mix(fogCol, tintedColor, fogFactor);
     }
 
 
@@ -114,7 +117,10 @@ void main() {
         float dist = length(fs_in.FragPosRel);
         float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
         vec3 fogDir = normalize(fs_in.FragPosRel);
-        result = mix(sampleSkyColor(skyLUT, fogDir, -lightDir, skyExposure), result, fogFactor);
+        vec3 fogColor = hdrMode
+            ? sampleSkyColorLinear(skyLUT, fogDir, -lightDir)
+            : sampleSkyColor(skyLUT, fogDir, -lightDir, skyExposure);
+        result = mix(fogColor, result, fogFactor);
     }
 
     FragColor = vec4(result, texColor.a);

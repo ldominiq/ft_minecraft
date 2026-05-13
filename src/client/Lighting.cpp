@@ -147,19 +147,23 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     cloudShader->setFloat("cloudSigmaS", cloudSigmaS);
     cloudShader->setFloat("cloudPhaseG", cloudPhaseG);
 
-    // Modulate ambient by sun elevation (darker at night)
+    // Modulate ambient + sun contribution by sun elevation
     glm::vec3 sunDirNorm = glm::normalize(getDirectionalLightDirection());
     float sunElevation = sunDirNorm.y;  // Can be negative (below horizon)
     float dayFactor = glm::smoothstep(-0.2f, 0.1f, sunElevation);  // Fade from -0.2 to 0.1
-    float nightAmbient = 0.01f;  // Very low ambient at night
-    float dayAmbient = 0.5f;     // Full ambient during day
+    // Very dim night ambient — auto-exposure + gamma encode lifts dark linear
+    // values a lot in display space, so the linear floor has to stay tiny.
+    float nightAmbient = 0.002f;
+    float dayAmbient = 0.5f;
     float ambientStrength = glm::mix(nightAmbient, dayAmbient, dayFactor);
 
     cloudShader->setVec3("cloudAmbientColor", glm::vec3(0.65f, 0.72f, 0.85f));
     cloudShader->setFloat("cloudAmbientStrength", ambientStrength);
 
     cloudShader->setVec3("cloudSunColor", glm::vec3(1.0f, 0.98f, 0.95f));
-    cloudShader->setFloat("cloudSunStrength", 25.0f);  // Increased from 15.0f for brighter clouds
+    // Gate the sun-scatter contribution on day factor: at night the sun is
+    // below the horizon, so its in-scattering through clouds should be 0.
+    cloudShader->setFloat("cloudSunStrength", 25.0f * dayFactor);
 
     // TODO: add params to imgui
     cloudShader->setFloat("cloudEdgeFeather", cloudEdgeFeather);
@@ -185,7 +189,7 @@ void Lighting::updateSkyLUT(float cameraPosY) {
     }
 }
 
-void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater) const {
+void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater, bool destIsHDR) const {
     // Choose shader: LUT-based (fast) or full ray-marching (reference)
     const bool useLUT = skyLUTEnabled && skyLUT && skyLUT->getLUTTexture();
     Shader* shader = useLUT ? skyLUTRenderShader.get() : skyShader.get();
@@ -197,6 +201,9 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     shader->setMat4("projection", projection);
     shader->setVec3("cameraPosWorld", cameraPos);
     shader->setFloat("exposure", skyExposure);
+    // HDR pipeline writes linear radiance and tonemaps in the final composite.
+    // LDR pipeline (and any LDR target like the water reflection FBO) tonemaps here.
+    shader->setBool("tonemapHere", !(destIsHDR && hdrEnabled));
     shader->setVec3("sunDir", getDirectionalLightDirection());
 
     // Underwater fog for sky
@@ -265,6 +272,11 @@ void Lighting::compositeCloudsToBackbuffer(GLuint sceneColorTex, GLuint sceneDep
     cloudCompositeShader->setFloat("cloudLayerMinY", cloudLayerMinY);
     cloudCompositeShader->setFloat("cloudLayerMaxY", cloudLayerMaxY);
     cloudCompositeShader->setFloat("exposure", skyExposure);
+    // When HDR is on, this pass becomes the single final tonemap site.
+    cloudCompositeShader->setBool("hdrMode", hdrEnabled);
+    // Post-tonemap saturation knob (applied in both LDR and HDR paths so the
+    // look is consistent when toggling HDR; 1.0 leaves the image untouched).
+    cloudCompositeShader->setFloat("saturation", skySaturation);
 
     glBindVertexArray(skyVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -400,10 +412,19 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
         // smooth transition near sunset/sunrise
         day = glm::smoothstep(0.0f, 1.0f, day);
 
-        // small ambient light at night
-        constexpr float nightAmbientMin = 0.3f;
-        const glm::vec3 ambientColor = directionalAmbientColor * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
-        const glm::vec3 diffuseColor = directionalDiffuseColor * day;
+        // Very small ambient floor at night
+        constexpr float nightAmbientMin = 0.05f;
+        // HDR mode gives us headroom above 1.0: push direct sun and daytime ambient
+        // higher so the final tonemap has real dynamic range and shadowed areas
+        // stay readable. Both boosts are blended in with `day` so they fade to 1.0
+        // at night — without this, the night ambient comes out 1.6× brighter than
+        // the pre-HDR look, and auto-exposure then makes night feel like day.
+        const float ambientBoost = hdrEnabled ? glm::mix(1.0f, 1.6f, day) : 1.0f;
+        const float diffuseBoost = hdrEnabled ? glm::mix(1.0f, 1.8f, day) : 1.0f;
+        const glm::vec3 ambientColor = directionalAmbientColor
+            * (nightAmbientMin + (1.0f - nightAmbientMin) * day)
+            * ambientBoost;
+        const glm::vec3 diffuseColor = directionalDiffuseColor * day * diffuseBoost;
         const glm::vec3 specularColor = directionalSpecularColor * day;
         shader.setVec3("dirLight.direction", -directionalLightDir);
         shader.setVec3("dirLight.ambient", ambientColor);
@@ -430,29 +451,31 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
         shader.setFloat("pointLights[" + std::to_string(i) + "].linear", pointLightLinear[i]);
         shader.setFloat("pointLights[" + std::to_string(i) + "].quadratic", pointLightQuadratic[i]);
     }
-    // spotLight (flashlight)
-    if (flashlightOn) {
-        shader.setVec3("spotLight.position", glm::vec3(0.0f));
-        shader.setVec3("spotLight.direction", cameraFront);
-        shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
-        shader.setVec3("spotLight.diffuse", glm::vec3(1.0f));
-        shader.setVec3("spotLight.specular", glm::vec3(1.0f));
-        shader.setFloat("spotLight.constant", spotLightConstant);
-        shader.setFloat("spotLight.linear", spotLightLinear);
-        shader.setFloat("spotLight.quadratic", spotLightQuadratic);
-        shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
-        shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
-    } else {
-        shader.setVec3("spotLight.position", glm::vec3(0.0f));
-        shader.setVec3("spotLight.direction", cameraFront);
-        shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
-        shader.setVec3("spotLight.diffuse", glm::vec3(0.0f));
-        shader.setVec3("spotLight.specular", glm::vec3(0.0f));
-        shader.setFloat("spotLight.constant", spotLightConstant);
-        shader.setFloat("spotLight.linear", spotLightLinear);
-        shader.setFloat("spotLight.quadratic", spotLightQuadratic);
-        shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
-        shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
+    shader.setInt("numSpotLights", 0);
+}
+
+void Lighting::uploadSpotLights(const Shader& shader,
+                                const std::vector<SpotLightUpload>& lights) const
+{
+    shader.use();
+    const int n = std::min(static_cast<int>(lights.size()), MAX_SPOT_LIGHTS);
+    shader.setInt("numSpotLights", n);
+
+    const float cosInner = glm::cos(glm::radians(flashlightCutoff));
+    const float cosOuter = glm::cos(glm::radians(flashlightOuterCutoff));
+
+    for (int i = 0; i < n; ++i) {
+        const std::string p = "spotLights[" + std::to_string(i) + "].";
+        shader.setVec3(p + "position",  lights[i].posRel);
+        shader.setVec3(p + "direction", lights[i].dir);
+        shader.setVec3(p + "ambient",   glm::vec3(0.0f));
+        shader.setVec3(p + "diffuse",   glm::vec3(1.0f));
+        shader.setVec3(p + "specular",  glm::vec3(1.0f));
+        shader.setFloat(p + "constant",    spotLightConstant);
+        shader.setFloat(p + "linear",      spotLightLinear);
+        shader.setFloat(p + "quadratic",   spotLightQuadratic);
+        shader.setFloat(p + "cutOff",      cosInner);
+        shader.setFloat(p + "outerCutOff", cosOuter);
     }
 }
 

@@ -16,13 +16,18 @@
 //   // sample sceneFBO.getResolvedColorTexture()/getResolvedDepthTexture() in a fullscreen pass
 class SceneFramebuffer {
 public:
-    SceneFramebuffer(int width, int height, int samples = 8);
+    // hdr=true uses GL_RGBA16F for color (linear HDR radiance). hdr=false keeps
+    // the legacy GL_RGBA8 path so the LDR fallback is bit-identical.
+    SceneFramebuffer(int width, int height, int samples = 8, bool hdr = false);
     ~SceneFramebuffer();
 
     SceneFramebuffer(const SceneFramebuffer&) = delete;
     SceneFramebuffer& operator=(const SceneFramebuffer&) = delete;
 
     void resize(int width, int height);
+    // Switch between HDR (RGBA16F) and LDR (RGBA8). Recreates FBOs if the flag changes.
+    void setHDR(bool enabled);
+    bool isHDR() const { return hdrEnabled; }
 
     // Bind the MSAA framebuffer for scene rendering.
     void bindMS() const;
@@ -43,15 +48,16 @@ private:
     int w = 0;
     int h = 0;
     int samples = 8;
+    bool hdrEnabled = false;
 
     // MSAA target (rendered into by the scene)
     GLuint fboMS = 0;
-    GLuint colorTexMS = 0;     // GL_TEXTURE_2D_MULTISAMPLE, GL_RGBA8
+    GLuint colorTexMS = 0;     // GL_TEXTURE_2D_MULTISAMPLE, GL_RGBA8 or GL_RGBA16F
     GLuint depthTexMS = 0;     // GL_TEXTURE_2D_MULTISAMPLE, GL_DEPTH_COMPONENT24
 
     // Non-MSAA resolved target (sampled by composite shader)
     GLuint fboResolve = 0;
-    GLuint colorTexResolve = 0; // GL_TEXTURE_2D, GL_RGBA8
+    GLuint colorTexResolve = 0; // GL_TEXTURE_2D, GL_RGBA8 or GL_RGBA16F
     GLuint depthTexResolve = 0; // GL_TEXTURE_2D, GL_DEPTH_COMPONENT24
 };
 

@@ -22,6 +22,9 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform vec3 cameraPosWorld;
 uniform float exposure;
+// When false, output linear HDR radiance (scene FBO is RGBA16F and the final
+// tonemap is done once in clouds_composite). Defaults to true for the LDR path.
+uniform bool tonemapHere;
 uniform vec3 sunDir;
 
 // Underwater rendering
@@ -79,12 +82,14 @@ void main() {
 
     gl_FragDepth = 1.0;
 
-    // Tone mapping
-    vec3 tone = skyUncharted2(col, exposure);
+    // In LDR mode: tone-map + gamma here. In HDR mode: emit linear radiance and
+    // let the final composite tonemap once.
+    vec3 tone = tonemapHere ? skyTonemap(col, exposure) : col;
 
-    // Apply underwater fog to sky
+    // Apply underwater fog to sky. In HDR mode lift the sRGB-display color to
+    // linear so it survives the final pow(1/2.2) without darkening.
     if (cameraUnderwater) {
-        tone = underwaterFogColor;
+        tone = tonemapHere ? underwaterFogColor : pow(underwaterFogColor, vec3(2.2));
     }
 
     FragColor = vec4(tone, 1.0);
