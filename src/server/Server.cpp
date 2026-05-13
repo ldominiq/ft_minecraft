@@ -390,13 +390,26 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 
 	std::cout << "New client connecting from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << "...\n";
 
+	pkt.username = pkt.username.substr(0, 15); // enforce max length
+	std::string name = pkt.username;
+	int count = 0;
+	for (const auto &p : players)
+	{
+		if (p.originalName == pkt.username)
+			count++;
+	}
+	if (count > 0) name = "(" + std::to_string(count) + ") " + name;
+	name = name.substr(0, 15); // enforce max length
+
     CPlayerInfo p; //deserializePlayerInfo(pkt.payload);
 	p.id = nextPlayerId++;
+	p.originalName = pkt.username;
 	p.addr = cliaddr;
 	p.connected = true;
 	p.computeSpawnPosition(world->getTerrainParams());
 
 	auto movement = p.movement;
+	p.movement->setName(name);
 	players.push_back(std::move(p));
 	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
@@ -424,12 +437,15 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		pkt.entityID = ent->get()->getID();
 		pkt.type = -1;
 
-		pkt.positionX = ent->get()->getPositionD().x;
-		pkt.positionY = ent->get()->getPositionD().y;
-		pkt.positionZ = ent->get()->getPositionD().z;
+		//not really needed info
+		pkt.positionX = ent->get()->getPosition().x;
+		pkt.positionY = ent->get()->getPosition().y;
+		pkt.positionZ = ent->get()->getPosition().z;
 
 		pkt.yaw = ent->get()->yaw;
 		pkt.pitch = ent->get()->pitch;
+
+		pkt.entityName = ent->get()->getName();
 
 		sendPacketTo(pkt, p.addr);
 	}
@@ -843,10 +859,14 @@ void Server::sendDeaths()
 
 		if (ent->health <= 0 && !ent->deathBroadcast)
 		{
-			messages.push_back("Someone has died miserably");
 			ent->deathBroadcast = true;
 
-			
+			std::string name = le->get()->getName();
+			if (name.empty())
+				messages.push_back("Someone has died miserably");
+			else
+				messages.push_back(name + " has been obliterated");
+
 			NetEntityMove pkt;
 			pkt.eEntityType = ent->getEntityType();
 			pkt.entityID    = ent->getID();
@@ -1020,6 +1040,9 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.positionZ = entity->getPositionD().z;
 
 			pkt.yaw = entity->yaw;
+
+			pkt.entityName = entity->getName();
+
 			pkt.pitch = entity->pitch;
 			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
 			                  | (entity->isOnGround() ? 0x02u : 0u)
@@ -1226,6 +1249,8 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 
 			pkt->yaw = entity->yaw;
 			pkt->pitch = entity->pitch;
+
+			pkt->entityName = entity->getName();
 
 			groupPkt.push_back(std::move(pkt));
 		}

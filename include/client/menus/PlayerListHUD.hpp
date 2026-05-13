@@ -8,6 +8,7 @@
 
 struct PlayerEntry {
     uint32_t id;
+	std::string name;
     bool     isLocal;
     float    pingMs;   // -1 = unknown, >=0 = known
 };
