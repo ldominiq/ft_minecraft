@@ -12,6 +12,7 @@ out VS_OUT {
     vec2 TexCoord;
     float TexLayer;
     float SkyLight; // Passed to fragment shader for cave darkening
+    float WaterAbove; // 1.0 iff a water block sits directly above (top faces)
 } vs_out;
 
 uniform mat4 projection;
@@ -36,6 +37,7 @@ void main()  {
     float aTexLayer= float(unpackTexLayer(aV1));
     vec3 aNormal   = NORMALS[unpackNormal(aV1)];
     float aSkyLight= unpackSkyLight(aV1);
+    float aWaterAbove = unpackWaterAbove(aV1);
 
     vec3 worldPos      = chunkOriginWorld + aPos;
     vec3 cameraRelPos  = chunkRel + aPos;
@@ -46,6 +48,7 @@ void main()  {
     vs_out.TexCoord = aTexCoord;
     vs_out.TexLayer = aTexLayer;
     vs_out.SkyLight = aSkyLight;
+    vs_out.WaterAbove = aWaterAbove;
     gl_Position = projection * viewRot * vec4(cameraRelPos, 1.0);
 
     // Clip geometry based on plane (used for water reflection/refraction)

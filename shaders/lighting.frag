@@ -7,6 +7,7 @@ in VS_OUT {
     vec2 TexCoord;
     float TexLayer;
     float SkyLight; // 0.0 = fully underground, 1.0 = open sky
+    float WaterAbove; // 1.0 iff this face has a water block directly above
 } fs_in;
 
 out vec4 FragColor;
@@ -194,10 +195,14 @@ void main()
     for (int i = 0; i < numSpotLights; ++i)
         result += CalcSpotLight(spotLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
 
-    // Caustics
-    if (fs_in.FragPos.y < seaLevel && dirLight.direction.y < 0.0) {
+    // Caustics — only on faces that are *actually* under a water block.
+    // The WaterAbove flag is baked at mesh time (top faces whose +Y
+    // neighbour is water). This is stricter than "below sea level" (which
+    // lit cave floors) and stricter than SkyLight (which leaks sideways
+    // into caves through the chunk light map).
+    if (fs_in.WaterAbove > 0.5 && dirLight.direction.y < 0.0) {
         float c = computeCaustic(fs_in.FragPos.xz, causticTime);
-        float depthBelow = seaLevel - fs_in.FragPos.y;
+        float depthBelow = max(seaLevel - fs_in.FragPos.y, 0.0);
         float nearFade = smoothstep(0.0, 0.8, depthBelow);
         float farFade  = clamp(1.0 - depthBelow / 20.0, 0.0, 1.0);
         float depthFade = nearFade * farFade;

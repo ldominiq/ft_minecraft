@@ -99,7 +99,7 @@ void ChunkRenderer::updateMesh()
 	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
 }
 
-void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockType type, const int face, const float skyLightLevel) {
+void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockType type, const int face, const float skyLightLevel, const bool waterAbove) {
     // Mesh vertices are baked in chunk-LOCAL coordinates so that the GPU
     // never sees the large world coordinate of the chunk origin. The
     // origin is applied per-draw via the chunkOriginWorld / chunkRel
@@ -171,7 +171,8 @@ void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockTy
             normalIdx,
             packed_vertex::CORNER_FOR_VERT[i],
             texLayer,
-            skyLightLevel));
+            skyLightLevel,
+            waterAbove));
     }
 }
 
@@ -366,6 +367,11 @@ void ChunkRenderer::buildMeshData() {
                     }
 
                     const float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, face.dx, face.dy, face.dz, face.neighborDir));
+                    // Top faces (faceIndex == 2) with water directly above
+                    // get tagged so the fragment shader can restrict caustics
+                    // to actual underwater surfaces, not just everything below
+                    // sea level (which previously lit cave floors too).
+                    const bool waterAbove = (face.faceIndex == 2 && neighborBlock == BlockType::WATER);
                     const bool neighborIsLeaf = isBlockLeaves(neighborBlock);
                     const bool neighborIsTransparent = isBlockTransparent(neighborBlock);
 
@@ -395,7 +401,7 @@ void ChunkRenderer::buildMeshData() {
                     } else if (currentBlock == BlockType::CACTUS) {
                         bool isSide = (face.faceIndex != 2 && face.faceIndex != 3);
                         if (isSide || !isBlockSolid(neighborBlock) || neighborBlock != BlockType::CACTUS) {
-                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight, waterAbove);
                         }
                     }
                     else if (currentIsLeaf) {
@@ -406,7 +412,7 @@ void ChunkRenderer::buildMeshData() {
                             neighborTreatedTransparent ||
                             (fancyLeaves && neighborIsLeaf) ||
                             neighborBlock == BlockType::CACTUS) {
-                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight, waterAbove);
                         }
                     }
                     else {
@@ -421,7 +427,7 @@ void ChunkRenderer::buildMeshData() {
                             neighborTreatsAsTransparent ||
                             (smartLeavesCullLikeFast && neighborIsLeaf) ||
                             neighborBlock == BlockType::CACTUS) {
-                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight);
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight, waterAbove);
                         }
                     }
                 }
