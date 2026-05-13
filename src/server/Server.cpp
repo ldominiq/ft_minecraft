@@ -1300,7 +1300,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	player->movement->inventory->createFullInventoryPkt(groupPkt);
 	
 	NetPlayerGameMode gameModePkt;
-	gameModePkt.gamemode = static_cast<uint8_t>(player->movement->gamemode);
+	gameModePkt.gamemode = static_cast<std::underlying_type_t<GAMEMODES>>(player->movement->gamemode);
 	groupPkt.push_back(std::make_unique<NetPlayerGameMode>(gameModePkt));
 
 	sendNewGroupPacketTo(groupPkt, cliaddr);
