@@ -950,6 +950,8 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 		{
 			BlockType dropped = getBlockWorld(blockPos);
 
+			if (dropped == BlockType::BEDROCK) return false;
+
 			// random generator
 			static std::mt19937 rng(std::random_device{}());
 			std::uniform_real_distribution<float> angleDist(0.0f, 360.0f);
