@@ -273,6 +273,7 @@ struct NetEntityMove final : public Packet {
 	// bit 0 = hasHorizontalInput, bit 1 = onGround, bit 2 = armSwing event,
 	// bit 3 = primed (creeper fuse), bit 4 = hurt event (entity took damage this tick),
 	// bit 5 = diedByExplosion (only meaningful when type==-1, i.e. the death packet)
+	std::string entityName = ""; //should go to a separate packet send on NetAccept to be sent only once and not take bandwidth every tick.
 	uint8_t positionFlags = 0;
 
 	NetEntityMove() : Packet(ID) {}
@@ -287,6 +288,7 @@ struct NetEntityMove final : public Packet {
 		w.write_f32(yaw);
 		w.write_f32(pitch);
 		w.write_u8(positionFlags);
+		w.write_string(entityName);
     }
     void decode(BufferReader& r) override {
 		eEntityType = static_cast<EEntityTypes>(r.read_u8());
@@ -298,6 +300,7 @@ struct NetEntityMove final : public Packet {
 		yaw = r.read_f32();
 		pitch = r.read_f32();
 		positionFlags = r.read_u8();
+		entityName = r.read_string();
     }
 };
 inline AutoRegister<NetEntityMove> _reg_NetEntityMove;

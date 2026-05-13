@@ -560,6 +560,7 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 
 		entityPtr->setPosition(position);
 		entityPtr->positionUpdated = true;
+		entityPtr->setName(pkt.entityName);
 		entityPtr->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
 		livingEntitiesManager.add(entityPtr);
 

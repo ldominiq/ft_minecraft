@@ -97,6 +97,7 @@ void App::init(const std::string& serverIp) {
 		if (app->mainMenu) app->mainMenu->resize(width, height);
 		if (app->multiplayerMenu) app->multiplayerMenu->resize(width, height);
 		if (app->settingsMenu) app->settingsMenu->resize(width, height);
+		if (app->controlsMenu) app->controlsMenu->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -227,6 +228,10 @@ void App::init(const std::string& serverIp) {
 			app->multiplayerMenu->addChar(static_cast<char>(codepoint));
 			return;
 		}
+		else if (app->gameState == GameState::Settings) {
+			app->settingsMenu->addChar(static_cast<char>(codepoint));
+			return;
+		}
 
 		auto manager = app->menuManager.lock();
 		if (manager != app->chat) return ;
@@ -240,11 +245,8 @@ void App::init(const std::string& serverIp) {
 
 		// In non-Playing states, handle ESC to go back / don't close window
 		if (app->gameState != GameState::Playing) {
-			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-				if (app->gameState == GameState::Multiplayer || app->gameState == GameState::Settings)
-					app->transitionTo(GameState::MainMenu);
-			}
-			if (key == app->controlsArray[TOGGLE_FULLSCREEN] && action == GLFW_PRESS)
+
+			if (key == app->controlsArray[TOGGLE_FULLSCREEN] && action == GLFW_PRESS && !(app->gameState == GameState::Controls && app->controlsMenu->getChangeRequested()))
 				app->toggleDisplayMode();
 			app->processInputMenus(key, action);
 			return;
@@ -314,6 +316,7 @@ void App::init(const std::string& serverIp) {
 
 			if (app->gameState != GameState::Playing) {
 				manager->handleMouseClick(mouseX, mouseY, button, action);
+
 				return;
 			}
 
@@ -335,9 +338,9 @@ void App::init(const std::string& serverIp) {
 		//kinda weird way to do it.
 		uint8_t mouseButtons = 0;
 		if (action == GLFW_PRESS) {
-			if (button == GLFW_MOUSE_BUTTON_LEFT) {
+			if (button == app->controlsArray[DESTROY_BLOCK]) {
 				mouseButtons |= IN_LEFT_CLICK;
-			} else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+			} else if (button == app->controlsArray[PLACE_BLOCK]) {
 				mouseButtons |= IN_RIGHT_CLICK;
 			}
 		}
@@ -392,8 +395,6 @@ void App::init(const std::string& serverIp) {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 460");
 
-	loadControlsFromFile();
-
 	renderer->livingEntitiesManager.add(camera->getPlayer());
 
     // Generate query pools
@@ -413,6 +414,8 @@ void App::init(const std::string& serverIp) {
 	mainMenu = std::make_shared<MainMenu>(screenWidth, screenHeight, menuDirtTex);
 	multiplayerMenu = std::make_shared<MultiplayerMenu>(screenWidth, screenHeight, menuDirtTex);
 	settingsMenu = std::make_shared<SettingsMenu>(screenWidth, screenHeight, menuDirtTex);
+	controlsMenu = std::make_shared<ControlsMenu>(screenWidth, screenHeight, menuDirtTex);
+	controlsArray = controlsMenu->getControlsArray();
 
 	mainMenu->setButtonCallback([this](int btn) {
 		switch (btn) {
@@ -445,6 +448,13 @@ void App::init(const std::string& serverIp) {
 
 	settingsMenu->setDoneCallback([this]() {
 		transitionTo(GameState::MainMenu);
+	});
+	settingsMenu->setChangeControlsCallback([this]() {
+		transitionTo(GameState::Controls);
+	});
+
+	controlsMenu->setSaveCallback([this]() {
+		transitionTo(GameState::Settings);
 	});
 
 	transitionTo(GameState::MainMenu);
@@ -1170,7 +1180,7 @@ void App::render() {
 
 		if (playerListVisible && clientConnected) {
 			std::vector<PlayerEntry> entries;
-			entries.push_back({ localPlayerListId, true, pingMs });
+			entries.push_back({ localPlayerListId, settingsMenu->getUsername(), true, pingMs });
 			for (auto& le : renderer->livingEntities) {
 				if (!le || le->getLivingEntityType() != PLAYER) continue;
 				if (le->getID() == localClientId) continue;
@@ -1182,7 +1192,8 @@ void App::render() {
 				auto pit = entityToPlayerListId.find(le->getID());
 				if (pit != entityToPlayerListId.end())
 					plId = pit->second;
-				entries.push_back({ plId, false, remPing });
+				std::string name = le->getName();
+				entries.push_back({ plId, name, false, remPing });
 			}
 			playerListHUD->update(entries);
 			playerListHUD->render();
@@ -2522,6 +2533,9 @@ bool App::connectToServer(const std::string& ip) {
 			multiplayerMenu->setErrorMessage(std::string("Could not connect: ") + e.what());
 		return false;
 	}
+
+	udpClient->sendConnect(settingsMenu->getUsername());
+
 	serverIp = ip;
 	setUdpClientPacketCallback();
 	return true;
@@ -2543,6 +2557,10 @@ void App::transitionTo(GameState newState) {
 			menuManager = settingsMenu;
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			break;
+		case GameState::Controls:
+			menuManager = controlsMenu;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
 		case GameState::Playing:
 			menuManager.reset();
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -2552,7 +2570,6 @@ void App::transitionTo(GameState newState) {
 }
 
 void App::cleanup() {
-
     // Shutdown ImGui before terminating GLFW
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -2569,9 +2586,9 @@ void App::cleanup() {
     glDeleteQueries(QUERY_POOL_SIZE, queryRenderShaderPool);
     glDeleteQueries(QUERY_POOL_SIZE, queryDrawShadowsPool);
 
-	if (udpClient) {
+	if (udpClient && clientConnected) {
 		NetDisconnect pkt;
-		pkt.username = "Steve";
+		pkt.username = settingsMenu ? settingsMenu->getUsername() : "";
 		udpClient->sendPacket(pkt);
 	}
 
@@ -2580,6 +2597,7 @@ void App::cleanup() {
 	mainMenu.reset();
 	multiplayerMenu.reset();
 	settingsMenu.reset();
+	controlsMenu.reset();
 	if (menuDirtTex) {
 		glDeleteTextures(1, &menuDirtTex);
 		menuDirtTex = 0;
@@ -2591,72 +2609,6 @@ void App::cleanup() {
     }
 
     glfwTerminate();
-    saveControls();
-}
-
-void App::loadControlsDefaults() {
-	controlsArray[FORWARD]				= GLFW_KEY_W;
-	controlsArray[BACKWARD]        		= GLFW_KEY_S;
-	controlsArray[LEFT]					= GLFW_KEY_A;
-	controlsArray[RIGHT]				= GLFW_KEY_D;
-    controlsArray[UP]					= GLFW_KEY_SPACE;
-    controlsArray[DOWN]					= GLFW_KEY_LEFT_SHIFT;
-    controlsArray[LEFT_CLICK]			= GLFW_MOUSE_BUTTON_LEFT;
-    controlsArray[TOGGLE_FULLSCREEN]	= GLFW_KEY_F11;
-    controlsArray[TOGGLE_WIREFRAME]		= GLFW_KEY_F1;
-    controlsArray[TOGGLE_SHADER]		= GLFW_KEY_F2;
-    controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_F6;
-    controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
-    controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
-	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
-	controlsArray[PLAYER_LIST]			= GLFW_KEY_TAB;
-	
-	controlsArray[HOTBAR_1]				= GLFW_KEY_1;
-	controlsArray[HOTBAR_2]				= GLFW_KEY_2;
-	controlsArray[HOTBAR_3]				= GLFW_KEY_3;
-	controlsArray[HOTBAR_4]				= GLFW_KEY_4;
-	controlsArray[HOTBAR_5]				= GLFW_KEY_5;
-	controlsArray[HOTBAR_6]				= GLFW_KEY_6;
-	controlsArray[HOTBAR_7]				= GLFW_KEY_7;
-	controlsArray[HOTBAR_8]				= GLFW_KEY_8;
-	controlsArray[HOTBAR_9]				= GLFW_KEY_9;
-}
-
-void App::loadControlsFromFile(const char* filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        loadControlsDefaults();
-        return;
-    }
-
-    // Initialize defaults first
-    loadControlsDefaults();
-
-    std::string line;
-    while (std::getline(file, line)) {
-        std::istringstream iss(line);
-        std::string keyName;
-        int keyValue;
-        if (!(iss >> keyName >> keyValue)) continue;
-
-        for (int i = 0; i < CONTROL_COUNT; ++i) {
-            if (keyName == controlNames[i]) {
-                controlsArray[i] = keyValue;
-                break;
-            }
-        }
-    }
-}
-
-void App::saveControls(const char* filename) {
-    std::ofstream file(filename);
-    if (!file.is_open()) return; // handle errors as you want
-
-    for (int i = 0; i < CONTROL_COUNT; ++i) {
-        file << controlNames[i] << " " << controlsArray[i] << "\n";
-    }
-
-	file << "\n\n# see 'https://www.glfw.org/docs/latest/group__keys.html' for key values" << '\n';
 }
 
 NetPlayerInputs App::buildPlayerInputsPacket()
@@ -2714,7 +2666,7 @@ void App::processInputMenus(int key, int action) {
 	if (gameState == GameState::Multiplayer) {
 		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
 			multiplayerMenu->removeChar();
-		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
+		else if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
 			if (multiplayerMenu->getIpAddress().empty()) {
 				multiplayerMenu->setErrorMessage("Please enter a server address.");
 				return;
@@ -2725,8 +2677,25 @@ void App::processInputMenus(int key, int action) {
 			multiplayerMenu->setErrorMessage("Connecting...");
 			connectPending = true;
 			connectStartTime = static_cast<float>(glfwGetTime());
-		}
+		} else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::MainMenu);
+
 		return;
+	}
+	else if (gameState == GameState::Settings)
+	{
+		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
+			settingsMenu->removeChar();
+		else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::MainMenu);
+	}
+	else if (gameState == GameState::Controls)
+	{
+		//just go back to settings menu on escape for now. TODO : make a proper controls menu and handle input there.
+		if (controlsMenu->changeControl(key))
+			controlsArray = controlsMenu->getControlsArray();
+		else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::Settings);
 	}
 
 	if (gameState != GameState::Playing) return;
@@ -2743,7 +2712,7 @@ void App::processInputMenus(int key, int action) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 	//close inventory with E too.
-	if (manager && manager == inventoryUI && key == GLFW_KEY_E && action == GLFW_PRESS)
+	if (manager && manager == inventoryUI && key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
 	{
 		menuManager.reset();
 		if (!uiInteractive)
@@ -2773,7 +2742,7 @@ void App::processInputMenus(int key, int action) {
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 			menuManager = chat;
-		if (key == GLFW_KEY_E && action == GLFW_PRESS)
+		if (key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
 		{
 			menuManager = inventoryUI;
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
