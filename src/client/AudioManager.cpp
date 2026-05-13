@@ -35,9 +35,25 @@ AudioManager::~AudioManager() {
 }
 
 bool AudioManager::init() {
+    // SoLoud's AUTO picks miniaudio, whose PulseAudio backend SIGFPEs on
+    // PipeWire's pulse shim during sample-spec probing. Force miniaudio to
+    // skip pulse by pointing PULSE_SERVER at a path that can't connect —
+    // miniaudio then falls through to ALSA cleanly. Only set it if the user
+    // hasn't already configured one.
+    if (!std::getenv("PULSE_SERVER")) {
+        ::setenv("PULSE_SERVER", "/dev/null", /*overwrite=*/0);
+    }
+
     SoLoud::result r = engine.init();
     if (r != SoLoud::SO_NO_ERROR) {
-        std::cerr << "[Audio] SoLoud init failed: " << r << std::endl;
+        std::cerr << "[Audio] SoLoud init failed: " << r
+                  << " — continuing with no sound" << std::endl;
+        // Last-resort: NOSOUND keeps the engine API usable so the rest of
+        // the app doesn't have to special-case a null engine.
+        r = engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NOSOUND);
+    }
+    if (r != SoLoud::SO_NO_ERROR) {
+        std::cerr << "[Audio] SoLoud init failed (even NOSOUND): " << r << std::endl;
         return false;
     }
 
