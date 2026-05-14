@@ -502,6 +502,11 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 				ice->triggerArmSwing();
 			if (pkt.type == static_cast<uint16_t>(CREEPER))
 				std::static_pointer_cast<ClientCreeper>(ice)->clientPrimed = (pkt.positionFlags & 0x08) != 0;
+			// Bit 0x40 = remote player flashlight on. flashlightOn lives on
+			// LivingEntity; IClientEntity virtually inherits that base so the
+			// assignment goes through `ice`. App.cpp scans these each frame and
+			// uploads the nearest active one when the local flashlight is off.
+			ice->flashlightOn = (pkt.positionFlags & 0x40) != 0;
 		}
 		ent->lastNetUpdateTime = serverTime;
 
@@ -509,6 +514,10 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 		{
 			if (ice)
 			{
+				// Latch the explosion flag before the audio layer reads it next frame —
+				// otherwise the death sweep can't tell "killed while primed" from "fuse expired".
+				if (auto le = std::dynamic_pointer_cast<LivingEntity>(ent))
+					le->diedByExplosion = (pkt.positionFlags & 0x20) != 0;
 				// Start the fall-over death animation instead of erasing immediately.
 				// The LivingEntitiesManager flips `removed` once dyingDone, and
 				// Renderer::drawCharacters sweeps removed entries afterwards.
@@ -576,50 +585,72 @@ void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view
 	              [](const std::shared_ptr<Entity>& e){ return !e || e->removed; });
 }
 
-void Renderer::renderWater(const std::shared_ptr<Shader>& shaderProgram, const glm::dvec3& eyePos) const {
+// Frustum-cull a single water chunk's AABB against the cached frustum.
+// Returns true if the chunk should be skipped this pass. Shared by all four
+// water entry points (render + has-visible × ocean + placed) to keep the
+// culling rule in one place.
+bool Renderer::waterChunkCulled(const ChunkRenderer& chunk) const {
+	if (!frustumCullingEnabled) return false;
+	const glm::dvec3 minRelD = glm::dvec3(chunk.getCachedMinP()) - frustumEyePos;
+	const glm::dvec3 maxRelD = glm::dvec3(chunk.getCachedMaxP()) - frustumEyePos;
+	return !cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD));
+}
+
+// One core loop for both ocean and placed-water draws. The bucket selector
+// returns (VAO, vertexCount) for whichever mesh this pass owns; everything
+// else (cull, chunk-relative uniforms, GL state) is identical.
+template <typename BucketFn>
+void Renderer::drawWaterBucket(Shader& shaderProgram, const glm::dvec3& eyePos,
+                               BucketFn bucket) const {
 	glDisable(GL_CULL_FACE);
-    for (const auto& weakChunk : renderedChunks) {
-        if (auto chunk = weakChunk.lock()) {
-            if (chunk->getWaterMeshVertexCount() == 0)
-                continue;
+	for (const auto& weakChunk : renderedChunks) {
+		auto chunk = weakChunk.lock();
+		if (!chunk) continue;
+		const auto [vao, vertexCount] = bucket(*chunk);
+		if (vertexCount == 0) continue;
+		if (waterChunkCulled(*chunk)) continue;
 
-            // Frustum cull water the same as terrain
-           if (frustumCullingEnabled) {
-                const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - frustumEyePos;
-                const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - frustumEyePos;
-                if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
-                    continue;
-            }
+		const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
+		                                   static_cast<double>(chunk->getOriginZ()));
+		shaderProgram.setVec3("chunkRel", glm::vec3(chunkOriginWorldD - eyePos));
+		shaderProgram.setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
 
-            const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
-                                               static_cast<double>(chunk->getOriginZ()));
-            shaderProgram->setVec3("chunkRel", glm::vec3(chunkOriginWorldD - eyePos));
-            shaderProgram->setVec3("chunkOriginWorld", glm::vec3(chunkOriginWorldD));
-
-            glBindVertexArray(chunk->getWaterVao());
-            glDrawArrays(GL_TRIANGLES, 0, chunk->getWaterMeshVertexCount());
-        }
-    }
+		glBindVertexArray(vao);
+		glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+	}
 	glEnable(GL_CULL_FACE);
 }
 
-bool Renderer::hasVisibleWater() const {
+template <typename CountFn>
+bool Renderer::anyVisibleWater(CountFn count) const {
 	for (const auto& weakChunk : renderedChunks) {
-		if (auto chunk = weakChunk.lock()) {
-			if (chunk->getWaterMeshVertexCount() == 0)
-				continue;
-
-           if (frustumCullingEnabled) {
-                const glm::dvec3 minRelD = glm::dvec3(chunk->getCachedMinP()) - frustumEyePos;
-                const glm::dvec3 maxRelD = glm::dvec3(chunk->getCachedMaxP()) - frustumEyePos;
-                if (!cameraFrustum.isBoxVisible(glm::vec3(minRelD), glm::vec3(maxRelD)))
-                    continue;
-            }
-
-			return true; // Found at least one visible water chunk
-		}
+		auto chunk = weakChunk.lock();
+		if (!chunk) continue;
+		if (count(*chunk) == 0) continue;
+		if (waterChunkCulled(*chunk)) continue;
+		return true;
 	}
 	return false;
+}
+
+void Renderer::renderWater(Shader& shaderProgram, const glm::dvec3& eyePos) const {
+	drawWaterBucket(shaderProgram, eyePos, [](const ChunkRenderer& c) {
+		return std::pair{c.getWaterVao(), c.getWaterMeshVertexCount()};
+	});
+}
+
+bool Renderer::hasVisibleWater() const {
+	return anyVisibleWater([](const ChunkRenderer& c) { return c.getWaterMeshVertexCount(); });
+}
+
+void Renderer::renderPlacedWater(Shader& shaderProgram, const glm::dvec3& eyePos) const {
+	drawWaterBucket(shaderProgram, eyePos, [](const ChunkRenderer& c) {
+		return std::pair{c.getPlacedWaterVao(), c.getPlacedWaterMeshVertexCount()};
+	});
+}
+
+bool Renderer::hasVisiblePlacedWater() const {
+	return anyVisibleWater([](const ChunkRenderer& c) { return c.getPlacedWaterMeshVertexCount(); });
 }
 
 // ---------------------------------------------------------------------------

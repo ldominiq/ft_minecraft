@@ -2,9 +2,13 @@
 
 in vec2 TexCoord;
 flat in float TexLayer;
+in vec3 vFragPosRel;
+flat in vec3 vNormal;
 out vec4 FragColor;
 
 uniform sampler2DArray blockTextures;
+
+#include "entity_lighting.glsl"
 
 void main()
 {
@@ -20,5 +24,7 @@ void main()
         tex.rgb /= tex.a;
     }
 
-    FragColor = vec4(tex.rgb, 1.0);
+    // Full directional + CSM shadow + point lights — dropped items react to the
+    // same lights as the terrain they're lying on.
+    FragColor = vec4(entityLitColor(tex.rgb, normalize(vNormal), vFragPosRel), 1.0);
 }

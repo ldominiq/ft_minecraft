@@ -63,7 +63,7 @@ struct PlayerMovement : public virtual LivingEntity {
 	inline void setVelocity(glm::vec3 velocity) {this->velocity = velocity; }
 	inline void setYawAndPitch(float yaw, float pitch) {this->yaw = yaw, this->pitch = pitch; }
 	inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {lastInputsPktRecvd = pkt; }
-	inline void setGamemode(GAMEMODES mode) {gamemode = mode; }
+	inline void setGamemode(GAMEMODES mode) {gamemode = mode; velocity = glm::vec3(0.0f); }
 	inline void setLoadRadius(uint8_t radius) { loadRadius = radius; }
 	inline void setJumpBoostApplied(bool value) { jumpBoostApplied = value; }
 	inline void setSpawnPosition(const glm::vec3 &pos) { spawnPosition = pos; }

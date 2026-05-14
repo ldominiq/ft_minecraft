@@ -106,6 +106,21 @@ struct NetAccept final : public Packet {
 };
 inline AutoRegister<NetAccept> _reg_NetAccept;
 
+struct NetSetName final : public Packet {
+	static constexpr PacketType ID = PacketType::NET_SET_NAME;
+	std::string username;
+
+	NetSetName() : Packet(ID) { flags = PacketFlags::Reliable; }
+
+	void encode(BufferWriter& w) const override {
+		w.write_string(username);
+	}
+	void decode(BufferReader& r) override {
+		username = r.read_string();
+	}
+};
+inline AutoRegister<NetSetName> _reg_NetSetName;
+
 struct NetPlayerInputs final : public Packet {
     static constexpr PacketType ID = PacketType::PLAYER_INPUT;
 
@@ -116,6 +131,10 @@ struct NetPlayerInputs final : public Packet {
     float pitch = 0.0f;   // absolute rotation around X axis
     float yaw = 0.0f;     // absolute rotation around Y axis
 	uint8_t loadRadius = 4; // maybe this should go elsewhere. Oh well!
+	// Per-player on/off toggles that aren't keystrokes. Server stashes these on
+	// the player entity and relays through NetEntityMove::positionFlags so other
+	// clients can render them. Bit 0 = flashlight on.
+	uint8_t playerFlags = 0;
 
     NetPlayerInputs() : Packet(ID) {}
 
@@ -126,6 +145,7 @@ struct NetPlayerInputs final : public Packet {
         w.write_f32(pitch);
         w.write_f32(yaw);
 		w.write_u8(loadRadius);
+		w.write_u8(playerFlags);
     }
 
     void decode(BufferReader& r) override {
@@ -135,6 +155,7 @@ struct NetPlayerInputs final : public Packet {
         pitch = r.read_f32();
         yaw = r.read_f32();
 		loadRadius = r.read_u8();
+		playerFlags = r.read_u8();
     }
 };
 inline AutoRegister<NetPlayerInputs> _reg_NetPlayerInput;
@@ -271,8 +292,11 @@ struct NetEntityMove final : public Packet {
 	float pitch = 0.0f;
 
 	std::string entityName = ""; //should go to a separate packet send on NetAccept to be sent only once and not take bandwidth every tick.
-
-	// bit 0 = hasHorizontalInput, bit 1 = onGround, bit 2 = armSwing event
+	
+    // bit 0 = hasHorizontalInput, bit 1 = onGround, bit 2 = armSwing event,
+	// bit 3 = primed (creeper fuse), bit 4 = hurt event (entity took damage this tick),
+	// bit 5 = diedByExplosion (only meaningful when type == -1, i.e. the death packet),
+	// bit 6 = flashlightOn
 	uint8_t positionFlags = 0;
 
 	NetEntityMove() : Packet(ID) {}

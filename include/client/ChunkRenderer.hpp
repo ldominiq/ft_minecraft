@@ -31,12 +31,19 @@ class ChunkRenderer : public Chunk {
 	uint waterMeshVertexCount = 0;
 	std::vector<PackedVertex> waterMeshVertices;
 
+	GLuint placedWaterVAO = 0;
+	GLuint placedWaterVBO = 0;
+	uint placedWaterMeshVertexCount = 0;
+	std::vector<PackedVertex> placedWaterMeshVertices;
+
 	const TextureManager* textureManager = nullptr;
 
 	std::unique_ptr<VegetationRenderer> vegetationRenderer;
 
     void addFace(int x, int y, int z, BlockType type, int face, float skyLightLevel); // Add a face to the mesh vertices (solid blocks)
-	void addWaterFace(int x, int y, int z, int face, float skyLightLevel); // Add a face to water mesh
+	// Push a water face into `out` (caller picks ocean vs placed bucket).
+	void addWaterFace(int x, int y, int z, int face, float skyLightLevel,
+	                  std::vector<PackedVertex>& out);
 
 	public:
 
@@ -68,6 +75,12 @@ class ChunkRenderer : public Chunk {
 
 		inline const GLuint getWaterVao() const {return waterVAO;}
 		inline const uint getWaterMeshVertexCount() const {return waterMeshVertexCount;}
+
+		inline const GLuint getPlacedWaterVao() const {return placedWaterVAO;}
+		inline const uint getPlacedWaterMeshVertexCount() const {return placedWaterMeshVertexCount;}
+
+		static int sSeaLevel;
+		static void setSeaLevel(int sl) { sSeaLevel = sl; }
 
 		inline VegetationRenderer* getVegetationRenderer() const { return vegetationRenderer.get(); }
 

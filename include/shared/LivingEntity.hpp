@@ -82,6 +82,11 @@ class LivingEntity : public Entity
 		// Currently only creepers set this.
 		bool networkedPrimed = false;
 
+		// Player flashlight on/off, set server-side from NetPlayerInputs::playerFlags
+		// bit 0 and relayed to all clients via NetEntityMove::positionFlags bit 0x40.
+		// Receiving clients render a spotlight attached to this entity's head.
+		bool flashlightOn = false;
+
 		LivingEntity(const glm::vec3 &position);
 		LivingEntity(const glm::vec3 &position, float yaw, entityID ID);
 		virtual ~LivingEntity() = 0;

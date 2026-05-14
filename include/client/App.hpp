@@ -28,6 +28,8 @@
 #include "GuiTexture.hpp"
 #include "InventoryUI.hpp"
 #include "GBuffer.hpp"
+#include "SceneFramebuffer.hpp"
+#include "AutoExposure.hpp"
 #include "SSAO.hpp"
 #include "TextureManager.hpp"
 #include "ui/TerrainDebugWindow.hpp"
@@ -68,6 +70,7 @@
 #include "MainMenu.hpp"
 #include "MultiplayerMenu.hpp"
 #include "SettingsMenu.hpp"
+#include "AudioManager.hpp"
 #include "ControlsMenu.hpp"
 
 // Read a GPU timer query result and apply exponential moving average.
@@ -116,6 +119,11 @@ private:
     void debugWindow();
     void computeDebugStats();
 
+    // Build the active flashlight set this frame (local if on + every remote
+    // player with flashlightOn) and upload it as the spotLights[] array.
+    // No-op for shaders that don't reference spotLights (vegetation, water).
+    void uploadActiveSpotLights(Shader& shader) const;
+
     GLFWwindow* window;
 
     bool vsync = true;
@@ -126,6 +134,7 @@ private:
 	float lastMouseMoveTime = 0;
 
     TextureManager textureManager;
+    std::unique_ptr<AudioManager> audio;
 
     enum class DisplayMode {
         Windowed,
@@ -176,12 +185,6 @@ private:
 	std::vector<GuiTexture> guis;
 	std::unique_ptr<GuiRenderer> guiRenderer;
 
-
-	// Water
-	std::shared_ptr<WaterFramebuffer> waterFramebuffer;
-	std::shared_ptr<Shader> waterShader;
-    GLuint dudvTexture, waterNormalTexture;
-
 	// Render type debug framebuffers
 	std::unique_ptr<RenderTypeFramebuffer> renderTypeFramebuffer;
 
@@ -192,6 +195,19 @@ private:
     std::shared_ptr<GBuffer> gBuffer;
     std::shared_ptr<SSAO> ssao;
     std::shared_ptr<Shader> gBufferShader;
+
+    // Offscreen scene FBO (MSAA + resolved). The whole scene (sky, terrain, water,
+    // debug overlays) renders into this; clouds are then composited from it to the
+    // backbuffer using actual scene depth.
+    std::unique_ptr<SceneFramebuffer> sceneFBO;
+
+    // HDR + exposure toggles. When hdrEnabled is true, the sceneFBO is RGBA16F
+    // and tone-mapping happens once in the cloud composite. Turning it off
+    // restores the legacy LDR path (RGBA8 + per-shader tonemap) for safety/regression.
+    bool  hdrEnabled = true;
+    bool  autoExposureEnabled = true;
+    float manualExposure = 1.2f;
+    std::unique_ptr<AutoExposure> autoExposure;
 
     // Z-prepass for terrain. When enabled, terrain is drawn twice in the main
     // scene pass: once depth-only with the prepass shader (color writes off),
@@ -272,7 +288,7 @@ private:
     bool uiInteractive = false;
     // Internal flag to handle key debounce for toggling the interactive mode.
     bool uiToggleHeld = false;
-	bool showDebugWindow = true;
+	bool showDebugWindow = false;
 
 	//TODO: put in struct
 	// Debug framebuffer view toggles

@@ -392,6 +392,7 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 
 	std::cout << "New client connecting from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << "...\n";
 
+	std::string rcvName = pkt.username;
 	pkt.username = pkt.username.substr(0, 15); // enforce max length
 	std::string name = pkt.username;
 	int count = 0;
@@ -416,6 +417,15 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	players.push_back(std::move(p));
 	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
+
+	messages.push_back(name + " joined the game.");
+
+	if (name != rcvName)
+	{
+		NetSetName pkt;
+		pkt.username = name;
+		sendPacketTo(pkt, cliaddr);
+	}
 
 	sendAccept(cliaddr);
 }
@@ -455,6 +465,8 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 
 	player->movement->savePlayerDataToFile("playerdata/" + player->movement->getName() + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
 
+	messages.push_back(player->movement->getName() + " left the game.");
+
 	// Erase rather than clear: ids are never reused, so the entry stays dead.
 	world->PlayerKnownChunks.erase(player->id);
 	world->livingEntities.erase(ent);
@@ -477,6 +489,14 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
 		player->movement->inventory->activeHotbarSlot = pkt.activeHotbarSlot;
+
+	// Stash flashlight state from playerFlags bit 0 onto the player entity;
+	// sendEntitiesPositionDeltas will relay it to the other clients via
+	// NetEntityMove::positionFlags bit 0x40.
+	const bool newFlashlightOn = (pkt.playerFlags & 0x01u) != 0;
+	if (newFlashlightOn != player->movement->flashlightOn)
+		player->movement->rotationUpdated = true;
+	player->movement->flashlightOn = newFlashlightOn;
 
 	if (pkt.keys & IN_DROP)
 	{
@@ -642,6 +662,47 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
                 player->movement->accumulatedFallDistance = 0.0f;
             } else {
 				player->targetedMessages.push_back("[server] Usage: /tp <x> <y> <z>");
+            }
+        }
+        else if (pkt.message.starts_with("summon "))
+        {
+            // Debug spawn /summon <zombie|creeper> [count], capped at 50.
+            auto player = NetUtils::findPlayerByAddr(players, cliaddr);
+            if (player == players.end()) return;
+
+            std::istringstream iss(pkt.message.substr(strlen("summon ")));
+            std::string mobType;
+            int count = 1;
+            if (!(iss >> mobType)) {
+                messages.push_back("[server] Usage: /summon <zombie|creeper> [count]");
+                return;
+            }
+            if (!(iss >> count)) count = 1;
+            count = std::clamp(count, 1, 50);
+
+            const glm::vec3 ppos = player->movement->getPosition();
+            static std::mt19937 summonRng(std::random_device{}());
+            std::uniform_int_distribution<int>   angDeg(0, 359);
+            std::uniform_real_distribution<float> radDist(4.0f, 6.0f);
+
+            auto spawnOne = [&](LivingEntityType type) {
+                const float angle = glm::radians(static_cast<float>(angDeg(summonRng)));
+                const float r     = radDist(summonRng);
+                glm::vec3 pos(ppos.x + std::cos(angle) * r, ppos.y, ppos.z + std::sin(angle) * r);
+                if (type == ZOMBIE)
+                    world->livingEntities.push_back(std::make_shared<Zombie>(pos));
+                else if (type == CREEPER)
+                    world->livingEntities.push_back(std::make_shared<Creeper>(pos));
+            };
+
+            if (mobType == "zombie") {
+                for (int i = 0; i < count; ++i) spawnOne(ZOMBIE);
+                messages.push_back("[server] Spawned " + std::to_string(count) + " zombie(s)");
+            } else if (mobType == "creeper") {
+                for (int i = 0; i < count; ++i) spawnOne(CREEPER);
+                messages.push_back("[server] Spawned " + std::to_string(count) + " creeper(s)");
+            } else {
+                messages.push_back("[server] Usage: /summon <zombie|creeper> [count]");
             }
         }
 	}
@@ -874,10 +935,9 @@ void Server::sendDeaths()
 			ent->deathBroadcast = true;
 
 			std::string name = le->get()->getName();
-			if (name.empty())
-				messages.push_back("Someone has died miserably");
-			else
-				messages.push_back(name + " has been obliterated");
+
+			if (le->get()->getLivingEntityType() == PLAYER)
+				messages.push_back(name + " died.");
 
 			NetEntityMove pkt;
 			pkt.eEntityType = ent->getEntityType();
@@ -888,7 +948,11 @@ void Server::sendDeaths()
 			pkt.positionZ   = ent->getPositionD().z;
 			pkt.yaw         = ent->yaw;
 			pkt.pitch		= ent->pitch;
-			pkt.positionFlags = 0;
+			// On the death packet (type==-1), bit 0x20 carries the diedByExplosion truth so the
+			// client can pick the right sound (creeper-explode vs creeper-death) without guessing
+			// from the priming state (which is true for *any* fused creeper, even when killed
+			// before the fuse completes).
+			pkt.positionFlags = (ent->diedByExplosion ? 0x20u : 0u);
 				
 			for (const auto& player : players)
 				sendPacketTo(pkt, player.addr);
@@ -1039,7 +1103,7 @@ void Server::sendEntitiesPositionDeltas()
 	{
 		for (CPlayerInfo &p : players)
 		{
-			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated && !entity->pendingArmSwing)) continue;
+			if (entity == p.movement || (!entity->positionUpdated && !entity->rotationUpdated && !entity->pendingArmSwing && !entity->pendingHurt)) continue;
 
 			NetEntityMove pkt;
 
@@ -1056,10 +1120,14 @@ void Server::sendEntitiesPositionDeltas()
 			pkt.entityName = entity->getName();
 
 			pkt.pitch = entity->pitch;
+			// Bit layout: see NetEntityMove::positionFlags in Protocol.hpp.
+			// 0x20 (diedByExplosion) is set on death packets only, in the (type == -1) path.
 			pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
-			                  | (entity->isOnGround() ? 0x02u : 0u)
-			                  | (entity->pendingArmSwing ? 0x04u : 0u)
-			                  | (entity->networkedPrimed ? 0x08u : 0u);
+							  | (entity->isOnGround()       ? 0x02u : 0u)
+							  | (entity->pendingArmSwing    ? 0x04u : 0u)
+							  | (entity->networkedPrimed    ? 0x08u : 0u)
+							  | (entity->pendingHurt        ? 0x10u : 0u)
+							  | (entity->flashlightOn       ? 0x40u : 0u);
 
 			sendPacketTo(pkt, p.addr);
 		}
@@ -1067,6 +1135,7 @@ void Server::sendEntitiesPositionDeltas()
 		entity->positionUpdated = false;
 		entity->rotationUpdated = false;
 		entity->pendingArmSwing = false;
+		entity->pendingHurt = false;
 	}
 
 	for (auto &entity : world->itemEntities)
