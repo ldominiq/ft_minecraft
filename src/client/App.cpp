@@ -2844,6 +2844,7 @@ void App::cleanup() {
 	multiplayerMenu.reset();
 	settingsMenu.reset();
 	controlsMenu.reset();
+    pauseMenu.reset();
     autoExposure.reset();
     sceneFBO.reset();
 	if (menuDirtTex) {
