@@ -56,6 +56,13 @@ constexpr float TP_REST_TILT_Y  = 0.55f;
 // hilt to upper-left tip
 constexpr float TP_WEAPON_LENGTH = 0.65f; // shoulder→tip in world units
 constexpr float TP_WEAPON_WIDTH  = 0.18f;
+// Size of the per-pixel-extruded 3P weapon mesh. The canonical voxel mesh
+// spans [0,1] in width AND length (it's the square texture grid), so this
+// single scalar sets both the on-screen length and thickness via
+// VM_WEAPON_VOXEL_DEPTH. ~0.6 makes a sword roughly the length of the
+// character's forearm — proportional to the rendered hand.
+// NOT constexpr while tuning via ImGui — see getWeaponTuning().
+float TP_WEAPON_SIZE = 0.6f;
 // NOTE: VM_WEAPON_* and VM_HAND_* are intentionally NOT `constexpr` — they
 // are exposed through HeldItemRenderer::getWeaponTuning() so the ImGui debug
 // window can tweak them at runtime. Once the pose is dialed in, switch them
@@ -401,30 +408,12 @@ bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
 			               anchorRel.y - 0.5f * spriteScale,
 			               anchorRel.z);
 		} else if (isWeapon(type)) {
-			// Real-object pose: a flat blade extending from the hand along the
-			// forearm direction. Flat side lies in the player's saggital plane,
-			// so side-on third-person views see the full silhouette.
-			const float forearmAngle = ARM_REST_ANGLE + pose.shoulder + pose.elbow;
-			const float sa = std::sin(forearmAngle), ca = std::cos(forearmAngle);
-			// Player-local frame basis (X=forward, Y=up, Z=right):
-			//   bladeY = forearm direction      = (sa, -ca, 0)
-			//   bladeZ = lateral (saggital out) = (0, 0, 1)
-			//   bladeX = bladeY × bladeZ        = (-ca, -sa, 0)
-			const glm::vec3 bladeX(-ca, -sa, 0.0f);
-			const glm::vec3 bladeY( sa, -ca, 0.0f);
-			const glm::vec3 bladeZ(0.0f, 0.0f, 1.0f);
-			glm::mat4 orient(1.0f);
-			orient[0] = glm::vec4(bladeX, 0.0f);
-			orient[1] = glm::vec4(bladeY, 0.0f);
-			orient[2] = glm::vec4(bladeZ, 0.0f);
-
-			buildWeaponQuad(buf, layer);
-			glm::mat4 M(1.0f);
-			M = glm::translate(M, anchorRel);
-			M = glm::rotate(M, -yawRad, glm::vec3(0.0f, 1.0f, 0.0f));
-			M = M * orient;
-			M = glm::scale(M, glm::vec3(TP_WEAPON_WIDTH, TP_WEAPON_LENGTH, 1.0f));
-			transformVertsMat(buf, start, M);
+			// 3P weapons render through a SEPARATE voxel-extrusion pass
+			// (drawWeaponsForEntities) so they get the same Minecraft-style
+			// 3D blade as the 1P viewmodel. Returning false here keeps them
+			// out of the batched 36-vert/item slot and signals the caller
+			// not to count this slot as drawn.
+			return false;
 		} else {
 			buildItemBillboard(buf, glm::dvec3(anchorRel), layer);
 			const float s = spriteScale / 0.25f;
@@ -485,6 +474,7 @@ HeldItemRenderer::WeaponTuning HeldItemRenderer::getWeaponTuning()
 		&VM_HAND_X,
 		&VM_HAND_Y,
 		&VM_HAND_Z,
+		&TP_WEAPON_SIZE,
 	};
 }
 
@@ -566,27 +556,165 @@ void HeldItemRenderer::drawForEntities(const glm::mat4& projection, const glm::m
 		                                *e, entityRenderPos(e), eyePos);
 	}
 
-	if (itemCount == 0) return;
+	if (itemCount > 0) {
+		glBindBuffer(GL_ARRAY_BUFFER, VBO);
+		glBufferSubData(GL_ARRAY_BUFFER, 0,
+		                static_cast<GLsizeiptr>(cpuBuffer.size() * sizeof(float)),
+		                cpuBuffer.data());
 
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferSubData(GL_ARRAY_BUFFER, 0,
-	                static_cast<GLsizeiptr>(cpuBuffer.size() * sizeof(float)),
-	                cpuBuffer.data());
+		shader->use();
+		glBindVertexArray(VAO);
+		if (textureManager) {
+			textureManager->bind(GL_TEXTURE0);
+			shader->setInt("blockTextures", 0);
+		}
 
-	shader->use();
-	glBindVertexArray(VAO);
-	if (textureManager) {
-		textureManager->bind(GL_TEXTURE0);
-		shader->setInt("blockTextures", 0);
+		glm::mat4 viewRot = view;
+		viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		shader->setMat4("projection", projection);
+		shader->setMat4("viewRot", viewRot);
+
+		glDisable(GL_CULL_FACE);
+		glDrawArrays(GL_TRIANGLES, 0, itemCount * VERTS_PER_ITEM);
+		glEnable(GL_CULL_FACE);
 	}
+
+	// Second pass: per-pixel-extruded weapon meshes. Weapons return false
+	// from appendItemMesh so they're absent from the batched buffer above;
+	// this pass handles them with a separate VAO/VBO so the vert count can
+	// exceed the 36-vert/item slot.
+	drawWeaponsForEntities(projection, view, eyePos, entities, localPlayer);
+}
+
+void HeldItemRenderer::drawWeaponsForEntities(const glm::mat4& projection, const glm::mat4& view,
+                                              const glm::dvec3& eyePos,
+                                              const std::vector<std::shared_ptr<LivingEntity>>& entities,
+                                              LivingEntity* localPlayer)
+{
+	if (!textureManager) return;
 
 	glm::mat4 viewRot = view;
 	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+	cpuBuffer.clear();
+
+	// Append one entity's weapon mesh to the batch in camera-relative world
+	// space. Orientation: hilt at the hand anchor, blade extending along the
+	// forearm direction (so the sword moves with arm-swing / walk animation),
+	// flat side in the player's saggital plane.
+	auto appendEntityWeapon = [&](const LivingEntity& e, const glm::dvec3& worldPos) {
+		if (!e.DoDraw() || e.heldItemType == 0) return;
+		ItemType type = itemIDToItemType(e.heldItemType);
+		if (!isWeapon(type)) return;
+
+		const int layer = textureManager->getItemSpriteLayer(type);
+		auto cacheIt = weaponMeshCache.find(layer);
+		if (cacheIt == weaponMeshCache.end()) {
+			std::vector<float> mesh;
+			buildWeaponVoxelMesh(mesh,
+			                     textureManager->getLayerPixels(layer),
+			                     textureManager->getTextureSize(),
+			                     layer,
+			                     VM_WEAPON_VOXEL_DEPTH);
+			cacheIt = weaponMeshCache.emplace(layer, std::move(mesh)).first;
+		}
+		const std::vector<float>& canonical = cacheIt->second;
+		if (canonical.empty()) return;
+
+		// Pose & anchor: same as for the cube/sprite path so the sword
+		// inherits arm-swing and walk animation.
+		const float yawRad     = glm::radians(e.yaw);
+		const ArmPose pose     = armPoseFromAnimation(asCharacter(e));
+		const glm::vec3 anchor = itemAnchorRel(worldPos, eyePos, yawRad, pose);
+
+		// Canonical voxel mesh has the sword running along the DIAGONAL of
+		// the [0,1]² XY grid (hilt at high-X / low-Y, tip at low-X / high-Y).
+		// We want the blade to point straight FORWARD out of the hand in
+		// player-local space (so the sword sits at hand height and extends
+		// forward, instead of dangling down from the hand toward the feet).
+		// The hand POSITION already moves with the arm via itemAnchorRel —
+		// that's what carries walk/swing animation through the held item.
+		// Orientation is fixed.
+		//   canonical hilt→tip diagonal  →  player +X (forward)
+		//   canonical thickness axis     →  player +Z (saggital out)
+		//   canonical width direction    →  player +Y (up)
+		// Closed-form basis images (derived by solving the two diagonal-pair
+		// equations):
+		const float forearmAngle = ARM_REST_ANGLE + pose.shoulder + pose.elbow;
+		const float sa = std::sin(forearmAngle);
+		const float ca = std::cos(forearmAngle);
+		constexpr float H = 0.70710678118654752f; // √2/2
+		const glm::vec3 axisX(H * (ca - sa), H * (sa + ca), 0.0f); // canonical X image
+		const glm::vec3 axisY(H * (sa + ca), H * (sa - ca), 0.0f); // canonical Y image
+		const glm::vec3 axisZ(0.0f, 0.0f, 1.0f);                   // canonical Z image
+		glm::mat4 orient(1.0f);
+		orient[0] = glm::vec4(axisX, 0.0f);
+		orient[1] = glm::vec4(axisY, 0.0f);
+		orient[2] = glm::vec4(axisZ, 0.0f);
+
+		// Final model: translate to anchor → yaw (player-local → world)
+		// → orient (canonical → player-local) → scale → shift canonical hilt
+		// to origin so all rotations pivot around the hilt.
+		glm::mat4 M(1.0f);
+		M = glm::translate(M, anchor);
+		M = glm::translate(M, glm::vec3(-0.1, 0.6, 0));
+		M = glm::rotate(M, -yawRad, glm::vec3(0.0f, 1.0f, 0.0f));
+		M = M * orient;
+		M = glm::scale(M, glm::vec3(TP_WEAPON_SIZE));
+		M = glm::translate(M, glm::vec3(-1.0f, 0.0f, 0.0f));
+
+		// Stream transformed verts into the batch.
+		const std::size_t baseFloat = cpuBuffer.size();
+		cpuBuffer.resize(baseFloat + canonical.size());
+		for (std::size_t i = 0; i + 5 < canonical.size(); i += STRIDE) {
+			const glm::vec4 p(canonical[i + 0],
+			                  canonical[i + 1],
+			                  canonical[i + 2], 1.0f);
+			const glm::vec4 q = M * p;
+			cpuBuffer[baseFloat + i + 0] = q.x;
+			cpuBuffer[baseFloat + i + 1] = q.y;
+			cpuBuffer[baseFloat + i + 2] = q.z;
+			cpuBuffer[baseFloat + i + 3] = canonical[i + 3];
+			cpuBuffer[baseFloat + i + 4] = canonical[i + 4];
+			cpuBuffer[baseFloat + i + 5] = canonical[i + 5];
+		}
+	};
+
+	if (localPlayer) {
+		glm::dvec3 worldPos = localPlayer->getPositionD();
+		if (auto* ice = dynamic_cast<IClientEntity*>(localPlayer)) {
+			if (ice->hasRenderPos) worldPos = ice->renderPos;
+		}
+		appendEntityWeapon(*localPlayer, worldPos);
+	}
+	for (const auto& e : entities) {
+		if (!e) continue;
+		appendEntityWeapon(*e, entityRenderPos(e));
+	}
+
+	if (cpuBuffer.empty()) return;
+
+	const GLsizeiptr bytesNeeded =
+		static_cast<GLsizeiptr>(cpuBuffer.size() * sizeof(float));
+	glBindBuffer(GL_ARRAY_BUFFER, weaponVBO);
+	if (bytesNeeded > weaponVBOCapacityBytes) {
+		glBufferData(GL_ARRAY_BUFFER, bytesNeeded, cpuBuffer.data(),
+		             GL_DYNAMIC_DRAW);
+		weaponVBOCapacityBytes = static_cast<GLsizei>(bytesNeeded);
+	} else {
+		glBufferSubData(GL_ARRAY_BUFFER, 0, bytesNeeded, cpuBuffer.data());
+	}
+
+	shader->use();
+	glBindVertexArray(weaponVAO);
+	textureManager->bind(GL_TEXTURE0);
+	shader->setInt("blockTextures", 0);
 	shader->setMat4("projection", projection);
 	shader->setMat4("viewRot", viewRot);
 
 	glDisable(GL_CULL_FACE);
-	glDrawArrays(GL_TRIANGLES, 0, itemCount * VERTS_PER_ITEM);
+	glDrawArrays(GL_TRIANGLES, 0,
+	             static_cast<GLsizei>(cpuBuffer.size() / STRIDE));
 	glEnable(GL_CULL_FACE);
 }
 

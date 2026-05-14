@@ -2022,16 +2022,21 @@ void App::debugWindow() {
                     ImGui::SliderFloat("Hand X (cam-space)", t.handX, -1.5f, 1.5f, "%.3f");
                     ImGui::SliderFloat("Hand Y (cam-space)", t.handY, -1.5f, 1.5f, "%.3f");
                     ImGui::SliderFloat("Hand Z (cam-space)", t.handZ, -3.0f, -0.1f, "%.3f");
+                    ImGui::Separator();
+                    ImGui::TextUnformatted("3P weapon (other players / local in 3rd person)");
+                    ImGui::SliderFloat("3P size (world)", t.tpSize, 0.1f, 2.0f, "%.3f");
                     if (ImGui::Button("Reset to defaults")) {
-                        *t.leanDeg   =  40.0f;
-                        *t.depthDeg  = -20.0f;
-                        *t.size      =  0.55f;
-                        *t.hiltDX    = -0.30f;
-                        *t.hiltDY    =  0.15f;
-                        *t.voxelDepth = 1.0f / 16.0f;
-                        *t.handX     =  0.95f;
-                        *t.handY     = -0.65f;
-                        *t.handZ     = -0.90f;
+                        *t.leanDeg    =  40.0f;
+                        *t.depthDeg   = -20.0f;
+                        *t.size       =  0.55f;
+                        *t.hiltDX     = -0.30f;
+                        *t.hiltDY     =  0.15f;
+                        *t.hiltDZ     =  0.0f;
+                        *t.voxelDepth =  1.0f / 16.0f;
+                        *t.handX      =  0.95f;
+                        *t.handY      = -0.65f;
+                        *t.handZ      = -0.90f;
+                        *t.tpSize     =  0.60f;
                         if (m_heldItemRenderer) m_heldItemRenderer->clearWeaponMeshCache();
                     }
                     ImGui::EndTabItem();

@@ -83,12 +83,22 @@ public:
 		float* handX;
 		float* handY;
 		float* handZ;
+		float* tpSize;
 	};
 	static WeaponTuning getWeaponTuning();
 	void clearWeaponMeshCache() { weaponMeshCache.clear(); }
 
 private:
 	void initGL();
+
+	// 3P weapon pass: builds a per-pixel-extruded mesh in each entity's hand,
+	// orients the blade along the forearm direction, and batches all visible
+	// entities' weapons into one upload + one draw on weaponVAO. Called by
+	// drawForEntities after the standard batched item pass.
+	void drawWeaponsForEntities(const glm::mat4& projection, const glm::mat4& view,
+	                            const glm::dvec3& eyePos,
+	                            const std::vector<std::shared_ptr<LivingEntity>>& entities,
+	                            LivingEntity* localPlayer);
 };
 
 #endif
