@@ -97,6 +97,7 @@ void App::init(const std::string& serverIp) {
 		if (app->mainMenu) app->mainMenu->resize(width, height);
 		if (app->multiplayerMenu) app->multiplayerMenu->resize(width, height);
 		if (app->settingsMenu) app->settingsMenu->resize(width, height);
+		if (app->pauseMenu) app->pauseMenu->resize(width, height);
 		if (app->controlsMenu) app->controlsMenu->resize(width, height);
     });
 
@@ -264,8 +265,6 @@ void App::init(const std::string& serverIp) {
 
 		auto manager = app->menuManager.lock();
 
-		if (!manager && app->controlsArray[CLOSE_WINDOW] == key && action == GLFW_PRESS) glfwSetWindowShouldClose(w, true);
-
 		app->processInputMenus(key, action);
 		if (manager) return ;
 
@@ -330,6 +329,10 @@ void App::init(const std::string& serverIp) {
 				return;
 			}
 
+			if (manager == app->pauseMenu) {
+				manager->handleMouseClick(mouseX, mouseY, button, action);
+				return;
+			}
 			if (manager == app->inventoryUI)
 			{
 				manager->handleMouseClick(mouseX, mouseY, button, action);
@@ -424,6 +427,7 @@ void App::init(const std::string& serverIp) {
 	mainMenu = std::make_shared<MainMenu>(screenWidth, screenHeight, menuDirtTex);
 	multiplayerMenu = std::make_shared<MultiplayerMenu>(screenWidth, screenHeight, menuDirtTex);
 	settingsMenu = std::make_shared<SettingsMenu>(screenWidth, screenHeight, menuDirtTex);
+	pauseMenu = std::make_shared<PauseMenu>(screenWidth, screenHeight);
 	controlsMenu = std::make_shared<ControlsMenu>(screenWidth, screenHeight, menuDirtTex);
 	controlsArray = controlsMenu->getControlsArray();
 
@@ -461,6 +465,25 @@ void App::init(const std::string& serverIp) {
 	});
 	settingsMenu->setChangeControlsCallback([this]() {
 		transitionTo(GameState::Controls);
+	});
+
+	pauseMenu->setContinueCallback([this]() {
+		menuManager.reset();
+		if (!uiInteractive)
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	});
+	pauseMenu->setBackToMainMenuCallback([this]() {
+		if (udpClient && clientConnected) {
+			NetDisconnect pkt;
+			pkt.username = settingsMenu ? settingsMenu->getUsername() : "";
+			udpClient->sendPacket(pkt);
+		}
+		connectPending = false;
+		udpClient.reset();
+		clientConnected = false;
+		renderer->clearCache();
+
+		transitionTo(GameState::MainMenu);
 	});
 
 	controlsMenu->setSaveCallback([this]() {
@@ -2594,11 +2617,11 @@ void App::debugWindow() {
                     if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
                         style._NextFrameFontSizeBase = style.FontSizeBase;
                     ImGui::Separator();
-                    static bool spectator = false;
-                    if (ImGui::Checkbox("Survival", &spectator))
+                    static bool survival = camera->getPlayer()->gamemode == GAMEMODES::SURVIVAL;
+                    if (ImGui::Checkbox("Survival", &survival))
                     {
                         NetMessage pkt;
-                        pkt.message = spectator ? "/gamemode survival" : "/gamemode spectator";
+                        pkt.message = !survival ? "/gamemode spectator" : "/gamemode survival";
                         udpClient->sendPacket(pkt);
                     }
 
@@ -2968,7 +2991,12 @@ void App::processInputMenus(int key, int action) {
 	{
 		if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
 			menuManager = chat;
-		if (key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
+		else if (key == controlsArray[CLOSE_WINDOW] && action == GLFW_PRESS)
+		{
+			menuManager = pauseMenu;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		}
+		else if (key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
 		{
 			menuManager = inventoryUI;
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);

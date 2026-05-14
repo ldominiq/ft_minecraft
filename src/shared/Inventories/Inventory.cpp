@@ -384,6 +384,9 @@ int Inventory<ROWS, COLS, N>::insertItems(ItemType item, int &amount)
 		stack += inserted;
 		amount -= inserted;
 
+		if (hand.lock())
+			*hand.lock() = getHand();
+
 		return itemSlot->second;
 	}
 
@@ -424,6 +427,9 @@ bool Inventory<ROWS, COLS, N>::removeItemsFromSlot(int slotNumber, itemStackSize
 		if (slotNumber != HAND_ID)
 			freeSlots.insert(slotNumber);
 	}
+
+	if (hand.lock())
+		*hand.lock() = getHand();
 
 	return true;
 }
@@ -470,6 +476,9 @@ bool Inventory<ROWS, COLS, N>::insertItemsToSlot(ItemType item, int slotNumber, 
 	int inserted = std::min<int>(MAX_STACK_SIZE - currAmount, amount);
 	grid[slotNumber] = {item, currAmount + inserted};
 	amount -= inserted;
+
+	if (hand.lock())
+		*hand.lock() = getHand();
 	return true;
 }
 

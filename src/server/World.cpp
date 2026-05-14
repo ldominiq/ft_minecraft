@@ -1062,7 +1062,7 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{
 		//Checks for every prop if there's a player nearby that can pick it up. TODO: if this is too expensive do it every n ticks instead.
-		if (entityIt->get()->getSpawnTick() + TPS * 1.5 < clientTick)
+		if (entityIt->get()->getSpawnTick() + TPS * 0.5 < clientTick)
 		{
 			bool itemErased = false;
 			for (auto &player : players)
@@ -1070,9 +1070,9 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 				if (player.movement.get()->gamemode != GAMEMODES::SURVIVAL)
 					continue ;
 
-				glm::vec3 diff = player.movement->getPosition() - entityIt->get()->getPosition();
+				glm::vec3 diff = entityIt->get()->getPosition() - player.movement->getPosition();
 				if (std::abs(diff.x) < 2 &&
-					diff.y >= 0 && diff.y < 4 &&
+					diff.y >= -1 && diff.y < 2 &&
 					std::abs(diff.z) < 2)
 				{
 					int one = 1;
