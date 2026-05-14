@@ -2079,7 +2079,7 @@ void App::debugWindow() {
 
                     ImGui::SeparatorText("Ambient Occlusion");
                     bool ssaoOn = ssao->isEnabled();
-                    if (ImGui::Checkbox("SSAO (kills 12 ms when off)", &ssaoOn))
+                    if (ImGui::Checkbox("SSAO", &ssaoOn))
                         ssao->setEnabled(ssaoOn);
 
                     ImGui::SeparatorText("Terrain");

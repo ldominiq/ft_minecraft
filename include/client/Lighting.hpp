@@ -136,7 +136,7 @@ public:
     void drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cameraFront, const glm::mat4& cameraView);
     bool debugCascades = false;
     bool showCSMDebugView = false;
-    std::vector<float> shadowCascadeLevels{ 40.0f };
+    std::vector<float> shadowCascadeLevels{ 25.0f, 100.0f };
     int debugPreviewLayer = 0;
 
     enum class PcfQuality : int { Low = 0, Medium = 1, High = 2 }; // 1-tap, 3x3, 5x5
@@ -320,13 +320,13 @@ private:
 	std::shared_ptr<Shader> csmDepthAlphaShader; // alternate shadow program with alpha test
     GLuint csmFBO = 0;
     GLuint csmDepthMaps = 0;
-    unsigned int depthMapResolution = 1024;
-    float cameraFarPlane = 250.0f;
+    unsigned int depthMapResolution = 2048;
+    float cameraFarPlane = 500.0f;
     std::vector<glm::mat4> csmLightSpaceMatrices;
 
 	void rebuildCSMResources(); // glDeleteTextures + initCSMResources()
 	void recomputeCascadeSplits(); // derive shadowCascadeLevels from cascadeCount + farPlane
-	PcfQuality pcfQuality = PcfQuality::Low;
+	PcfQuality pcfQuality = PcfQuality::High;
 	bool shadowAlphaTest = false; // whether to alpha-test shadow casters when rendering depth maps (only relevant for foliage)
 
     // Screen dimensions
