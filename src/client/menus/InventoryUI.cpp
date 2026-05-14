@@ -426,7 +426,7 @@ void InventoryUI::drawDeathScreen(float health)
 	// then locks in.
 	const float titleWidth = titleRenderer.getPixelSizeOfString(title);
 	const float titleX = (fullscreenWidth - titleWidth) / 2.0f;
-	const float titleY = fullscreenHeight * 0.62f;
+	const float titleY = fullscreenHeight * 0.58f;
 
 	// Drop shadow for legibility against the red wash.
 	const float shadowOff = 4.0f * menuScale;
