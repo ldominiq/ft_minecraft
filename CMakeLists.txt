@@ -77,7 +77,7 @@ FetchContent_MakeAvailable(freetype)
 FetchContent_Declare(
   soloud
   GIT_REPOSITORY https://github.com/jarikomppa/soloud.git
-  GIT_TAG RELEASE_20200207 # latest stable release
+  GIT_TAG e82fd32c1f62183922f08c14c814a02b58db1873 # fix for audio stuttering on Linux
 )
 FetchContent_MakeAvailable(soloud)
 
