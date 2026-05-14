@@ -524,8 +524,6 @@ void App::setUdpClientPacketCallback()
 				break;
 			}
 
-			if (!clientConnected) break; // don't process world packets until fully connected
-
 			case PacketType::CHUNK_HEADER: {
 				auto& p = static_cast<NetChunkHeader&>(*pkt);
 				// handle chunk data (append to buffer, etc.)
@@ -2600,11 +2598,11 @@ void App::debugWindow() {
                     if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
                         style._NextFrameFontSizeBase = style.FontSizeBase;
                     ImGui::Separator();
-                    static bool survival = camera->getPlayer()->gamemode != GAMEMODES::SURVIVAL;
+                    static bool survival = camera->getPlayer()->gamemode == GAMEMODES::SURVIVAL;
                     if (ImGui::Checkbox("Survival", &survival))
                     {
                         NetMessage pkt;
-                        pkt.message = survival ? "/gamemode spectator" : "/gamemode survival";
+                        pkt.message = !survival ? "/gamemode spectator" : "/gamemode survival";
                         udpClient->sendPacket(pkt);
                     }
 
