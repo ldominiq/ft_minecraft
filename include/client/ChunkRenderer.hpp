@@ -40,7 +40,8 @@ class ChunkRenderer : public Chunk {
 
 	std::unique_ptr<VegetationRenderer> vegetationRenderer;
 
-    void addFace(int x, int y, int z, BlockType type, int face, float skyLightLevel); // Add a face to the mesh vertices (solid blocks)
+    void addFace(int x, int y, int z, BlockType type, int face, float skyLightLevel,
+                 bool waterAbove = false); // Add a face to the mesh vertices (solid blocks)
 	// Push a water face into `out` (caller picks ocean vs placed bucket).
 	void addWaterFace(int x, int y, int z, int face, float skyLightLevel,
 	                  std::vector<PackedVertex>& out);

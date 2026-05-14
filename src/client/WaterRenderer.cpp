@@ -200,6 +200,9 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     // fragments don't need shadow computation at all.
     sceneShader->setInt("ssaoEnabled", 0);
     sceneShader->setFloat("shadows.enabled", 0.0f);
+    // Without shadows we can't gate caustics by sun-occlusion, so drawing
+    // them here would re-introduce caustics on terrain the sun can't reach
+    sceneShader->setFloat("causticsEnabled", 0.0f);
     texMgr.bind(GL_TEXTURE0);
     // Sea vegetation in refraction is expensive in dense biomes — toggleable.
     if (refractionRendersVegetation)
