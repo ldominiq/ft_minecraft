@@ -70,6 +70,7 @@ std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
 
 void Renderer::clearCache()
 {
+	chunks.clear();
 	chunksData.clear();
 	chunksToBuild.clear();
 	chunkReceiveTime.clear();
