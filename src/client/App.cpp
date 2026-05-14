@@ -2844,6 +2844,8 @@ void App::cleanup() {
 	multiplayerMenu.reset();
 	settingsMenu.reset();
 	controlsMenu.reset();
+    autoExposure.reset();
+    sceneFBO.reset();
 	if (menuDirtTex) {
 		glDeleteTextures(1, &menuDirtTex);
 		menuDirtTex = 0;
