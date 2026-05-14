@@ -524,6 +524,8 @@ void App::setUdpClientPacketCallback()
 				break;
 			}
 
+			if (!clientConnected) break; // don't process world packets until fully connected
+
 			case PacketType::CHUNK_HEADER: {
 				auto& p = static_cast<NetChunkHeader&>(*pkt);
 				// handle chunk data (append to buffer, etc.)
