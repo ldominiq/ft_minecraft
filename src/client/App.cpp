@@ -1258,6 +1258,9 @@ void App::render() {
 		{
 			inventoryUI->drawHotbar();
 			inventoryUI->drawHealth(camera->getPlayer()->health);
+			// Death overlay sits above the hotbar/health but below the chat
+			// recent-messages list so kill feed text stays readable.
+			inventoryUI->drawDeathScreen(camera->getPlayer()->health);
 			chat->renderRecentMessages();
 		}
 
@@ -1560,6 +1563,19 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		localPlayer.hasRenderPos = true;
 	} else {
 		localPlayer.hasRenderPos = false;
+	}
+
+	{
+		const bool dead = localPlayer.health <= 0.0f;
+		auto &bp = localPlayer.characterBodyParts;
+		if (dead && !bp.dying) {
+			localPlayer.triggerDeath();
+		} else if (!dead && bp.dying) {
+			bp.dying = false;
+			bp.dyingDone = false;
+			bp.dyingPhase = 0.0f;
+			localPlayer.removed = false; // manager flips this on dyingDone
+		}
 	}
 
   // Upload the same lighting+CSM uniforms the terrain uses so mobs/players
