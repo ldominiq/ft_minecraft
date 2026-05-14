@@ -34,12 +34,12 @@ public:
     float update(float dt, float currentExposure);
 
     // Tunable parameters (exposed in the debug window).
-    float targetLuminance = 0.18f;   // middle-gray target (log-space midpoint)
-    float minExposure     = 0.4f;
-    // Capped at ~1.5× so the meter can't make a dark night scene look like daylight
-    float maxExposure     = 1.5f;
+    float targetLuminance = 0.05f;   // middle-gray target (log-space midpoint)
+    float minExposure     = 0.2f;
+    // Capped at ~2.25× so the meter can't make a dark night scene look like daylight
+    float maxExposure     = 2.25f;
     float adaptSpeedUp    = 1.5f;    // s^-1, eyes-shutting (highlights)
-    float adaptSpeedDown  = 0.5f;    // s^-1, eyes-opening (dark adaptation slower)
+    float adaptSpeedDown  = 1.0f;    // s^-1, eyes-opening (dark adaptation slower)
 
     // For debug HUD: the most recent measured average scene luminance (linear).
     float getLastAvgLuminance() const { return lastAvgLum; }
