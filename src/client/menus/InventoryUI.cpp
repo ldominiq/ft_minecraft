@@ -120,7 +120,7 @@ void InventoryUI::build()
 	{
 		for (int j = 0; j < craftingStationCols; j++)
 		{
-			int idx = i * craftingStationCols + j;
+			int idx = (craftingStationRows - 1 - i) * craftingStationCols + j;
 
 			float slotW = craftingStation.width  / (craftingStationCols + 1);
 			float slotH = craftingStation.height / (craftingStationRows + 1);
@@ -633,6 +633,9 @@ void InventoryUI::onRender()
 		std::shared_ptr<CraftingStation> inv = craftingStationInv.lock();
 		if (!inv)
 			return ;
+		
+		if (inv->getSlot(inv->getResultSlotID()).second)
+			textRenderer.renderText(std::to_string(inv->getSlot(inv->getResultSlotID()).second), craftingResultSlot.x, craftingResultSlot.y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		buildInventoryIcon(meshVertices,
 			inv->getSlot(inv->getResultSlotID()).first,
@@ -653,5 +656,5 @@ void InventoryUI::onRender()
 	//text in hand
 	//Text needs to go after setupCubes so it renders in front of the cube in hand.
 	if (handPtr.lock() && handPtr.lock()->second != 0)
-		textRenderer.renderText(std::to_string(handPtr.lock()->second), mouseX, fullscreenHeight - mouseY, glm::vec3(1.0f));
+		textRenderer.renderText(std::to_string(handPtr.lock()->second), mouseX - hotbarSlots[0].width / 4.0f , fullscreenHeight - mouseY + hotbar.height * 0.4, glm::vec3(1.0f));
 }

@@ -33,7 +33,7 @@ static constexpr int REGION_SIZE = 32;
 static constexpr int MAX_RADIUS = 32;
 static constexpr int RADIUS_OF_REGIONS_TO_KEEP = 2;
 static constexpr ChunkPos INVALID_CHUNK = {std::numeric_limits<int>::min(), std::numeric_limits<int>::min()};
-static constexpr bool SAVES_ACTIVE = false;
+static constexpr bool SAVES_ACTIVE = true;
 
 struct RegionFileMetadata {
     char magic[4] = {'R','G','N','1'};

@@ -412,8 +412,8 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.computeSpawnPosition(world->getTerrainParams());
 
 	auto movement = p.movement;
-	p.movement->setName(name);
-	p.movement->loadPlayerDataFromFile("playerdata/" + name + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
+	movement->setName(name);
+	movement->loadPlayerDataFromFile("playerdata/" + name + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
 	players.push_back(std::move(p));
 	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
@@ -661,7 +661,7 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
                 player->movement->setVelocity(glm::vec3(0.0f));
                 player->movement->accumulatedFallDistance = 0.0f;
             } else {
-                messages.push_back("[server] Usage: /tp <x> <y> <z>");
+				player->targetedMessages.push_back("[server] Usage: /tp <x> <y> <z>");
             }
         }
         else if (pkt.message.starts_with("summon "))
@@ -845,7 +845,14 @@ void Server::sendAll()
 		sendImGuiData(p);
 		sendNewlyUpdatedBlocks(p);
 		sendMessage(p);
-		//hit/dmg ..
+
+		for (const auto& msg : p.targetedMessages)
+		{
+			NetMessage pkt;
+			pkt.message = msg;
+			sendPacketTo(pkt, p.addr);
+		}
+		p.targetedMessages.clear();
 	}
 	sendEntitiesPositionDeltas();
 	world->updatedBlocks.clear();
@@ -909,7 +916,7 @@ void Server::sendDeaths()
 			if (ent->pendingDeathRemovalTicks == 0)
 			{
 				if (ent->getLivingEntityType() == PLAYER) {
-					ent->onDeath(); // respawn now after animation window
+					ent->onDeath(*world); // respawn now after animation window
 					ent->deathBroadcast = false; // reset for potential respawn
 					ent->diedByExplosion = false;
 				}
@@ -1365,6 +1372,15 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	give(3, MiscType::IRON_INGOT,  64);
 	give(4, MiscType::GOLD_INGOT,  64);
 	give(5, MiscType::DIAMOND,     64);
+	give(6, BlockType::IRON_BLOCK,     64);
+	give(7, BlockType::DIAMOND_BLOCK,     64);
+	give(8,  BlockType::GOLD_BLOCK,     64);
+	give(9,  BlockType::URANIUM_BLOCK,     64);
+	give(10, BlockType::WITHER_ROSE,     64);
+	give(11, BlockType::SAND,     64);
+	give(12, BlockType::NETHERRACK,     64);
+	give(13, BlockType::BEACON,     64);
+
 
 	player->movement->inventory->createFullInventoryPkt(groupPkt);
 	

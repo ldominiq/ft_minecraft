@@ -338,6 +338,7 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::SAND,                  layer("sand") },
         { BlockType::SNOW,                  layer("snow") },
         { BlockType::BEDROCK,               layer("bedrock") },
+		{ BlockType::OAK_PLANKS,            layer("oak_planks") },
         { BlockType::OAK_LEAVES,            oakLeavesTinted },
         { BlockType::SPRUCE_LEAVES,         spruceLeavesTinted },
         { BlockType::BIRCH_LEAVES,          birchLeavesTinted },
@@ -408,6 +409,13 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::GRANITE,               layer("granite") },
         { BlockType::DIORITE,               layer("diorite") },
         { BlockType::RED_MUSHROOM_BLOCK,    layer("red_mushroom_block") },
+
+		{ BlockType::COAL_BLOCK,            layer("coal_block") },
+		{ BlockType::IRON_BLOCK,            layer("iron_block") },
+		{ BlockType::GOLD_BLOCK,            layer("gold_block") },
+		{ BlockType::DIAMOND_BLOCK,         layer("diamond_block") },
+		{ BlockType::URANIUM_BLOCK,         layer("emerald_block") },
+		{ BlockType::BEACON,                layer("beacon") },
     };
     for (const auto& [type, l] : uniformBlocks) {
         blockTextureMap[type] = BlockTextures::uniform(l);

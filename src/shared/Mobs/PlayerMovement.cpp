@@ -15,6 +15,7 @@ PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 	spawnPosition = glm::vec3(position);
 	yaw = 0;
 	pitch = 0;
+	damage = 3.0f;
 
 	eyesheight = entityHeight - forehead;
 }
@@ -36,9 +37,10 @@ PlayerMovement::~PlayerMovement()
 {
 }
 
-void PlayerMovement::onDeath()
+void PlayerMovement::onDeath(const ICommonWorld &world)
 {
-	setPosition(spawnPosition); // TODO : maybe add a respawn delay and play death animation instead of instant teleport?
+	hasBeaconSet = world.getBlockWorld(beaconPos) == BlockType::BEACON; //doing it like this makes it so that if someone removes the beacon and places it again the spawn is still there.
+	hasBeaconSet ? setPosition(beaconPos + glm::vec3(0.5f, 1.0f, 0.5f)) : setPosition(spawnPosition);
 	positionUpdated = true;
 	health = 20;
 	velocity = glm::vec3(0.0f);
@@ -315,6 +317,20 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 	}
 }
 
+void PlayerMovement::attack(LivingEntity &victim)
+{
+	ItemType type = inventory->getItemAtSlot(inventory->activeHotbarSlot);
+
+	damage = 3.0f; // base unarmed damage
+	if (auto* w = std::get_if<WeaponType>(&type))
+	{
+		const WeaponDef& wepDef = ItemRegistry::getWeapon(*w);
+		damage += wepDef.damage;
+	}
+
+	LivingEntity::attack(victim);
+}
+
 //Saving / loading yaw and pitch do not work for now because they are getting overriden by the client.
 void PlayerMovement::savePlayerDataToFile(const std::string& filename) const {
 	std::ofstream outFile(filename, std::ios::binary);
@@ -329,6 +345,8 @@ void PlayerMovement::savePlayerDataToFile(const std::string& filename) const {
 	outFile.write(reinterpret_cast<const char*>(&pitch), sizeof(pitch));
 	outFile.write(reinterpret_cast<const char*>(&health), sizeof(health));
 	outFile.write(reinterpret_cast<const char*>(&gamemode), sizeof(gamemode));
+
+	outFile.write(reinterpret_cast<const char*>(&beaconPos), sizeof(beaconPos));
 
 	inventory->saveToStream(outFile);
 	// craftingStation->saveToStream(outFile);
@@ -349,6 +367,8 @@ void PlayerMovement::loadPlayerDataFromFile(const std::string& filename) {
 	inFile.read(reinterpret_cast<char*>(&pitch), sizeof(pitch));
 	inFile.read(reinterpret_cast<char*>(&health), sizeof(health));
 	inFile.read(reinterpret_cast<char*>(&gamemode), sizeof(gamemode));
+
+	inFile.read(reinterpret_cast<char*>(&beaconPos), sizeof(beaconPos));
 
 	inventory->loadFromStream(inFile);
 	// craftingStation->loadFromStream(inFile);
