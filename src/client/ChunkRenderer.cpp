@@ -6,6 +6,12 @@
 // of the vertex count.
 ChunkRenderer::LeafRenderMode ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Smart;
 
+// Water *surface* Y. Defaults to TerrainGenerationParams::seaLevel (64) + 1
+// because the generator fills water blocks up to and including its seaLevel
+// index, so the actual surface is one unit higher. App overrides via
+// ChunkRenderer::setSeaLevel(serverSeaLevel + 1) when it learns the value.
+int ChunkRenderer::sSeaLevel = 65;
+
 ChunkRenderer::ChunkRenderer(std::istream& in) : Chunk(in), meshVertexCount(0), waterMeshVertexCount(0) {
     vegetationRenderer = std::make_unique<VegetationRenderer>();
     cachedMinP = glm::vec3(static_cast<float>(originX), 0.0f, static_cast<float>(originZ));
@@ -30,11 +36,21 @@ ChunkRenderer::~ChunkRenderer() {
             glDeleteBuffers(1, &waterVBO);
             waterVBO = 0;
         }
+        if (placedWaterVAO) {
+            glDeleteVertexArrays(1, &placedWaterVAO);
+            placedWaterVAO = 0;
+        }
+        if (placedWaterVBO) {
+            glDeleteBuffers(1, &placedWaterVBO);
+            placedWaterVBO = 0;
+        }
     } else {
         VAO = 0;
         VBO = 0;
         waterVAO = 0;
         waterVBO = 0;
+        placedWaterVAO = 0;
+        placedWaterVBO = 0;
     }
 }
 
@@ -159,7 +175,8 @@ void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockTy
     }
 }
 
-void ChunkRenderer::addWaterFace(const int x, const int y, const int z, const int face, const float skyLightLevel) {
+void ChunkRenderer::addWaterFace(const int x, const int y, const int z, const int face, const float skyLightLevel,
+                                 std::vector<PackedVertex>& out) {
     const float faceX = static_cast<float>(x);
     const float faceY = static_cast<float>(y);
     const float faceZ = static_cast<float>(z);
@@ -199,7 +216,7 @@ void ChunkRenderer::addWaterFace(const int x, const int y, const int z, const in
         float py = faceY + faceData[face][i * 3 + 1];
         float pz = faceZ + faceData[face][i * 3 + 2];
 
-        waterMeshVertices.push_back(packed_vertex::pack(
+        out.push_back(packed_vertex::pack(
             px, py, pz,
             normalIdx,
             packed_vertex::CORNER_FOR_VERT[i],
@@ -221,6 +238,15 @@ void ChunkRenderer::buildMesh() {
 void ChunkRenderer::buildMeshData() {
 	meshVertices.clear();
 	waterMeshVertices.clear();
+	placedWaterMeshVertices.clear();
+
+	// Only the *top* face of a water block whose top sits exactly on the
+	// sea-level plane goes to the "ocean" bucket: that's the face the
+	// planar reflection/refraction FBOs were rendered for. Side faces of
+	// the same sea-level block, placed/spread water, and deeper top faces
+	// all go to the sky-reflection bucket — that shader is independent of
+	// any global plane and works for arbitrarily-oriented water.
+	const int waterSurfaceY = sSeaLevel;
 
 	std::vector<BlockType> blockTypeVector;	// unpacked block indices
 
@@ -352,7 +378,19 @@ void ChunkRenderer::buildMeshData() {
 
                     if (isWater) {
                         if (neighborBlock == BlockType::AIR || isBlockTransparent(neighborBlock) || isBlockVegetation(neighborBlock)) {
-                            addWaterFace(x, y, z, face.faceIndex, faceSkyLight);
+                            // Only the *top* face of a water block sitting
+                            // exactly on the sea-level plane goes into the
+                            // planar-reflection bucket — that face is the one
+                            // sampled by the reflection/refraction FBOs.
+                            // Everything else (side faces of sea-level blocks,
+                            // placed/spread water, deeper top faces) uses the
+                            // sky-reflection shader, which is independent of
+                            // any global plane.
+                            const bool topAtSea = (y + 1 == waterSurfaceY);
+                            const bool isPlanarFace = topAtSea && face.faceIndex == 2;
+                            std::vector<PackedVertex>& bucket =
+                                isPlanarFace ? waterMeshVertices : placedWaterMeshVertices;
+                            addWaterFace(x, y, z, face.faceIndex, faceSkyLight, bucket);
                         }
                     } else if (currentBlock == BlockType::CACTUS) {
                         bool isSide = (face.faceIndex != 2 && face.faceIndex != 3);
@@ -442,6 +480,32 @@ void ChunkRenderer::uploadMesh() {
 
     waterMeshVertices.clear();
     waterMeshVertices.shrink_to_fit();
+
+    // Upload placed-water mesh — same packed format, separate VAO/VBO so we
+    // can bind the simpler sky-reflection shader for it without re-issuing
+    // ocean draws.
+    if (!placedWaterMeshVertices.empty()) {
+        if (placedWaterVAO == 0)
+            glGenVertexArrays(1, &placedWaterVAO);
+        if (placedWaterVBO == 0)
+            glGenBuffers(1, &placedWaterVBO);
+
+        glBindVertexArray(placedWaterVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, placedWaterVBO);
+        glBufferData(GL_ARRAY_BUFFER, placedWaterMeshVertices.size() * sizeof(PackedVertex), placedWaterMeshVertices.data(), GL_STATIC_DRAW);
+
+        glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v0)));
+        glEnableVertexAttribArray(0);
+        glVertexAttribIPointer(1, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v1)));
+        glEnableVertexAttribArray(1);
+
+        placedWaterMeshVertexCount = static_cast<uint>(placedWaterMeshVertices.size());
+    } else {
+        placedWaterMeshVertexCount = 0;
+    }
+
+    placedWaterMeshVertices.clear();
+    placedWaterMeshVertices.shrink_to_fit();
 }
 
 void ChunkRenderer::buildVegetationMesh() const {

@@ -55,8 +55,6 @@ UDPClient::UDPClient(const char* server_ip) : sockfd(-1) {
     }
 
     std::cout << "Connecting to server at " << server_ip << ":" << PORT << "..." << std::endl;
-
-	sendConnect();
 }
 
 UDPClient::~UDPClient() {
@@ -80,10 +78,10 @@ void UDPClient::sendPacket(Packet &pkt) {
 	sendRawBytes(bytes);
 }
 
-void UDPClient::sendConnect() {
+void UDPClient::sendConnect(const std::string &username) {
 
 	NetConnect connectPkt;
-	connectPkt.username  = "Stesve";
+	connectPkt.username  = username;
 
 	// std::vector<uint8_t> bytes = encodePacket(connectPkt);
 	sendPacket(connectPkt);

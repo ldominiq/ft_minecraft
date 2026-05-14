@@ -135,6 +135,9 @@ class Entity {
 		bool rotationUpdated = false;
 		// one-shot flag: player clicked to break/place/attack. Broadcast once then reset.
 		bool pendingArmSwing = false;
+		// one-shot flag: this entity took damage this tick. Broadcast once then reset.
+		// Drives 3D hurt sounds on the receiving client; cleared in the same place pendingArmSwing is.
+		bool pendingHurt = false;
 		// timestamp of the last network position update (glfwGetTime / serverTime scale)
 		double lastNetUpdateTime = -1.0;
 

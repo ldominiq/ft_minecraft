@@ -86,7 +86,10 @@ public:
     explicit Lighting(int screenWidth, int screenHeight);
     ~Lighting();
 
-    void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater = false) const;
+    // destIsHDR: if true, the bound framebuffer is HDR (RGBA16F) and the sky
+    // shader will skip its own tonemap (clouds_composite tonemaps later).
+    // Water reflections render into an LDR FBO, so they pass destIsHDR=false.
+    void drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater = false, bool destIsHDR = true) const;
     void drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const;
 
     void updateSunDirection(float deltaTime);
@@ -95,10 +98,31 @@ public:
     void updateSkyLUT(float cameraPosY);
 
     void uploadLightingUniforms(const Shader& shader, const glm::dvec3& eyePos, glm::vec3 cameraFront) const;
+    // One active flashlight (local or remote player's), in camera-relative space.
+    // `dir` is the world-space look direction (already normalized).
+    struct SpotLightUpload {
+        glm::vec3 posRel;
+        glm::vec3 dir;
+    };
+    // Max simultaneous spot lights — must match MAX_SPOT_LIGHTS in lighting.frag
+    // and ENTITY_MAX_SPOT_LIGHTS in entity_lighting.glsl.
+    static constexpr int MAX_SPOT_LIGHTS = 16;
+    // Upload the active flashlight set into spotLights[0..n-1] + numSpotLights.
+    // Anything past MAX_SPOT_LIGHTS is silently dropped (caller should pick
+    // the closest N if they have more candidates).
+    void uploadSpotLights(const Shader& shader, const std::vector<SpotLightUpload>& lights) const;
     void uploadUnderwaterUniforms(const Shader& shader) const;
     void drawTexturePreviewQuad(unsigned int textureID, bool grayscale = false, glm::vec2 offset = glm::vec2(0.0f));
 
     void renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const;
+
+    // Post-terrain pass: samples (sceneColor, sceneDepth, cloudTex) and composites
+    // clouds over the scene using per-pixel depth comparison. Draws into the currently
+    // bound framebuffer (FBO=0 in the typical case).
+    void compositeCloudsToBackbuffer(GLuint sceneColorTex, GLuint sceneDepthTex,
+                                     const glm::mat4& view, const glm::mat4& projection,
+                                     const glm::vec3& cameraPosWorld,
+                                     const glm::vec2& resolution) const;
 
     // CSM
     static std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
@@ -153,6 +177,10 @@ public:
     float getShadowMapMaxBias() const { return MAX_BIAS; }
 
     float getSkyExposure() const { return skyExposure; };
+    bool  isHDREnabled() const { return hdrEnabled; }
+    void  setHDREnabled(bool v) { hdrEnabled = v; }
+    float getSkySaturation() const { return skySaturation; }
+    void  setSkySaturation(float v) { skySaturation = v; }
     float getSkyAtmDensity() const { return skyAtmDensity; };
     float getSkyAtmThickness() const { return skyAtmThickness; };
     float getSkyTimeOffset() const { return skyTimeOffset; };
@@ -255,6 +283,8 @@ public:
     void setUnderwaterTintColor(const glm::vec3 &tint) { underwaterTintColor = tint; };
     void setUnderwaterFogColor(const glm::vec3 &color) { underwaterFogColor = color; };
     void setUnderwaterFogDensity(const float density) { underwaterFogDensity = density; };
+    void setSeaLevel(const float y) { seaLevel = y; }
+    void setCausticTime(const float t) { causticTime = t; }
 
     void setPointLightEnabled(int index, bool enabled);
     void setPointLightPosition(int index, const glm::vec3& pos);
@@ -280,6 +310,7 @@ private:
     std::unique_ptr<Shader> lightCubeShader;
     std::shared_ptr<Shader> debugFBOShader;
     std::shared_ptr<Shader> cloudShader;
+    std::shared_ptr<Shader> cloudCompositeShader;
 
     // Sky scattering LUT
     std::unique_ptr<SkyLUT> skyLUT;
@@ -325,8 +356,16 @@ private:
     float sunStepDuration  = 2.0f;   // how long the smooth advance takes
     bool  sunStepping      = false;  // true while the sun is advancing
     float sunStepTimer     = 0.0f;   // progress within the step
-    // Simple tone-mapping exposure for sky shader
+    // Simple tone-mapping exposure for sky shader (drives the final composite tonemap in HDR mode).
     float skyExposure = 1.2f;
+    // Post-tonemap saturation applied in clouds_composite. Compensates for the
+    // midtone desaturation introduced by ACES + the fact that block textures
+    // are sRGB-encoded but treated as linear. 1.0 = identity.
+    float skySaturation = 1.20f;
+    // When true, the scene framebuffer is RGBA16F and tone-mapping happens once
+    // at the very end (clouds_composite). When false, the legacy LDR path is used
+    // where the sky and the cloud composite each tone-map their own outputs.
+    bool  hdrEnabled = true;
     // Atmospheric density and thickness scalars (1.0 ~ Earth-like)
     float skyAtmDensity = 19.0f;
     float skyAtmThickness = 1.0f;
@@ -335,19 +374,21 @@ private:
 
     // Cloud controls
     bool cloudsEnabled = true;
-    float cloudDensity = 0.08f; // overall cloud density (increased for more visible clouds)
+    float cloudLayerMinY = 260.0f; // cloud layer altitude (shared between cloud march and sky depth composite)
+    float cloudLayerMaxY = 310.0f;
+    float cloudDensity = 0.135f; // overall cloud density (increased for more visible clouds)
     float cloudSigmaT = 2.0f; // extinction coefficient (lower = less absorption, brighter clouds)
     glm::vec3 cloudAlbedo = glm::vec3(1.0f); // cloud albedo (reflectivity)
     float cloudStepCount = 48.0f; // number of steps (lower for performance, still good quality)
 
-    float cloudSigmaS = 2.0f; // scattering coefficient
+    float cloudSigmaS = 3.6f; // scattering coefficient
     float cloudPhaseG = 0.4f; // phase function (lower = more uniform scattering, less directional)
 
     int cloudDownscale = 4; // downscaling factor for cloud rendering (higher = faster but blurrier)
 
-    float cloudEdgeFeather = 8.0f;      // smaller feather = sharper edges
-    float cloudNoiseScale = 0.005f;     // lower frequency = bigger, chunkier clouds
-    float cloudNoiseContrastLo = 0.58f; // tighter contrast range for more defined shapes
+    float cloudEdgeFeather = 10.0f;      // smaller feather = sharper edges
+    float cloudNoiseScale = 0.006f;     // lower frequency = bigger, chunkier clouds
+    float cloudNoiseContrastLo = 0.59f; // tighter contrast range for more defined shapes
     float cloudNoiseContrastHi = 1.0f;
     float cloudWindSpeed = 100.0f;
     glm::vec2 cloudWindDir = glm::vec2(1.0f, 0.2f); // mostly horizontal drift
@@ -405,7 +446,11 @@ private:
     float MIN_BIAS = 0.001;
     float MAX_BIAS = 0.005;
 
-    float seaLevel = 64.0f;
+    float seaLevel = 65.0f;
+    // Caustics animation phase. Driven from outside (App passes
+    // WaterRenderer::getWaveTime()) so caustic ripples are visually coherent
+    float causticTime = 0.0f;
+    GLuint causticsTexture = 0;
 
     // DEBUG
     bool showShadowMap = false;

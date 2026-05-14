@@ -25,6 +25,10 @@ uniform mat4 projection; // camera projection
 uniform vec3 cameraPosWorld;
 uniform float seaLevel;
 uniform float exposure;  // exposure for simple tone mapping (1 - exp(-exposure * color))
+// When false, the scene framebuffer is HDR (RGBA16F) and the final tonemap is
+// performed once in clouds_composite. We must NOT tonemap here in that case —
+// emit linear radiance instead. Defaults to true for the LDR path.
+uniform bool tonemapHere;
 uniform float atmDensity;    // 1.0 = Earth-like, lower -> closer to space
 uniform float atmThickness;  // scales HR/HM (1.0 = Earth-like)
 uniform float planetScale;
@@ -33,10 +37,6 @@ uniform vec3 sunDir;
 // Underwater rendering
 uniform bool cameraUnderwater;
 uniform vec3 underwaterFogColor;
-
-// --- Low-res cloud composite ---
-uniform int cloudsCompositeEnabled;   // 0/1
-uniform sampler2D cloudTex;           // RGBA: rgb=cloud light, a=transmittance
 
 
 // -----------------------------
@@ -68,23 +68,6 @@ const vec3 invWavelength4 = vec3(
 // -----------------------------
 // Helpers
 // -----------------------------
-vec3 Uncharted2ToneMapping(vec3 color) {
-    float gamma = 2.2;
-    float A = 0.15;
-    float B = 0.50;
-    float C = 0.10;
-    float D = 0.20;
-    float E = 0.02;
-    float F = 0.30;
-    float W = 11.2;
-    //float exposure = 2.0;
-    color *= exposure;
-    color = ((color * (A * color + C * B) + D * E) / (color * (A * color + B) + D * F)) - E / F;
-    float white = ((W * (A * W + C * B) + D * E) / (W * (A * W + B) + D * F)) - E / F;
-    color /= white;
-    color = pow(color, vec3(1.0 / gamma));
-    return color;
-}
 
 bool intersectSphere(vec3 ro, vec3 rd, float radius, out float t0, out float t1) {
     // Solve |ro + rd*t|^2 = r^2
@@ -218,50 +201,16 @@ void main() {
     vec3 sunCol = vec3(1.0, 0.98, 0.90) * 30.0;
     col += (disk + halo) * sunCol;
 
-    if (cloudsCompositeEnabled != 0)
-    {
-        vec2 uv = (gl_FragCoord.xy + vec2(0.5)) / max(resolution, vec2(1.0));
-        vec4 cloud = texture(cloudTex, uv);
+    gl_FragDepth = 1.0;
 
-        // Compute cloud layer intersection for depth
-        const float cloudY = 145.0;
-        float t = (cloudY - cameraPosWorld.y) / r.y;
+    // In LDR mode: simple exposure tonemap here. In HDR mode: emit linear radiance
+    // and let the final composite (clouds_composite.frag) tonemap once.
+    vec3 mapped = tonemapHere ? (vec3(1.0) - exp(-exposure * col)) : col;
 
-        // cloud.a = transmittance (1 = no cloud, 0 = opaque cloud)
-        // cloudOpacity = 1 - cloud.a (0 = no cloud, 1 = opaque cloud)
-        float cloudOpacity = 1.0 - cloud.a;
-
-        if (t > 0.0 && cloudOpacity > 0.01) {
-            // Compute cloud intersection depth
-            vec3 cloudIntersection = cameraPosWorld + t * r;
-            vec4 cloudClip = projection * view * vec4(cloudIntersection, 1.0);
-            float cloudDepthNDC = cloudClip.z / cloudClip.w;
-            float cloudDepth = clamp(cloudDepthNDC * 0.5 + 0.5, 0.0, 1.0);
-
-            // Blend between cloud depth and far plane based on opacity
-            // More opaque clouds -> use cloud depth (terrain can occlude)
-            // Transparent edges -> use far plane (allow terrain to show through)
-            gl_FragDepth = mix(1.0, cloudDepth, cloudOpacity);
-        } else {
-            // Ray pointing away from cloud layer or no cloud at all
-            gl_FragDepth = 1.0;
-        }
-
-        col = cloud.rgb + cloud.a * col;
-    } else {
-        gl_FragDepth = 1.0;
-    }
-
-
-    // Simple exposure: 1 - exp(-exposure * color)
-    vec3 mapped = vec3(1.0) - exp(-exposure * col);
-
-    vec3 tone = Uncharted2ToneMapping(col);
-
-    // Apply underwater fog to sky
+    // Apply underwater fog to sky. The flat fog color is authored as an sRGB-display
+    // value, so in HDR mode lift it to linear to compensate for the final pow(1/2.2).
     if (cameraUnderwater) {
-        // Replace sky with murky water fog color
-        mapped = underwaterFogColor;
+        mapped = tonemapHere ? underwaterFogColor : pow(underwaterFogColor, vec3(2.2));
     }
 
     FragColor = vec4(mapped, 1.0);

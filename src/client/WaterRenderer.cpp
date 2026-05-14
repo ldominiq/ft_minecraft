@@ -13,21 +13,48 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
+#include <algorithm>
 
 
 // ============================================================
 // Water Rendering Helper Methods
 // ============================================================
 
-WaterRenderer::WaterRenderer(const std::shared_ptr<Shader>& shader, const std::shared_ptr<WaterFramebuffer>& fbos) : waterShader(shader), fbos(fbos) {
-    dudvTexture = shader->loadTexture("assets/textures/waterDudv.png");
-    waterNormalTexture = shader->loadTexture("assets/textures/normalMap.png");
+WaterRenderer::WaterRenderer(int screenWidth, int screenHeight) {
+
+    fbos = std::make_unique<WaterFramebuffer>(screenWidth, screenHeight);
+    waterShader = std::make_unique<Shader>("shaders/water.vert", "shaders/water.frag");
+    // Sky-reflection shader for water that isn't on the planar (sea-level)
+    // plane — placed buckets, spread water, exposed deep-ocean side faces.
+    placedWaterShader = std::make_unique<Shader>("shaders/water_placed.vert", "shaders/water_placed.frag");
+    dudvTexture = waterShader->loadTexture("assets/textures/waterDudv.png");
+    waterNormalTexture = waterShader->loadTexture("assets/textures/normalMap.png");
+
+	// override default GL_NEAREST filter set by loadTexture() for these two textures
+    // Override to trilinear + max-8 anisotropy on just these two textures.
+    auto setSmoothFilter = [](GLuint tex) {
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    #if defined(GL_TEXTURE_MAX_ANISOTROPY_EXT)
+        float maxAniso = 0.0f;
+        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAniso);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, std::min(8.0f, maxAniso));
+    #elif defined(GL_TEXTURE_MAX_ANISOTROPY)
+        float maxAniso = 0.0f;
+        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &maxAniso);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, std::min(8.0f, maxAniso));
+    #endif
+    };
+    setSmoothFilter(dudvTexture);
+    setSmoothFilter(waterNormalTexture);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
     // connect texture units
-    shader->use();
-    shader->setInt("reflectionTexture", 0);
-    shader->setInt("refractionTexture", 1);
-    shader->stop();
+    waterShader->use();
+    waterShader->setInt("reflectionTexture", 0);
+    waterShader->setInt("refractionTexture", 1);
+    waterShader->stop();
 }
 
 WaterRenderer::~WaterRenderer() {
@@ -38,6 +65,15 @@ void WaterRenderer::setDependencies(const std::shared_ptr<Lighting> &lightingRef
     lighting = lightingRef;
     renderer = rendererRef;
     camera = cameraRef;
+}
+
+void WaterRenderer::advanceWaveTime(float dt) {
+    // Wrap at 2π * 1024 — large enough that the wrap is invisible (cos is
+    // periodic in 2π), small enough that float precision stays good.
+    constexpr float kTwoPi = 6.28318530717958647692f;
+    constexpr float kWrap  = kTwoPi * 1024.0f;
+    waveTime += dt;
+    if (waveTime > kWrap) waveTime -= kWrap;
 }
 
 void WaterRenderer::setRefractionResolutionScale(float scale, int displayWidth, int displayHeight) {
@@ -105,7 +141,11 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
     // Render reflection scene
     texMgr.bind(GL_TEXTURE0);
     constexpr glm::mat4 skyView = glm::mat4(-1.0);
-    lighting->drawSky(skyView, projection, reflectCamPos, false);
+    // Sky tonemapping must match the reflection target's color space: in HDR
+    // mode the FBO is R11F_G11F_B10F and water.frag expects linear radiance,
+    // so the sky stays linear too and the final composite tonemaps once.
+    const bool destIsHDR = fbos->isHDR();
+    lighting->drawSky(skyView, projection, reflectCamPos, false, destIsHDR);
 
     if (reflectionEnabled) {
         // Update vegetation shader with reflected view/clip before rendering
@@ -170,6 +210,78 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     fbos->unbindCurrentFrameBuffer();
 }
 
+void WaterRenderer::setupSurfaceShader(Shader& shader,
+                                       const glm::mat4& projection,
+                                       const glm::mat4& viewRot,
+                                       const glm::dvec3& eyePosD,
+                                       const glm::vec3& sunDir) {
+    // Anchor the dudv texture coordinate to an eye-relative origin snapped
+    // to a multiple of the texture's repeat period (1/tiling). Lets the
+    // vertex shader build texture coords from camera-relative positions
+    // without losing wave detail at large world coordinates.
+    //
+    // Y is also anchored: side faces of placed-water blocks use Y for V,
+    // and without this the texture would translate vertically as the eye
+    // moves up/down (since cameraRelPos.y = worldY - eye.y). The ocean
+    // shader only uses XZ and ignores the Y component — uniform is a
+    // silent no-op there.
+    const double period = (dudvTiling > 0.0f) ? (1.0 / static_cast<double>(dudvTiling)) : 1.0;
+    const double anchorX = std::floor(eyePosD.x / period) * period;
+    const double anchorZ = std::floor(eyePosD.z / period) * period;
+    const double anchorY = std::floor(eyePosD.y / period) * period;
+    const glm::vec2 texAnchor(static_cast<float>(eyePosD.x - anchorX),
+                              static_cast<float>(eyePosD.z - anchorZ));
+    const float texAnchorY = static_cast<float>(eyePosD.y - anchorY);
+
+    shader.use();
+    shader.setMat4("projection", projection);
+    shader.setMat4("viewRot", viewRot);
+    // Sun direction (toward-sun convention, matching dirLight). Set
+    // explicitly — uploadFogUniforms only writes sunDir when fog is on.
+    shader.setVec3("sunDir", sunDir);
+    shader.setVec3("lightColor", lighting->getDirectionalDiffuseColor());
+    // Sun-elevation fade band for specular (sunDir.y in [0.235, 0.315]
+    // matches the old lightPos.y in [55±8] behavior).
+    shader.setFloat("twilightLow",  0.235f);
+    shader.setFloat("twilightHigh", 0.315f);
+    shader.setVec2("texAnchor", texAnchor);
+    shader.setFloat("texAnchorY", texAnchorY);
+    shader.setFloat("moveFactor", waterMoveFactor);
+    shader.setFloat("moveFactor2", waterMoveFactor2);
+    shader.setFloat("waveStrength", waveStrength);
+    shader.setFloat("tiling", dudvTiling);
+
+    // Gerstner wave inputs. waveAnchor wraps the eye to a 1024-unit period
+    // so the cos/sin argument stays in f32 range while staying world-stable.
+    constexpr double kWaveWrap = 1024.0;
+    const double waveAnchorX = std::floor(eyePosD.x / kWaveWrap) * kWaveWrap;
+    const double waveAnchorZ = std::floor(eyePosD.z / kWaveWrap) * kWaveWrap;
+    const glm::vec2 waveAnchor(static_cast<float>(eyePosD.x - waveAnchorX),
+                               static_cast<float>(eyePosD.z - waveAnchorZ));
+    shader.setVec2("waveAnchor", waveAnchor);
+    shader.setFloat("waveTime", waveTime);
+
+    // Both shaders sample skyLUT outside the fog path (ocean: distance color
+    // shift; placed: sky reflection term), so bind it unconditionally.
+    const GLuint skyLUTTex = lighting->getSkyLUTTexture();
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::SKY_LUT);
+    glBindTexture(GL_TEXTURE_2D, skyLUTTex);
+    shader.setInt("skyLUT", TextureUnits::SKY_LUT);
+    shader.setFloat("skyExposure", lighting->getSkyExposure());
+
+    uploadFogUniforms(shader, fogEnabled, skyLUTTex,
+                      lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
+                      lighting->getDirectionalLightDirection());
+
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_DUDV);
+    glBindTexture(GL_TEXTURE_2D, dudvTexture);
+    shader.setInt("dudvMap", TextureUnits::WATER_DUDV);
+
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_NORMAL);
+    glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
+    shader.setInt("normalMap", TextureUnits::WATER_NORMAL);
+}
+
 void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     prepareRender();
 
@@ -179,44 +291,17 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     const glm::dvec3 eyePosD = camera->getEyePosD();
     const glm::vec3 sunDir = lighting->getDirectionalLightDirection();
 
-    // Anchor the dudv texture coordinate to an eye-relative origin snapped
-    // to a multiple of the texture's repeat period (1/tiling). This lets
-    // the vertex shader compute the texture coordinate from camera-relative
-    // positions, which keeps the value small (< one period) at any world
-    // coordinate — without it, moveFactor and wave detail would quantize
-    // away at large coords. The snapping aligns to integer multiples of the
-    // period, so the visible texture is identical to the worldspace path.
-    const double period = (dudvTiling > 0.0f) ? (1.0 / static_cast<double>(dudvTiling)) : 1.0;
-    const double anchorX = std::floor(eyePosD.x / period) * period;
-    const double anchorZ = std::floor(eyePosD.z / period) * period;
-    const glm::vec2 texAnchor(static_cast<float>(eyePosD.x - anchorX),
-                              static_cast<float>(eyePosD.z - anchorZ));
+    setupSurfaceShader(*waterShader, projection, viewRot, eyePosD, sunDir);
 
-    // Set water shader uniforms
-    waterShader->use();
-    waterShader->setMat4("projection", projection);
-    waterShader->setMat4("viewRot", viewRot);
-    // Sun is a directional light. Pass its direction (toward-sun convention,
-    // matching dirLight) so specular stays correct at any world coordinate.
-    // Set explicitly here too — uploadFogUniforms only sets sunDir when fog is on.
-    waterShader->setVec3("sunDir", sunDir);
-    waterShader->setVec3("lightColor", lighting->getDirectionalDiffuseColor());
-    // Sun-elevation fade band for specular: sunDir.y in [-1, 1].
-    // Old behavior keyed on lightPos.y in [55±8], where lightPos = dir*200,
-    // i.e. dir.y in [0.235, 0.315]. Preserve that.
-    waterShader->setFloat("twilightLow",  0.235f);
-    waterShader->setFloat("twilightHigh", 0.315f);
-    waterShader->setVec2("texAnchor", texAnchor);
-    waterShader->setFloat("moveFactor", waterMoveFactor);
-    waterShader->setFloat("waveStrength", waveStrength);
-    waterShader->setFloat("tiling", dudvTiling);
+    // Ocean-only uniforms: depth linearization + FBO sampler binds.
     waterShader->setFloat("nearPlane", 0.1f);
     waterShader->setFloat("farPlane", 1000.0f);
 
     // Fog uniforms
     uploadFogUniforms(*waterShader, fogEnabled, lighting->getSkyLUTTexture(),
                       lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
-                      lighting->getDirectionalLightDirection());
+                      lighting->getDirectionalLightDirection(),
+                      lighting->isHDREnabled());
 
     // Bind water textures
     glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_REFLECT);
@@ -227,24 +312,29 @@ void WaterRenderer::renderWaterSurface(const glm::mat4& projection) {
     glBindTexture(GL_TEXTURE_2D, fbos->getRefractionTexture());
     waterShader->setInt("refractionTexture", TextureUnits::WATER_REFRACT);
 
-    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_DUDV);
-    glBindTexture(GL_TEXTURE_2D, dudvTexture);
-    waterShader->setInt("dudvMap", TextureUnits::WATER_DUDV);
-
-    glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_NORMAL);
-    glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
-    waterShader->setInt("normalMap", TextureUnits::WATER_NORMAL);
-
     glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_DEPTH);
     glBindTexture(GL_TEXTURE_2D, fbos->getRefractionDepthTexture());
     waterShader->setInt("refractionDepthTexture", TextureUnits::WATER_DEPTH);
 
-    // Enable alpha blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    renderer->renderWater(*waterShader, eyePosD);
+    glDisable(GL_BLEND);
+}
 
-    // Render water meshes
-    renderer->renderWater(waterShader, eyePosD);
+void WaterRenderer::renderPlacedWaterSurface(const glm::mat4& projection) {
+    if (!placedWaterShader) return;
 
+    const glm::mat4 view = camera->getViewMatrix();
+    glm::mat4 viewRot = view;
+    viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    const glm::dvec3 eyePosD = camera->getEyePosD();
+    const glm::vec3 sunDir = lighting->getDirectionalLightDirection();
+
+    setupSurfaceShader(*placedWaterShader, projection, viewRot, eyePosD, sunDir);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    renderer->renderPlacedWater(*placedWaterShader, eyePosD);
     glDisable(GL_BLEND);
 }

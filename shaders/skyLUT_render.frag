@@ -22,6 +22,9 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform vec3 cameraPosWorld;
 uniform float exposure;
+// When false, output linear HDR radiance (scene FBO is RGBA16F and the final
+// tonemap is done once in clouds_composite). Defaults to true for the LDR path.
+uniform bool tonemapHere;
 uniform vec3 sunDir;
 
 // Underwater rendering
@@ -32,8 +35,6 @@ uniform vec3 underwaterFogColor;
 uniform sampler2D skyLUT;
 
 // Low-res cloud composite
-uniform int cloudsCompositeEnabled;
-uniform sampler2D cloudTex;
 
 #include "sky_common.glsl"
 
@@ -79,39 +80,16 @@ void main() {
     vec3 sunCol = vec3(1.0, 0.98, 0.90) * 30.0;
     col += (disk + halo) * sunCol;
 
-    // Cloud composite
-    if (cloudsCompositeEnabled != 0)
-    {
-        vec2 uv = (gl_FragCoord.xy + vec2(0.5)) / max(resolution, vec2(1.0));
-        vec4 cloud = texture(cloudTex, uv);
+    gl_FragDepth = 1.0;
 
-        const float cloudY = 145.0;
-        float t = (cloudY - cameraPosWorld.y) / r.y;
+    // In LDR mode: tone-map + gamma here. In HDR mode: emit linear radiance and
+    // let the final composite tonemap once.
+    vec3 tone = tonemapHere ? skyTonemap(col, exposure) : col;
 
-        float cloudOpacity = 1.0 - cloud.a;
-
-        if (t > 0.0 && cloudOpacity > 0.01) {
-            vec3 cloudIntersection = cameraPosWorld + t * r;
-            vec4 cloudClip = projection * view * vec4(cloudIntersection, 1.0);
-            float cloudDepthNDC = cloudClip.z / cloudClip.w;
-            float cloudDepth = clamp(cloudDepthNDC * 0.5 + 0.5, 0.0, 1.0);
-            gl_FragDepth = mix(1.0, cloudDepth, cloudOpacity);
-        } else {
-            gl_FragDepth = 1.0;
-        }
-
-        col = cloud.rgb + cloud.a * col;
-    } else {
-        gl_FragDepth = 1.0;
-    }
-
-    // Tone mapping
-    vec3 tone = skyUncharted2(col, exposure);
-
-    // Apply underwater fog to sky
+    // Apply underwater fog to sky. In HDR mode lift the sRGB-display color to
+    // linear so it survives the final pow(1/2.2) without darkening.
     if (cameraUnderwater) {
-        // Replace sky with murky water fog color
-        tone = underwaterFogColor;
+        tone = tonemapHere ? underwaterFogColor : pow(underwaterFogColor, vec3(2.2));
     }
 
     FragColor = vec4(tone, 1.0);

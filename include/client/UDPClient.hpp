@@ -64,7 +64,7 @@ public:
 	float getSimulatedLatency() const  { return m_simLatencyMs; }
 
 	void sendPacket(Packet &pkt);
-	void sendConnect();
+	void sendConnect(const std::string &username);
 
 	void receivePacket();
 	void dispatch(const uint8_t* data, size_t n);

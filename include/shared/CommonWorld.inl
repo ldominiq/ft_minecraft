@@ -124,15 +124,16 @@ bool CommonWorld<ChunkT>::findClosestEntityHit(const LivingEntity& src, float ma
 }
 
 template <typename ChunkT>
-TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, float maxDistance)
+TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& hitBlock, glm::ivec3& faceNormal, LivingEntity*& livingEntity, bool ignoreLiquids,
+                                          float blockMaxDistance, float entityMaxDistance)
 {
 	bool entityHit = false;
-	float entityT = maxDistance;
+	float entityT = entityMaxDistance;
 
 	glm::vec3 rayOrigin = src.getPosition() + glm::vec3(0, src.getEyesHeight(), 0);
 	glm::vec3 rayDir = src.Front;
 
-	entityHit = findClosestEntityHit(src, maxDistance, livingEntity, entityT);
+	entityHit = findClosestEntityHit(src, entityMaxDistance, livingEntity, entityT);
 
     glm::ivec3 blockPos = glm::floor(rayOrigin);
 
@@ -153,7 +154,7 @@ TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& h
     float distanceTraveled = 0.0f;
     glm::ivec3 prevBlock = blockPos;
 
-    while (distanceTraveled < maxDistance) {
+    while (distanceTraveled < blockMaxDistance) {
         int axis;
         if (sideDist.x < sideDist.y) {
             if (sideDist.x < sideDist.z) axis = 0;
@@ -180,8 +181,17 @@ TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& h
             hitBlock = blockPos;
             return TargetType::Block;
         }
+
+		if (ignoreLiquids == false && isBlockLiquid(getBlockWorld(blockPos)))
+		{
+			hitBlock = blockPos;
+			return TargetType::Block;
+		}
     }
 
+    // Block ray ran past blockMaxDistance; fall back to entity hit if any.
+    if (entityHit)
+        return TargetType::LivingEntity;
     return TargetType::None;
 }
 

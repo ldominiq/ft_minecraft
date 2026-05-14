@@ -133,7 +133,10 @@ void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
 	shader->setMat4("projection", projection);
-	shader->setMat4("view", viewRot);
+	// Note: written as "viewRot" (translation-free) to match the name
+	// Lighting::uploadCSMUniforms sets — that call also writes "view" (with
+	// translation) which the CSM lookup uses, so they don't collide.
+	shader->setMat4("viewRot", viewRot);
 
 	// Sprite-style drops (vegetation, weapons, misc) are emitted as a cross
 	// of two flat quads; disable backface culling so they're visible from

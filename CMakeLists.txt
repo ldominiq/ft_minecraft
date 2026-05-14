@@ -73,6 +73,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(freetype)
 
+# SoLoud
+FetchContent_Declare(
+  soloud
+  GIT_REPOSITORY https://github.com/jarikomppa/soloud.git
+  GIT_TAG RELEASE_20200207 # latest stable release
+)
+FetchContent_MakeAvailable(soloud)
+
 if(ASAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g -O1")
     set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
@@ -116,6 +124,63 @@ target_include_directories(imgui PUBLIC
 # Link ImGui to GLFW (it needs GLFW for its backend)
 # Also link against dl on Linux for dynamic loading (glad/glfw handle OpenGL loader)
 target_link_libraries(imgui PUBLIC glfw ${CMAKE_DL_LIBS})
+
+# ---------------------------------------------------------------------------
+# SoLoud integration
+# ---------------------------------------------------------------------------
+add_library(soloud_static STATIC
+  # Core engine
+  ${soloud_SOURCE_DIR}/src/core/soloud.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_audiosource.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_bus.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_core_3d.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_core_basicops.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_core_faderops.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_core_filterops.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_core_getters.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_core_setters.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_core_voicegroup.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_core_voiceops.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_fader.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_fft.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_fft_lut.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_file.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_filter.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_misc.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_queue.cpp
+  ${soloud_SOURCE_DIR}/src/core/soloud_thread.cpp
+
+  # Audio sources: WAV (+ WavStream/OGG) and Speech/TTS
+  ${soloud_SOURCE_DIR}/src/audiosource/wav/soloud_wav.cpp
+  ${soloud_SOURCE_DIR}/src/audiosource/wav/soloud_wavstream.cpp
+  ${soloud_SOURCE_DIR}/src/audiosource/wav/dr_impl.cpp
+  ${soloud_SOURCE_DIR}/src/audiosource/wav/stb_vorbis.c
+  ${soloud_SOURCE_DIR}/src/audiosource/speech/darray.cpp
+  ${soloud_SOURCE_DIR}/src/audiosource/speech/klatt.cpp
+  ${soloud_SOURCE_DIR}/src/audiosource/speech/resonator.cpp
+  ${soloud_SOURCE_DIR}/src/audiosource/speech/soloud_speech.cpp
+  ${soloud_SOURCE_DIR}/src/audiosource/speech/tts.cpp
+
+  # Backend: MiniAudio (header-only, cross-platform, no extra deps)
+  ${soloud_SOURCE_DIR}/src/backend/miniaudio/soloud_miniaudio.cpp
+)
+
+target_include_directories(soloud_static PUBLIC
+  ${soloud_SOURCE_DIR}/include
+)
+
+target_compile_definitions(soloud_static PUBLIC
+  WITH_MINIAUDIO
+)
+
+if(UNIX AND NOT APPLE)
+  target_compile_definitions(soloud_static PRIVATE MA_NO_PULSEAUDIO)
+endif()
+
+# MiniAudio needs threads + (on Linux) dl/m
+if(UNIX AND NOT APPLE)
+  target_link_libraries(soloud_static PUBLIC pthread dl m)
+endif()
 
 # ---------------------------------------------------------------------------
 # Copy shaders so they also get added to build directory
@@ -224,7 +289,7 @@ endif()
 
 target_link_libraries(ft_minecraft PRIVATE
     glfw glad imgui OpenGL::GL
-	libzstd freetype
+	libzstd freetype soloud_static
     # ${FFMPEG_LIBRARIES}
 )
 add_dependencies(ft_minecraft update_shaders copy_shaders)
