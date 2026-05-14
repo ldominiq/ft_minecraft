@@ -411,12 +411,12 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	p.computeSpawnPosition(world->getTerrainParams());
 
 	auto movement = p.movement;
-	p.movement->setName(name);
-	p.movement->loadPlayerDataFromFile("playerdata/" + name + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
+	movement->setName(name);
+	movement->loadPlayerDataFromFile("playerdata/" + name + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
 	players.push_back(std::move(p));
 	world->livingEntities.push_back(std::move(movement));
 	world->updateRegionStreaming(players);
-	
+
 	sendAccept(cliaddr);
 }
 
@@ -855,7 +855,7 @@ void Server::sendDeaths()
 			if (ent->pendingDeathRemovalTicks == 0)
 			{
 				if (ent->getLivingEntityType() == PLAYER) {
-					ent->onDeath(); // respawn now after animation window
+					ent->onDeath(*world); // respawn now after animation window
 					ent->deathBroadcast = false; // reset for potential respawn
 					ent->diedByExplosion = false;
 				}

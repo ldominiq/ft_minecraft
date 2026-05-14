@@ -37,9 +37,10 @@ PlayerMovement::~PlayerMovement()
 {
 }
 
-void PlayerMovement::onDeath()
+void PlayerMovement::onDeath(const ICommonWorld &world)
 {
-	setPosition(spawnPosition); // TODO : maybe add a respawn delay and play death animation instead of instant teleport?
+	hasBeaconSet = world.getBlockWorld(beaconPos) == BlockType::BEACON; //doing it like this makes it so that if someone removes the beacon and places it again the spawn is still there.
+	hasBeaconSet ? setPosition(beaconPos + glm::vec3(0.5f, 1.0f, 0.5f)) : setPosition(spawnPosition);
 	positionUpdated = true;
 	health = 20;
 	velocity = glm::vec3(0.0f);
@@ -345,6 +346,8 @@ void PlayerMovement::savePlayerDataToFile(const std::string& filename) const {
 	outFile.write(reinterpret_cast<const char*>(&health), sizeof(health));
 	outFile.write(reinterpret_cast<const char*>(&gamemode), sizeof(gamemode));
 
+	outFile.write(reinterpret_cast<const char*>(&beaconPos), sizeof(beaconPos));
+
 	inventory->saveToStream(outFile);
 	// craftingStation->saveToStream(outFile);
 
@@ -364,6 +367,8 @@ void PlayerMovement::loadPlayerDataFromFile(const std::string& filename) {
 	inFile.read(reinterpret_cast<char*>(&pitch), sizeof(pitch));
 	inFile.read(reinterpret_cast<char*>(&health), sizeof(health));
 	inFile.read(reinterpret_cast<char*>(&gamemode), sizeof(gamemode));
+
+	inFile.read(reinterpret_cast<char*>(&beaconPos), sizeof(beaconPos));
 
 	inventory->loadFromStream(inFile);
 	// craftingStation->loadFromStream(inFile);

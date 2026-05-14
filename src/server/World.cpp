@@ -969,18 +969,19 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 		}
 	}
 
+	//set spawn
+	if (pkt.mouseButtons & IN_RIGHT_CLICK && target == TargetType::Block && getBlockWorld(blockPos) == BlockType::BEACON)
+	{
+		player.movement->hasBeaconSet = true;
+		player.movement->beaconPos = blockPos;
+		player.targetedMessages.push_back("[server] Spawn point set!");
+		return false;
+	}
+
 	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
 	{
 		if (target == TargetType::Block)
 		{
-			//set spawn
-			if (getBlockWorld(blockPos) == BlockType::BEACON)
-			{
-				player.movement->setSpawnPosition(blockPos + glm::ivec3(0, 1, 0));
-				player.targetedMessages.push_back("[server] Spawn point set!");
-				return false;
-			}
-
 			//set block
 			for (const auto &entity : livingEntities)
 				if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities

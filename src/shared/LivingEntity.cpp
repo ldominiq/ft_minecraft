@@ -43,7 +43,7 @@ void LivingEntity::attack(LivingEntity &victim)
 	victim.applyImpulse(knockbackDir * strength + glm::vec3(0.0f, verticalBoost, 0.0f));
 }
 
-void LivingEntity::onDeath()
+void LivingEntity::onDeath(const ICommonWorld &world)
 {
 	// TODO : drop something?
 }

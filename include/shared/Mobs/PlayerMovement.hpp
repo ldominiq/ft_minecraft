@@ -33,12 +33,14 @@ struct PlayerMovement : public virtual LivingEntity {
 
 	GAMEMODES gamemode = GAMEMODES::SURVIVAL;
 
+	bool hasBeaconSet = false;
+	glm::vec3 beaconPos = glm::vec3(0.0f);
 	glm::vec3 spawnPosition{};
 
 	glm::vec3 getDesiredMove() override;
 	void doJump(const ICommonWorld &world) override;
 
-	void onDeath() override;
+	void onDeath(const ICommonWorld &world) override;
 
 	void calculateUnderwaterPosition(const ICommonWorld &world) override;
 	void updatePosition();
