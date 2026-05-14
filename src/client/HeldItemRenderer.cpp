@@ -13,6 +13,8 @@
 #include "Character.hpp"
 #include "Item.hpp"
 
+#include <algorithm>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -46,10 +48,36 @@ constexpr float SPRITE_SCALE    = 0.42f;
 constexpr float TP_REST_TILT_X  = 0.30f;
 constexpr float TP_REST_TILT_Y  = 0.55f;
 
+// Weapons (swords etc.) get a "real object" pose instead of the camera-facing
+// billboard the other 2D items use. The texture is still a flat 2D sprite, but
+// it's placed on a single fixed-orientation quad — third-person: blade
+// extending from the hand along the forearm with the flat side in the
+// saggital plane; first-person: a diagonal blade going from bottom-right
+// hilt to upper-left tip
+constexpr float TP_WEAPON_LENGTH = 0.65f; // shoulder→tip in world units
+constexpr float TP_WEAPON_WIDTH  = 0.18f;
+// NOTE: VM_WEAPON_* and VM_HAND_* are intentionally NOT `constexpr` — they
+// are exposed through HeldItemRenderer::getWeaponTuning() so the ImGui debug
+// window can tweak them at runtime. Once the pose is dialed in, switch them
+// back to `constexpr` and remove the ImGui hooks.
+float VM_WEAPON_SIZE      = 0.5f;
+// Tilt forward/backward
+float VM_WEAPON_LEAN_DEG  = 40.0f;
+// Tilt the blade around its axis
+float VM_WEAPON_DEPTH_DEG = -90.0f;
+// Voxel-extrusion thickness in canonical units (the voxel grid spans
+// [0,1]×[0,1] in width/length, so 1/16 = "one pixel deep" if the texture is
+// 16×16).Changing this requires clearWeaponMeshCache()
+float VM_WEAPON_VOXEL_DEPTH = 1.0f / 16.0f;
+// Hilt anchor offset from VM_HAND_*: move weapon around on XYZ axis
+float VM_WEAPON_HILT_DX = -0.558f;
+float VM_WEAPON_HILT_DY = 0.531f;
+float VM_WEAPON_HILT_DZ =  0.888f;
+
 // First-person viewmodel placement in camera space (X right, Y up, -Z forward).
-constexpr float VM_HAND_X    =  0.95f;
-constexpr float VM_HAND_Y    = -0.65f;
-constexpr float VM_HAND_Z    = -0.90f;
+float VM_HAND_X    =  0.95f;
+float VM_HAND_Y    = -0.65f;
+float VM_HAND_Z    = -0.90f;
 constexpr float VM_CUBE      =  3.5f;  // → ~0.7-unit cube in camera space
 constexpr float VM_SPRITE    =  0.65f;
 constexpr float VM_REST_TILT_X = 0.40f; // small downward tilt at rest
@@ -116,6 +144,166 @@ void transformVerts(std::vector<float>& buf, std::size_t startFloat,
 		buf[i + 0] = buf[i + 0] * scale + tx;
 		buf[i + 1] = buf[i + 1] * scale + ty;
 		buf[i + 2] = buf[i + 2] * scale + tz;
+	}
+}
+
+// Append a single flat textured quad in canonical pose (X = width, Y = length,
+// Z = 0), centered on X in [-0.5, 0.5], stretched on Y in [0, 1]. The caller
+// applies a model matrix to position/orient/scale it. UVs match the sprite
+// convention: V=0 at the hilt (y=0), V=1 at the tip (y=1). Padded to the 36-
+// vert slot the cubePropShader VBO allocates per item.
+void buildWeaponQuad(std::vector<float>& buf, int texLayer)
+{
+	const float layer = static_cast<float>(texLayer);
+	auto v = [&](float x, float y, float u, float vv) {
+		buf.push_back(x); buf.push_back(y); buf.push_back(0.0f);
+		buf.push_back(u); buf.push_back(vv); buf.push_back(layer);
+	};
+	// Two triangles: BL, BR, TR, TR, TL, BL.
+	v(-0.5f, 0.0f, 0.0f, 0.0f);
+	v( 0.5f, 0.0f, 1.0f, 0.0f);
+	v( 0.5f, 1.0f, 1.0f, 1.0f);
+	v( 0.5f, 1.0f, 1.0f, 1.0f);
+	v(-0.5f, 1.0f, 0.0f, 1.0f);
+	v(-0.5f, 0.0f, 0.0f, 0.0f);
+	// Degenerate padding so the GPU rejects the rest of the 36-vert slot.
+	for (int i = 0; i < 30; ++i) v(-0.5f, 0.0f, 0.0f, 0.0f);
+}
+
+// Append a 3D slab (thin box) in canonical pose: X in [-0.5, 0.5] (width),
+// Y in [0, 1] (length), Z in [-0.5, 0.5] (thickness). The FRONT and BACK
+// faces carry the full sword texture. The four thin side/cap faces sample
+// the texture ALONG ITS DIAGONAL — which is where the sword actually is in
+// the source image (hilt at texture-BR = UV(1,0), tip at texture-TL = UV(0,1)).
+// That way the sides read as a thin sword-colored edge running from hilt
+// color to tip color, instead of a smeared rectangle of mostly transparent
+// pixels. Face order matches FACE_NORMALS in cubePropShader.vert:
+// +Z, -Z, +Y, -Y, +X, -X. 6 faces × 6 verts = exactly the 36-vert slot.
+void buildItemSlab(std::vector<float>& buf, int texLayer)
+{
+	const float layer = static_cast<float>(texLayer);
+	auto v = [&](float x, float y, float z, float u, float vv) {
+		buf.push_back(x); buf.push_back(y); buf.push_back(z);
+		buf.push_back(u); buf.push_back(vv); buf.push_back(layer);
+	};
+
+	// Texture's hilt corner (full opacity, hilt color) and tip corner.
+	constexpr float HILT_U = 1.0f, HILT_V = 0.0f;
+	constexpr float TIP_U  = 0.0f, TIP_V  = 1.0f;
+
+	// FRONT (+Z) — full sword sprite, axis-aligned.
+	v(-0.5f, 0.0f,  0.5f, 0.0f, 0.0f);
+	v( 0.5f, 0.0f,  0.5f, 1.0f, 0.0f);
+	v( 0.5f, 1.0f,  0.5f, 1.0f, 1.0f);
+	v( 0.5f, 1.0f,  0.5f, 1.0f, 1.0f);
+	v(-0.5f, 1.0f,  0.5f, 0.0f, 1.0f);
+	v(-0.5f, 0.0f,  0.5f, 0.0f, 0.0f);
+	// BACK (-Z) — full sword sprite, mirrored in X so it's not reversed.
+	v( 0.5f, 0.0f, -0.5f, 0.0f, 0.0f);
+	v(-0.5f, 0.0f, -0.5f, 1.0f, 0.0f);
+	v(-0.5f, 1.0f, -0.5f, 1.0f, 1.0f);
+	v(-0.5f, 1.0f, -0.5f, 1.0f, 1.0f);
+	v( 0.5f, 1.0f, -0.5f, 0.0f, 1.0f);
+	v( 0.5f, 0.0f, -0.5f, 0.0f, 0.0f);
+	// TOP cap (+Y) — every vertex samples the texture's tip pixel.
+	v(-0.5f, 1.0f,  0.5f, TIP_U, TIP_V);
+	v( 0.5f, 1.0f,  0.5f, TIP_U, TIP_V);
+	v( 0.5f, 1.0f, -0.5f, TIP_U, TIP_V);
+	v( 0.5f, 1.0f, -0.5f, TIP_U, TIP_V);
+	v(-0.5f, 1.0f, -0.5f, TIP_U, TIP_V);
+	v(-0.5f, 1.0f,  0.5f, TIP_U, TIP_V);
+	// BOTTOM cap (-Y) — every vertex samples the hilt pixel.
+	v(-0.5f, 0.0f, -0.5f, HILT_U, HILT_V);
+	v( 0.5f, 0.0f, -0.5f, HILT_U, HILT_V);
+	v( 0.5f, 0.0f,  0.5f, HILT_U, HILT_V);
+	v( 0.5f, 0.0f,  0.5f, HILT_U, HILT_V);
+	v(-0.5f, 0.0f,  0.5f, HILT_U, HILT_V);
+	v(-0.5f, 0.0f, -0.5f, HILT_U, HILT_V);
+	// RIGHT (+X) — sample along the texture's diagonal. y=0 → hilt UV,
+	// y=1 → tip UV. The GPU interpolates between them across the face, so
+	// each horizontal band along the slab's length shows the pixel of the
+	// sword at that fraction of its travel from hilt to tip.
+	v( 0.5f, 0.0f, -0.5f, HILT_U, HILT_V);
+	v( 0.5f, 0.0f,  0.5f, HILT_U, HILT_V);
+	v( 0.5f, 1.0f,  0.5f, TIP_U,  TIP_V);
+	v( 0.5f, 1.0f,  0.5f, TIP_U,  TIP_V);
+	v( 0.5f, 1.0f, -0.5f, TIP_U,  TIP_V);
+	v( 0.5f, 0.0f, -0.5f, HILT_U, HILT_V);
+	// LEFT (-X) — same diagonal sampling.
+	v(-0.5f, 0.0f,  0.5f, HILT_U, HILT_V);
+	v(-0.5f, 0.0f, -0.5f, HILT_U, HILT_V);
+	v(-0.5f, 1.0f, -0.5f, TIP_U,  TIP_V);
+	v(-0.5f, 1.0f, -0.5f, TIP_U,  TIP_V);
+	v(-0.5f, 1.0f,  0.5f, TIP_U,  TIP_V);
+	v(-0.5f, 0.0f,  0.5f, HILT_U, HILT_V);
+}
+
+// Per-pixel-extruded weapon mesh
+void buildWeaponVoxelMesh(std::vector<float>& buf,
+                          const std::vector<unsigned char>& pixels,
+                          int texSize, int texLayer, float thickness)
+{
+	if (pixels.empty() || texSize <= 0) return;
+
+	auto opaqueAt = [&](int px, int py) -> bool {
+		if (px < 0 || px >= texSize || py < 0 || py >= texSize) return false;
+		const std::size_t idx = (static_cast<std::size_t>(py) * texSize + px) * 4 + 3;
+		if (idx >= pixels.size()) return false;
+		return pixels[idx] >= 26;
+	};
+
+	const float L = static_cast<float>(texLayer);
+	const float cell = 1.0f / static_cast<float>(texSize);
+	const float halfT = thickness * 0.5f;
+
+	auto v = [&](float x, float y, float z, float u, float vv) {
+		buf.push_back(x); buf.push_back(y); buf.push_back(z);
+		buf.push_back(u); buf.push_back(vv); buf.push_back(L);
+	};
+
+	for (int py = 0; py < texSize; ++py) {
+		for (int px = 0; px < texSize; ++px) {
+			if (!opaqueAt(px, py)) continue;
+
+			const float x0 =  px      * cell;
+			const float x1 = (px + 1) * cell;
+			const float y0 =  py      * cell;
+			const float y1 = (py + 1) * cell;
+			const float z0 = -halfT, z1 = halfT;
+
+			// Every face of this voxel samples the same pixel center. We
+			// pick the UV at the texel center to avoid bilinear bleed from
+			// the (often transparent) neighbors at the cell boundary.
+			const float u    = (px + 0.5f) * cell;
+			const float vTex = (py + 0.5f) * cell;
+
+			// FRONT (+Z) — always visible.
+			v(x0, y0, z1, u, vTex); v(x1, y0, z1, u, vTex); v(x1, y1, z1, u, vTex);
+			v(x1, y1, z1, u, vTex); v(x0, y1, z1, u, vTex); v(x0, y0, z1, u, vTex);
+			// BACK (-Z) — always visible (slab is one voxel deep, no neighbors behind).
+			v(x1, y0, z0, u, vTex); v(x0, y0, z0, u, vTex); v(x0, y1, z0, u, vTex);
+			v(x0, y1, z0, u, vTex); v(x1, y1, z0, u, vTex); v(x1, y0, z0, u, vTex);
+			// TOP (+Y) — emit only if no opaque neighbor in the +Y direction.
+			if (!opaqueAt(px, py + 1)) {
+				v(x0, y1, z1, u, vTex); v(x1, y1, z1, u, vTex); v(x1, y1, z0, u, vTex);
+				v(x1, y1, z0, u, vTex); v(x0, y1, z0, u, vTex); v(x0, y1, z1, u, vTex);
+			}
+			// BOTTOM (-Y).
+			if (!opaqueAt(px, py - 1)) {
+				v(x0, y0, z0, u, vTex); v(x1, y0, z0, u, vTex); v(x1, y0, z1, u, vTex);
+				v(x1, y0, z1, u, vTex); v(x0, y0, z1, u, vTex); v(x0, y0, z0, u, vTex);
+			}
+			// RIGHT (+X).
+			if (!opaqueAt(px + 1, py)) {
+				v(x1, y0, z0, u, vTex); v(x1, y0, z1, u, vTex); v(x1, y1, z1, u, vTex);
+				v(x1, y1, z1, u, vTex); v(x1, y1, z0, u, vTex); v(x1, y0, z0, u, vTex);
+			}
+			// LEFT (-X).
+			if (!opaqueAt(px - 1, py)) {
+				v(x0, y0, z1, u, vTex); v(x0, y0, z0, u, vTex); v(x0, y1, z0, u, vTex);
+				v(x0, y1, z0, u, vTex); v(x0, y1, z1, u, vTex); v(x0, y0, z1, u, vTex);
+			}
+		}
 	}
 }
 
@@ -212,6 +400,31 @@ bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
 			               anchorRel.x,
 			               anchorRel.y - 0.5f * spriteScale,
 			               anchorRel.z);
+		} else if (isWeapon(type)) {
+			// Real-object pose: a flat blade extending from the hand along the
+			// forearm direction. Flat side lies in the player's saggital plane,
+			// so side-on third-person views see the full silhouette.
+			const float forearmAngle = ARM_REST_ANGLE + pose.shoulder + pose.elbow;
+			const float sa = std::sin(forearmAngle), ca = std::cos(forearmAngle);
+			// Player-local frame basis (X=forward, Y=up, Z=right):
+			//   bladeY = forearm direction      = (sa, -ca, 0)
+			//   bladeZ = lateral (saggital out) = (0, 0, 1)
+			//   bladeX = bladeY × bladeZ        = (-ca, -sa, 0)
+			const glm::vec3 bladeX(-ca, -sa, 0.0f);
+			const glm::vec3 bladeY( sa, -ca, 0.0f);
+			const glm::vec3 bladeZ(0.0f, 0.0f, 1.0f);
+			glm::mat4 orient(1.0f);
+			orient[0] = glm::vec4(bladeX, 0.0f);
+			orient[1] = glm::vec4(bladeY, 0.0f);
+			orient[2] = glm::vec4(bladeZ, 0.0f);
+
+			buildWeaponQuad(buf, layer);
+			glm::mat4 M(1.0f);
+			M = glm::translate(M, anchorRel);
+			M = glm::rotate(M, -yawRad, glm::vec3(0.0f, 1.0f, 0.0f));
+			M = M * orient;
+			M = glm::scale(M, glm::vec3(TP_WEAPON_WIDTH, TP_WEAPON_LENGTH, 1.0f));
+			transformVertsMat(buf, start, M);
 		} else {
 			buildItemBillboard(buf, glm::dvec3(anchorRel), layer);
 			const float s = spriteScale / 0.25f;
@@ -259,6 +472,22 @@ int appendForOneEntity(std::vector<float>& cpuBuffer, const TextureManager* texM
 
 } // namespace
 
+HeldItemRenderer::WeaponTuning HeldItemRenderer::getWeaponTuning()
+{
+	return {
+		&VM_WEAPON_LEAN_DEG,
+		&VM_WEAPON_DEPTH_DEG,
+		&VM_WEAPON_SIZE,
+		&VM_WEAPON_HILT_DX,
+		&VM_WEAPON_HILT_DY,
+		&VM_WEAPON_HILT_DZ,
+		&VM_WEAPON_VOXEL_DEPTH,
+		&VM_HAND_X,
+		&VM_HAND_Y,
+		&VM_HAND_Z,
+	};
+}
+
 HeldItemRenderer::HeldItemRenderer(const TextureManager* texMgr)
 	: textureManager(texMgr)
 {
@@ -272,31 +501,41 @@ HeldItemRenderer::~HeldItemRenderer()
 	if (glfwGetCurrentContext()) {
 		if (VBO) glDeleteBuffers(1, &VBO);
 		if (VAO) glDeleteVertexArrays(1, &VAO);
+		if (weaponVBO) glDeleteBuffers(1, &weaponVBO);
+		if (weaponVAO) glDeleteVertexArrays(1, &weaponVAO);
 	}
 	VBO = VAO = 0;
+	weaponVBO = weaponVAO = 0;
 }
 
 void HeldItemRenderer::initGL()
 {
+	auto setupAttribs = [](GLuint vao, GLuint vbo) {
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
+		                      reinterpret_cast<void*>(0));
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
+		                      reinterpret_cast<void*>(3 * sizeof(float)));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
+		                      reinterpret_cast<void*>(5 * sizeof(float)));
+		glEnableVertexAttribArray(2);
+	};
+
 	glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
-
-	glBindVertexArray(VAO);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-
 	glBufferData(GL_ARRAY_BUFFER,
 	             MAX_ITEMS * FLOATS_PER_ITEM * sizeof(float),
 	             nullptr, GL_DYNAMIC_DRAW);
+	setupAttribs(VAO, VBO);
 
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
-	                      reinterpret_cast<void*>(0));
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
-	                      reinterpret_cast<void*>(3 * sizeof(float)));
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
-	                      reinterpret_cast<void*>(5 * sizeof(float)));
-	glEnableVertexAttribArray(2);
+	glGenVertexArrays(1, &weaponVAO);
+	glGenBuffers(1, &weaponVBO);
+	setupAttribs(weaponVAO, weaponVBO);
+	weaponVBOCapacityBytes = 0;
 
 	glBindVertexArray(0);
 }
@@ -380,6 +619,90 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 
 	ItemType type = itemIDToItemType(heldItemType);
 	const std::size_t start = cpuBuffer.size();
+
+	// Weapons get a dedicated per-pixel-extruded mesh path — a true 3D
+	// sword-shaped voxel mesh instead of a slab-with-paint. The vert count is
+	// variable (depends on the weapon's silhouette), so this path uses its
+	// own VAO/VBO and bypasses the 36-vert/item slot entirely. Hand off the
+	// whole frame to it and return.
+	if (isItemFlat(type) && isWeapon(type) && textureManager) {
+		const int layer = textureManager->getItemSpriteLayer(type);
+		// Build & cache the canonical voxel mesh on first hold of this layer.
+		auto cacheIt = weaponMeshCache.find(layer);
+		if (cacheIt == weaponMeshCache.end()) {
+			std::vector<float> mesh;
+			buildWeaponVoxelMesh(mesh,
+			                     textureManager->getLayerPixels(layer),
+			                     textureManager->getTextureSize(),
+			                     layer,
+			                     VM_WEAPON_VOXEL_DEPTH);
+			cacheIt = weaponMeshCache.emplace(layer, std::move(mesh)).first;
+		}
+		const std::vector<float>& canonical = cacheIt->second;
+		if (canonical.empty()) return;
+
+		// Build the camera-space model matrix, fold inverse(viewRot) into it
+		// so the final mesh lands in camera-relative WORLD space (matches the
+		// frame the lighting uniforms use — same trick the other 1P branches
+		// apply with the per-vertex pass below).
+		const glm::vec3 hilt = anchorRel
+			+ glm::vec3(VM_WEAPON_HILT_DX, VM_WEAPON_HILT_DY, VM_WEAPON_HILT_DZ);
+		glm::mat4 M(1.0f);
+		M = glm::translate(M, hilt);
+		M = glm::rotate(M, -armAngle,                          glm::vec3(1.0f, 0.0f, 0.0f));
+		M = glm::rotate(M, glm::radians(VM_WEAPON_DEPTH_DEG),  glm::vec3(0.0f, 1.0f, 0.0f));
+		M = glm::rotate(M, glm::radians(VM_WEAPON_LEAN_DEG),   glm::vec3(0.0f, 0.0f, 1.0f));
+		M = glm::scale(M, glm::vec3(VM_WEAPON_SIZE));
+		// Canonical voxel mesh has the hilt voxel at the X=1, Y=0 corner —
+		// shift so it sits at the origin before any rotation, so rotations
+		// pivot around the hilt point.
+		M = glm::translate(M, glm::vec3(-1.0f, 0.0f, 0.0f));
+
+		glm::mat4 viewRot = view;
+		viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		const glm::mat4 finalM = glm::inverse(viewRot) * M;
+
+		// Stream the transformed mesh into the weaponVBO. Grow if needed.
+		cpuBuffer.clear();
+		cpuBuffer.reserve(canonical.size());
+		for (std::size_t i = 0; i + 5 < canonical.size(); i += STRIDE) {
+			const glm::vec4 p(canonical[i], canonical[i + 1], canonical[i + 2], 1.0f);
+			const glm::vec4 q = finalM * p;
+			cpuBuffer.push_back(q.x);
+			cpuBuffer.push_back(q.y);
+			cpuBuffer.push_back(q.z);
+			cpuBuffer.push_back(canonical[i + 3]);
+			cpuBuffer.push_back(canonical[i + 4]);
+			cpuBuffer.push_back(canonical[i + 5]);
+		}
+
+		const GLsizeiptr bytesNeeded =
+			static_cast<GLsizeiptr>(cpuBuffer.size() * sizeof(float));
+		glBindBuffer(GL_ARRAY_BUFFER, weaponVBO);
+		if (bytesNeeded > weaponVBOCapacityBytes) {
+			glBufferData(GL_ARRAY_BUFFER, bytesNeeded, cpuBuffer.data(),
+			             GL_DYNAMIC_DRAW);
+			weaponVBOCapacityBytes = static_cast<GLsizei>(bytesNeeded);
+		} else {
+			glBufferSubData(GL_ARRAY_BUFFER, 0, bytesNeeded, cpuBuffer.data());
+		}
+
+		shader->use();
+		glBindVertexArray(weaponVAO);
+		textureManager->bind(GL_TEXTURE0);
+		shader->setInt("blockTextures", 0);
+		shader->setMat4("projection", projection);
+		shader->setMat4("viewRot", viewRot);
+
+		glDepthMask(GL_TRUE);
+		glClear(GL_DEPTH_BUFFER_BIT);
+		glEnable(GL_DEPTH_TEST);
+		glDisable(GL_CULL_FACE);
+		glDrawArrays(GL_TRIANGLES, 0,
+		             static_cast<GLsizei>(cpuBuffer.size() / STRIDE));
+		glEnable(GL_CULL_FACE);
+		return;
+	}
 
 	bool drawnSomething = false;
 	if (isItemFlat(type)) {

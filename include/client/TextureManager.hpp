@@ -81,6 +81,13 @@ class TextureManager {
         // assets. Useful for call sites that want to detect/skip rendering.
         int getMissingTextureLayer() const { return missingTextureLayer; }
 
+        // Raw pre-multiplied RGBA bytes (textureSize × textureSize × 4) for a
+        // given atlas layer, or an empty vector if the layer is out of range.
+        // Used by HeldItemRenderer to extrude weapon sprites into per-pixel
+        // voxel meshes so swords look like real 3D objects in 1P
+        const std::vector<unsigned char>& getLayerPixels(int layer) const;
+        int getTextureSize() const { return textureSize; }
+
         void bind(GLenum textureUnit = GL_TEXTURE0) const;
 
         int getGrassTintLayer(BiomeType biome) const;

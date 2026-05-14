@@ -1381,7 +1381,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	give(0, BlockType::DIRT,       200);
 	give(1, BlockType::STONE,      200);
 	give(2, BlockType::CACTUS,     200);
-	give(8, BlockType::WATER,      200);
+	give(8, WeaponType::DIAMOND_SWORD,      1);
 
 	give(3, MiscType::IRON_INGOT,  64);
 	give(4, MiscType::GOLD_INGOT,  64);

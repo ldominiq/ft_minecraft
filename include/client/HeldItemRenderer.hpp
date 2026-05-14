@@ -3,6 +3,7 @@
 #define HELD_ITEM_RENDERER_HPP
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -33,6 +34,11 @@ class HeldItemRenderer {
 
 	GLuint VAO = 0;
 	GLuint VBO = 0;
+	// Separate VAO/VBO for the 1P weapon
+	GLuint weaponVAO = 0;
+	GLuint weaponVBO = 0;
+	GLsizei weaponVBOCapacityBytes = 0;
+	std::unordered_map<int, std::vector<float>> weaponMeshCache;
 	std::unique_ptr<Shader> shader;
 	const TextureManager* textureManager = nullptr;
 	std::vector<float> cpuBuffer; // staging: MAX_ITEMS * FLOATS_PER_ITEM
@@ -62,6 +68,24 @@ public:
 
 	// Same uniforms App.cpp uploads on the other entity shaders go here too.
 	Shader& getShader() { return *shader; }
+
+	// Debug-only:
+	// `clearWeaponMeshCache()` after editing `voxelDepth` so the cached
+	// extrusion gets rebuilt with the new thickness.
+	struct WeaponTuning {
+		float* leanDeg;
+		float* depthDeg;
+		float* size;
+		float* hiltDX;
+		float* hiltDY;
+		float* hiltDZ;
+		float* voxelDepth;
+		float* handX;
+		float* handY;
+		float* handZ;
+	};
+	static WeaponTuning getWeaponTuning();
+	void clearWeaponMeshCache() { weaponMeshCache.clear(); }
 
 private:
 	void initGL();

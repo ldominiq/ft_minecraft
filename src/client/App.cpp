@@ -2002,6 +2002,41 @@ void App::debugWindow() {
                     ImGui::EndTabItem();
                 }
 
+                if (ImGui::BeginTabItem("Held Item")) {
+                    auto t = HeldItemRenderer::getWeaponTuning();
+                    ImGui::TextUnformatted("1P weapon (sword) viewmodel pose");
+                    ImGui::Separator();
+                    ImGui::SliderFloat("Lean (deg)",  t.leanDeg,  -180.0f, 180.0f, "%.1f");
+                    ImGui::SliderFloat("Depth tilt (deg)", t.depthDeg, -90.0f, 90.0f, "%.1f");
+                    ImGui::SliderFloat("Size",        t.size,    0.05f, 2.0f, "%.3f");
+                    ImGui::SliderFloat("Hilt offset X", t.hiltDX, -1.0f, 1.0f, "%.3f");
+                    ImGui::SliderFloat("Hilt offset Y", t.hiltDY, -1.0f, 1.0f, "%.3f");
+                    ImGui::SliderFloat("Hilt offset Z", t.hiltDZ, -1.0f, 1.0f, "%.3f");
+                    if (ImGui::SliderFloat("Voxel depth", t.voxelDepth, 1.0f/64.0f, 0.5f, "%.4f")) {
+                        // Depth is baked into the cached extrusion — invalidate
+                        // so it rebuilds next frame at the new thickness.
+                        if (m_heldItemRenderer) m_heldItemRenderer->clearWeaponMeshCache();
+                    }
+                    ImGui::Separator();
+                    ImGui::TextUnformatted("Hand anchor (shared by cubes/sprites/weapon)");
+                    ImGui::SliderFloat("Hand X (cam-space)", t.handX, -1.5f, 1.5f, "%.3f");
+                    ImGui::SliderFloat("Hand Y (cam-space)", t.handY, -1.5f, 1.5f, "%.3f");
+                    ImGui::SliderFloat("Hand Z (cam-space)", t.handZ, -3.0f, -0.1f, "%.3f");
+                    if (ImGui::Button("Reset to defaults")) {
+                        *t.leanDeg   =  40.0f;
+                        *t.depthDeg  = -20.0f;
+                        *t.size      =  0.55f;
+                        *t.hiltDX    = -0.30f;
+                        *t.hiltDY    =  0.15f;
+                        *t.voxelDepth = 1.0f / 16.0f;
+                        *t.handX     =  0.95f;
+                        *t.handY     = -0.65f;
+                        *t.handZ     = -0.90f;
+                        if (m_heldItemRenderer) m_heldItemRenderer->clearWeaponMeshCache();
+                    }
+                    ImGui::EndTabItem();
+                }
+
                 if (ImGui::BeginTabItem("Graphics Quality")) {
                     // Preset buttons — apply shadow + water + vegetation + SSAO together.
                     if (ImGui::Button("Performance")) {
