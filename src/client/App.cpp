@@ -1216,9 +1216,17 @@ void App::render() {
         if (m_heldItemRenderer && camera && !camera->isThirdPersonCameraActive()) {
             const uint16_t held = camera->getPlayer()->heldItemType;
             if (held != 0) {
+                if (lighting) {
+                    Shader& hShader = m_heldItemRenderer->getShader();
+                    lighting->uploadLightingUniforms(hShader,
+                                                    camera->getEyePosD(),
+                                                    camera->getPlayer()->getCameraDir());
+                    uploadActiveSpotLights(hShader);
+                    lighting->uploadCSMUniforms(hShader, view);
+                }
                 // Pass the local ClientPlayer as Character* so the viewmodel
                 // animates when the player swings their arm.
-                m_heldItemRenderer->drawFirstPerson(projection, held,
+                m_heldItemRenderer->drawFirstPerson(projection, view, held,
                                                     camera->getPlayer().get());
             }
         }

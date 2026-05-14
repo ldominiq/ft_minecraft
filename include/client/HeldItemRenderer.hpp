@@ -56,7 +56,8 @@ public:
 	// Viewmodel for the local player. heldItemType==0 short-circuits.
 	// `localCharacter` lets the viewmodel animate during arm swings — pass
 	// the same ClientPlayer used elsewhere; nullptr keeps the cube static.
-	void drawFirstPerson(const glm::mat4& projection, uint16_t heldItemType,
+	void drawFirstPerson(const glm::mat4& projection, const glm::mat4& view,
+	                     uint16_t heldItemType,
 	                     const Character* localCharacter = nullptr);
 
 	// Same uniforms App.cpp uploads on the other entity shaders go here too.

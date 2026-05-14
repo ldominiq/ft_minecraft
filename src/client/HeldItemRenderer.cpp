@@ -23,25 +23,34 @@ namespace {
 // cubePropShader vertex layout and buildCube/buildItemSprite output.
 constexpr int STRIDE = 6;
 
-// "Presenting hand" anchor in player-local coords (X=forward, Y=up, Z=right).
-// Not at the visible hand (which hangs at hip level on Steve's straight arm) —
-// instead the natural held-item position you'd hold a block at to look at it.
-// Shoulder is at SHOULDER_HEIGHT; an L_EFF-long "imaginary arm" hangs below it,
-// then the item gets a permanent forward bias so it sits in front of the body.
-constexpr float SHOULDER_HEIGHT = 1.30f;
-constexpr float SHOULDER_RIGHT  = 0.42f;
-constexpr float ARM_REST_LEN    = 0.25f; // short → keeps the item near chest
-constexpr float HAND_FWD_BIAS   = 0.28f; // forward of body, doesn't rotate
-constexpr float CUBE_SCALE      = 0.42f;
+// Hand anchor in player-local coords (X=forward, Y=up, Z=right).
+//   - SHOULDER_HEIGHT, SHOULDER_RIGHT: shoulder pivot, derived from the skin
+//     model in Character::setPartsDimensions(): 24/31 × entityHeight up, and
+//     6 skin-Z units out
+//   - ARM_LENGTH: shoulder→hand distance = 12 skin-Y units = 12/31 × 1.8.
+//     A rest arm-pose value lets the rendered item project slightly forward of
+//     the body even when the character isn't animating
+constexpr float SHOULDER_HEIGHT = 1.394f;
+constexpr float SHOULDER_RIGHT  = 0.348f;
+constexpr float ARM_LENGTH      = 0.697f;
+constexpr float ARM_REST_ANGLE  = 0.45f; // ~26° forward — visible held pose at rest
+// buildCube(isIlluminated=false) emits a 0.2-unit cube centered at (0, 0.1, 0);
+// these scales are applied straight to that source size — final cube size in
+// world units is CUBE_SOURCE_SIZE * CUBE_SCALE.
+constexpr float CUBE_SOURCE_SIZE = 0.2f;
+constexpr float CUBE_Y_CENTER    = 0.1f; // half-height: source verts span y in [0, 0.2]
+constexpr float CUBE_SCALE      = 1.6f;  // → ~0.32-unit cube held by entity
 constexpr float SPRITE_SCALE    = 0.42f;
+// Cube-local "presentation" tilts for third-person, so the held cube shows
+// three faces (top + two sides) rather than a flat single face.
+constexpr float TP_REST_TILT_X  = 0.30f;
+constexpr float TP_REST_TILT_Y  = 0.55f;
 
 // First-person viewmodel placement in camera space (X right, Y up, -Z forward).
-// Pushed far right and down so it lives in the bottom-right corner like a real
-// Minecraft viewmodel, with VM_CUBE big enough to read clearly.
 constexpr float VM_HAND_X    =  0.95f;
 constexpr float VM_HAND_Y    = -0.65f;
 constexpr float VM_HAND_Z    = -0.90f;
-constexpr float VM_CUBE      =  1.15f; // ~3× original 0.32 — clearly visible
+constexpr float VM_CUBE      =  3.5f;  // → ~0.7-unit cube in camera space
 constexpr float VM_SPRITE    =  0.65f;
 constexpr float VM_REST_TILT_X = 0.40f; // small downward tilt at rest
 constexpr float VM_REST_TILT_Y = 0.40f; // and around Y so we see a 3/4 view
@@ -49,26 +58,32 @@ constexpr float VM_SWING_GAIN  = 0.50f; // dampens arm angle so it stays on scre
 constexpr float VM_BOB_GAIN_Y  = 0.06f; // 1P walking bob, vertical (camera-space)
 constexpr float VM_BOB_GAIN_X  = 0.04f; // 1P walking sway, horizontal
 
-// Combined arm rotation angle for the right shoulder (radians) at the current
-// frame. Punches override walks (the character animation does the same).
-// Zero when the character isn't animating.
-float armAngleFromAnimation(const Character* ch)
+// Separate shoulder + elbow rotations for the right arm at the current frame.
+// We need both — collapsing them into one angle on a straight arm makes the
+// hand overshoot vertically during a punch (the bent forearm has a much
+// shorter "up" reach than a 90°+30° straight-arm rotation would have).
+struct ArmPose { float shoulder; float elbow; };
+
+ArmPose armPoseFromAnimation(const Character* ch)
 {
-	if (!ch) return 0.0f;
+	if (!ch) return {0.0f, 0.0f};
 	if (ch->characterBodyParts.onArmSwingAnimation) {
-		// Same shoulder+elbow constants as swingArmAnimation. Summed because
-		// the held item is rigidly attached to the forearm, which sees both.
+		// Same constants as Character::swingArmAnimation. The two angles are
+		// applied to different pivots (shoulder vs elbow), so two-segment
+		// math is needed to find the actual hand position.
 		const float t = ch->characterBodyParts.armSwingPhase;
 		const float curve = std::sin(t * static_cast<float>(M_PI));
-		return curve * (1.6f + 0.6f);
+		return { curve * 1.6f, curve * 0.6f };
 	}
 	if (ch->characterBodyParts.onWalkAnimation) {
 		// Right arm in walkAnimation: rotateBodyPart(rightArm, pivot, -angle)
-		// → effective rotation = (-angle) * 0.8 (the rotateBodyPart multiplier).
+		// → effective shoulder rotation = (-angle) * 0.8. The walking forearm
+		// bend is minor and only fires on back-swing, so we ignore it for the
+		// held-item anchor.
 		const float a = std::sin(ch->characterBodyParts.walkPhase * 2.0f * static_cast<float>(M_PI));
-		return -a * 0.8f;
+		return { -a * 0.8f, 0.0f };
 	}
-	return 0.0f;
+	return {0.0f, 0.0f};
 }
 
 // Cross-cast helper: LivingEntity and Character are sibling virtual bases of
@@ -105,27 +120,34 @@ void transformVerts(std::vector<float>& buf, std::size_t startFloat,
 }
 
 // Compute the held-item anchor (cube center / sprite center) in camera-relative
-// world space. Uses a fixed "short arm" hanging from the shoulder; the arm
-// rotates by `armAngle` around the player-local Z axis (same axis the visible
-// arm rotates around for walks and punches). A permanent forward bias keeps
-// the item in front of the body even with the arm vertical.
+// world space. The anchor tracks the actual hand at the END of the rendered
+// two-segment arm: upper arm rotates around the shoulder by
+// (ARM_REST_ANGLE + pose.shoulder), forearm rotates around the elbow by an
+// additional pose.elbow. Each segment is half of ARM_LENGTH.
+// pose comes from armPoseFromAnimation() and mirrors the visible arm.
 glm::vec3 itemAnchorRel(const glm::dvec3& worldPos, const glm::dvec3& eyePos,
-                        float yawRad, float armAngle)
+                        float yawRad, ArmPose pose)
 {
 	const float cy = std::cos(yawRad), sy = std::sin(yawRad);
 
-	// Arm vector in player-local coords: rotates with armAngle around +Z.
-	// Rest: (0, -L, 0). After R_Z(θ): (sin(θ)*L, -cos(θ)*L, 0).
-	const float fwdComp   = std::sin(armAngle) * ARM_REST_LEN + HAND_FWD_BIAS;
-	const float upComp    = -std::cos(armAngle) * ARM_REST_LEN;
-	const float rightComp = 0.0f;
+	// Two-segment arm in the saggital plane (player-local fwd-up).
+	//   upperAngle: rotation of the upper arm around the shoulder
+	//   forearmAngle: rotation of the forearm in WORLD frame
+	//                 (upper-arm rotation composes onto it)
+	// Both segments are L/2; rotating (0, -L/2, 0) by angle around +Z gives
+	// (sin(angle) * L/2, -cos(angle) * L/2, 0).
+	const float upperAngle   = ARM_REST_ANGLE + pose.shoulder;
+	const float forearmAngle = upperAngle + pose.elbow;
+	const float halfArm      = ARM_LENGTH * 0.5f;
+	const float fwdComp = (std::sin(upperAngle) + std::sin(forearmAngle)) * halfArm;
+	const float upComp  = (-std::cos(upperAngle) - std::cos(forearmAngle)) * halfArm;
 
 	// Shoulder in player-local coords: (0, SHOULDER_HEIGHT, SHOULDER_RIGHT).
 	// Player-local → world: local x along world forward = (cos,0,sin); local z
 	// along world right = (-sin,0,cos). Up = world up.
 	const float localFwd   = fwdComp;
 	const float localUp    = SHOULDER_HEIGHT + upComp;
-	const float localRight = SHOULDER_RIGHT + rightComp;
+	const float localRight = SHOULDER_RIGHT;
 
 	const glm::dvec3 worldOffset(
 		static_cast<double>(localFwd) * cy + static_cast<double>(localRight) * (-sy),
@@ -137,19 +159,29 @@ glm::vec3 itemAnchorRel(const glm::dvec3& worldPos, const glm::dvec3& eyePos,
 }
 
 // Build the model matrix for a held cube: translate to `anchorRel`, rotate
-// player-local→world by yaw, apply arm rotation around the player's right
-// axis (so the cube tilts with the swing/walk), then center & scale.
+// player-local→world by yaw, apply forearm rotation around the player's right
+// axis (cube is glued to the forearm, so it uses the FULL upper+elbow angle,
+// not just the shoulder), apply cube-local tilts for a readable 3-face view,
+// scale, and recenter.
+// buildCube here outputs a 0.2-unit cube centered at (0, CUBE_Y_CENTER, 0),
+// not a 0..1 cube — so the recenter step only nudges Y, never -0.5 on all axes.
 glm::mat4 cubeModelMatrix(const glm::vec3& anchorRel, float yawRad,
-                          float armAngle, float scale)
+                          ArmPose pose, float scale)
 {
+	const float forearmAngle = ARM_REST_ANGLE + pose.shoulder + pose.elbow;
 	glm::mat4 M(1.0f);
 	M = glm::translate(M, anchorRel);
 	// In this engine yaw=π/2 faces world +Z; GLM's rotate is right-hand around
 	// +Y, so we use the negative angle to match.
 	M = glm::rotate(M, -yawRad, glm::vec3(0.0f, 1.0f, 0.0f));
-	M = glm::rotate(M, armAngle, glm::vec3(0.0f, 0.0f, 1.0f));
+	// Cube follows the forearm's world rotation around player-right.
+	M = glm::rotate(M, forearmAngle, glm::vec3(0.0f, 0.0f, 1.0f));
+	// Cube-local presentation tilts — applied in the cube's own frame so the
+	// three-face view is preserved through every yaw / arm-swing pose.
+	M = glm::rotate(M, TP_REST_TILT_Y, glm::vec3(0.0f, 1.0f, 0.0f));
+	M = glm::rotate(M, TP_REST_TILT_X, glm::vec3(1.0f, 0.0f, 0.0f));
 	M = glm::scale(M, glm::vec3(scale));
-	M = glm::translate(M, glm::vec3(-0.5f));
+	M = glm::translate(M, glm::vec3(0.0f, -CUBE_Y_CENTER, 0.0f));
 	return M;
 }
 
@@ -158,7 +190,7 @@ glm::mat4 cubeModelMatrix(const glm::vec3& anchorRel, float yawRad,
 // self-oriented (X-cross is symmetric, billboard reorients per-frame).
 bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
                     uint16_t heldItemType, const glm::vec3& anchorRel,
-                    float yawRad, float armAngle,
+                    float yawRad, ArmPose pose,
                     float cubeScale, float spriteScale)
 {
 	if (heldItemType == 0
@@ -194,7 +226,7 @@ bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
 	if (auto* b = std::get_if<BlockType>(&type)) {
 		buildCube(buf, 0.0f, 0.0f, 0.0f, 0, 0, *b, texMgr);
 		transformVertsMat(buf, start,
-		                  cubeModelMatrix(anchorRel, yawRad, armAngle, cubeScale));
+		                  cubeModelMatrix(anchorRel, yawRad, pose, cubeScale));
 		return true;
 	}
 	return false;
@@ -216,12 +248,12 @@ int appendForOneEntity(std::vector<float>& cpuBuffer, const TextureManager* texM
 {
 	if (!e.DoDraw() || e.heldItemType == 0) return 0;
 
-	const float yawRad   = glm::radians(e.yaw);
-	const float armAngle = armAngleFromAnimation(asCharacter(e));
-	const glm::vec3 anchor = itemAnchorRel(worldPos, eyePos, yawRad, armAngle);
+	const float yawRad     = glm::radians(e.yaw);
+	const ArmPose pose     = armPoseFromAnimation(asCharacter(e));
+	const glm::vec3 anchor = itemAnchorRel(worldPos, eyePos, yawRad, pose);
 
 	return appendItemMesh(cpuBuffer, texMgr, e.heldItemType, anchor,
-	                      yawRad, armAngle, CUBE_SCALE, SPRITE_SCALE)
+	                      yawRad, pose, CUBE_SCALE, SPRITE_SCALE)
 	       ? 1 : 0;
 }
 
@@ -319,7 +351,9 @@ void HeldItemRenderer::drawForEntities(const glm::mat4& projection, const glm::m
 	glEnable(GL_CULL_FACE);
 }
 
-void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection, uint16_t heldItemType,
+void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
+                                       const glm::mat4& view,
+                                       uint16_t heldItemType,
                                        const Character* localCharacter)
 {
 	if (heldItemType == 0) return;
@@ -329,10 +363,10 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection, uint16_t hel
 	// Animation-driven offsets in camera space. The camera follows the player
 	// in 1P so we don't need a yaw rotation; instead we animate via:
 	//   • armAngle: punch + walk-arm-sway, rotates the cube around camera-X
-	//     (screen right axis) so the swing arcs through the bottom-right corner
 	//   • viewmodel bob/sway: vertical/horizontal sinusoidal offset tied to
 	//     walkPhase, so the item bobs while you move
-	const float armAngle = VM_SWING_GAIN * armAngleFromAnimation(localCharacter);
+	const ArmPose pose = armPoseFromAnimation(localCharacter);
+	const float armAngle = VM_SWING_GAIN * (pose.shoulder + pose.elbow);
 
 	float bobY = 0.0f, bobX = 0.0f;
 	if (localCharacter && localCharacter->characterBodyParts.onWalkAnimation) {
@@ -371,19 +405,30 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection, uint16_t hel
 		buildCube(cpuBuffer, 0.0f, 0.0f, 0.0f, 0, 0, *b, textureManager);
 		// Camera-space matrix. Order: translate to hand → arm swing around
 		// camera-X (screen right) → small rest tilts for a 3/4 readable view
-		// → scale → center.
+		// → scale → recenter Y (source cube has y in [0, 0.2]
 		glm::mat4 M(1.0f);
 		M = glm::translate(M, anchorRel);
 		M = glm::rotate(M, -armAngle,         glm::vec3(1.0f, 0.0f, 0.0f));
 		M = glm::rotate(M, -VM_REST_TILT_X,   glm::vec3(1.0f, 0.0f, 0.0f));
 		M = glm::rotate(M,  VM_REST_TILT_Y,   glm::vec3(0.0f, 1.0f, 0.0f));
 		M = glm::scale(M, glm::vec3(VM_CUBE));
-		M = glm::translate(M, glm::vec3(-0.5f));
+		M = glm::translate(M, glm::vec3(0.0f, -CUBE_Y_CENTER, 0.0f));
 		transformVertsMat(cpuBuffer, start, M);
 		drawnSomething = true;
 	}
 
 	if (!drawnSomething) return;
+
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	const glm::mat4 invViewRot = glm::inverse(viewRot);
+	for (std::size_t i = 0; i + 2 < cpuBuffer.size(); i += STRIDE) {
+		const glm::vec4 p(cpuBuffer[i + 0], cpuBuffer[i + 1], cpuBuffer[i + 2], 1.0f);
+		const glm::vec4 q = invViewRot * p;
+		cpuBuffer[i + 0] = q.x;
+		cpuBuffer[i + 1] = q.y;
+		cpuBuffer[i + 2] = q.z;
+	}
 
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferSubData(GL_ARRAY_BUFFER, 0,
@@ -398,7 +443,7 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection, uint16_t hel
 	}
 
 	shader->setMat4("projection", projection);
-	shader->setMat4("viewRot", glm::mat4(1.0f));
+	shader->setMat4("viewRot", viewRot);
 
 	// Always-on-top: clear depth (force mask on first — clouds composite may
 	// have left it disabled), then keep depth test enabled for cube self-sort.
