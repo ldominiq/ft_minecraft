@@ -490,6 +490,18 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
 		player->movement->inventory->activeHotbarSlot = pkt.activeHotbarSlot;
 
+	// Resolve the player's currently-held item id and flag a broadcast if it
+	// changed. Re-checking on every input packet also catches inventory
+	// mutations (drops, pickups, swaps) that don't touch the hotbar index —
+	// they'd otherwise need their own dirty flag to reach NetEntityMove.
+	{
+		uint16_t newHeldType = player->movement->inventory->getActiveItemID();
+		if (newHeldType != player->movement->heldItemType) {
+			player->movement->heldItemType = newHeldType;
+			player->movement->rotationUpdated = true;
+		}
+	}
+
 	// Stash flashlight state from playerFlags bit 0 onto the player entity;
 	// sendEntitiesPositionDeltas will relay it to the other clients via
 	// NetEntityMove::positionFlags bit 0x40.
@@ -1121,6 +1133,8 @@ void Server::sendEntitiesPositionDeltas()
 							  | (entity->networkedPrimed    ? 0x08u : 0u)
 							  | (entity->pendingHurt        ? 0x10u : 0u)
 							  | (entity->flashlightOn       ? 0x40u : 0u);
+
+			pkt.heldItemType = entity->heldItemType;
 
 			sendPacketTo(pkt, p.addr);
 		}

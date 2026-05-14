@@ -507,6 +507,10 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 			// assignment goes through `ice`. App.cpp scans these each frame and
 			// uploads the nearest active one when the local flashlight is off.
 			ice->flashlightOn = (pkt.positionFlags & 0x40) != 0;
+			// ItemID of the item shown in the player's hand. Read each tick so
+			// hotbar switches and inventory mutations (drops, pickups) update
+			// the rendered viewmodel on other clients.
+			ice->heldItemType = pkt.heldItemType;
 		}
 		ent->lastNetUpdateTime = serverTime;
 
