@@ -26,7 +26,7 @@ void PauseMenu::build()
 	backToMainMenuButton.h = btnH;
 	backToMainMenuButton.x = centerX - btnW / 2.0f;
 	backToMainMenuButton.y = continueButton.y - btnH - 20.0f * menuScale;
-	backToMainMenuButton.label = "Exit Game";
+	backToMainMenuButton.label = "Main Menu";
 }
 
 void PauseMenu::handleMouseClick(double mouseX, double mouseY, int button, int action)

@@ -2598,11 +2598,11 @@ void App::debugWindow() {
                     if (ImGui::DragFloat("Dbg window Font Size", &style.FontSizeBase, 0.20f, 5.0f, 100.0f, "%.0f"))
                         style._NextFrameFontSizeBase = style.FontSizeBase;
                     ImGui::Separator();
-                    static bool spectator = false;
-                    if (ImGui::Checkbox("Survival", &spectator))
+                    static bool survival = camera->getPlayer()->gamemode != GAMEMODES::SURVIVAL;
+                    if (ImGui::Checkbox("Survival", &survival))
                     {
                         NetMessage pkt;
-                        pkt.message = spectator ? "/gamemode survival" : "/gamemode spectator";
+                        pkt.message = survival ? "/gamemode spectator" : "/gamemode survival";
                         udpClient->sendPacket(pkt);
                     }
 
