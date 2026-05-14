@@ -5,12 +5,6 @@
 #include "Menu.hpp"
 #include <functional>
 
-static constexpr float DESIGN_W = 960.0f;
-static constexpr float DESIGN_H = 540.0f;
-
-static constexpr float BTN_W = 200.0f;
-static constexpr float BTN_H = 40.0f;
-
 class PauseMenu : public Menu
 {
 public:

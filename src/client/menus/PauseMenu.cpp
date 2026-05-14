@@ -1,9 +1,16 @@
 
 #include "PauseMenu.hpp"
 
-PauseMenu::PauseMenu(float width, float height): Menu(width, height)
+static constexpr float DESIGN_W = 960.0f;
+static constexpr float DESIGN_H = 540.0f;
+
+static constexpr float BTN_W = 200.0f;
+static constexpr float BTN_H = 40.0f;
+
+PauseMenu::PauseMenu(float width, float height):  Menu(DESIGN_W, DESIGN_H)
 {
 	build();
+	resize(width, height);
 }
 
 PauseMenu::~PauseMenu() {}
