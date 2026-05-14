@@ -55,13 +55,18 @@ bool AudioManager::init() {
     musicBusHandle = engine.play(musicBus);
     sfxBusHandle   = engine.play(sfxBus);
 
-    // Per-sound multipliers default to 1.0 — the audio settings panel mutates them at runtime.
-    sfxScale.fill(1.0f);
+    // Per-sound multipliers default to 1.5
+    sfxScale.fill(1.5f);
 
     loadAllAssets();
     applyVolumes();
 
-    std::cout << "[Audio] SoLoud ready (backend: " << engine.getBackendString() << ")" << std::endl;
+    std::cout << "[Audio] SoLoud ready"
+              << " | backend="  << engine.getBackendString()
+              << " | rate="     << engine.getBackendSamplerate() << " Hz"
+              << " | channels=" << engine.getBackendChannels()
+              << " | buffer="   << engine.getBackendBufferSize() << " frames"
+              << std::endl;
     return true;
 }
 
