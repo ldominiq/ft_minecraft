@@ -100,7 +100,7 @@ class LivingEntity : public Entity
 		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
 		virtual void attack(LivingEntity &victim);
-		virtual void onDeath();
+		virtual void onDeath(const ICommonWorld &world);
 		virtual void applyFallDamage();
 		virtual void tickAI(const ICommonWorld &world, const std::vector<std::shared_ptr<LivingEntity>> &entities, int32_t tick) { (void)world; (void)entities; (void)tick; }
 		void calculateNewYPosition(const ICommonWorld &world) override;

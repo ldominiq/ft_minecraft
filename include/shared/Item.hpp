@@ -85,6 +85,7 @@ enum class BlockType : ItemID {
     BEDROCK,
     OAK_LOG,
     OAK_LEAVES,
+	OAK_PLANKS,
 	IRON,
 	GOLD,
 	DIAMOND,
@@ -164,20 +165,35 @@ enum class BlockType : ItemID {
 	DIORITE,
 	RED_MUSHROOM_BLOCK,
 	SANDSTONE,
+
+	COAL_BLOCK,
+	IRON_BLOCK,
+	GOLD_BLOCK,
+	DIAMOND_BLOCK,
+	URANIUM_BLOCK,
+	BEACON,
 	END
 };
 
 enum class WeaponType : ItemID {
 	BEGIN = (ItemID)BlockType::END + 1,
-	SWORD,
+	WOODEN_SWORD,
+	STONE_SWORD,
+	IRON_SWORD,
+	GOLDEN_SWORD,
+	DIAMOND_SWORD,
 	END
 };
 
 enum class MiscType : ItemID {
 	BEGIN = (ItemID)WeaponType::END + 1,
+	STICK,
 	IRON_INGOT,
 	GOLD_INGOT,
+	URANIUM_INGOT,
 	DIAMOND,
+	EMPTY_BUCKET,
+	WATER_BUCKET,
 	END
 };
 
@@ -224,6 +240,7 @@ public:
 		ItemDef{ makeLiquid(BlockType::WATER, 					"Water", 7) },
 		ItemDef{ makeBlock(BlockType::BEDROCK, 					"Bedrock", 10) },
 		ItemDef{ makeBlock(BlockType::OAK_LOG, 					"Log", 10) },
+		ItemDef{ makeBlock(BlockType::OAK_PLANKS, 				"Oak Planks", 10) },
 		ItemDef{ makeBlock(BlockType::BIRCH_LOG, 				"Birch Log", 10) },
 		ItemDef{ makeBlock(BlockType::ACACIA_LOG, 				"Acacia Log", 10) },
 		ItemDef{ makeBlock(BlockType::JUNGLE_LOG, 				"Jungle Log", 10) },
@@ -289,6 +306,13 @@ public:
 		ItemDef{ makeBlock(BlockType::DIORITE,           		"Diorite", 1) },
 		ItemDef{ makeBlock(BlockType::RED_MUSHROOM_BLOCK, 		"Red Mushroom Block", 1) },
 		ItemDef{ makeBlock(BlockType::SANDSTONE, 				"Sandstone", 1) },
+
+		ItemDef{ makeBlock(BlockType::COAL_BLOCK, 				"Coal Block", 10) },
+		ItemDef{ makeBlock(BlockType::IRON_BLOCK, 				"Iron Block", 10) },
+		ItemDef{ makeBlock(BlockType::GOLD_BLOCK, 				"Gold Block", 10) },
+		ItemDef{ makeBlock(BlockType::DIAMOND_BLOCK, 			"Diamond Block", 10) },
+		ItemDef{ makeBlock(BlockType::URANIUM_BLOCK, 			"Uranium Block", 10) },
+		ItemDef{ makeBlock(BlockType::BEACON, 					"Beacon", 10) },
 	};
 
 	// static inline std::vector<ItemDef> liquids = {
@@ -300,7 +324,11 @@ public:
 		// texturePath = PNG base name in assets/textures/item/ (no extension).
 		// Empty string = no texture; drop e.g. wooden_sword.png in that folder
 		// and change "" to "wooden_sword" to get an icon and dropped sprite.
-		ItemDef{ makeWeapon(WeaponType::SWORD, "Sword", "", 4) }
+		ItemDef{ makeWeapon(WeaponType::WOODEN_SWORD, "Wooden Sword", "wooden_sword", 2) },
+		ItemDef{ makeWeapon(WeaponType::STONE_SWORD, "Stone Sword", "stone_sword", 3) },
+		ItemDef{ makeWeapon(WeaponType::IRON_SWORD, "Iron Sword", "iron_sword", 6) },
+		ItemDef{ makeWeapon(WeaponType::GOLDEN_SWORD, "Golden Sword", "golden_sword", 4) },
+		ItemDef{ makeWeapon(WeaponType::DIAMOND_SWORD, "Diamond Sword", "diamond_sword", 8) }
 	};
 
 	// To add a new item (ingot, stick, etc):
@@ -310,9 +338,13 @@ public:
 	// The texture is auto-loaded by TextureManager and the item renders as a
 	// flat 2D sprite in the world and the inventory.
 	static inline std::vector<ItemDef> miscs = {
+		ItemDef{ makeMisc(MiscType::STICK, "Stick", "stick") },
 		ItemDef{ makeMisc(MiscType::IRON_INGOT, "Iron Ingot", "iron_ingot") },
 		ItemDef{ makeMisc(MiscType::GOLD_INGOT, "Gold Ingot", "gold_ingot") },
+		ItemDef{ makeMisc(MiscType::URANIUM_INGOT, "Uranium Ingot", "emerald") },
 		ItemDef{ makeMisc(MiscType::DIAMOND,    "Diamond",    "diamond")    },
+		ItemDef{ makeMisc(MiscType::EMPTY_BUCKET, "Empty Bucket", "bucket_empty") },
+		ItemDef{ makeMisc(MiscType::WATER_BUCKET, "Water Bucket", "bucket_water") }
 	};
 
 	static inline std::vector<ItemDef> items = [] {
@@ -330,17 +362,25 @@ public:
 		}, id);
 	}
 
-	inline static const ItemDef& getBlock(const BlockType& id) {
-		return blocks[static_cast<ItemID>(id) - static_cast<ItemID>(BlockType::BEGIN) - 1];
+	inline static const BlockDef& getBlock(const BlockType& id) {
+		const ItemDef& def =
+			blocks[static_cast<ItemID>(id) - static_cast<ItemID>(BlockType::BEGIN) - 1];
+		return std::get<BlockDef>(def.data);
 	}
 
-	inline static const ItemDef& getLiquid(BlockType id) {
-		return blocks[static_cast<ItemID>(id) - static_cast<ItemID>(BlockType::BEGIN) - 1];
+	inline static const LiquidDef& getLiquid(BlockType id) {
+		const ItemDef& def =
+			items[static_cast<ItemID>(id) - static_cast<ItemID>(BlockType::BEGIN) - 1];
+		return std::get<LiquidDef>(def.data);
 	}
 
+	inline static const WeaponDef& getWeapon(const WeaponType& id)
+	{
+		const ItemDef& def =
+			weapons[static_cast<ItemID>(id)
+				- static_cast<ItemID>(WeaponType::BEGIN) - 1];
 
-	inline static const ItemDef& getWeapon(const WeaponType& id) {
-		return weapons[static_cast<ItemID>(id) - static_cast<ItemID>(WeaponType::BEGIN)];
+		return std::get<WeaponDef>(def.data);
 	}
 };
 
@@ -494,6 +534,10 @@ inline static bool isBlockSolid(const BlockType &b) {
 	return b != BlockType::AIR && b != BlockType::WATER && !isBlockVegetation(b);
 }
 
+inline static bool isBlockLiquid(const BlockType &b) {
+	return b == BlockType::WATER || b == BlockType::LAVA;
+}
+
 // True when the item should be rendered as a flat 2D sprite rather than a 3D
 // cube. Used both for dropped items in the world and for inventory icons.
 // Sprites: vegetation/coral blocks, all weapons, all misc items.
@@ -538,6 +582,10 @@ inline static ItemType itemIDToItemType(ItemID id)
     if (inRange<MiscType>(id))   return static_cast<MiscType>(id);
 
     return BlockType::BEGIN;
+}
+
+inline static bool isWeapon(const ItemType& type) {
+	return std::holds_alternative<WeaponType>(type);
 }
 
 #endif

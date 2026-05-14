@@ -2,6 +2,8 @@
 #include "TextureManager.hpp"
 #include "TextureUnits.hpp"
 
+#include <glm/gtc/matrix_transform.hpp>
+
 Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screenWidth), height(screenHeight) {
     // VAO for fullscreen triangle (no attributes needed)
     glGenVertexArrays(1, &skyVAO);
@@ -235,6 +237,41 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     glDepthMask(GL_TRUE);
 }
 
+glm::vec3 Lighting::getAnimatedLightCubePosition(int i) const {
+    if (i < 0 || i >= 3) return glm::vec3(0.0f);
+
+    // Shared centroid of the three configured positions — the swirl orbits
+    // around it, so if any cube is repositioned via setPointLightPosition
+    // the formation re-centers naturally.
+    const glm::vec3 center = (pointLightPositions[0]
+                            + pointLightPositions[1]
+                            + pointLightPositions[2]) / 3.0f;
+
+    constexpr float kTwoPiOverThree = 2.0943951023931953f; // 2π/3
+    const float t = lightCubeAnimTime;
+    const float phase = static_cast<float>(i) * kTwoPiOverThree;
+
+    constexpr float orbitRadius = 4.0f;
+    constexpr float orbitSpeed  = 0.8f;
+    const float a = t * orbitSpeed + phase;
+
+    // Tilted ring whose tilt slowly breathes and whose tilt axis precesses
+    // around Y — the plane wobbles instead of staying flat.
+    const float tilt = glm::radians(35.0f) + std::sin(t * 0.3f) * glm::radians(20.0f);
+    const float yaw  = t * 0.15f;
+
+    glm::vec3 p(orbitRadius * std::cos(a), 0.0f, orbitRadius * std::sin(a));
+
+    const float ct = std::cos(tilt), st = std::sin(tilt);
+    p = glm::vec3(p.x, -st * p.z, ct * p.z);
+
+    const float cy = std::cos(yaw), sy = std::sin(yaw);
+    p = glm::vec3(cy * p.x + sy * p.z, p.y, -sy * p.x + cy * p.z);
+
+    p.y += std::sin(t * 1.6f + phase * 1.5f) * 0.5f;
+    return center + p;
+}
+
 void Lighting::compositeCloudsToBackbuffer(GLuint sceneColorTex, GLuint sceneDepthTex,
                                            const glm::mat4& view, const glm::mat4& projection,
                                            const glm::vec3& cameraPosWorld,
@@ -293,24 +330,131 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
     glm::mat4 viewRot = view;
     viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
+    constexpr float kTwoPiOverThree = 2.0943951023931953f;
+    const float t = lightCubeAnimTime;
+
+    lightCubeShader->setMat4("projection", projection);
+    lightCubeShader->setMat4("view", viewRot);
+
     glBindVertexArray(lightCubeVAO);
     for (unsigned int i = 0; i < 3; i++)
     {
-        const glm::dvec3 posRelD = glm::dvec3(pointLightPositions[i]) - eyePos;
+        const glm::vec3 worldPos = getAnimatedLightCubePosition(static_cast<int>(i));
+        const glm::dvec3 posRelD = glm::dvec3(worldPos) - eyePos;
+        const float phase = static_cast<float>(i) * kTwoPiOverThree;
+
+        // Subtle scale-pulse so the cubes feel alive even when standing still.
+        const float pulse = 0.20f + 0.06f * std::sin(t * 3.0f + phase);
+
         auto model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(posRelD));
-        model = glm::scale(model, glm::vec3(0.2f)); // Make it a smaller cube
+        // Tumble on two arbitrary, non-orthogonal axes at different rates —
+        // the composition gives a constantly-shifting orientation.
+        model = glm::rotate(model, t * 1.5f + phase,
+                            glm::normalize(glm::vec3(0.5f, 1.0f, 0.3f)));
+        model = glm::rotate(model, t * 0.9f + phase * 2.0f,
+                            glm::normalize(glm::vec3(1.0f, 0.2f, -0.4f)));
+        model = glm::scale(model, glm::vec3(pulse));
+
         // Set per-cube color here so each light uses its own color
         glm::vec3 cubeCol = pointLightsOn[i] ? pointLightDiffuse[i] : glm::vec3(0.0f);
         lightCubeShader->setVec3("cubeColor", cubeCol);
         lightCubeShader->setMat4("model", model);
-        lightCubeShader->setMat4("projection", projection);
-        lightCubeShader->setMat4("view", viewRot);
         glDrawArrays(GL_TRIANGLES, 0, 36);
     }
+
+    // ── Glowing additive trails ──────────────────────────────────
+    // Draw the ring buffer history as smaller cubes with fading colors,
+    // additively blended so overlapping trails bloom and mix. Depth test
+    // stays on (occluded by terrain) but depth writes are off so trail
+    // segments don't punch holes into each other.
+    //
+    // Saved GL state (depth-mask, blend, blend func) is restored at the end
+    // so the rest of the frame is unaffected.
+    GLboolean prevDepthMask;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
+    GLboolean prevBlend = glIsEnabled(GL_BLEND);
+    // Capture RGB and alpha factors separately — the caller may have set
+    // them via glBlendFuncSeparate with differing values, and restoring with
+    // plain glBlendFunc would silently collapse RGB to whatever the alpha
+    // factors were. We restore with glBlendFuncSeparate below.
+    GLint prevBlendSrcRGB, prevBlendDstRGB, prevBlendSrcAlpha, prevBlendDstAlpha;
+    glGetIntegerv(GL_BLEND_SRC_RGB,   &prevBlendSrcRGB);
+    glGetIntegerv(GL_BLEND_DST_RGB,   &prevBlendDstRGB);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevBlendSrcAlpha);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &prevBlendDstAlpha);
+
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE); // additive
+
+    const int N = kLightCubeTrailLength;
+    // Newest written slot is (head - 1). k=1 is one frame behind the live
+    // cube — skip k=0 since that's exactly where the main cube already drew.
+    for (unsigned int i = 0; i < 3; ++i) {
+        if (!pointLightsOn[i]) continue;
+        const glm::vec3 baseCol = pointLightDiffuse[i];
+        const float phase = static_cast<float>(i) * kTwoPiOverThree;
+
+        for (int k = 1; k < N; ++k) {
+            const int idx = ((lightCubeTrailHead - 1 - k) % N + N) % N;
+            const glm::vec3 wp = lightCubeTrail[i][idx];
+            const glm::dvec3 posRelD = glm::dvec3(wp) - eyePos;
+
+            // age ∈ [0,1]: 0 = newest tail segment, 1 = oldest.
+            const float age = static_cast<float>(k) / static_cast<float>(N - 1);
+            // Quadratic fade — bright near the head, fast falloff into the tail.
+            const float fade = (1.0f - age) * (1.0f - age);
+
+            const float scale = 0.16f * (0.25f + 0.75f * fade);
+            // Tiny per-segment spin: gives the trail texture rather than a
+            // string of axis-aligned squares.
+            const float segSpin = t * 0.6f + phase + age * 4.0f;
+
+            auto model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(posRelD));
+            model = glm::rotate(model, segSpin,
+                                glm::normalize(glm::vec3(0.5f, 1.0f, 0.3f)));
+            model = glm::scale(model, glm::vec3(scale));
+
+            // Brightness scaled by fade — additive blending then makes the
+            // newest segments dominate while the tail melts into the scene.
+            lightCubeShader->setVec3("cubeColor", baseCol * fade * 0.7f);
+            lightCubeShader->setMat4("model", model);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+    }
+
+    // Restore prior GL state.
+    if (!prevBlend) glDisable(GL_BLEND);
+    glBlendFuncSeparate(prevBlendSrcRGB,   prevBlendDstRGB,
+                        prevBlendSrcAlpha, prevBlendDstAlpha);
+    glDepthMask(prevDepthMask);
+
+    glBindVertexArray(0);
 }
 
 void Lighting::updateSunDirection(const float deltaTime) {
+    // Spawn light cubes animate independently of sky time so they keep
+    // swirling even when the sun is paused.
+    lightCubeAnimTime += deltaTime;
+
+    // Push current swirl position into the trail ring buffer. Prefill on
+    // the first frame so the trail doesn't streak from the world origin.
+    if (!lightCubeTrailInitialized) {
+        for (int i = 0; i < 3; ++i) {
+            const glm::vec3 p = getAnimatedLightCubePosition(i);
+            for (int k = 0; k < kLightCubeTrailLength; ++k) {
+                lightCubeTrail[i][k] = p;
+            }
+        }
+        lightCubeTrailInitialized = true;
+    }
+    for (int i = 0; i < 3; ++i) {
+        lightCubeTrail[i][lightCubeTrailHead] = getAnimatedLightCubePosition(i);
+    }
+    lightCubeTrailHead = (lightCubeTrailHead + 1) % kLightCubeTrailLength;
+
     if (!skyTimePaused) {
         if (skyMode == 1) {
             // ── Smooth mode: continuous linear advancement ──
@@ -396,6 +540,11 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
 
     shader.setFloat("seaLevel", seaLevel);
     shader.setFloat("causticTime", causticTime);
+    // Default ON; passes that render with shadows disabled (e.g., the
+    // water refraction texture) override this to 0 so caustics aren't
+    // drawn without a valid shadow gate, which would put them on
+    // underwater terrain the sun can't actually reach.
+    shader.setFloat("causticsEnabled", 1.0f);
     if (causticsTexture) {
         glActiveTexture(GL_TEXTURE0 + TextureUnits::CAUSTICS);
         glBindTexture(GL_TEXTURE_2D, causticsTexture);
@@ -443,7 +592,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
             shader.setVec3("pointLights[" + std::to_string(i) + "].specular", glm::vec3(0.0f));
             continue;
         }
-        shader.setVec3("pointLights[" + std::to_string(i) + "].position", glm::vec3(glm::dvec3(pointLightPositions[i]) - eyePos));
+        shader.setVec3("pointLights[" + std::to_string(i) + "].position", glm::vec3(glm::dvec3(getAnimatedLightCubePosition(i)) - eyePos));
         shader.setVec3("pointLights[" + std::to_string(i) + "].ambient", pointLightAmbient[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].diffuse", pointLightDiffuse[i]);
         shader.setVec3("pointLights[" + std::to_string(i) + "].specular", pointLightSpecular[i]);

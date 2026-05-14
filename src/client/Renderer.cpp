@@ -68,6 +68,19 @@ std::vector<std::weak_ptr<ChunkRenderer>> Renderer::getRenderedChunks()
 	return renderedChunks;
 }
 
+void Renderer::clearCache()
+{
+	chunks.clear();
+	chunksData.clear();
+	chunksToBuild.clear();
+	chunkReceiveTime.clear();
+	renderedChunks.clear();
+	m_lastVisibleChunks.clear();
+	maxRenderedChunkDist = 0.0f;
+	cameraFrustum = Frustum();
+	frustumEyePos = glm::dvec3(0.0);
+}
+
 void Renderer::updateChunk(const NetModifiedBlockData &pkt)
 {
 	glm::vec3 targetCoords = glm::vec3(pkt.x, pkt.y, pkt.z);

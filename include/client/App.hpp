@@ -71,6 +71,7 @@
 #include "MainMenu.hpp"
 #include "MultiplayerMenu.hpp"
 #include "SettingsMenu.hpp"
+#include "PauseMenu.hpp"
 #include "AudioManager.hpp"
 #include "ControlsMenu.hpp"
 
@@ -171,6 +172,7 @@ private:
 	std::shared_ptr<MainMenu> mainMenu;
 	std::shared_ptr<MultiplayerMenu> multiplayerMenu;
 	std::shared_ptr<SettingsMenu> settingsMenu;
+	std::shared_ptr<PauseMenu> pauseMenu;
 	std::shared_ptr<ControlsMenu> controlsMenu;
 	GLuint menuDirtTex = 0;
 

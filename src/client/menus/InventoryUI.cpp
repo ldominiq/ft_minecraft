@@ -120,7 +120,7 @@ void InventoryUI::build()
 	{
 		for (int j = 0; j < craftingStationCols; j++)
 		{
-			int idx = i * craftingStationCols + j;
+			int idx = (craftingStationRows - 1 - i) * craftingStationCols + j;
 
 			float slotW = craftingStation.width  / (craftingStationCols + 1);
 			float slotH = craftingStation.height / (craftingStationRows + 1);
@@ -360,6 +360,127 @@ void InventoryUI::drawHealth(float health) const
 
 	glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
+}
+
+// Death overlay: red vignette + "YOU DIED" title that fades in once health
+// hits 0 and disappears the moment the server respawns us. Server keeps us
+// dead for ~3s (DEATH_ANIMATION_TICKS in sendDeaths)
+void InventoryUI::drawDeathScreen(float health)
+{
+	const double now = glfwGetTime();
+
+	if (health > 0.0f) {
+		// Alive (or just respawned): clear state so the next death restarts
+		// the fade-in from zero.
+		deathStartTime = -1.0;
+		return;
+	}
+
+	if (deathStartTime < 0.0)
+		deathStartTime = now;
+
+	const float elapsed = static_cast<float>(now - deathStartTime);
+
+	// Fade-in over ~0.45s, capped slightly below 1 so the world still bleeds
+	// through and it doesn't feel like we slammed a menu over the screen.
+	const float fade = std::min(1.0f, elapsed / 0.45f);
+
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	// Base red wash. Deep crimson so it reads as "you got hurt" rather than
+	// a generic UI panel.
+	drawSimpleQuad(0, 0, fullscreenWidth, fullscreenHeight,
+		glm::vec4(0.55f, 0.04f, 0.04f, 0.55f * fade));
+
+	// Cheap vignette: stack a few darkening bands at the top/bottom that
+	// fake a radial falloff without a custom shader. The middle stays mostly
+	// red while the edges go nearly black.
+	const float bandH = fullscreenHeight * 0.18f;
+	for (int i = 0; i < 4; ++i)
+	{
+		const float t = (i + 1) / 4.0f; // 0.25..1.0 — outer bands are darker
+		const float a = 0.18f * t * fade;
+		drawSimpleQuad(0, fullscreenHeight - bandH * (i + 1),
+			fullscreenWidth, bandH, glm::vec4(0.0f, 0.0f, 0.0f, a));
+		drawSimpleQuad(0, bandH * i,
+			fullscreenWidth, bandH, glm::vec4(0.0f, 0.0f, 0.0f, a));
+	}
+
+	// A slow heartbeat-style pulse on top
+	const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(now) * 2.2f);
+	drawSimpleQuad(0, 0, fullscreenWidth, fullscreenHeight,
+		glm::vec4(0.4f, 0.0f, 0.0f, 0.08f * pulse * fade));
+
+	// ---- "YOU DIED" title --------------------------------------------------
+	// Use the titleRenderer (128px font) scaled by menuScale so it looks the
+	// same on every resolution.
+	const std::string title = "YOU DIED";
+	const float savedTitleScale = titleRenderer.getScale();
+	const float titleScale = 1.1f * menuScale;
+	titleRenderer.setScale(titleScale);
+	titleRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+
+	// Slight overshoot/settle: title scales up a touch in the first 0.35s,
+	// then locks in.
+	const float titleWidth = titleRenderer.getPixelSizeOfString(title);
+	const float titleX = (fullscreenWidth - titleWidth) / 2.0f;
+	const float titleY = fullscreenHeight * 0.58f;
+
+	// Drop shadow for legibility against the red wash.
+	const float shadowOff = 4.0f * menuScale;
+	titleRenderer.renderText(title, titleX + shadowOff, titleY - shadowOff,
+		glm::vec3(0.0f), fade);
+	// Main title in a slightly warm off-white so it doesn't fight the red.
+	titleRenderer.renderText(title, titleX, titleY,
+		glm::vec3(0.96f, 0.88f, 0.82f), fade);
+	titleRenderer.setScale(savedTitleScale);
+
+	// ---- Subtitle "Respawning…" -------------------------------------------
+	const float savedTextScale = textRenderer.getScale();
+	const float subScale = 0.45f * menuScale;
+	textRenderer.setScale(subScale);
+	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+
+	// Animated ellipsis
+	const int dotCount = static_cast<int>(now * 2.0) % 4; // 0..3
+	std::string sub = "Respawning";
+	for (int i = 0; i < dotCount; ++i) sub += '.';
+
+	const float subWidth = textRenderer.getPixelSizeOfString(sub);
+	const float subX = (fullscreenWidth - subWidth) / 2.0f;
+	const float subY = fullscreenHeight * 0.50f;
+	// Subtle alpha pulse on the subtitle in sync with the heartbeat.
+	const float subAlpha = (0.6f + 0.4f * pulse) * fade;
+	textRenderer.renderText(sub, subX, subY,
+		glm::vec3(0.85f, 0.20f, 0.20f), subAlpha);
+
+	// Flavor line near the bottom. Kept short and rotated through a tiny
+	// pool so death isn't always the same screen.
+	static const char* const flavor[] = {
+		"the world claims another soul.",
+		"that hurt.",
+		"see you on the other side.",
+		"gravity: undefeated.",
+		"better luck next life.",
+	};
+	constexpr int flavorCount = static_cast<int>(sizeof(flavor) / sizeof(flavor[0]));
+	// Pick a line per death (stable for the duration of this death screen).
+	const int idx = static_cast<int>(deathStartTime * 7.0) % flavorCount;
+	const std::string& line = flavor[(idx + flavorCount) % flavorCount];
+
+	const float flavorScale = 0.35f * menuScale;
+	textRenderer.setScale(flavorScale);
+	const float flavorWidth = textRenderer.getPixelSizeOfString(line);
+	textRenderer.renderText(line,
+		(fullscreenWidth - flavorWidth) / 2.0f,
+		fullscreenHeight * 0.40f,
+		glm::vec3(0.7f, 0.5f, 0.5f), 0.85f * fade);
+	textRenderer.setScale(savedTextScale);
+
+	glDisable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
 }
 
 int InventoryUI::getSlotAt(double mouseX, double mouseY) const
@@ -633,6 +754,9 @@ void InventoryUI::onRender()
 		std::shared_ptr<CraftingStation> inv = craftingStationInv.lock();
 		if (!inv)
 			return ;
+		
+		if (inv->getSlot(inv->getResultSlotID()).second)
+			textRenderer.renderText(std::to_string(inv->getSlot(inv->getResultSlotID()).second), craftingResultSlot.x, craftingResultSlot.y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		buildInventoryIcon(meshVertices,
 			inv->getSlot(inv->getResultSlotID()).first,
@@ -653,5 +777,5 @@ void InventoryUI::onRender()
 	//text in hand
 	//Text needs to go after setupCubes so it renders in front of the cube in hand.
 	if (handPtr.lock() && handPtr.lock()->second != 0)
-		textRenderer.renderText(std::to_string(handPtr.lock()->second), mouseX, fullscreenHeight - mouseY, glm::vec3(1.0f));
+		textRenderer.renderText(std::to_string(handPtr.lock()->second), mouseX - hotbarSlots[0].width / 4.0f , fullscreenHeight - mouseY + hotbar.height * 0.4, glm::vec3(1.0f));
 }

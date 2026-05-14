@@ -51,7 +51,7 @@ void LivingEntity::attack(LivingEntity &victim)
 	victim.pendingHurt = true; // broadcast a hurt one-shot to clients (positionFlags bit 0x10)
 }
 
-void LivingEntity::onDeath()
+void LivingEntity::onDeath(const ICommonWorld &world)
 {
 	// TODO : drop something?
 }

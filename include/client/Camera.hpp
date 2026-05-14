@@ -132,6 +132,15 @@ public:
 
 	glm::vec3 visualOffset = glm::vec3(0.0f);
 	void updateSmoothing(float deltaTime);
+
+	// Third-person camera collision: scales the camera-behind-player offset
+	// in [0,1] when a solid block sits between the player's eye and the
+	// ideal camera position, so the view never enters terrain.
+	void updateThirdPersonCollision(const Renderer &world, float deltaTime);
+	static constexpr float kThirdPersonCameraDistance = 3.0f;
+	static constexpr float kThirdPersonCameraHeight   = 1.5f;
+private:
+	float cameraDistanceFraction = 1.0f;
 };
 
 #endif // CAMERA_HPP
