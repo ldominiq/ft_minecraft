@@ -1,6 +1,8 @@
 #include "Camera.hpp"
+#include "Item.hpp"
 #include <cmath>
 #include <limits>
+#include <algorithm>
 
 Camera::Camera(glm::vec3 position)
     : MouseSensitivity(0.1f) {
@@ -48,9 +50,6 @@ glm::mat4 Camera::getViewMatrix() const
 		return glm::mat4(glm::lookAt(playerPosD, centerD, glm::dvec3(player->WorldUp)));
 	}
 
-	float cameraDistance = 3.0f;  // behind the player
-	float cameraHeight   = 1.5f;  // slightly above
-
 	float yaw   = glm::radians(player->yaw);
 	float pitch = glm::radians(player->pitch);
 
@@ -61,11 +60,13 @@ glm::mat4 Camera::getViewMatrix() const
 		cos(pitch) * sin(yaw)
 	);
 
-	// Camera position BEHIND the player, opposite of forward
-  glm::dvec3 camPosD =
-		playerPosD
-       - forward * static_cast<double>(cameraDistance)  // behind
-		+ glm::dvec3(0.0, static_cast<double>(cameraHeight), 0.0); // slight upward offset
+	// Camera position BEHIND the player, opposite of forward.
+	// The offset (back + up) is scaled by cameraDistanceFraction so terrain
+	// collision (updateThirdPersonCollision) can pull the camera in.
+	const glm::dvec3 thirdPersonOffset =
+		-forward * static_cast<double>(kThirdPersonCameraDistance)
+		+ glm::dvec3(0.0, static_cast<double>(kThirdPersonCameraHeight), 0.0);
+  glm::dvec3 camPosD = playerPosD + thirdPersonOffset * static_cast<double>(cameraDistanceFraction);
 
 	const glm::dvec3 targetD = playerPosD + forward * 10.0;
 
@@ -88,9 +89,8 @@ glm::dvec3 Camera::getEyePosD() const
 	if (!thirdPersonCamera)
 		return playerPosD;
 
-	// Third person: replicate getViewMatrix's third-person eye math in double.
-	const float cameraDistance = 3.0f;
-	const float cameraHeight   = 1.5f;
+	// Third person: replicate getViewMatrix's third-person eye math in double,
+	// including the collision-driven distance fraction.
 	const float yawRad   = glm::radians(player->yaw);
 	const float pitchRad = glm::radians(player->pitch);
 	const glm::dvec3 forward(
@@ -98,8 +98,155 @@ glm::dvec3 Camera::getEyePosD() const
 		std::sin(pitchRad),
 		std::cos(pitchRad) * std::sin(yawRad)
 	);
-	return playerPosD - forward * static_cast<double>(cameraDistance)
-		+ glm::dvec3(0.0, static_cast<double>(cameraHeight), 0.0);
+	const glm::dvec3 thirdPersonOffset =
+		-forward * static_cast<double>(kThirdPersonCameraDistance)
+		+ glm::dvec3(0.0, static_cast<double>(kThirdPersonCameraHeight), 0.0);
+	return playerPosD + thirdPersonOffset * static_cast<double>(cameraDistanceFraction);
+}
+
+// DDA (Digital Differential Analyzer) voxel traversal
+static double ddaFirstSolidHit(const Renderer &world,
+                                const glm::dvec3 &origin,
+                                const glm::dvec3 &rayDir,
+                                double maxDistance)
+{
+	glm::ivec3 blockPos = glm::ivec3(glm::floor(origin));
+	const glm::dvec3 deltaDist = glm::abs(glm::dvec3(1.0) / rayDir);
+	glm::ivec3 step{};
+	glm::dvec3 sideDist{};
+	for (int i = 0; i < 3; ++i) {
+		if (rayDir[i] < 0.0) {
+			step[i] = -1;
+			sideDist[i] = (origin[i] - static_cast<double>(blockPos[i])) * deltaDist[i];
+		} else {
+			step[i] = 1;
+			sideDist[i] = (static_cast<double>(blockPos[i]) + 1.0 - origin[i]) * deltaDist[i];
+		}
+	}
+
+	// Check the starting block too, if the probe origin is already inside
+	// solid geometry, return 0 so the camera collapses fully toward the eye.
+	{
+		const BlockType b = world.getBlockWorld(blockPos);
+		if (b != BlockType::END && isBlockSolid(b))
+			return 0.0;
+	}
+
+	while (true) {
+		// Smallest sideDist BEFORE stepping = entry distance into the next
+		// block. (CommonWorld::getTarget reads it after the step, which
+		// overshoots by deltaDist, fine for a max-range bail-out, wrong as
+		// a hit position.)
+		const double entryDist = std::min({sideDist.x, sideDist.y, sideDist.z});
+		if (entryDist >= maxDistance)
+			return maxDistance;
+
+		int axis;
+		if (sideDist.x < sideDist.y) {
+			axis = (sideDist.x < sideDist.z) ? 0 : 2;
+		} else {
+			axis = (sideDist.y < sideDist.z) ? 1 : 2;
+		}
+		blockPos[axis] += step[axis];
+		sideDist[axis] += deltaDist[axis];
+
+		const BlockType b = world.getBlockWorld(blockPos);
+		// END = chunk not loaded — don't trap the camera against missing geometry.
+		if (b != BlockType::END && isBlockSolid(b))
+			return entryDist;
+	}
+}
+
+// Pull the third-person camera in toward the player when a solid block sits
+// between them, so the view never goes through terrain. Sweep five rays — the
+// central eye→camera ray plus four offset by ±kProbeRadius perpendicular to
+// it — so lateral geometry beside the camera (a wall just to the side, a
+// corner, etc.) shrinks the offset too. A single ray missed those cases and
+// left the near plane poking through walls.
+//
+// Snap fraction down instantly when a wall appears (no clipping artefacts),
+// ease back out when it clears so the camera doesn't pop outward.
+void Camera::updateThirdPersonCollision(const Renderer &world, float deltaTime)
+{
+	if (!thirdPersonCamera) {
+		cameraDistanceFraction = 1.0f;
+		return;
+	}
+
+	// Replicate the player-eye math from getViewMatrix/getEyePosD so the ray
+	// origin matches exactly where the actual eye sits this frame.
+	glm::dvec3 interpolatedPosD = player->getPositionD();
+	if (renderPositionInitialized)
+		interpolatedPosD = glm::mix(renderPrevPosition, renderCurrPosition, static_cast<double>(renderTickAlpha));
+	const glm::dvec3 eyePosD = interpolatedPosD
+		+ glm::dvec3(0.0, static_cast<double>(player->getEyesHeight()), 0.0)
+		+ glm::dvec3(visualOffset);
+
+	const float yawRad   = glm::radians(player->yaw);
+	const float pitchRad = glm::radians(player->pitch);
+	const glm::dvec3 forward(
+		std::cos(pitchRad) * std::cos(yawRad),
+		std::sin(pitchRad),
+		std::cos(pitchRad) * std::sin(yawRad)
+	);
+
+	const glm::dvec3 fullOffset =
+		-forward * static_cast<double>(kThirdPersonCameraDistance)
+		+ glm::dvec3(0.0, static_cast<double>(kThirdPersonCameraHeight), 0.0);
+	const double fullLen = glm::length(fullOffset);
+	if (fullLen < 1e-6) {
+		cameraDistanceFraction = 1.0f;
+		return;
+	}
+	const glm::dvec3 rayDir = fullOffset / fullLen;
+
+	// Build an orthonormal basis perpendicular to rayDir for the lateral probes.
+	glm::dvec3 worldUp(0.0, 1.0, 0.0);
+	glm::dvec3 right = glm::cross(rayDir, worldUp);
+	double rLen = glm::length(right);
+	if (rLen < 1e-6) {
+		// rayDir is parallel to worldUp (looking straight up/down) — use any
+		// perpendicular axis to avoid a degenerate basis.
+		right = glm::dvec3(1.0, 0.0, 0.0);
+	} else {
+		right /= rLen;
+	}
+	const glm::dvec3 up = glm::cross(right, rayDir); // already unit length
+
+	// Probe radius approximates the camera frustum's lateral extent at the near
+	// plane. At FOV 80° and near 0.1 the near-plane half-width is ~0.15 — pad
+	// a bit so the swept volume covers the corners with a small skin.
+	constexpr double kProbeRadius = 0.25;
+
+	const glm::dvec3 probeOffsets[5] = {
+		glm::dvec3(0.0),
+		 right * kProbeRadius,
+		-right * kProbeRadius,
+		 up    * kProbeRadius,
+		-up    * kProbeRadius,
+	};
+
+	double hitDistance = fullLen;
+	for (const glm::dvec3 &probe : probeOffsets) {
+		const double t = ddaFirstSolidHit(world, eyePosD + probe, rayDir, fullLen);
+		if (t < hitDistance)
+			hitDistance = t;
+	}
+
+	// Skin keeps the camera off the surface (and the near plane out of it).
+	constexpr float kCameraSkin = 0.25f;
+	const float targetFraction = std::clamp(
+		static_cast<float>((hitDistance - kCameraSkin) / fullLen), 0.0f, 1.0f);
+
+	if (targetFraction < cameraDistanceFraction) {
+		// Snap in — collision must take effect this frame.
+		cameraDistanceFraction = targetFraction;
+	} else {
+		// Ease back out so the camera doesn't pop when a block clears.
+		constexpr float kRestoreRate = 6.0f; // per second
+		const float t = std::clamp(deltaTime * kRestoreRate, 0.0f, 1.0f);
+		cameraDistanceFraction = glm::mix(cameraDistanceFraction, targetFraction, t);
+	}
 }
 
 void Camera::updateSmoothing(float deltaTime) {
