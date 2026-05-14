@@ -1151,6 +1151,8 @@ void App::render() {
         sceneFBO->bindMS();
         glViewport(0, 0, screenWidth, screenHeight);
 
+        if (wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
     	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
     	renderScene(view, projection, clipPlane);
 
@@ -1178,6 +1180,8 @@ void App::render() {
 
         // Draw chunk boundary overlay (if enabled)
         chunkBoundaryRenderer->draw(camera->getPlayer()->getPosition(), camera->getEyePosD(), view, projection, *renderer);
+
+        if (wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         // Resolve MSAA -> non-MSAA textures, then composite clouds into the backbuffer.
         sceneFBO->resolve();
@@ -1773,7 +1777,6 @@ void App::debugWindow() {
                         bool flashlightOn   = lighting->isFlashlightOn();
                         quickToggle("Wireframe", wireframe, [&](bool v) {
                             wireframe = v;
-                            glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
                         });
                         ImGui::SameLine();
                         quickToggle("V-Sync", vsync, [&](bool v) {
@@ -2122,8 +2125,7 @@ void App::debugWindow() {
                         {
                             if (ImGui::Checkbox("V-Sync", &vsync))
                                 glfwSwapInterval(vsync ? 1 : 0);
-                            if (ImGui::Checkbox("Wireframe", &wireframe))
-                                glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
+                            ImGui::Checkbox("Wireframe", &wireframe);
                             ImGui::RadioButton("Lighting render", &selectedRenderType, 0); ImGui::SameLine();
                             ImGui::RadioButton("Normals render",  &selectedRenderType, 1); ImGui::SameLine();
                             ImGui::RadioButton("Depth render",    &selectedRenderType, 2);
@@ -3106,7 +3108,6 @@ void App::processInput() {
         // Toggle Wireframe Mode
         if (glfwGetKey(window, controlsArray[TOGGLE_WIREFRAME]) == GLFW_PRESS && !f1Held) {
             wireframe = !wireframe;
-            glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
             f1Held = true;
         }
         if (glfwGetKey(window, controlsArray[TOGGLE_WIREFRAME]) == GLFW_RELEASE) {
