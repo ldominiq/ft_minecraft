@@ -11,7 +11,7 @@ ItemPropEntity::~ItemPropEntity()
 {
 }
 
-void ItemPropEntity::createMesh(std::vector<float> &meshVertices, const glm::dvec3& eyePos, const TextureManager* texMgr)
+void ItemPropEntity::createMesh(std::vector<float> &meshVertices, const glm::dvec3& eyePos, const TextureManager* texMgr, float skyFactor)
 {
 	// Emit vertices in camera-relative space so the geometry stays sub-cm
 	// precise at any world coordinate. The cancellation is done in double on
@@ -29,14 +29,14 @@ void ItemPropEntity::createMesh(std::vector<float> &meshVertices, const glm::dve
 		// vanilla Minecraft drops.
 		if (auto* b = std::get_if<BlockType>(&type)) {
 			(void)b; // BlockType branch implies vegetation here (isItemFlat)
-			buildItemSprite(meshVertices, rx, ry, rz, layer);
+			buildItemSprite(meshVertices, rx, ry, rz, layer, skyFactor);
 		} else {
-			buildItemBillboard(meshVertices, relD, layer);
+			buildItemBillboard(meshVertices, relD, layer, skyFactor);
 		}
 		return;
 	}
 
 	if (auto* b = std::get_if<BlockType>(&type)) {
-		buildCube(meshVertices, rx, ry, rz, 0, 0, *b, texMgr);
+		buildCube(meshVertices, rx, ry, rz, 0, 0, *b, texMgr, /*isIlluminated=*/false, skyFactor);
 	}
 }

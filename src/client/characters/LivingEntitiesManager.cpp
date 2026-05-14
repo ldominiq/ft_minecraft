@@ -1,5 +1,6 @@
 #include "LivingEntitiesManager.hpp"
 #include "ClientCreeper.hpp"
+#include "CommonWorld.hpp"
 #include <cmath>
 
 LivingEntitiesManager::LivingEntitiesManager() : characterShader("shaders/characterCube.vert", "shaders/characterCube.frag")
@@ -25,7 +26,8 @@ void LivingEntitiesManager::add(std::weak_ptr<IClientEntity> character)
 }
 
 void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &view,
-								 const glm::dvec3& eyePos, const float deltaTime)
+								 const glm::dvec3& eyePos, const float deltaTime,
+								 const ICommonWorld* world)
 {
   static glm::dvec3 prevEyePos(0.0);
 	static bool hasPrevEyePos = false;
@@ -84,6 +86,24 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 				const double alpha = 1.0 - std::exp(-static_cast<double>(deltaTime) * 22.0);
 				c->renderPos = glm::mix(c->renderPos, targetPosD, alpha);
 			}
+		}
+
+		// Sample the world's sky-light grid at the entity's body-center so
+		// mobs/players darken in caves the way terrain does. Without this the
+		// entity stays fully lit underground because CSM's frustum reaches in
+		// from above unobstructed.
+		{
+			const glm::dvec3 sampleBase = c->hasRenderPos ? c->renderPos : c->getPositionD();
+			const double midY = sampleBase.y + static_cast<double>(c->getEntityHeight()) * 0.5;
+			float skyFactor = 1.0f;
+			if (world) {
+				const glm::ivec3 bp(
+					static_cast<int>(std::floor(sampleBase.x)),
+					static_cast<int>(std::floor(midY)),
+					static_cast<int>(std::floor(sampleBase.z)));
+				skyFactor = static_cast<float>(world->getSkyLightWorld(bp)) / 15.0f;
+			}
+			characterShader.setFloat("uEntitySkyLight", skyFactor);
 		}
 
 		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating || cameraMoved)

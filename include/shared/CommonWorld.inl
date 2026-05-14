@@ -54,6 +54,19 @@ BlockType CommonWorld<ChunkT>::getBlockWorld(glm::ivec3 globalCoords) const
 }
 
 template <typename ChunkT>
+uint8_t CommonWorld<ChunkT>::getSkyLightWorld(glm::ivec3 globalCoords) const
+{
+	int x, y, z;
+	auto chunk = resolveTarget(globalCoords, std::nullopt, x, y, z);
+	// Chunk not loaded -> assume sunlit (15), same default Chunk::getSkyLight
+	// returns when its own skyLight grid hasn't been computed yet. Entities
+	// streaming into unloaded chunks should not flash to black.
+	if (!chunk)
+		return 15;
+	return chunk->getSkyLight(x, y, z);
+}
+
+template <typename ChunkT>
 bool CommonWorld<ChunkT>::isBlockVisibleWorld(glm::ivec3 globalCoords)
 {
 	int x, y, z;

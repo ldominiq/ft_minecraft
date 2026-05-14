@@ -1,6 +1,8 @@
 
 #include "ItemPropEntityManager.hpp"
 #include "ItemPropEntity.hpp"
+#include "CommonWorld.hpp"
+#include <cmath>
 
 ItemPropEntityManager::ItemPropEntityManager(const TextureManager* texMgr)
 	: textureManager(texMgr)
@@ -23,7 +25,7 @@ ItemPropEntityManager::~ItemPropEntityManager()
 	}
 }
 
-size_t ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities, const glm::dvec3& eyePos)
+size_t ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>> &entities, const glm::dvec3& eyePos, const ICommonWorld* world)
 {
 	int i = -1;
 	bool itemsRemoved = false; //Needed because when 1 element is removed the order of the elements change. So when 1 element is removed we redo EVERY prop. Shitty solution but it is what is is.
@@ -56,8 +58,22 @@ size_t ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>
 		// 	continue ;
 		// }
 
+		// Sample the world's sky-light grid at the item's drop position so it
+		// darkens in caves the way terrain does. Falls back to fully sunlit
+		// (1.0) when the chunk isn't loaded — same default getSkyLightWorld
+		// returns and what Chunk::getSkyLight uses for not-yet-computed grids.
+		float skyFactor = 1.0f;
+		if (world) {
+			const glm::dvec3 itemPos = entity->get()->getPositionD();
+			const glm::ivec3 bp(
+				static_cast<int>(std::floor(itemPos.x)),
+				static_cast<int>(std::floor(itemPos.y + 0.125)),
+				static_cast<int>(std::floor(itemPos.z)));
+			skyFactor = static_cast<float>(world->getSkyLightWorld(bp)) / 15.0f;
+		}
+
 		//add the meshes of a prop to the back of the buffer
-		entity->get()->createMesh(vertices, eyePos, textureManager);
+		entity->get()->createMesh(vertices, eyePos, textureManager, skyFactor);
 		memcpy(buffer.data() + i * ITEM_SIZE,
 			vertices.data(),
 			ITEM_SIZE * sizeof(float)
@@ -101,21 +117,27 @@ void ItemPropEntityManager::initGL()
     // Allocate a fixed-size buffer ONCE (say, for up to 1 million floats)
     glBufferData(GL_ARRAY_BUFFER, MAX_BUFFER_SIZE, nullptr, GL_DYNAMIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), nullptr);
+    // 7 floats per vertex: pos(3) + uv(2) + texLayer(1) + skyLight(1).
+    constexpr GLsizei stride = 7 * sizeof(float);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
     glEnableVertexAttribArray(0);
 
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(5 * sizeof(float)));
+    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, (void*)(5 * sizeof(float)));
     glEnableVertexAttribArray(2);
+
+    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(3);
 
     glBindVertexArray(0);
 }
 
-void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::dvec3& eyePos, std::vector<std::shared_ptr<ItemEntity>> &entities)
+void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &view, const glm::dvec3& eyePos, std::vector<std::shared_ptr<ItemEntity>> &entities, const ICommonWorld* world)
 {
-	const size_t drawnEntityCount = updateMesh(entities, eyePos);
+	const size_t drawnEntityCount = updateMesh(entities, eyePos, world);
 
 	shader->use();
 

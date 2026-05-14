@@ -140,13 +140,26 @@ vec3 entitySpotLightContrib(vec3 fragPosRel, vec3 normal) {
 // Final lit color. Mirrors lighting.frag's CalcDirLight (without specular):
 //   ambient *= (1 - shadow*0.5)   [shadowed-ambient floor — see lighting.frag:443]
 //   diffuse *= (1 - shadow)
-vec3 entityLitColor(vec3 albedo, vec3 normal, vec3 fragPosRel) {
+// Then applies sky-light modulation so caves
+// darken entities the same way they darken terrain.
+//
+// `skyFactor` is 0..1 (0 = pitch-black cave, 1 = open sky). The caller decides
+// where it comes from: mobs/players read a per-entity uniform; dropped items
+// read a per-vertex attribute (since they're rendered in a single batched draw
+// call, a uniform can't distinguish per-item values).
+vec3 entityLitColor(vec3 albedo, vec3 normal, vec3 fragPosRel, float skyFactor) {
     vec3 lightDir = normalize(-dirLight.direction);
     float ndotl = max(dot(normal, lightDir), 0.0);
     float shadow = entityCSMShadow(fragPosRel, normal, lightDir);
 
     vec3 ambient = dirLight.ambient * (1.0 - shadow * 0.5);
     vec3 diffuse = dirLight.diffuse * ndotl * (1.0 - shadow);
+
+    // Sky-light modulation. MIN_CAVE_LIGHT must match lighting.frag.
+    const float MIN_CAVE_LIGHT = 0.04;
+    ambient *= max(skyFactor, MIN_CAVE_LIGHT);
+    diffuse *= skyFactor;
+
     vec3 points  = entityPointLightsContrib(fragPosRel, normal);
     vec3 spot    = entitySpotLightContrib(fragPosRel, normal);
     return albedo * (ambient + diffuse + points + spot);
