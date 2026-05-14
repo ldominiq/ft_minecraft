@@ -506,7 +506,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 			//instead of player->movement->getEntityHeight() * 0.6f should be some hand/waist height
 			glm::vec3 itemPos = player->movement->getPosition() + glm::vec3(0, player->movement->getEntityHeight() * 0.6f, 0) + player->movement->getCameraDir() * 0.2f;
 
-			world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), type, tick, true));
+			world->itemEntities.push_back(std::make_shared<ItemEntity>(itemPos, player->movement->getYaw(), type, tick + TPS * 1.5, true));
 
 			NetInventory dropItem;
 			int slot = player->movement->inventory->activeHotbarSlot;

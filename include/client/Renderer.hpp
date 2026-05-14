@@ -87,6 +87,8 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	public:
 		std::vector<std::weak_ptr<ChunkRenderer>> getRenderedChunks();
 
+		void clearCache();
+
      /// Update the camera frustum for culling. The view-projection should be
 		/// built from a translation-free view matrix (camera at origin), and eyePos
 		/// is used to test world AABBs in camera-relative space.
