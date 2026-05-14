@@ -21,6 +21,10 @@ struct Creeper : public virtual LivingEntity {
 		bool  isPrimed = false;
 		float explodeRadius = 3.5f;
 		float explodeDamage = 20.0f;
+		// Peak knockback at center, falls off linearly to 0 at explodeRadius. H = horizontal
+		// impulse (m/s), V = upward impulse (m/s).
+		float explodeKnockH = 7.0f;
+		float explodeKnockV = 0.2f;
 
 		// ticks into the fuse [0, FUSE_TICKS_MAX]
 		int32_t fuseTicks = 0;

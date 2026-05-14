@@ -50,6 +50,7 @@ class Menu {
 		void drawTiledTexturedQuad(float x, float y, float w, float h, unsigned int textureID, float tileSize);
 		void drawTiledBackground(GLuint &texture);
 		void drawButton(float x, float y, float w, float h, const std::string& label, bool hovered, bool enabled = true);
+		void drawInputBox(float x, float y, float w, float h, const std::string& text, bool focused);
 
 	public:
 		static GLuint loadTexture2D(const char* path, bool pixelated = true, int* outWidth = nullptr, int* outHeight = nullptr);

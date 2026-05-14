@@ -7,6 +7,7 @@
 #include <map>
 #include <iostream>
 #include <optional>
+#include <fstream>
 
 #include "IInventory.hpp"
 
@@ -77,6 +78,8 @@ class Inventory : public IInventory{
 		virtual void setSlot(int slot, itemStackSize_t amount, ItemID type);
 
 		std::unique_ptr<NetInventory> createNetInventoryPkt(int slot);
+		void createFullInventoryPkt(std::vector<PacketPtr>& pktsToSend);
+
 		//return wether there's any packet to send or not.
 		void addDraggedSlot(NetInventoryAction &pkt);
 		bool handleDragModifier(NetInventoryAction &pkt, std::vector<PacketPtr>& pktsToSend);
@@ -101,6 +104,9 @@ class Inventory : public IInventory{
 
 		int getRows() const { return rows; }
 		int getCols() const { return cols; }
+
+		void saveToStream(std::ofstream& out) const;
+		void loadFromStream(std::ifstream& in);
 
 		inline int getFirstFreeSlot() const {
 			if (freeSlots.empty())

@@ -60,6 +60,7 @@ struct Shadows {
 
 #define NR_POINT_LIGHTS 3
 #define MAX_CASCADES 5
+#define MAX_SPOT_LIGHTS 16
 
 uniform bool debugCascades;   // toggle from ImGui
 int debugCascadeLayer = -1;   // set by CSMShadowCalculation
@@ -67,7 +68,8 @@ int debugCascadeLayer = -1;   // set by CSMShadowCalculation
 uniform sampler2DArray blockTextures;
 uniform DirLight dirLight;
 uniform PointLight pointLights[NR_POINT_LIGHTS];
-uniform SpotLight spotLight;
+uniform SpotLight spotLights[MAX_SPOT_LIGHTS];
+uniform int numSpotLights;
 uniform Material material;
 
 uniform vec3 lightPos;
@@ -101,6 +103,11 @@ uniform vec3 underwaterTintColor;
 uniform vec3 underwaterFogColor;
 uniform float underwaterFogDensity;
 
+// caustics
+uniform float seaLevel;
+uniform float causticTime;
+uniform sampler2D causticsMap;
+
 // Distance fog (sky LUT blending)
 uniform sampler2D skyLUT;
 uniform float skyExposure;
@@ -108,8 +115,21 @@ uniform float fogStart;    // world-space distance where fog begins
 uniform float fogEnd;      // world-space distance where fog is fully opaque
 uniform float fogStrength; // exponent: 1=linear ramp, >1=fog concentrated at edge
 uniform bool fogEnabled;
+// HDR pipeline: keep fog linear (HDR) so it gets tonemapped once at the end.
+uniform bool hdrMode;
 
 #include "sky_common.glsl"
+
+// Caustics from a texture (assets/textures/caustics.jpg). Two layers panning
+// in different directions and at different scales
+float computeCaustic(vec2 worldXZ, float t) {
+    float ts = t * 0.04;
+    vec2 uv1 = worldXZ * 0.06 + vec2( ts,  ts * 0.7);
+    vec2 uv2 = worldXZ * 0.10 + vec2(-ts * 0.6, ts * 0.4);
+    float c1 = texture(causticsMap, uv1).r;
+    float c2 = texture(causticsMap, uv2).r;
+    return max(c1, c2);
+}
 
 float near = 0.1;
 float far  = 100.0;
@@ -169,8 +189,26 @@ void main()
     // phase 2: point lights
     for(int i = 0; i < NR_POINT_LIGHTS; i++)
         result += CalcPointLight(pointLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
-    // phase 3: spot light
-    result += CalcSpotLight(spotLight, norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
+    // phase 3: spot lights (local flashlight + any remote players whose
+    // flashlights are on this frame — host caps at MAX_SPOT_LIGHTS).
+    for (int i = 0; i < numSpotLights; ++i)
+        result += CalcSpotLight(spotLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
+
+    // Caustics
+    if (fs_in.FragPos.y < seaLevel && dirLight.direction.y < 0.0) {
+        float c = computeCaustic(fs_in.FragPos.xz, causticTime);
+        float depthBelow = seaLevel - fs_in.FragPos.y;
+        float nearFade = smoothstep(0.0, 0.8, depthBelow);
+        float farFade  = clamp(1.0 - depthBelow / 20.0, 0.0, 1.0);
+        float depthFade = nearFade * farFade;
+        // Only upward-facing surfaces receive caustics; cave ceilings get nothing.
+        float upFactor   = max(norm.y, 0.0);
+        // Sun-elevation gate, matching the day/night fade used by directional light.
+        float sunUp      = clamp(-dirLight.direction.y, 0.0, 1.0);
+        // AO modulates so caustics don't blast through occluded crevices.
+        float strength   = c * depthFade * upFactor * sunUp * 2.0 * AmbientOcclusion;
+        result += dirLight.diffuse * strength;
+    }
 
     if (renderType == 1) {
         FragColor = vec4(norm * 0.5 + 0.5, 1.0); // Visualize normals
@@ -185,8 +223,10 @@ void main()
             float dist = length(fs_in.FragPosRel);
             float fogFactor = 1.0 - pow(smoothstep(fogStart, fogEnd, dist), fogStrength);
             vec3 fogDir = normalize(fs_in.FragPosRel);
-            finalColor = mix(sampleSkyColor(skyLUT, fogDir, normalize(-dirLight.direction), skyExposure),
-                            finalColor, fogFactor);
+            vec3 fogColor = hdrMode
+                ? sampleSkyColorLinear(skyLUT, fogDir, normalize(-dirLight.direction))
+                : sampleSkyColor(skyLUT, fogDir, normalize(-dirLight.direction), skyExposure);
+            finalColor = mix(fogColor, finalColor, fogFactor);
         }
         FragColor = vec4(finalColor, 1.0);
     }
@@ -219,7 +259,10 @@ void main()
         float fogFactor = exp(-distance * underwaterFogDensity);
         fogFactor = clamp(fogFactor, 0.0, 1.0);
 
-        FragColor.rgb = mix(underwaterFogColor, tintedColor, fogFactor);
+        // In HDR mode the final composite re-applies gamma; lift the sRGB-authored
+        // fog color to linear so it survives the pow(1/2.2) without going pale.
+        vec3 fogCol = hdrMode ? pow(underwaterFogColor, vec3(2.2)) : underwaterFogColor;
+        FragColor.rgb = mix(fogCol, tintedColor, fogFactor);
     }
 
     //FragColor = vec4(lighting, texColor.a); // Lighting
@@ -430,8 +473,10 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao, vec3 texC
     // Also darken ambient in shadowed areas.  Without this, faces
     // behind hills/terrain at sunset still glow because diffuse is
     // near zero (low sun angle) and ambient bypasses the shadow map.
-    // We blend: in shadow, ambient drops to 30% of its value.
-    float ambientShadowFactor = 1.0 - shadow * 0.7;
+    // We blend: in shadow, ambient drops to 50% of its value (was 30%).
+    // Raised so daytime shadows stay readable; exposure adaptation in HDR
+    // mode compensates for any overall brightness shift.
+    float ambientShadowFactor = 1.0 - shadow * 0.5;
     ambient *= ambientShadowFactor;
 
     // SSAO: darken ambient by screen-space occlusion

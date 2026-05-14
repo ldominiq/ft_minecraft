@@ -927,14 +927,62 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 {
 	LivingEntity* livingEntity = nullptr;
 	glm::ivec3 blockPos, faceNormal;
-	TargetType target = getTarget(*player.movement, blockPos, faceNormal, livingEntity);
 
-	ItemType item = player.movement->inventory->getItemAtSlot(player.movement->inventory->activeHotbarSlot);
+	int activeSlot = player.movement->inventory->activeHotbarSlot;
+	ItemType item = player.movement->inventory->getItemAtSlot(activeSlot);
+	bool emptyBucketInHand = std::holds_alternative<MiscType>(item) && std::get<MiscType>(item) == MiscType::EMPTY_BUCKET && pkt.mouseButtons & IN_RIGHT_CLICK;
+
+	TargetType target = getTarget(*player.movement, blockPos, faceNormal, livingEntity, !emptyBucketInHand);
+
+	//place/remove Water with bucket
+	if (std::holds_alternative<MiscType>(item))
+	{
+		MiscType m = std::get<MiscType>(item);
+
+		if (pkt.mouseButtons & IN_RIGHT_CLICK)
+		{
+			if (m == MiscType::WATER_BUCKET)
+			{
+				if (target == TargetType::Block &&
+					setBlockWorld(blockPos, faceNormal, BlockType::WATER))
+				{
+					player.movement->inventory->removeItemsFromSlot(activeSlot, 1);
+					int one = 1;
+					player.movement->inventory->insertItems(MiscType::EMPTY_BUCKET, one);
+					return true;
+				}
+			}
+			else if (m == MiscType::EMPTY_BUCKET)
+			{
+				if (target == TargetType::Block &&
+					getBlockWorld(blockPos) == BlockType::WATER)
+				{
+					if (setBlockWorld(blockPos, std::nullopt, BlockType::AIR))
+					{
+						player.movement->inventory->removeItemsFromSlot(activeSlot, 1);
+						int one = 1;
+						player.movement->inventory->insertItems(MiscType::WATER_BUCKET, one);
+						return true;
+					}
+				}
+			}
+		}
+	}
+
+	//set spawn
+	if (pkt.mouseButtons & IN_RIGHT_CLICK && target == TargetType::Block && getBlockWorld(blockPos) == BlockType::BEACON)
+	{
+		player.movement->hasBeaconSet = true;
+		player.movement->beaconPos = blockPos;
+		player.targetedMessages.push_back("[server] Spawn point set!");
+		return false;
+	}
 
 	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
 	{
 		if (target == TargetType::Block)
 		{
+			//set block
 			for (const auto &entity : livingEntities)
 				if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
 			if (setBlockWorld(blockPos, faceNormal, std::get<BlockType>(item)))
@@ -1006,7 +1054,8 @@ void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int3
 		}
 	}
 	for (Creeper *creeper : exploding)
-		explodeAt(creeper->getPosition(), creeper->explodeRadius, creeper->explodeDamage, creeper);
+		explodeAt(creeper->getPosition(), creeper->explodeRadius, creeper->explodeDamage,
+		          creeper->explodeKnockH, creeper->explodeKnockV, creeper);
 
 	for (auto entityIt = itemEntities.begin(); entityIt != itemEntities.end();)
 	{
@@ -1111,7 +1160,8 @@ void World::setSkyTime(const SkyTimeState &newState) {
     skyTimeState.sunStepTimer  = 0.0f;
 }
 
-void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage, LivingEntity *source)
+void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage,
+                      float knockH, float knockV, LivingEntity *source)
 {
     const float r2 = radius * radius;
     const int r = static_cast<int>(std::ceil(radius));
@@ -1150,7 +1200,7 @@ void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage, Li
             entity->diedByExplosion = true;
 
         glm::vec3 knockDir = dist > EPS ? diff / dist : glm::vec3(0, 1, 0);
-        entity->applyImpulse(knockDir * (falloff * 10.0f) + glm::vec3(0.0f, 0.3f * falloff, 0.0f));
+        entity->applyImpulse(knockDir * (falloff * knockH) + glm::vec3(0.0f, knockV * falloff, 0.0f));
     }
 }
 

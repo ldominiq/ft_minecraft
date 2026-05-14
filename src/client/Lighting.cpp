@@ -18,6 +18,7 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
     skyLUTRenderShader = std::make_unique<Shader>("shaders/sky.vert", "shaders/skyLUT_render.frag");
     lightCubeShader = std::make_unique<Shader>("shaders/lightCubeShader.vert", "shaders/lightCubeShader.frag");
     cloudShader = std::make_shared<Shader>("shaders/clouds.vert", "shaders/clouds.frag");
+    cloudCompositeShader = std::make_shared<Shader>("shaders/clouds_composite.vert", "shaders/clouds_composite.frag");
 
     skyLUT = std::make_unique<SkyLUT>(256, 128);
 
@@ -34,6 +35,16 @@ Lighting::Lighting(const int screenWidth, const int screenHeight) : width(screen
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
     glBindVertexArray(0);
+
+    causticsTexture = skyShader->loadTexture("assets/textures/caustics.jpg");
+    if (causticsTexture) {
+        glBindTexture(GL_TEXTURE_2D, causticsTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 }
 
 Lighting::~Lighting() {
@@ -51,6 +62,8 @@ Lighting::~Lighting() {
         glDeleteTextures(1, &csmDepthMaps);
         glDeleteFramebuffers(1, &csmFBO);
 
+        if (causticsTexture)
+            glDeleteTextures(1, &causticsTexture);
     } else {
         lightCubeVAO = 0;
         lightCubeVBO = 0;
@@ -61,6 +74,7 @@ Lighting::~Lighting() {
         cloudFBO = nullptr;
         csmDepthMaps = 0;
         csmFBO = 0;
+        causticsTexture = 0;
     }
 }
 
@@ -71,17 +85,41 @@ GLuint Lighting::getCloudTexture() const
 
 void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) const
 {
-    if (!cloudsEnabled || !cloudFBO || !cloudShader)
+    if (!cloudFBO)
         return;
+
+    // Save the caller's framebuffer + viewport so we can restore them on exit.
+    // This keeps the pass self-contained: callers don't need to know that we
+    // temporarily bind a low-res FBO and shrink the viewport.
+    GLint prevDrawFBO = 0;
+    GLint prevViewport[4] = {0, 0, width, height};
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevDrawFBO);
+    glGetIntegerv(GL_VIEWPORT, prevViewport);
+
+    auto restoreCallerState = [&]() {
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevDrawFBO));
+        glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    };
 
     cloudFBO->bind();
     glViewport(0, 0, cloudFBO->getWidth(), cloudFBO->getHeight());
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
 
-    // Clear to "no cloud": rgb=0, transmittance=1 (alpha=1)
+    // Clear to "no cloud": rgb=0, transmittance=1 (alpha=1).
+    // We always do this so a stale cloud texture doesn't linger after clouds are
+    // toggled off; the composite shader then early-outs on cloudOpacity ~ 0.
     glClearColor(0.f, 0.f, 0.f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // When clouds are disabled or the shader isn't available, leave the FBO cleared
+    // and bail before drawing.
+    if (!cloudsEnabled || !cloudShader) {
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        restoreCallerState();
+        return;
+    }
 
     cloudShader->use();
 
@@ -96,8 +134,8 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     // Cloud box follows camera for infinite clouds
     // Keep clouds at fixed altitude but extend horizontally around camera
     const float cloudRadius = 500.0f;  // Horizontal extent around camera
-    const float cloudMinY = 260.0f;     // Bottom of cloud layer
-    const float cloudMaxY = 310.0f;     // Top of cloud layer
+    const float cloudMinY = cloudLayerMinY;     // Bottom of cloud layer
+    const float cloudMaxY = cloudLayerMaxY;     // Top of cloud layer
     const glm::vec3 bmin(cameraPos.x - cloudRadius, cloudMinY, cameraPos.z - cloudRadius);
     const glm::vec3 bmax(cameraPos.x + cloudRadius, cloudMaxY, cameraPos.z + cloudRadius);
     cloudShader->setVec3("cloudBoxMinWorld", bmin);
@@ -111,19 +149,23 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     cloudShader->setFloat("cloudSigmaS", cloudSigmaS);
     cloudShader->setFloat("cloudPhaseG", cloudPhaseG);
 
-    // Modulate ambient by sun elevation (darker at night)
+    // Modulate ambient + sun contribution by sun elevation
     glm::vec3 sunDirNorm = glm::normalize(getDirectionalLightDirection());
     float sunElevation = sunDirNorm.y;  // Can be negative (below horizon)
     float dayFactor = glm::smoothstep(-0.2f, 0.1f, sunElevation);  // Fade from -0.2 to 0.1
-    float nightAmbient = 0.01f;  // Very low ambient at night
-    float dayAmbient = 0.5f;     // Full ambient during day
+    // Very dim night ambient — auto-exposure + gamma encode lifts dark linear
+    // values a lot in display space, so the linear floor has to stay tiny.
+    float nightAmbient = 0.002f;
+    float dayAmbient = 0.5f;
     float ambientStrength = glm::mix(nightAmbient, dayAmbient, dayFactor);
 
     cloudShader->setVec3("cloudAmbientColor", glm::vec3(0.65f, 0.72f, 0.85f));
     cloudShader->setFloat("cloudAmbientStrength", ambientStrength);
 
     cloudShader->setVec3("cloudSunColor", glm::vec3(1.0f, 0.98f, 0.95f));
-    cloudShader->setFloat("cloudSunStrength", 25.0f);  // Increased from 15.0f for brighter clouds
+    // Gate the sun-scatter contribution on day factor: at night the sun is
+    // below the horizon, so its in-scattering through clouds should be 0.
+    cloudShader->setFloat("cloudSunStrength", 25.0f * dayFactor);
 
     // TODO: add params to imgui
     cloudShader->setFloat("cloudEdgeFeather", cloudEdgeFeather);
@@ -140,10 +182,7 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
 
-    CloudFramebuffer::unbind();
-
-    // Restore default viewport for subsequent passes
-    glViewport(0, 0, width, height);
+    restoreCallerState();
 }
 
 void Lighting::updateSkyLUT(float cameraPosY) {
@@ -152,7 +191,7 @@ void Lighting::updateSkyLUT(float cameraPosY) {
     }
 }
 
-void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater) const {
+void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::vec3 cameraPos, bool cameraUnderwater, bool destIsHDR) const {
     // Choose shader: LUT-based (fast) or full ray-marching (reference)
     const bool useLUT = skyLUTEnabled && skyLUT && skyLUT->getLUTTexture();
     Shader* shader = useLUT ? skyLUTRenderShader.get() : skyShader.get();
@@ -164,6 +203,9 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
     shader->setMat4("projection", projection);
     shader->setVec3("cameraPosWorld", cameraPos);
     shader->setFloat("exposure", skyExposure);
+    // HDR pipeline writes linear radiance and tonemaps in the final composite.
+    // LDR pipeline (and any LDR target like the water reflection FBO) tonemaps here.
+    shader->setBool("tonemapHere", !(destIsHDR && hdrEnabled));
     shader->setVec3("sunDir", getDirectionalLightDirection());
 
     // Underwater fog for sky
@@ -182,16 +224,6 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
         shader->setFloat("time", skyTimeOffset);
         shader->setFloat("atmDensity", skyAtmDensity);
         shader->setFloat("atmThickness", skyAtmThickness);
-    }
-
-    // Cloud composite
-    const bool composite = cloudsEnabled && (getCloudTexture() != 0);
-    shader->setInt("cloudsCompositeEnabled", composite ? 1 : 0);
-
-    if (composite) {
-        glActiveTexture(GL_TEXTURE0 + TextureUnits::CLOUDS);
-        glBindTexture(GL_TEXTURE_2D, getCloudTexture());
-        shader->setInt("cloudTex", TextureUnits::CLOUDS);
     }
 
     // Render sky with depth = far plane, terrain will render in front
@@ -238,6 +270,57 @@ glm::vec3 Lighting::getAnimatedLightCubePosition(int i) const {
 
     p.y += std::sin(t * 1.6f + phase * 1.5f) * 0.5f;
     return center + p;
+}
+
+void Lighting::compositeCloudsToBackbuffer(GLuint sceneColorTex, GLuint sceneDepthTex,
+                                           const glm::mat4& view, const glm::mat4& projection,
+                                           const glm::vec3& cameraPosWorld,
+                                           const glm::vec2& resolution) const
+{
+    if (!cloudCompositeShader) return;
+
+    // Fullscreen post-pass: no depth test, no depth write.
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    cloudCompositeShader->use();
+
+    // Scene color
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::SCENE_COLOR);
+    glBindTexture(GL_TEXTURE_2D, sceneColorTex);
+    cloudCompositeShader->setInt("sceneColor", TextureUnits::SCENE_COLOR);
+
+    // Scene depth (raw, GL_TEXTURE_COMPARE_MODE = GL_NONE on the texture)
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::SCENE_DEPTH);
+    glBindTexture(GL_TEXTURE_2D, sceneDepthTex);
+    cloudCompositeShader->setInt("sceneDepth", TextureUnits::SCENE_DEPTH);
+
+    // Cloud texture (low-res RGBA from the volumetric march). If clouds are disabled
+    // or the FBO isn't ready, bind 0 — the shader's cloudOpacity early-out handles it.
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::CLOUDS);
+    glBindTexture(GL_TEXTURE_2D, getCloudTexture());
+    cloudCompositeShader->setInt("cloudTex", TextureUnits::CLOUDS);
+
+    cloudCompositeShader->setMat4("view", view);
+    cloudCompositeShader->setMat4("projection", projection);
+    cloudCompositeShader->setMat4("invViewProj", glm::inverse(projection * view));
+    cloudCompositeShader->setVec3("cameraPosWorld", cameraPosWorld);
+    cloudCompositeShader->setVec2("resolution", resolution);
+    cloudCompositeShader->setFloat("cloudLayerMinY", cloudLayerMinY);
+    cloudCompositeShader->setFloat("cloudLayerMaxY", cloudLayerMaxY);
+    cloudCompositeShader->setFloat("exposure", skyExposure);
+    // When HDR is on, this pass becomes the single final tonemap site.
+    cloudCompositeShader->setBool("hdrMode", hdrEnabled);
+    // Post-tonemap saturation knob (applied in both LDR and HDR paths so the
+    // look is consistent when toggling HDR; 1.0 leaves the image untouched).
+    cloudCompositeShader->setFloat("saturation", skySaturation);
+
+    glBindVertexArray(skyVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
 }
 
 void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection, const glm::dvec3& eyePos) const {
@@ -455,6 +538,14 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
 
     shader.setFloat("material.shininess", materialShininess);
 
+    shader.setFloat("seaLevel", seaLevel);
+    shader.setFloat("causticTime", causticTime);
+    if (causticsTexture) {
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::CAUSTICS);
+        glBindTexture(GL_TEXTURE_2D, causticsTexture);
+        shader.setInt("causticsMap", TextureUnits::CAUSTICS);
+    }
+
     // directional light
     if (directionalLightOn) {
 
@@ -465,10 +556,19 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
         // smooth transition near sunset/sunrise
         day = glm::smoothstep(0.0f, 1.0f, day);
 
-        // small ambient light at night
-        constexpr float nightAmbientMin = 0.3f;
-        const glm::vec3 ambientColor = directionalAmbientColor * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
-        const glm::vec3 diffuseColor = directionalDiffuseColor * day;
+        // Very small ambient floor at night
+        constexpr float nightAmbientMin = 0.05f;
+        // HDR mode gives us headroom above 1.0: push direct sun and daytime ambient
+        // higher so the final tonemap has real dynamic range and shadowed areas
+        // stay readable. Both boosts are blended in with `day` so they fade to 1.0
+        // at night — without this, the night ambient comes out 1.6× brighter than
+        // the pre-HDR look, and auto-exposure then makes night feel like day.
+        const float ambientBoost = hdrEnabled ? glm::mix(1.0f, 1.6f, day) : 1.0f;
+        const float diffuseBoost = hdrEnabled ? glm::mix(1.0f, 1.8f, day) : 1.0f;
+        const glm::vec3 ambientColor = directionalAmbientColor
+            * (nightAmbientMin + (1.0f - nightAmbientMin) * day)
+            * ambientBoost;
+        const glm::vec3 diffuseColor = directionalDiffuseColor * day * diffuseBoost;
         const glm::vec3 specularColor = directionalSpecularColor * day;
         shader.setVec3("dirLight.direction", -directionalLightDir);
         shader.setVec3("dirLight.ambient", ambientColor);
@@ -495,29 +595,31 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
         shader.setFloat("pointLights[" + std::to_string(i) + "].linear", pointLightLinear[i]);
         shader.setFloat("pointLights[" + std::to_string(i) + "].quadratic", pointLightQuadratic[i]);
     }
-    // spotLight (flashlight)
-    if (flashlightOn) {
-        shader.setVec3("spotLight.position", glm::vec3(0.0f));
-        shader.setVec3("spotLight.direction", cameraFront);
-        shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
-        shader.setVec3("spotLight.diffuse", glm::vec3(1.0f));
-        shader.setVec3("spotLight.specular", glm::vec3(1.0f));
-        shader.setFloat("spotLight.constant", spotLightConstant);
-        shader.setFloat("spotLight.linear", spotLightLinear);
-        shader.setFloat("spotLight.quadratic", spotLightQuadratic);
-        shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
-        shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
-    } else {
-        shader.setVec3("spotLight.position", glm::vec3(0.0f));
-        shader.setVec3("spotLight.direction", cameraFront);
-        shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
-        shader.setVec3("spotLight.diffuse", glm::vec3(0.0f));
-        shader.setVec3("spotLight.specular", glm::vec3(0.0f));
-        shader.setFloat("spotLight.constant", spotLightConstant);
-        shader.setFloat("spotLight.linear", spotLightLinear);
-        shader.setFloat("spotLight.quadratic", spotLightQuadratic);
-        shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(flashlightCutoff)));
-        shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(flashlightOuterCutoff)));
+    shader.setInt("numSpotLights", 0);
+}
+
+void Lighting::uploadSpotLights(const Shader& shader,
+                                const std::vector<SpotLightUpload>& lights) const
+{
+    shader.use();
+    const int n = std::min(static_cast<int>(lights.size()), MAX_SPOT_LIGHTS);
+    shader.setInt("numSpotLights", n);
+
+    const float cosInner = glm::cos(glm::radians(flashlightCutoff));
+    const float cosOuter = glm::cos(glm::radians(flashlightOuterCutoff));
+
+    for (int i = 0; i < n; ++i) {
+        const std::string p = "spotLights[" + std::to_string(i) + "].";
+        shader.setVec3(p + "position",  lights[i].posRel);
+        shader.setVec3(p + "direction", lights[i].dir);
+        shader.setVec3(p + "ambient",   glm::vec3(0.0f));
+        shader.setVec3(p + "diffuse",   glm::vec3(1.0f));
+        shader.setVec3(p + "specular",  glm::vec3(1.0f));
+        shader.setFloat(p + "constant",    spotLightConstant);
+        shader.setFloat(p + "linear",      spotLightLinear);
+        shader.setFloat(p + "quadratic",   spotLightQuadratic);
+        shader.setFloat(p + "cutOff",      cosInner);
+        shader.setFloat(p + "outerCutOff", cosOuter);
     }
 }
 

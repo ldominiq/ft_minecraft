@@ -33,7 +33,7 @@ static constexpr int REGION_SIZE = 32;
 static constexpr int MAX_RADIUS = 32;
 static constexpr int RADIUS_OF_REGIONS_TO_KEEP = 2;
 static constexpr ChunkPos INVALID_CHUNK = {std::numeric_limits<int>::min(), std::numeric_limits<int>::min()};
-static constexpr bool SAVES_ACTIVE = false;
+static constexpr bool SAVES_ACTIVE = true;
 
 struct RegionFileMetadata {
     char magic[4] = {'R','G','N','1'};
@@ -156,12 +156,14 @@ class World final : public CommonWorld<ChunkGeneration>
 		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
 		void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
 
-		void trySpawnNightMobs(const std::vector<CPlayerInfo> &players);
-		// Carve a spherical crater at `center` and deal distance-falloff damage to every
-		// LivingEntity inside. `source` is the entity whose action caused the blast
-		// (typically the creeper itself) — it's flagged diedByExplosion on hit so the
-		// server skips its fall-over animation. Pass nullptr for non-entity sources.
-		void explodeAt(const glm::vec3 &center, float radius, float maxDamage, LivingEntity *source);
+		void trySpawnNightMobs(const std::vector<CPlayerInfo>& players);
+
+		// Carves a sphere of blocks to air and deals falloff damage + knockback to every
+		// LivingEntity inside. `source` (if non-null) is flagged diedByExplosion on hit so
+		// the server skips its fall-over animation. knockH/knockV are peak impulses at
+		// center, linearly falling off to 0 at radius.
+		void explodeAt(const glm::vec3 &center, float radius, float maxDamage,
+		               float knockH, float knockV, LivingEntity *source);
 
 		void advanceSkyTime();
 

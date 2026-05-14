@@ -32,6 +32,8 @@ class LivingEntity : public Entity
 	std::chrono::steady_clock::time_point lastVoidDamageTime{};
 
 	protected :
+		std::string name = "";
+
 		bool jump = false;
 		float SAFE_FALL_DISTANCE = 3.0f;
 
@@ -80,6 +82,11 @@ class LivingEntity : public Entity
 		// Currently only creepers set this.
 		bool networkedPrimed = false;
 
+		// Player flashlight on/off, set server-side from NetPlayerInputs::playerFlags
+		// bit 0 and relayed to all clients via NetEntityMove::positionFlags bit 0x40.
+		// Receiving clients render a spotlight attached to this entity's head.
+		bool flashlightOn = false;
+
 		LivingEntity(const glm::vec3 &position);
 		LivingEntity(const glm::vec3 &position, float yaw, entityID ID);
 		virtual ~LivingEntity() = 0;
@@ -88,7 +95,7 @@ class LivingEntity : public Entity
 		glm::vec3 WorldUp = glm::vec3(0, 1, 0);
 
 		virtual void attack(LivingEntity &victim);
-		virtual void onDeath();
+		virtual void onDeath(const ICommonWorld &world);
 		virtual void applyFallDamage();
 		virtual void tickAI(const ICommonWorld &world, const std::vector<std::shared_ptr<LivingEntity>> &entities, int32_t tick) { (void)world; (void)entities; (void)tick; }
 		void calculateNewYPosition(const ICommonWorld &world) override;
@@ -98,6 +105,9 @@ class LivingEntity : public Entity
 		inline float getEyesHeight() const { return eyesheight; }
 		glm::vec3 getDesiredMove() override;
 		float getAccumulatedFallDistance() const { return accumulatedFallDistance; }
+
+		void setName(const std::string& name) { this->name = name; }
+		const std::string& getName() const { return name; }
 };
 
 #endif

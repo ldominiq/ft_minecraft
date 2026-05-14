@@ -4,6 +4,8 @@
 
 PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 {
+	name = "nameless";
+
 	type = PLAYER;
 	this->velocity = glm::vec3(0.0f, 0.0f, 0.0f);
 	this->entityWidth = 0.6f;
@@ -13,6 +15,7 @@ PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 	spawnPosition = glm::vec3(position);
 	yaw = 0;
 	pitch = 0;
+	damage = 3.0f;
 
 	eyesheight = entityHeight - forehead;
 }
@@ -20,6 +23,8 @@ PlayerMovement::PlayerMovement():	LivingEntity(glm::vec3(0.0f, 0.0f, 0.0f))
 //client
 PlayerMovement::PlayerMovement(const glm::vec3 &position, float yaw, entityID ID): LivingEntity(position, yaw ,ID)
 {
+	name = "nameless";
+
 	type = PLAYER;
 
 	this->entityWidth = 0.6f;
@@ -32,9 +37,10 @@ PlayerMovement::~PlayerMovement()
 {
 }
 
-void PlayerMovement::onDeath()
+void PlayerMovement::onDeath(const ICommonWorld &world)
 {
-	setPosition(spawnPosition); // TODO : maybe add a respawn delay and play death animation instead of instant teleport?
+	hasBeaconSet = world.getBlockWorld(beaconPos) == BlockType::BEACON; //doing it like this makes it so that if someone removes the beacon and places it again the spawn is still there.
+	hasBeaconSet ? setPosition(beaconPos + glm::vec3(0.5f, 1.0f, 0.5f)) : setPosition(spawnPosition);
 	positionUpdated = true;
 	health = 20;
 	velocity = glm::vec3(0.0f);
@@ -309,4 +315,63 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 
 		updatePos();
 	}
+}
+
+void PlayerMovement::attack(LivingEntity &victim)
+{
+	ItemType type = inventory->getItemAtSlot(inventory->activeHotbarSlot);
+
+	damage = 3.0f; // base unarmed damage
+	if (auto* w = std::get_if<WeaponType>(&type))
+	{
+		const WeaponDef& wepDef = ItemRegistry::getWeapon(*w);
+		damage += wepDef.damage;
+	}
+
+	LivingEntity::attack(victim);
+}
+
+//Saving / loading yaw and pitch do not work for now because they are getting overriden by the client.
+void PlayerMovement::savePlayerDataToFile(const std::string& filename) const {
+	std::ofstream outFile(filename, std::ios::binary);
+	if (!outFile) {
+		std::cerr << "Error opening file for writing: " << filename << std::endl;
+		return;
+	}
+
+	outFile.write(reinterpret_cast<const char*>(&position), sizeof(position));
+	outFile.write(reinterpret_cast<const char*>(&velocity), sizeof(velocity));
+	outFile.write(reinterpret_cast<const char*>(&yaw), sizeof(yaw));
+	outFile.write(reinterpret_cast<const char*>(&pitch), sizeof(pitch));
+	outFile.write(reinterpret_cast<const char*>(&health), sizeof(health));
+	outFile.write(reinterpret_cast<const char*>(&gamemode), sizeof(gamemode));
+
+	outFile.write(reinterpret_cast<const char*>(&beaconPos), sizeof(beaconPos));
+
+	inventory->saveToStream(outFile);
+	// craftingStation->saveToStream(outFile);
+
+	outFile.close();
+}
+
+void PlayerMovement::loadPlayerDataFromFile(const std::string& filename) {
+	std::ifstream inFile(filename, std::ios::binary);
+	if (!inFile) {
+		//no file to load from yet.
+		return;
+	}
+
+	inFile.read(reinterpret_cast<char*>(&position), sizeof(position));
+	inFile.read(reinterpret_cast<char*>(&velocity), sizeof(velocity));
+	inFile.read(reinterpret_cast<char*>(&yaw), sizeof(yaw));
+	inFile.read(reinterpret_cast<char*>(&pitch), sizeof(pitch));
+	inFile.read(reinterpret_cast<char*>(&health), sizeof(health));
+	inFile.read(reinterpret_cast<char*>(&gamemode), sizeof(gamemode));
+
+	inFile.read(reinterpret_cast<char*>(&beaconPos), sizeof(beaconPos));
+
+	inventory->loadFromStream(inFile);
+	// craftingStation->loadFromStream(inFile);
+
+	inFile.close();
 }

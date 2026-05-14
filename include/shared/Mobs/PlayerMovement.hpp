@@ -31,20 +31,23 @@ struct PlayerMovement : public virtual LivingEntity {
 	std::deque<NetPlayerInputs> pendingInputs; // server-side queue: one physics step per entry
 	uint8_t loadRadius = 16;
 
-	GAMEMODES gamemode = GAMEMODES::SPECTATOR;
+	GAMEMODES gamemode = GAMEMODES::SURVIVAL;
 
+	bool hasBeaconSet = false;
+	glm::vec3 beaconPos = glm::vec3(0.0f);
 	glm::vec3 spawnPosition{};
 
 	glm::vec3 getDesiredMove() override;
 	void doJump(const ICommonWorld &world) override;
 
-	void onDeath() override;
+	void onDeath(const ICommonWorld &world) override;
 
 	void calculateUnderwaterPosition(const ICommonWorld &world) override;
 	void updatePosition();
 	void updateCameraVectors();
 	void applyFallDamage() override;
 	void calculateNewPosition(const ICommonWorld &world) override;
+	void attack(LivingEntity &victim) override;
 
 	inline const glm::vec3 getVelocity() const { return this->velocity; }
 	inline const glm::vec3 getCameraDir() const { return this->Front; }
@@ -60,9 +63,13 @@ struct PlayerMovement : public virtual LivingEntity {
 	inline void setVelocity(glm::vec3 velocity) {this->velocity = velocity; }
 	inline void setYawAndPitch(float yaw, float pitch) {this->yaw = yaw, this->pitch = pitch; }
 	inline void setLastInputPacketReceived(NetPlayerInputs &pkt) {lastInputsPktRecvd = pkt; }
-	inline void setGamemode(GAMEMODES mode) {gamemode = mode; }
+	inline void setGamemode(GAMEMODES mode) {gamemode = mode; velocity = glm::vec3(0.0f); }
 	inline void setLoadRadius(uint8_t radius) { loadRadius = radius; }
 	inline void setJumpBoostApplied(bool value) { jumpBoostApplied = value; }
+	inline void setSpawnPosition(const glm::vec3 &pos) { spawnPosition = pos; }
+
+	void savePlayerDataToFile(const std::string& filename) const;
+	void loadPlayerDataFromFile(const std::string& filename);
 
 	PlayerMovement();
 	PlayerMovement(const glm::vec3 &position, float yaw, entityID ID);

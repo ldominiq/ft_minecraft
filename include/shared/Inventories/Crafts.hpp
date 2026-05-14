@@ -38,18 +38,121 @@ struct RecipeResult {
 };
 
 // Here we define the recipes.
-constexpr std::array<std::pair<Grid, RecipeResult>, 1> orderedRecipes = {{
+constexpr std::array<std::pair<Grid, RecipeResult>, 12> orderedRecipes = {{
 	{{
 		BlockType::STONE, BlockType::STONE, BlockType::STONE,
 		BlockType::STONE, BlockType::STONE, BlockType::STONE,
 		BlockType::STONE, BlockType::STONE, BlockType::STONE
-	}, {BlockType::STONE, 1}}
+	}, {BlockType::STONE, 9}},
+
+	{{
+		BlockType::BEGIN, BlockType::OAK_PLANKS, BlockType::BEGIN,
+		BlockType::BEGIN, BlockType::OAK_PLANKS, BlockType::BEGIN,
+		BlockType::BEGIN, MiscType::STICK, BlockType::BEGIN
+	}, {WeaponType::WOODEN_SWORD, 1}},
+	{{
+		BlockType::BEGIN, BlockType::STONE, BlockType::BEGIN,
+		BlockType::BEGIN, BlockType::STONE, BlockType::BEGIN,
+		BlockType::BEGIN, MiscType::STICK, BlockType::BEGIN
+	}, {WeaponType::STONE_SWORD, 1}},
+	{{
+		BlockType::BEGIN, MiscType::IRON_INGOT, BlockType::BEGIN,
+		BlockType::BEGIN, MiscType::IRON_INGOT, BlockType::BEGIN,
+		BlockType::BEGIN, MiscType::STICK, BlockType::BEGIN
+	}, {WeaponType::IRON_SWORD, 1}},
+	{{
+		BlockType::BEGIN, MiscType::GOLD_INGOT, BlockType::BEGIN,
+		BlockType::BEGIN, MiscType::GOLD_INGOT, BlockType::BEGIN,
+		BlockType::BEGIN, MiscType::STICK, BlockType::BEGIN
+	}, {WeaponType::GOLDEN_SWORD, 1}},
+	{{
+		BlockType::BEGIN, MiscType::DIAMOND, BlockType::BEGIN,
+		BlockType::BEGIN, MiscType::DIAMOND, BlockType::BEGIN,
+		BlockType::BEGIN, MiscType::STICK, BlockType::BEGIN
+	}, {WeaponType::DIAMOND_SWORD, 1}},
+
+	{{
+		MiscType::IRON_INGOT, MiscType::IRON_INGOT, MiscType::IRON_INGOT,
+		MiscType::IRON_INGOT, MiscType::IRON_INGOT, MiscType::IRON_INGOT,
+		MiscType::IRON_INGOT, MiscType::IRON_INGOT, MiscType::IRON_INGOT
+	}, {BlockType::IRON_BLOCK, 1}},
+	{{
+		MiscType::GOLD_INGOT, MiscType::GOLD_INGOT, MiscType::GOLD_INGOT,
+		MiscType::GOLD_INGOT, MiscType::GOLD_INGOT, MiscType::GOLD_INGOT,
+		MiscType::GOLD_INGOT, MiscType::GOLD_INGOT, MiscType::GOLD_INGOT
+	}, {BlockType::GOLD_BLOCK, 1}},
+	{{
+		MiscType::DIAMOND, MiscType::DIAMOND, MiscType::DIAMOND,
+		MiscType::DIAMOND, MiscType::DIAMOND, MiscType::DIAMOND,
+		MiscType::DIAMOND, MiscType::DIAMOND, MiscType::DIAMOND
+	}, {BlockType::DIAMOND_BLOCK, 1}},
+	{{
+		MiscType::URANIUM_INGOT, MiscType::URANIUM_INGOT, MiscType::URANIUM_INGOT,
+		MiscType::URANIUM_INGOT, MiscType::URANIUM_INGOT, MiscType::URANIUM_INGOT,
+		MiscType::URANIUM_INGOT, MiscType::URANIUM_INGOT, MiscType::URANIUM_INGOT
+	}, {BlockType::URANIUM_BLOCK, 1}},
+
+	{{
+		MiscType::IRON_INGOT, BlockType::BEGIN, MiscType::IRON_INGOT,
+		BlockType::BEGIN, MiscType::IRON_INGOT, BlockType::BEGIN,
+		BlockType::BEGIN, BlockType::BEGIN, BlockType::BEGIN
+	}, {MiscType::EMPTY_BUCKET, 1}},
+
+	{{
+		BlockType::BEGIN, BlockType::BEGIN, BlockType::BEGIN,
+		MiscType::IRON_INGOT, BlockType::BEGIN, MiscType::IRON_INGOT,
+		BlockType::BEGIN, MiscType::IRON_INGOT, BlockType::BEGIN
+	}, {MiscType::EMPTY_BUCKET, 1}},
 }};
 
-constexpr std::array<std::pair<Grid, RecipeResult>, 1> shapelessRecipes = {{
+constexpr std::array<std::pair<Grid, RecipeResult>, 13> shapelessRecipes = {{
 	{{
 		BlockType::STONE
-	}, {BlockType::GRASS, 1}}
+	}, {BlockType::GRASS, 1}},
+
+	{{
+		BlockType::IRON
+	}, {MiscType::IRON_INGOT, 1}},
+	{{
+		BlockType::GOLD
+	}, {MiscType::GOLD_INGOT, 1}},
+	{{
+		BlockType::DIAMOND
+	}, {MiscType::DIAMOND, 1}},
+	{{
+		BlockType::URANIUM
+	}, {MiscType::URANIUM_INGOT, 1}},
+
+	{{
+		BlockType::OAK_LOG
+	}, {BlockType::OAK_PLANKS, 4}},
+	{{
+		BlockType::BIRCH_LOG
+	}, {BlockType::OAK_PLANKS, 4}},
+	{{
+		BlockType::ACACIA_LOG
+	}, {BlockType::OAK_PLANKS, 4}},
+	{{
+		BlockType::JUNGLE_LOG
+	}, {BlockType::OAK_PLANKS, 4}},
+	{{
+		BlockType::SPRUCE_LOG
+	}, {BlockType::OAK_PLANKS, 4}},
+	{{
+		BlockType::DARK_OAK_LOG
+	}, {BlockType::OAK_PLANKS, 4}},
+
+	{{
+		BlockType::OAK_PLANKS, BlockType::OAK_PLANKS
+	}, {MiscType::STICK, 4}},
+
+	//beacon used for set spawn point.
+	{{
+		BlockType::IRON_BLOCK, BlockType::DIAMOND_BLOCK, BlockType::GOLD_BLOCK,
+		BlockType::URANIUM_BLOCK, BlockType::STONE, BlockType::WITHER_ROSE,
+		BlockType::SAND, BlockType::NETHERRACK, BlockType::SNOW
+	}, {BlockType::BEACON, 1}}
+
 }};
 
 //this wastes a bit of space but it's blazingly faaast. maybe.
