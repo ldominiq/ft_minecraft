@@ -46,7 +46,7 @@ void LivingEntity::attack(LivingEntity &victim)
 			return; //no knockback or damage for spectators
 	}
 
-	victim.health -= damage;
+	victim.health = std::max(0.0f, victim.health - damage);
 	victim.applyImpulse(knockbackDir * strength + glm::vec3(0.0f, verticalBoost, 0.0f));
 	victim.pendingHurt = true; // broadcast a hurt one-shot to clients (positionFlags bit 0x10)
 }
@@ -85,7 +85,7 @@ void LivingEntity::calculateNewYPosition(const ICommonWorld &world)
 
 		if (now - lastVoidDamageTime >= std::chrono::seconds(1))
 		{
-			this->health -= 4;
+			this->health = std::max(0.0f, this->health - 4.0f);
 			lastVoidDamageTime = now;
 		}
 	}
