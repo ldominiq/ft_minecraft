@@ -47,7 +47,7 @@ class CommonWorld : public ICommonWorld{
 	public:
 		void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ) const;
 		std::shared_ptr<ChunkT> getChunk(int chunkX, int chunkZ);
-		BlockType getBlockWorld(glm::ivec3 globalCoords) const;
+		BlockType getBlockWorld(glm::ivec3 globalCoords) const override;
 		uint8_t getSkyLightWorld(glm::ivec3 globalCoords) const override;
 		virtual bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) = 0;
 		bool isBlockVisibleWorld(glm::ivec3 globalCoords);
