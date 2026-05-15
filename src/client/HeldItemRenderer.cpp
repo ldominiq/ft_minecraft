@@ -63,6 +63,16 @@ constexpr float TP_WEAPON_WIDTH  = 0.18f;
 // character's forearm — proportional to the rendered hand.
 // NOT constexpr while tuning via ImGui — see getWeaponTuning().
 float TP_WEAPON_SIZE = 0.6f;
+// 3P hilt offset in FOREARM-local frame:
+//   X = along the arm (hand → elbow direction is +X)
+//   Y = perpendicular within the saggital plane (out the front of the wrist)
+//   Z = sideways (player-right axis derived from yaw)
+float TP_HILT_DX = -0.58f;
+float TP_HILT_DY = 0.255f;
+float TP_HILT_DZ = 0.047f;
+// 3P blade orientation tweaks (degrees). Applied in the forearm frame.
+float TP_LEAN_DEG  = -174.6f; // rotate around the arm direction
+float TP_DEPTH_DEG = -12.0f; // rotate around the saggital axis
 // NOTE: VM_WEAPON_* and VM_HAND_* are intentionally NOT `constexpr` — they
 // are exposed through HeldItemRenderer::getWeaponTuning() so the ImGui debug
 // window can tweak them at runtime. Once the pose is dialed in, switch them
@@ -475,6 +485,11 @@ HeldItemRenderer::WeaponTuning HeldItemRenderer::getWeaponTuning()
 		&VM_HAND_Y,
 		&VM_HAND_Z,
 		&TP_WEAPON_SIZE,
+		&TP_HILT_DX,
+		&TP_HILT_DY,
+		&TP_HILT_DZ,
+		&TP_LEAN_DEG,
+		&TP_DEPTH_DEG,
 	};
 }
 
@@ -621,47 +636,78 @@ void HeldItemRenderer::drawWeaponsForEntities(const glm::mat4& projection, const
 		const std::vector<float>& canonical = cacheIt->second;
 		if (canonical.empty()) return;
 
-		// Pose & anchor: same as for the cube/sprite path so the sword
-		// inherits arm-swing and walk animation.
-		const float yawRad     = glm::radians(e.yaw);
-		const ArmPose pose     = armPoseFromAnimation(asCharacter(e));
-		const glm::vec3 anchor = itemAnchorRel(worldPos, eyePos, yawRad, pose);
+		// Read the actual rendered rightForearm transform
+		const Character* ch = asCharacter(e);
+		const std::shared_ptr<Shape> forearm = ch ? ch->characterBodyParts.rightForearm
+		                                          : nullptr;
+		if (!forearm) return;
+		const glm::mat4& fT = forearm->getTransform();
 
-		// Canonical voxel mesh has the sword running along the DIAGONAL of
-		// the [0,1]² XY grid (hilt at high-X / low-Y, tip at low-X / high-Y).
-		// We want the blade to point straight FORWARD out of the hand in
-		// player-local space (so the sword sits at hand height and extends
-		// forward, instead of dangling down from the hand toward the feet).
-		// The hand POSITION already moves with the arm via itemAnchorRel —
-		// that's what carries walk/swing animation through the held item.
-		// Orientation is fixed.
-		//   canonical hilt→tip diagonal  →  player +X (forward)
-		//   canonical thickness axis     →  player +Z (saggital out)
-		//   canonical width direction    →  player +Y (up)
-		// Closed-form basis images (derived by solving the two diagonal-pair
-		// equations):
-		const float forearmAngle = ARM_REST_ANGLE + pose.shoulder + pose.elbow;
-		const float sa = std::sin(forearmAngle);
-		const float ca = std::cos(forearmAngle);
-		constexpr float H = 0.70710678118654752f; // √2/2
-		const glm::vec3 axisX(H * (ca - sa), H * (sa + ca), 0.0f); // canonical X image
-		const glm::vec3 axisY(H * (sa + ca), H * (sa - ca), 0.0f); // canonical Y image
-		const glm::vec3 axisZ(0.0f, 0.0f, 1.0f);                   // canonical Z image
+		// Hand end and elbow of the rendered forearm cube (unit cube spans
+		// y ∈ [-0.5, 0.5]; bottom face is the hand side, top is the elbow).
+		const glm::vec3 handPos  = glm::vec3(fT * glm::vec4(0.0f, -0.5f, 0.0f, 1.0f));
+		const glm::vec3 elbowPos = glm::vec3(fT * glm::vec4(0.0f,  0.5f, 0.0f, 1.0f));
+
+		// Build a forearm-local basis in world coords:
+		//   ALONG = elbow → hand (the direction the sword extends from the hand)
+		//   IN_SAG_PERP = perpendicular to ALONG within the player's saggital plane
+		//   SIDE = player-right (out of the saggital plane); stable yaw-aligned
+		//          reference so the blade's flat side stays facing sideways.
+		const float yawRad = glm::radians(e.yaw);
+		const glm::vec3 armDirRaw = handPos - elbowPos;
+		const float armLen = glm::length(armDirRaw);
+		if (armLen < 1e-5f) return;
+		const glm::vec3 along = armDirRaw / armLen;
+		const glm::vec3 side(-std::sin(yawRad), 0.0f, std::cos(yawRad));
+		glm::vec3 inSagPerp = glm::cross(side, along);
+		const float ipLen = glm::length(inSagPerp);
+		if (ipLen < 1e-5f) inSagPerp = glm::vec3(0.0f, 1.0f, 0.0f);
+		else               inSagPerp /= ipLen;
+		// Re-orthogonalize side against along so the basis is exactly orthonormal.
+		const glm::vec3 sideOrtho = glm::normalize(glm::cross(along, inSagPerp));
+
+		// Map the canonical mesh's diagonal hilt→tip onto -along (so the
+		// blade points AWAY from the hand toward the tip, since canonical
+		// hilt-corner is at (1, 0) and tip-corner is at (0, 1) — i.e.
+		// canonical (-1, 1, 0) direction is the hilt→tip diagonal).
+		// We send canonical (-1, 1, 0) to along, canonical (0, 0, 1) to
+		// sideOrtho (blade thickness across the side of the body), and pick
+		// canonical X / Y as a 45° rotation of (along, inSagPerp).
+		constexpr float H = 0.70710678118654752f;
+		const glm::vec3 axisX = H * (-along - inSagPerp);
+		const glm::vec3 axisY = H * ( along - inSagPerp);
+		const glm::vec3 axisZ = sideOrtho;
 		glm::mat4 orient(1.0f);
 		orient[0] = glm::vec4(axisX, 0.0f);
 		orient[1] = glm::vec4(axisY, 0.0f);
 		orient[2] = glm::vec4(axisZ, 0.0f);
 
-		// Final model: translate to anchor → yaw (player-local → world)
-		// → orient (canonical → player-local) → scale → shift canonical hilt
-		// to origin so all rotations pivot around the hilt.
+		// tunable hilt offset in forearm frame:
+		//   DX along the arm (positive = past the hand, away from the elbow)
+		//   DY perpendicular within the saggital plane (positive = away from
+		//      the body's front toward the back of the hand)
+		//   DZ sideways along player-right
+		const glm::vec3 hiltNudge = TP_HILT_DX * along
+		                          + TP_HILT_DY * inSagPerp
+		                          + TP_HILT_DZ * sideOrtho;
+		// User-tunable blade orientation tweaks: rotate around along (LEAN)
+		// then around sideOrtho (DEPTH). Applied after the canonical→world
+		// orient so they spin the blade in its own frame around the hilt.
+		glm::mat4 tweak(1.0f);
+		tweak = glm::rotate(tweak, glm::radians(TP_LEAN_DEG),  along);
+		tweak = glm::rotate(tweak, glm::radians(TP_DEPTH_DEG), sideOrtho);
+
+		// Final model: translate to rendered hand + hilt nudge → tweak →
+		// orient (canonical basis → world) → scale → shift canonical hilt
+		// corner (1,0) to the pivot origin so the hilt sits at the (nudged)
+		// hand and all rotations pivot around it.
 		glm::mat4 M(1.0f);
-		M = glm::translate(M, anchor);
-		M = glm::translate(M, glm::vec3(-0.1, 0.6, 0));
-		M = glm::rotate(M, -yawRad, glm::vec3(0.0f, 1.0f, 0.0f));
+		M = glm::translate(M, handPos + hiltNudge);
+		M = M * tweak;
 		M = M * orient;
 		M = glm::scale(M, glm::vec3(TP_WEAPON_SIZE));
 		M = glm::translate(M, glm::vec3(-1.0f, 0.0f, 0.0f));
+		(void)worldPos; // forearm transform supersedes the entity's worldPos for sword placement
 
 		// Stream transformed verts into the batch.
 		const std::size_t baseFloat = cpuBuffer.size();

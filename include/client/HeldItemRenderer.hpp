@@ -84,6 +84,12 @@ public:
 		float* handY;
 		float* handZ;
 		float* tpSize;
+		// 3P-only tuning. Position offsets are in the FOREARM's local frame:
+		float* tpHiltDX;
+		float* tpHiltDY;
+		float* tpHiltDZ;
+		float* tpLeanDeg;   // rotate around the arm direction
+		float* tpDepthDeg;  // rotate around the saggital axis
 	};
 	static WeaponTuning getWeaponTuning();
 	void clearWeaponMeshCache() { weaponMeshCache.clear(); }
