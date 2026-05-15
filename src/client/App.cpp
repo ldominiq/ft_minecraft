@@ -18,7 +18,7 @@ App::App(const std::string& serverIp):
     fpsSamples.reserve(fpsSampleCount);
 }
 
-App::~App() { }
+App::~App() { cleanup(); }
 
 GLFWimage load_icon(const char* path) {
     GLFWimage image;
@@ -1360,8 +1360,6 @@ void App::render() {
             }
         }
     }
-
-    cleanup();
 }
 
 bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)

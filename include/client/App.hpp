@@ -46,7 +46,7 @@
 
 #include <optional>
 #include <unordered_map>
-
+#include <atomic>
 #include <thread>
 #include <chrono>
 
