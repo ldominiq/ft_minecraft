@@ -8,14 +8,15 @@ void buildCube(
 	int originX, int originZ,
 	BlockType type,
 	const TextureManager* texMgr,
-	bool isIlluminated)
+	bool isIlluminated,
+	float skyFactor)
 {
-	addFace(meshVertices, x, y, z, originX, originZ, type, 0, texMgr, isIlluminated);
-	addFace(meshVertices, x, y, z, originX, originZ, type, 1, texMgr, isIlluminated);
-	addFace(meshVertices, x, y, z, originX, originZ, type, 2, texMgr, isIlluminated);
-	addFace(meshVertices, x, y, z, originX, originZ, type, 3, texMgr, isIlluminated);
-	addFace(meshVertices, x, y, z, originX, originZ, type, 4, texMgr, isIlluminated);
-	addFace(meshVertices, x, y, z, originX, originZ, type, 5, texMgr, isIlluminated);
+	addFace(meshVertices, x, y, z, originX, originZ, type, 0, texMgr, isIlluminated, skyFactor);
+	addFace(meshVertices, x, y, z, originX, originZ, type, 1, texMgr, isIlluminated, skyFactor);
+	addFace(meshVertices, x, y, z, originX, originZ, type, 2, texMgr, isIlluminated, skyFactor);
+	addFace(meshVertices, x, y, z, originX, originZ, type, 3, texMgr, isIlluminated, skyFactor);
+	addFace(meshVertices, x, y, z, originX, originZ, type, 4, texMgr, isIlluminated, skyFactor);
+	addFace(meshVertices, x, y, z, originX, originZ, type, 5, texMgr, isIlluminated, skyFactor);
 }
 
 void build2DInventoryCube(
@@ -87,7 +88,8 @@ void addInventoryFace(
 void buildItemSprite(
 	std::vector<float>& meshVertices,
 	float x, float y, float z,
-	int texLayer)
+	int texLayer,
+	float skyFactor)
 {
 	// Two perpendicular quads forming an X (cross-pattern), centered on the
 	// drop position. Same look as world vegetation so the dropped item reads
@@ -105,6 +107,7 @@ void buildItemSprite(
 		meshVertices.push_back(u);
 		meshVertices.push_back(v);
 		meshVertices.push_back(layer);
+		meshVertices.push_back(skyFactor);
 	};
 
 	// UV convention matches addFace: V=0 at the geometry bottom, V=1 at the
@@ -137,7 +140,8 @@ void buildItemSprite(
 void buildItemBillboard(
 	std::vector<float>& meshVertices,
 	const glm::dvec3& itemRel,
-	int texLayer)
+	int texLayer,
+	float skyFactor)
 {
 	// Y-axis billboard: the quad is upright (world up) and rotates around Y
 	// to face the camera horizontally. Doesn't tilt when the player looks up
@@ -180,6 +184,7 @@ void buildItemBillboard(
 		meshVertices.push_back(u);
 		meshVertices.push_back(v);
 		meshVertices.push_back(layer);
+		meshVertices.push_back(skyFactor);
 	};
 
 	// Two triangles forming the quad. UV convention matches buildItemSprite:
@@ -239,7 +244,8 @@ void addFace(
     int originX, int originZ,
     BlockType type, int face,
     const TextureManager* texMgr,
-    bool isIlluminated)
+    bool isIlluminated,
+    float skyFactor)
 {
     glm::vec3 normal = faceNormals[face];
 
@@ -296,6 +302,10 @@ void addFace(
             meshVertices.push_back(normal.x);
             meshVertices.push_back(normal.y);
             meshVertices.push_back(normal.z);
+        } else {
+            // Dropped-item path: per-vertex sky-light. Shared across all 36
+            // verts of one item (the host samples once at the item position)
+            meshVertices.push_back(skyFactor);
         }
     }
 }

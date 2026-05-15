@@ -2,12 +2,18 @@
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aTexCoord;
 layout (location = 2) in float aTexLayer;
+// Per-vertex sky-light, normalized 0..1. All 36 verts of one dropped item
+// share the same value (the host samples once per entity at its position).
+// Per-vertex rather than uniform because every item in the world is packed
+// into a single draw call.
+layout (location = 3) in float aSkyLight;
 
 out vec2 TexCoord;
 flat out float TexLayer;
 // Camera-relative world position + face normal for entity_lighting.glsl.
 out vec3 vFragPosRel;
 flat out vec3 vNormal;
+flat out float vSkyLight;
 
 // Translation-free view (camera at origin of render space). aPos is already
 // camera-relative, so we never want the full view (its translation would
@@ -37,4 +43,5 @@ void main()
     vFragPosRel = aPos;
     int face = (gl_VertexID / 6) % 6;
     vNormal = FACE_NORMALS[face];
+    vSkyLight = aSkyLight;
 }

@@ -592,7 +592,9 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 void Renderer::drawCharacters(const glm::mat4 &projection, const glm::mat4 &view,
                               const glm::dvec3& eyePos, const float deltatime)
 {
-    livingEntitiesManager.draw(projection, view, eyePos, deltatime);
+    // Pass `this` so the manager can sample the per-chunk sky-light grid at
+    // each entity's position (Renderer is a CommonWorld<ChunkRenderer>).
+    livingEntitiesManager.draw(projection, view, eyePos, deltatime, this);
 	// Drop entities whose death animation completed (LivingEntitiesManager marks them).
 	std::erase_if(livingEntities,
 	              [](const std::shared_ptr<Entity>& e){ return !e || e->removed; });

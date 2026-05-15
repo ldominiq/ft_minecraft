@@ -25,6 +25,10 @@ public:
 	virtual BlockType getBlockWorld(glm::ivec3 globalCoords) const = 0;
 	virtual bool isUnderwater(const glm::dvec3 &position) const = 0;
 	bool isUnderwater(const glm::vec3 &position) const { return isUnderwater(glm::dvec3(position)); }
+	// Sky-light at a world block position (0–15). Returns 15 when the chunk
+	// is not loaded so unbuilt-neighbor reads default to sunlit, matching
+	// Chunk::getSkyLight's policy.
+	virtual uint8_t getSkyLightWorld(glm::ivec3 globalCoords) const = 0;
     virtual ~ICommonWorld() = default;
 };
 
@@ -44,6 +48,7 @@ class CommonWorld : public ICommonWorld{
 		void globalCoordsToLocalCoords(int &x, int &y, int &z, int globalX, int globalY, int globalZ, int &chunkX, int &chunkZ) const;
 		std::shared_ptr<ChunkT> getChunk(int chunkX, int chunkZ);
 		BlockType getBlockWorld(glm::ivec3 globalCoords) const;
+		uint8_t getSkyLightWorld(glm::ivec3 globalCoords) const override;
 		virtual bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) = 0;
 		bool isBlockVisibleWorld(glm::ivec3 globalCoords);
 

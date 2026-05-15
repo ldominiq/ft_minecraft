@@ -210,7 +210,11 @@ class Entity {
 		// must emit vertices in (worldPos - eyePos) so positions stay precise at
 		// large world coordinates. The mesh is rebuilt every frame anyway, so
 		// passing eyePos here costs nothing.
-		virtual void createMesh(std::vector<float> &meshVertices, const glm::dvec3& eyePos, const TextureManager* texMgr = nullptr) { (void)meshVertices; (void)eyePos; (void)texMgr; std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
+		// `skyFactor` is the sky-light at the entity's world position, normalized
+		// 0..1. Baked into the per-vertex stream so the item batch can darken
+		// in caves the way terrain does (single uniform can't carry per-item
+		// values when every dropped item shares one draw call).
+		virtual void createMesh(std::vector<float> &meshVertices, const glm::dvec3& eyePos, const TextureManager* texMgr = nullptr, float skyFactor = 1.0f) { (void)meshVertices; (void)eyePos; (void)texMgr; (void)skyFactor; std::cout << "Not Yet Implemented :D" << std::endl; }; //item entities only
 		virtual void draw(std::vector<float> &meshVertices) { std::cout << "Not Yet Implemented :D" << std::endl; }; //living entities only
 
 		//the not yet Implemented is a lie. Those are only client functions defined in the client.

@@ -1555,7 +1555,10 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		uploadActiveSpotLights(propShader);
 		lighting->uploadCSMUniforms(propShader, view);
 	}
-	m_itemPropEntityManager->draw(projection, view, camera->getEyePosD(), renderer->itemEntities);
+	// Pass the renderer (a CommonWorld<ChunkRenderer>) so updateMesh can sample
+	// per-item sky-light and bake it into the vertex stream , uniform won't
+	// work here because every item in the world is one batched draw call.
+	m_itemPropEntityManager->draw(projection, view, camera->getEyePosD(), renderer->itemEntities, renderer.get());
 	glEndQuery(GL_TIME_ELAPSED);
 
 	//mobs
