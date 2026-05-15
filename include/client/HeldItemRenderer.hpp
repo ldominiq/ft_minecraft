@@ -11,6 +11,7 @@
 
 #include "Shader.hpp"
 #include "LivingEntity.hpp"
+#include "CommonWorld.hpp"
 
 class TextureManager;
 class Character;
@@ -28,7 +29,7 @@ class Character;
 // heldItemType of 0, BlockType::BEGIN, or BlockType::AIR all mean "nothing
 // held" and skip rendering for that entity.
 class HeldItemRenderer {
-	static constexpr int FLOATS_PER_VERT = 6;   // pos(3) + uv(2) + texLayer(1)
+	static constexpr int FLOATS_PER_VERT = 7;   // pos(3) + uv(2) + texLayer(1) + skyLight(1) — matches cubePropShader.vert
 	static constexpr int VERTS_PER_ITEM  = 36;  // matches buildCube / padded sprite
 	static constexpr int FLOATS_PER_ITEM = VERTS_PER_ITEM * FLOATS_PER_VERT;
 	static constexpr int MAX_ITEMS       = 64;  // plenty for visible players
@@ -60,7 +61,8 @@ public:
 	void drawForEntities(const glm::mat4& projection, const glm::mat4& view,
 	                     const glm::dvec3& eyePos,
 	                     const std::vector<std::shared_ptr<LivingEntity>>& entities,
-	                     LivingEntity* localPlayer = nullptr);
+	                     LivingEntity* localPlayer = nullptr,
+	                     const ICommonWorld* world = nullptr);
 
 	// Viewmodel for the local player. Skips when nothing is held
 	// (heldItemType 0 / BEGIN / AIR).
@@ -68,7 +70,8 @@ public:
 	// the same ClientPlayer used elsewhere; nullptr keeps the cube static.
 	void drawFirstPerson(const glm::mat4& projection, const glm::mat4& view,
 	                     uint16_t heldItemType,
-	                     const Character* localCharacter = nullptr);
+	                     const Character* localCharacter = nullptr,
+	                     float skyFactor = 1.0f);
 
 	// Same uniforms App.cpp uploads on the other entity shaders go here too.
 	Shader& getShader() { return *shader; }
@@ -108,17 +111,19 @@ private:
 	void drawWeaponsForEntities(const glm::mat4& projection, const glm::mat4& view,
 	                            const glm::dvec3& eyePos,
 	                            const std::vector<std::shared_ptr<LivingEntity>>& entities,
-	                            LivingEntity* localPlayer);
+	                            LivingEntity* localPlayer,
+	                            const ICommonWorld* world);
 
 	// Shared by 1P and 3P weapon paths: look up the canonical voxel mesh for
 	// `texLayer`, building+caching it on the first hit. Returns nullptr if the
 	// mesh would be empty (e.g. transparent texture).
 	const std::vector<float>* getOrBuildWeaponMesh(int texLayer);
 
-	// Transform every vertex of `canonical` by `M` and append into `dst`. The
-	// non-position floats (UV + texLayer) are copied through unchanged.
+	// Transform every vertex of `canonical` by `M` and append into `dst`.
+	// The non-position floats (UV + texLayer) are copied through unchanged
 	void appendTransformedWeaponMesh(const std::vector<float>& canonical,
 	                                 const glm::mat4& M,
+	                                 float skyFactor,
 	                                 std::vector<float>& dst);
 
 	// Upload `cpuBuffer` to weaponVBO (growing the GPU buffer if needed) and

@@ -21,9 +21,9 @@
 
 namespace {
 
-// Per-vertex stride in floats (pos.xyz, uv.xy, texLayer) — must match the
-// cubePropShader vertex layout and buildCube/buildItemSprite output.
-constexpr int STRIDE = 6;
+// Per-vertex stride in floats (pos.xyz, uv.xy, texLayer, skyLight) — must match
+// the cubePropShader vertex layout and buildCube/buildItemSprite output.
+constexpr int STRIDE = 7;
 
 bool isNothingHeld(uint16_t heldItemType)
 {
@@ -175,6 +175,7 @@ void buildWeaponVoxelMesh(std::vector<float>& buf,
 	auto v = [&](float x, float y, float z, float u, float vv) {
 		buf.push_back(x); buf.push_back(y); buf.push_back(z);
 		buf.push_back(u); buf.push_back(vv); buf.push_back(L);
+		buf.push_back(0.0f);
 	};
 
 	for (int py = 0; py < texSize; ++py) {
@@ -289,13 +290,30 @@ glm::mat4 cubeModelMatrix(const glm::vec3& anchorRel, float yawRad,
 	return M;
 }
 
+// Sample the world sky-light at the entity's body-center the same way
+// LivingEntitiesManager does, so the held item darkens in caves alongside its
+// holder. Returns 1.0 when no world is available (matches the dropped-item /
+// terrain default for not-yet-computed grids).
+float sampleEntitySkyFactor(const ICommonWorld* world, const LivingEntity& e,
+                            const glm::dvec3& sampleBase)
+{
+	if (!world) return 1.0f;
+	const double midY = sampleBase.y + static_cast<double>(e.getEntityHeight()) * 0.5;
+	const glm::ivec3 bp(
+		static_cast<int>(std::floor(sampleBase.x)),
+		static_cast<int>(std::floor(midY)),
+		static_cast<int>(std::floor(sampleBase.z)));
+	return static_cast<float>(world->getSkyLightWorld(bp)) / 15.0f;
+}
+
 // Emit the geometry for one held item into `buf` at the supplied anchor.
 // Cubes get the full orient-to-player matrix; sprites/billboards stay
 // self-oriented (X-cross is symmetric, billboard reorients per-frame).
 bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
                     uint16_t heldItemType, const glm::vec3& anchorRel,
                     float yawRad, ArmPose pose,
-                    float cubeScale, float spriteScale)
+                    float cubeScale, float spriteScale,
+                    float skyFactor)
 {
 	if (isNothingHeld(heldItemType)) return false;
 
@@ -306,7 +324,7 @@ bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
 		const int layer = texMgr ? texMgr->getItemSpriteLayer(type) : 0;
 		if (auto* b = std::get_if<BlockType>(&type)) {
 			(void)b;
-			buildItemSprite(buf, 0.0f, 0.0f, 0.0f, layer);
+			buildItemSprite(buf, 0.0f, 0.0f, 0.0f, layer, skyFactor);
 			const float s = spriteScale / 0.25f;
 			transformVerts(buf, start, s,
 			               anchorRel.x,
@@ -320,7 +338,7 @@ bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
 			// not to count this slot as drawn.
 			return false;
 		} else {
-			buildItemBillboard(buf, glm::dvec3(anchorRel), layer);
+			buildItemBillboard(buf, glm::dvec3(anchorRel), layer, skyFactor);
 			const float s = spriteScale / 0.25f;
 			transformVerts(buf, start, s,
 			               anchorRel.x * (1.0f - s),
@@ -331,7 +349,7 @@ bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
 	}
 
 	if (auto* b = std::get_if<BlockType>(&type)) {
-		buildCube(buf, 0.0f, 0.0f, 0.0f, 0, 0, *b, texMgr);
+		buildCube(buf, 0.0f, 0.0f, 0.0f, 0, 0, *b, texMgr, /*isIlluminated*/false, skyFactor);
 		transformVertsMat(buf, start,
 		                  cubeModelMatrix(anchorRel, yawRad, pose, cubeScale));
 		return true;
@@ -351,16 +369,17 @@ glm::dvec3 entityRenderPos(const std::shared_ptr<LivingEntity>& e)
 // something. Returns 1 if a slot was used.
 int appendForOneEntity(std::vector<float>& cpuBuffer, const TextureManager* texMgr,
                        const LivingEntity& e, const glm::dvec3& worldPos,
-                       const glm::dvec3& eyePos)
+                       const glm::dvec3& eyePos, const ICommonWorld* world)
 {
 	if (!e.DoDraw() || isNothingHeld(e.heldItemType)) return 0;
 
 	const float yawRad     = glm::radians(e.yaw);
 	const ArmPose pose     = armPoseFromAnimation(asCharacter(e));
 	const glm::vec3 anchor = itemAnchorRel(worldPos, eyePos, yawRad, pose);
+	const float skyFactor  = sampleEntitySkyFactor(world, e, worldPos);
 
 	return appendItemMesh(cpuBuffer, texMgr, e.heldItemType, anchor,
-	                      yawRad, pose, CUBE_SCALE, SPRITE_SCALE)
+	                      yawRad, pose, CUBE_SCALE, SPRITE_SCALE, skyFactor)
 	       ? 1 : 0;
 }
 
@@ -422,6 +441,10 @@ void HeldItemRenderer::initGL()
 		glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
 		                      reinterpret_cast<void*>(5 * sizeof(float)));
 		glEnableVertexAttribArray(2);
+		// aSkyLight (cubePropShader.vert location 3)
+		glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
+		                      reinterpret_cast<void*>(6 * sizeof(float)));
+		glEnableVertexAttribArray(3);
 	};
 
 	glGenVertexArrays(1, &VAO);
@@ -458,11 +481,12 @@ const std::vector<float>* HeldItemRenderer::getOrBuildWeaponMesh(int texLayer)
 
 void HeldItemRenderer::appendTransformedWeaponMesh(const std::vector<float>& canonical,
                                                    const glm::mat4& M,
+                                                   float skyFactor,
                                                    std::vector<float>& dst)
 {
 	const std::size_t baseFloat = dst.size();
 	dst.resize(baseFloat + canonical.size());
-	for (std::size_t i = 0; i + 5 < canonical.size(); i += STRIDE) {
+	for (std::size_t i = 0; i + 6 < canonical.size(); i += STRIDE) {
 		const glm::vec4 p(canonical[i + 0], canonical[i + 1], canonical[i + 2], 1.0f);
 		const glm::vec4 q = M * p;
 		dst[baseFloat + i + 0] = q.x;
@@ -471,6 +495,7 @@ void HeldItemRenderer::appendTransformedWeaponMesh(const std::vector<float>& can
 		dst[baseFloat + i + 3] = canonical[i + 3];
 		dst[baseFloat + i + 4] = canonical[i + 4];
 		dst[baseFloat + i + 5] = canonical[i + 5];
+		dst[baseFloat + i + 6] = skyFactor;
 	}
 }
 
@@ -504,7 +529,8 @@ void HeldItemRenderer::uploadAndDrawWeaponBatch(const glm::mat4& projection,
 void HeldItemRenderer::drawForEntities(const glm::mat4& projection, const glm::mat4& view,
                                        const glm::dvec3& eyePos,
                                        const std::vector<std::shared_ptr<LivingEntity>>& entities,
-                                       LivingEntity* localPlayer)
+                                       LivingEntity* localPlayer,
+                                       const ICommonWorld* world)
 {
 	cpuBuffer.clear();
 	int itemCount = 0;
@@ -517,14 +543,14 @@ void HeldItemRenderer::drawForEntities(const glm::mat4& projection, const glm::m
 			if (ice->hasRenderPos) worldPos = ice->renderPos;
 		}
 		itemCount += appendForOneEntity(cpuBuffer, textureManager,
-		                                *localPlayer, worldPos, eyePos);
+		                                *localPlayer, worldPos, eyePos, world);
 	}
 
 	for (const auto& e : entities) {
 		if (!e) continue;
 		if (itemCount >= MAX_ITEMS) break;
 		itemCount += appendForOneEntity(cpuBuffer, textureManager,
-		                                *e, entityRenderPos(e), eyePos);
+		                                *e, entityRenderPos(e), eyePos, world);
 	}
 
 	if (itemCount > 0) {
@@ -554,13 +580,14 @@ void HeldItemRenderer::drawForEntities(const glm::mat4& projection, const glm::m
 	// from appendItemMesh so they're absent from the batched buffer above;
 	// this pass handles them with a separate VAO/VBO so the vert count can
 	// exceed the 36-vert/item slot.
-	drawWeaponsForEntities(projection, view, eyePos, entities, localPlayer);
+	drawWeaponsForEntities(projection, view, eyePos, entities, localPlayer, world);
 }
 
 void HeldItemRenderer::drawWeaponsForEntities(const glm::mat4& projection, const glm::mat4& view,
                                               const glm::dvec3& eyePos,
                                               const std::vector<std::shared_ptr<LivingEntity>>& entities,
-                                              LivingEntity* localPlayer)
+                                              LivingEntity* localPlayer,
+                                              const ICommonWorld* world)
 {
 	if (!textureManager) return;
 
@@ -653,9 +680,9 @@ void HeldItemRenderer::drawWeaponsForEntities(const glm::mat4& projection, const
 		M = M * orient;
 		M = glm::scale(M, glm::vec3(TP_WEAPON_SIZE));
 		M = glm::translate(M, glm::vec3(-1.0f, 0.0f, 0.0f));
-		(void)worldPos; // forearm transform supersedes the entity's worldPos for sword placement
+		const float skyFactor = sampleEntitySkyFactor(world, e, worldPos);
 
-		appendTransformedWeaponMesh(*canonical, M, cpuBuffer);
+		appendTransformedWeaponMesh(*canonical, M, skyFactor, cpuBuffer);
 	};
 
 	if (localPlayer) {
@@ -676,7 +703,8 @@ void HeldItemRenderer::drawWeaponsForEntities(const glm::mat4& projection, const
 void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
                                        const glm::mat4& view,
                                        uint16_t heldItemType,
-                                       const Character* localCharacter)
+                                       const Character* localCharacter,
+                                       float skyFactor)
 {
 	if (isNothingHeld(heldItemType)) return;
 
@@ -730,7 +758,7 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 		glm::mat4 viewRot = view;
 		viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 		cpuBuffer.clear();
-		appendTransformedWeaponMesh(*canonical, glm::inverse(viewRot) * M, cpuBuffer);
+		appendTransformedWeaponMesh(*canonical, glm::inverse(viewRot) * M, skyFactor, cpuBuffer);
 
 		// 1P viewmodel renders always-on-top: clear depth before drawing.
 		// uploadAndDrawWeaponBatch handles the rest of the GL state shared
@@ -747,14 +775,14 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 		const int layer = textureManager ? textureManager->getItemSpriteLayer(type) : 0;
 		if (auto* b = std::get_if<BlockType>(&type)) {
 			(void)b;
-			buildItemSprite(cpuBuffer, 0.0f, 0.0f, 0.0f, layer);
+			buildItemSprite(cpuBuffer, 0.0f, 0.0f, 0.0f, layer, skyFactor);
 			const float s = VM_SPRITE / 0.25f;
 			transformVerts(cpuBuffer, start, s,
 			               anchorRel.x,
 			               anchorRel.y - 0.5f * VM_SPRITE,
 			               anchorRel.z);
 		} else {
-			buildItemBillboard(cpuBuffer, glm::dvec3(anchorRel), layer);
+			buildItemBillboard(cpuBuffer, glm::dvec3(anchorRel), layer, skyFactor);
 			const float s = VM_SPRITE / 0.25f;
 			transformVerts(cpuBuffer, start, s,
 			               anchorRel.x * (1.0f - s),
@@ -763,7 +791,8 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 		}
 		drawnSomething = true;
 	} else if (auto* b = std::get_if<BlockType>(&type)) {
-		buildCube(cpuBuffer, 0.0f, 0.0f, 0.0f, 0, 0, *b, textureManager);
+		buildCube(cpuBuffer, 0.0f, 0.0f, 0.0f, 0, 0, *b, textureManager,
+		          /*isIlluminated*/false, skyFactor);
 		// Camera-space matrix. Order: translate to hand → arm swing around
 		// camera-X (screen right) → small rest tilts for a 3/4 readable view
 		// → scale → recenter Y (source cube has y in [0, 0.2]
