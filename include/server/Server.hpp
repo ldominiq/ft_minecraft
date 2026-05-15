@@ -99,6 +99,11 @@ private:
 	void sendPositionDeltas(CPlayerInfo &player);
 	void sendNewlyUpdatedBlocks(CPlayerInfo &player);
 	void sendEntitiesPositionDeltas();
+	// One-shot snapshot of every existing living entity, sent to a freshly
+	// connected client so stationary players/mobs (and their held items) are
+	// visible immediately — the delta broadcast above only fires on entities
+	// that are actively moving/swinging this tick.
+	void sendEntitiesSnapshotTo(const sockaddr_in &cliaddr);
 
 public:
     Server();

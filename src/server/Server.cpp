@@ -428,6 +428,40 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	}
 
 	sendAccept(cliaddr);
+	sendEntitiesSnapshotTo(cliaddr);
+}
+
+void Server::sendEntitiesSnapshotTo(const sockaddr_in &cliaddr)
+{
+	// Find the just-connected client so we can skip their own entity (the
+	// receive path treats own ID == -1; remote IDs come through here).
+	auto self = NetUtils::findPlayerByAddr(players, cliaddr);
+	const LivingEntity *selfEntity =
+		(self != players.end()) ? self->movement.get() : nullptr;
+
+	for (const auto &entity : world->livingEntities)
+	{
+		if (!entity || entity.get() == selfEntity) continue;
+
+		// Mirror sendEntitiesPositionDeltas's packet layout exactly. Any
+		// field added there needs to land here too — keep the two in sync.
+		NetEntityMove pkt;
+		pkt.eEntityType = entity->getEntityType();
+		pkt.entityID = entity->getID();
+		pkt.type = static_cast<LivingEntityType>(entity->getLivingEntityType());
+		pkt.positionX = entity->getPositionD().x;
+		pkt.positionY = entity->getPositionD().y;
+		pkt.positionZ = entity->getPositionD().z;
+		pkt.yaw = entity->yaw;
+		pkt.pitch = entity->pitch;
+		pkt.entityName = entity->getName();
+		pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
+		                  | (entity->isOnGround()       ? 0x02u : 0u)
+		                  | (entity->networkedPrimed    ? 0x08u : 0u)
+		                  | (entity->flashlightOn       ? 0x40u : 0u);
+		pkt.heldItemType = entity->heldItemType;
+		sendPacketTo(pkt, cliaddr);
+	}
 }
 
 void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
