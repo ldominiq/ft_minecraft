@@ -2042,12 +2042,12 @@ void App::debugWindow() {
                         *t.handX      =  0.95f;
                         *t.handY      = -0.65f;
                         *t.handZ      = -0.90f;
-                        *t.tpSize     =  0.60f;
-                        *t.tpHiltDX   =  0.0f;
-                        *t.tpHiltDY   =  0.0f;
-                        *t.tpHiltDZ   =  0.0f;
-                        *t.tpLeanDeg  =  0.0f;
-                        *t.tpDepthDeg =  0.0f;
+                        *t.tpSize     =   0.60f;
+                        *t.tpHiltDX   =  -0.58f;
+                        *t.tpHiltDY   =   0.255f;
+                        *t.tpHiltDZ   =   0.047f;
+                        *t.tpLeanDeg  = -174.6f;
+                        *t.tpDepthDeg =  -12.0f;
                         if (m_heldItemRenderer) m_heldItemRenderer->clearWeaponMeshCache();
                     }
                     ImGui::EndTabItem();

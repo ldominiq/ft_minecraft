@@ -584,6 +584,7 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 		entityPtr->positionUpdated = true;
 		entityPtr->setName(pkt.entityName);
 		entityPtr->snapshots.emplace_back(Snapshot{position, glm::vec3(0.0f), serverTime});
+		entityPtr->heldItemType = pkt.heldItemType;
 		livingEntitiesManager.add(entityPtr);
 
 		// Convert to shared_ptr<LivingEntity> safely

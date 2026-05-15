@@ -25,7 +25,8 @@ class Character;
 //     view matrix is replaced with identity so the cube stays glued to the
 //     screen).
 //
-// `heldItemType == 0` (or AIR) skips rendering for that entity.
+// heldItemType of 0, BlockType::BEGIN, or BlockType::AIR all mean "nothing
+// held" and skip rendering for that entity.
 class HeldItemRenderer {
 	static constexpr int FLOATS_PER_VERT = 6;   // pos(3) + uv(2) + texLayer(1)
 	static constexpr int VERTS_PER_ITEM  = 36;  // matches buildCube / padded sprite
@@ -34,7 +35,9 @@ class HeldItemRenderer {
 
 	GLuint VAO = 0;
 	GLuint VBO = 0;
-	// Separate VAO/VBO for the 1P weapon
+	// Separate VAO/VBO for the per-pixel-extruded weapon meshes (1P + 3P).
+	// Their vert count is variable, so they can't share the fixed 36-vert
+	// slot the cube/sprite batch uses.
 	GLuint weaponVAO = 0;
 	GLuint weaponVBO = 0;
 	GLsizei weaponVBOCapacityBytes = 0;
@@ -53,13 +56,14 @@ public:
 	// but not present in `renderer->livingEntities`. Pass nullptr to skip.
 	// Skips entities with DoDraw()==false (first-person mode hides the
 	// local mesh, so the viewmodel takes over via drawFirstPerson) and any
-	// entity whose heldItemType is 0/AIR.
+	// entity holding nothing (heldItemType 0 / BEGIN / AIR).
 	void drawForEntities(const glm::mat4& projection, const glm::mat4& view,
 	                     const glm::dvec3& eyePos,
 	                     const std::vector<std::shared_ptr<LivingEntity>>& entities,
 	                     LivingEntity* localPlayer = nullptr);
 
-	// Viewmodel for the local player. heldItemType==0 short-circuits.
+	// Viewmodel for the local player. Skips when nothing is held
+	// (heldItemType 0 / BEGIN / AIR).
 	// `localCharacter` lets the viewmodel animate during arm swings — pass
 	// the same ClientPlayer used elsewhere; nullptr keeps the cube static.
 	void drawFirstPerson(const glm::mat4& projection, const glm::mat4& view,
@@ -105,6 +109,22 @@ private:
 	                            const glm::dvec3& eyePos,
 	                            const std::vector<std::shared_ptr<LivingEntity>>& entities,
 	                            LivingEntity* localPlayer);
+
+	// Shared by 1P and 3P weapon paths: look up the canonical voxel mesh for
+	// `texLayer`, building+caching it on the first hit. Returns nullptr if the
+	// mesh would be empty (e.g. transparent texture).
+	const std::vector<float>* getOrBuildWeaponMesh(int texLayer);
+
+	// Transform every vertex of `canonical` by `M` and append into `dst`. The
+	// non-position floats (UV + texLayer) are copied through unchanged.
+	void appendTransformedWeaponMesh(const std::vector<float>& canonical,
+	                                 const glm::mat4& M,
+	                                 std::vector<float>& dst);
+
+	// Upload `cpuBuffer` to weaponVBO (growing the GPU buffer if needed) and
+	// issue one batched GL_TRIANGLES draw on weaponVAO.
+	void uploadAndDrawWeaponBatch(const glm::mat4& projection,
+	                              const glm::mat4& viewRot);
 };
 
 #endif
