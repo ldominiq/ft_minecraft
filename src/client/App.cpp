@@ -133,6 +133,7 @@ void App::init(const std::string& serverIp) {
 	playerListHUD = std::make_unique<PlayerListHUD>(screenWidth, screenHeight);
 
 	m_itemPropEntityManager = std::make_unique<ItemPropEntityManager>(&textureManager);
+	m_heldItemRenderer = std::make_unique<HeldItemRenderer>(&textureManager);
 
     // Initialize terrain debug window for parameter tweaking
     terrainDebugWindow = std::make_unique<TerrainDebugWindow>();
@@ -1212,6 +1213,28 @@ void App::render() {
             glm::vec2(screenWidth, screenHeight)
         );
 
+        // First-person viewmodel for the local player's held item. Drawn into
+        // the backbuffer (post clouds composite) so it always lands on top of
+        // the world but underneath the HUD/menus that come below. Skipped in
+        // third-person — drawForEntities already attached the item to the body.
+        if (m_heldItemRenderer && camera && !camera->isThirdPersonCameraActive()) {
+            const uint16_t held = camera->getPlayer()->heldItemType;
+            if (held != 0) {
+                if (lighting) {
+                    Shader& hShader = m_heldItemRenderer->getShader();
+                    lighting->uploadLightingUniforms(hShader,
+                                                    camera->getEyePosD(),
+                                                    camera->getPlayer()->getCameraDir());
+                    uploadActiveSpotLights(hShader);
+                    lighting->uploadCSMUniforms(hShader, view);
+                }
+                // Pass the local ClientPlayer as Character* so the viewmodel
+                // animates when the player swings their arm.
+                m_heldItemRenderer->drawFirstPerson(projection, view, held,
+                                                    camera->getPlayer().get());
+            }
+        }
+
         glBindVertexArray(0);
         {
     		// Dynamically build GUI textures based on debug flags
@@ -1610,6 +1633,13 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 		}
 	}
 
+	// Keep the local player's heldItemType in sync with their inventory each
+	// frame — no server packet reports our own held item back to us, and
+	// HeldItemRenderer reads this field uniformly for every entity.
+	if (localPlayer.inventory) {
+		localPlayer.heldItemType = localPlayer.inventory->getActiveItemID();
+	}
+
   // Upload the same lighting+CSM uniforms the terrain uses so mobs/players
   // receive directional light, point lights, and CSM shadows just like the
   // world they're standing in.
@@ -1620,6 +1650,28 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
       lighting->uploadCSMUniforms(chShader, view);
   }
   renderer->drawCharacters(projection, view, camera->getEyePosD(), deltaTime);
+
+  // Held items on every visible player (third-person local + every remote
+  // player). The first-person viewmodel for the local player is drawn at the
+  // end of render() so it lands on top of the final composited frame.
+  if (m_heldItemRenderer) {
+      // cubePropShader.frag pulls dir/point/CSM uniforms the same way the
+      // dropped-item path does — upload them here too so held items don't
+      // render unlit.
+      Shader& hShader = m_heldItemRenderer->getShader();
+      lighting->uploadLightingUniforms(hShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
+      uploadActiveSpotLights(hShader);
+      lighting->uploadCSMUniforms(hShader, view);
+
+      // Pass the local player explicitly — it lives only in
+      // livingEntitiesManager, not in renderer->livingEntities, so without
+      // this branch the local hand never renders in third-person.
+      LivingEntity* localForHand =
+          camera->isThirdPersonCameraActive() ? camera->getPlayer().get() : nullptr;
+      m_heldItemRenderer->drawForEntities(projection, view, camera->getEyePosD(),
+                                          renderer->livingEntities,
+                                          localForHand);
+  }
 }
 
 void App::uploadActiveSpotLights(Shader& shader) const
@@ -1953,6 +2005,57 @@ void App::debugWindow() {
                         }
                     }
 
+                    ImGui::EndTabItem();
+                }
+
+                if (ImGui::BeginTabItem("Held Item")) {
+                    auto t = HeldItemRenderer::getWeaponTuning();
+                    ImGui::TextUnformatted("1P weapon (sword) viewmodel pose");
+                    ImGui::Separator();
+                    ImGui::SliderFloat("Lean (deg)",  t.leanDeg,  -180.0f, 180.0f, "%.1f");
+                    ImGui::SliderFloat("Depth tilt (deg)", t.depthDeg, -90.0f, 90.0f, "%.1f");
+                    ImGui::SliderFloat("Size",        t.size,    0.05f, 2.0f, "%.3f");
+                    ImGui::SliderFloat("Hilt offset X", t.hiltDX, -1.0f, 1.0f, "%.3f");
+                    ImGui::SliderFloat("Hilt offset Y", t.hiltDY, -1.0f, 1.0f, "%.3f");
+                    ImGui::SliderFloat("Hilt offset Z", t.hiltDZ, -1.0f, 1.0f, "%.3f");
+                    if (ImGui::SliderFloat("Voxel depth", t.voxelDepth, 1.0f/64.0f, 0.5f, "%.4f")) {
+                        // Depth is baked into the cached extrusion — invalidate
+                        // so it rebuilds next frame at the new thickness.
+                        if (m_heldItemRenderer) m_heldItemRenderer->clearWeaponMeshCache();
+                    }
+                    ImGui::Separator();
+                    ImGui::TextUnformatted("Hand anchor (shared by cubes/sprites/weapon)");
+                    ImGui::SliderFloat("Hand X (cam-space)", t.handX, -1.5f, 1.5f, "%.3f");
+                    ImGui::SliderFloat("Hand Y (cam-space)", t.handY, -1.5f, 1.5f, "%.3f");
+                    ImGui::SliderFloat("Hand Z (cam-space)", t.handZ, -3.0f, -0.1f, "%.3f");
+                    ImGui::Separator();
+                    ImGui::TextUnformatted("3P weapon (other players / local in 3rd person)");
+                    ImGui::SliderFloat("3P size (world)", t.tpSize, 0.1f, 2.0f, "%.3f");
+                    ImGui::TextUnformatted("3P hilt offset (forearm frame: along arm / out wrist / sideways)");
+                    ImGui::SliderFloat("3P hilt DX (along arm)",   t.tpHiltDX, -1.0f, 1.0f, "%.3f");
+                    ImGui::SliderFloat("3P hilt DY (out wrist)",   t.tpHiltDY, -1.0f, 1.0f, "%.3f");
+                    ImGui::SliderFloat("3P hilt DZ (sideways)",    t.tpHiltDZ, -1.0f, 1.0f, "%.3f");
+                    ImGui::SliderFloat("3P lean (deg)",  t.tpLeanDeg,  -180.0f, 180.0f, "%.1f");
+                    ImGui::SliderFloat("3P depth (deg)", t.tpDepthDeg, -180.0f, 180.0f, "%.1f");
+                    if (ImGui::Button("Reset to defaults")) {
+                        *t.leanDeg    =  40.0f;
+                        *t.depthDeg   = -20.0f;
+                        *t.size       =  0.55f;
+                        *t.hiltDX     = -0.30f;
+                        *t.hiltDY     =  0.15f;
+                        *t.hiltDZ     =  0.0f;
+                        *t.voxelDepth =  1.0f / 16.0f;
+                        *t.handX      =  0.95f;
+                        *t.handY      = -0.65f;
+                        *t.handZ      = -0.90f;
+                        *t.tpSize     =   0.60f;
+                        *t.tpHiltDX   =  -0.58f;
+                        *t.tpHiltDY   =   0.255f;
+                        *t.tpHiltDZ   =   0.047f;
+                        *t.tpLeanDeg  = -174.6f;
+                        *t.tpDepthDeg =  -12.0f;
+                        if (m_heldItemRenderer) m_heldItemRenderer->clearWeaponMeshCache();
+                    }
                     ImGui::EndTabItem();
                 }
 

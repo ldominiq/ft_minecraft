@@ -428,6 +428,40 @@ void Server::receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr)
 	}
 
 	sendAccept(cliaddr);
+	sendEntitiesSnapshotTo(cliaddr);
+}
+
+void Server::sendEntitiesSnapshotTo(const sockaddr_in &cliaddr)
+{
+	// Find the just-connected client so we can skip their own entity (the
+	// receive path treats own ID == -1; remote IDs come through here).
+	auto self = NetUtils::findPlayerByAddr(players, cliaddr);
+	const LivingEntity *selfEntity =
+		(self != players.end()) ? self->movement.get() : nullptr;
+
+	for (const auto &entity : world->livingEntities)
+	{
+		if (!entity || entity.get() == selfEntity) continue;
+
+		// Mirror sendEntitiesPositionDeltas's packet layout exactly. Any
+		// field added there needs to land here too — keep the two in sync.
+		NetEntityMove pkt;
+		pkt.eEntityType = entity->getEntityType();
+		pkt.entityID = entity->getID();
+		pkt.type = static_cast<LivingEntityType>(entity->getLivingEntityType());
+		pkt.positionX = entity->getPositionD().x;
+		pkt.positionY = entity->getPositionD().y;
+		pkt.positionZ = entity->getPositionD().z;
+		pkt.yaw = entity->yaw;
+		pkt.pitch = entity->pitch;
+		pkt.entityName = entity->getName();
+		pkt.positionFlags = (entity->hasHorizontalInput ? 0x01u : 0u)
+		                  | (entity->isOnGround()       ? 0x02u : 0u)
+		                  | (entity->networkedPrimed    ? 0x08u : 0u)
+		                  | (entity->flashlightOn       ? 0x40u : 0u);
+		pkt.heldItemType = entity->heldItemType;
+		sendPacketTo(pkt, cliaddr);
+	}
 }
 
 void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
@@ -489,6 +523,18 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 
 	if (pkt.activeHotbarSlot != (uint8_t)-1)
 		player->movement->inventory->activeHotbarSlot = pkt.activeHotbarSlot;
+
+	// Resolve the player's currently-held item id and flag a broadcast if it
+	// changed. Re-checking on every input packet also catches inventory
+	// mutations (drops, pickups, swaps) that don't touch the hotbar index —
+	// they'd otherwise need their own dirty flag to reach NetEntityMove.
+	{
+		uint16_t newHeldType = player->movement->inventory->getActiveItemID();
+		if (newHeldType != player->movement->heldItemType) {
+			player->movement->heldItemType = newHeldType;
+			player->movement->rotationUpdated = true;
+		}
+	}
 
 	// Stash flashlight state from playerFlags bit 0 onto the player entity;
 	// sendEntitiesPositionDeltas will relay it to the other clients via
@@ -1129,6 +1175,8 @@ void Server::sendEntitiesPositionDeltas()
 							  | (entity->pendingHurt        ? 0x10u : 0u)
 							  | (entity->flashlightOn       ? 0x40u : 0u);
 
+			pkt.heldItemType = entity->heldItemType;
+
 			sendPacketTo(pkt, p.addr);
 		}
 
@@ -1367,7 +1415,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	give(0, BlockType::DIRT,       200);
 	give(1, BlockType::STONE,      200);
 	give(2, BlockType::CACTUS,     200);
-	give(8, BlockType::WATER,      200);
+	give(8, WeaponType::DIAMOND_SWORD,      1);
 
 	give(3, MiscType::IRON_INGOT,  64);
 	give(4, MiscType::GOLD_INGOT,  64);

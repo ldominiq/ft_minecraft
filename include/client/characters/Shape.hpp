@@ -21,6 +21,10 @@ class Shape : public Space
 		Shape(glm::vec3 color);
 		~Shape();
 
+		// The held-item renderer reads this from the right forearm to pin a weapon to
+		// the actual rendered hand
+		const glm::mat4& getTransform() const { return transform; }
+
 		void compute(const glm::mat4 &parentTransform, const glm::mat4& proj, const glm::mat4& view, const Shader &shader) override;
 
 		void draw(const glm::mat4 &mvp, const Shader &shader);

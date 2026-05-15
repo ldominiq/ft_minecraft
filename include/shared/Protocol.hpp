@@ -299,6 +299,11 @@ struct NetEntityMove final : public Packet {
 	// bit 6 = flashlightOn
 	uint8_t positionFlags = 0;
 
+	// ItemID of the item currently held in the active hotbar slot. 0/AIR means
+	// "nothing held" (no viewmodel rendered). Only meaningful for players;
+	// other living entities leave this at 0.
+	uint16_t heldItemType = 0;
+
 	NetEntityMove() : Packet(ID) {}
 
     void encode(BufferWriter& w) const override {
@@ -311,6 +316,7 @@ struct NetEntityMove final : public Packet {
 		w.write_f32(yaw);
 		w.write_f32(pitch);
 		w.write_u8(positionFlags);
+		w.write_u16(heldItemType);
 		w.write_string(entityName);
     }
     void decode(BufferReader& r) override {
@@ -323,6 +329,7 @@ struct NetEntityMove final : public Packet {
 		yaw = r.read_f32();
 		pitch = r.read_f32();
 		positionFlags = r.read_u8();
+		heldItemType = r.read_u16();
 		entityName = r.read_string();
     }
 };

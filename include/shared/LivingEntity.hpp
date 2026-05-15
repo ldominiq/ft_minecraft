@@ -87,6 +87,11 @@ class LivingEntity : public Entity
 		// Receiving clients render a spotlight attached to this entity's head.
 		bool flashlightOn = false;
 
+		// ItemID of the item currently shown in the player's hand. Server keeps
+		// it in sync with the player's active hotbar slot; clients receive it
+		// via NetEntityMove::heldItemType. 0 = empty/AIR (skip rendering).
+		uint16_t heldItemType = 0;
+
 		LivingEntity(const glm::vec3 &position);
 		LivingEntity(const glm::vec3 &position, float yaw, entityID ID);
 		virtual ~LivingEntity() = 0;

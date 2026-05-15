@@ -534,3 +534,9 @@ int TextureManager::getShortGrassTintLayer(BiomeType biome) const {
     auto it = biomeShortGrassLayer.find(biome);
     return it != biomeShortGrassLayer.end() ? it->second : biomeShortGrassLayer.at(BiomeType::PLAINS); // default to plains tint if biome not found
 }
+
+const std::vector<unsigned char>& TextureManager::getLayerPixels(int layer) const {
+    static const std::vector<unsigned char> empty;
+    if (layer < 0 || layer >= static_cast<int>(layerPixels.size())) return empty;
+    return layerPixels[layer];
+}

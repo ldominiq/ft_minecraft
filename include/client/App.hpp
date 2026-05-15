@@ -22,6 +22,7 @@
 #include "UDPClient.hpp"
 #include "Chat.hpp"
 #include "ItemPropEntityManager.hpp"
+#include "HeldItemRenderer.hpp"
 #include "WaterFramebuffer.hpp"
 #include "RenderTypeFramebuffer.hpp"
 #include "WaterRenderer.hpp"
@@ -148,6 +149,7 @@ private:
     const GLFWvidmode* mode;
 
 	std::unique_ptr<ItemPropEntityManager> m_itemPropEntityManager;
+	std::unique_ptr<HeldItemRenderer> m_heldItemRenderer;
 
 	std::shared_ptr<Renderer> renderer;
 	std::unique_ptr<WaterRenderer> waterRenderer;
