@@ -1197,7 +1197,7 @@ void World::explodeAt(const glm::vec3 &center, float radius, float maxDamage,
         float falloff = 1.0f - (dist / radius);
         if (falloff <= 0.0f) continue;
 
-        entity->health -= maxDamage * falloff;
+        entity->health = std::max(0.0f, entity->health - maxDamage * falloff);
         if (entity.get() == source)
             entity->diedByExplosion = true;
 

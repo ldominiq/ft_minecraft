@@ -417,8 +417,13 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 			reconcileDebugStats.lastErrAtAckMinusOneTick = 0.0f;
 		}
 
+		// Health is not simulated client-side for PvP/explosion damage, so a position-only
+		// match would silently drop the server's authoritative health update — including the
+		// killing blow that should trigger the death screen.
+		const bool healthMatches = std::abs(it->health - effectiveCorrection.health) < 0.001f;
+
 		// If disagreement is below threshold, prune history and trust client simulation
-       if (hPosErr < reconcilePosErrorThreshold && vPosErr < reconcilePosErrorThreshold && vErr < reconcileVelErrorThreshold) {
+       if (healthMatches && hPosErr < reconcilePosErrorThreshold && vPosErr < reconcilePosErrorThreshold && vErr < reconcileVelErrorThreshold) {
 			reconcileDebugStats.ignoredCorrections++;
 			predictedStates.erase(predictedStates.begin(), it);
 
@@ -564,8 +569,13 @@ void Camera::onSnapshot(NetPlayerMove &pkt)
 	if (!startPrediction)
 		startPrediction = true;
 
+	// Normally we skip snapshots whose ack tick we've already processed. But the server's
+	// ack tick is frozen while the player is dead (inputs are blocked), so the killing-blow
+	// snapshot — and the respawn snapshot — share the same tick as the last pre-death one.
+	// Accept those by letting health changes through even when the tick hasn't advanced.
 	if (lastAppliedServerClientReconciliationTick != -1 &&
-		((long)(pkt.serverClientReconciliationTick) - (long)(lastAppliedServerClientReconciliationTick) <= 0))
+		((long)(pkt.serverClientReconciliationTick) - (long)(lastAppliedServerClientReconciliationTick) <= 0)
+		&& pkt.health == player->health)
 		return;
 
 	glm::dvec3 position;
