@@ -21,12 +21,6 @@ ControlsMenu::~ControlsMenu()
 
 std::string getKeyName(int key)
 {
-    int scancode = glfwGetKeyScancode(key);
-    const char* name = glfwGetKeyName(key, scancode);
-
-    if (name)
-        return std::string(name);
-
     switch (key)
     {
         case GLFW_KEY_SPACE: return "Space";
@@ -48,8 +42,17 @@ std::string getKeyName(int key)
 		case GLFW_KEY_LEFT: return "Left Arrow";
 		case GLFW_KEY_UP: return "Up Arrow";
 		case GLFW_KEY_DOWN: return "Down Arrow";
-        default: return "Unknown";
-    }
+	}
+
+	int scancode = glfwGetKeyScancode(key);
+
+	if (scancode > 0) {
+
+		if (const char* name = glfwGetKeyName(key, scancode))
+			return std::string(name);
+	}
+
+	return "Unknown";
 }
 
 void ControlsMenu::build()
