@@ -18,7 +18,7 @@ App::App(const std::string& serverIp):
     fpsSamples.reserve(fpsSampleCount);
 }
 
-App::~App() { cleanup(); }
+App::~App() { }
 
 GLFWimage load_icon(const char* path) {
     GLFWimage image;
@@ -798,6 +798,10 @@ void App::loadResources() {
 void App::render() {
 
 	while (!glfwWindowShouldClose(window)) {
+
+		if (g_interrupted.load(std::memory_order_relaxed))
+			glfwSetWindowShouldClose(window, true);
+
 		// Rotate query index each frame
 		currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
 
@@ -1356,6 +1360,8 @@ void App::render() {
             }
         }
     }
+
+    cleanup();
 }
 
 bool readGPUQueryEMA(GLuint queryId, double &smoothedMs, float alpha)
@@ -2821,6 +2827,7 @@ void App::transitionTo(GameState newState) {
 }
 
 void App::cleanup() {
+
     // Shutdown ImGui before terminating GLFW
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
