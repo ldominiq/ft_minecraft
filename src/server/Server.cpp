@@ -497,6 +497,37 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		sendPacketTo(pkt, p.addr);
 	}
 
+	// Push back to inventory items in crafting station and hand to prevent lose
+	{
+		auto &inv   = player->movement->inventory;
+		auto &craft = player->movement->craftingStation;
+
+		auto salvage = [&](ItemType type, int amount) {
+			while (amount > 0)
+			{
+				int before = amount;
+				if (inv->insertItems(type, amount) == INVALID_SLOT || amount == before)
+					break; // inventory full: remaining items are lost (as before)
+			}
+		};
+
+		int craftSlots = craft->getRows() * craft->getCols();
+		for (int i = 0; i < craftSlots; ++i)
+		{
+			auto s = craft->getSlot(i);
+			if (s.second == 0) continue;
+			salvage(s.first, s.second);
+			craft->setSlot(i, 0, 0);
+		}
+
+		auto handPtr = inv->getHandPtr();
+		if (handPtr && handPtr->second > 0)
+		{
+			salvage(handPtr->first, handPtr->second);
+			*handPtr = { ItemType{}, 0 };
+		}
+	}
+
 	player->movement->savePlayerDataToFile("playerdata/" + player->movement->getName() + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
 
 	messages.push_back(player->movement->getName() + " left the game.");
@@ -1461,7 +1492,10 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 #endif
 
 	player->movement->inventory->createFullInventoryPkt(groupPkt);
-	
+	// Send the (empty) crafting station too so a reconnecting client can't keep
+	// showing a stale crafting grid from before it disconnected.
+	player->movement->craftingStation->createFullInventoryPkt(groupPkt);
+
 	NetPlayerGameMode gameModePkt;
 	gameModePkt.gamemode = static_cast<std::underlying_type_t<GAMEMODES>>(player->movement->gamemode);
 	groupPkt.push_back(std::make_unique<NetPlayerGameMode>(gameModePkt));
