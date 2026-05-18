@@ -1428,7 +1428,9 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	give(11, BlockType::SAND,     64);
 	give(12, BlockType::NETHERRACK,     64);
 	give(13, BlockType::BEACON,     64);
-	give(14, BlockType::TORCH_FLOOR,     64);
+	give(14, BlockType::TORCH_FLOOR, 64);
+	give(15, BlockType::COAL, 64);
+	give(16, MiscType::COAL,     64);
 
 
 	player->movement->inventory->createFullInventoryPkt(groupPkt);

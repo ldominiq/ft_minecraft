@@ -38,7 +38,7 @@ struct RecipeResult {
 };
 
 // Here we define the recipes.
-constexpr std::array<std::pair<Grid, RecipeResult>, 12> orderedRecipes = {{
+constexpr std::array<std::pair<Grid, RecipeResult>, 15> orderedRecipes = {{
 	{{
 		BlockType::STONE, BlockType::STONE, BlockType::STONE,
 		BlockType::STONE, BlockType::STONE, BlockType::STONE,
@@ -103,9 +103,15 @@ constexpr std::array<std::pair<Grid, RecipeResult>, 12> orderedRecipes = {{
 		MiscType::IRON_INGOT, BlockType::BEGIN, MiscType::IRON_INGOT,
 		BlockType::BEGIN, MiscType::IRON_INGOT, BlockType::BEGIN
 	}, {MiscType::EMPTY_BUCKET, 1}},
+
+	{{
+		MiscType::COAL, MiscType::COAL, MiscType::COAL,
+		MiscType::COAL, MiscType::COAL, MiscType::COAL,
+		MiscType::COAL, MiscType::COAL, MiscType::COAL
+	}, {BlockType::COAL_BLOCK, 1}},
 }};
 
-constexpr std::array<std::pair<Grid, RecipeResult>, 13> shapelessRecipes = {{
+constexpr std::array<std::pair<Grid, RecipeResult>, 21> shapelessRecipes = {{
 	{{
 		BlockType::STONE
 	}, {BlockType::GRASS, 1}},
@@ -151,7 +157,38 @@ constexpr std::array<std::pair<Grid, RecipeResult>, 13> shapelessRecipes = {{
 		BlockType::IRON_BLOCK, BlockType::DIAMOND_BLOCK, BlockType::GOLD_BLOCK,
 		BlockType::URANIUM_BLOCK, BlockType::STONE, BlockType::WITHER_ROSE,
 		BlockType::SAND, BlockType::NETHERRACK, BlockType::SNOW
-	}, {BlockType::BEACON, 1}}
+	}, {BlockType::BEACON, 1}},
+
+	{{
+	   MiscType::COAL, MiscType::STICK
+	}, {BlockType::TORCH_FLOOR, 4}},
+
+	{{
+	   BlockType::COAL
+	}, {MiscType::COAL, 1}},
+
+	{{
+	   BlockType::IRON_BLOCK
+	}, {MiscType::IRON_INGOT, 9}},
+
+	{{
+	   BlockType::GOLD_BLOCK
+	}, {MiscType::GOLD_INGOT, 9}},
+
+	{{
+	   BlockType::DIAMOND_BLOCK
+	}, {MiscType::DIAMOND, 9}},
+	{{
+	   BlockType::URANIUM_BLOCK
+	}, {MiscType::URANIUM_INGOT, 9}},
+
+	{{
+	   BlockType::COAL_BLOCK
+	}, {MiscType::COAL, 9}},
+
+	{{
+	   BlockType::IRON_BLOCK
+	}, {MiscType::IRON_INGOT, 9}},
 
 }};
 
