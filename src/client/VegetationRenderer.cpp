@@ -158,9 +158,12 @@ void VegetationRenderer::buildInstances(const Chunk::VegetationInstance* instanc
             aoFactor = enclosureAO * skyVisibility;
         }
 
-        // Note: Block light is not implemented in the current chunk system
-        // For now, default to 0 (no block light) - can be extended when torches are added
+        // Baked torch block-light at the plant's cell (cross-chunk via the
+        // chunk's neighbour-pull). vegetation.frag combines it with sky-light.
         float blockLightVal = 0.0f;
+        if (chunk) {
+            blockLightVal = static_cast<float>(chunk->getBlockLight(veg.x, veg.y, veg.z)) / 15.0f;
+        }
 
         instanceData.push_back(localX);
         instanceData.push_back(worldY);

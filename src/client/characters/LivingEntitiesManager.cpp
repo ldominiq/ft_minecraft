@@ -96,14 +96,17 @@ void LivingEntitiesManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 			const glm::dvec3 sampleBase = c->hasRenderPos ? c->renderPos : c->getPositionD();
 			const double midY = sampleBase.y + static_cast<double>(c->getEntityHeight()) * 0.5;
 			float skyFactor = 1.0f;
+			float blockFactor = 0.0f;
 			if (world) {
 				const glm::ivec3 bp(
 					static_cast<int>(std::floor(sampleBase.x)),
 					static_cast<int>(std::floor(midY)),
 					static_cast<int>(std::floor(sampleBase.z)));
 				skyFactor = static_cast<float>(world->getSkyLightWorld(bp)) / 15.0f;
+				blockFactor = static_cast<float>(world->getBlockLightWorld(bp)) / 15.0f;
 			}
 			characterShader.setFloat("uEntitySkyLight", skyFactor);
+			characterShader.setFloat("uEntityBlockLight", blockFactor);
 		}
 
 		if (dying || c->positionUpdated || c->rotationUpdated || c->characterBodyParts.onWalkAnimation || swinging || c->hasRenderPos || creeperAnimating || cameraMoved)

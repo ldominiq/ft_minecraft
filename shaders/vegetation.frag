@@ -48,6 +48,26 @@ uniform int pcfQuality; // 0=1-tap, 1=3x3, 2=5x5
 
 #include "sky_common.glsl"
 
+// Dynamic spot/point lights (held torches + flashlights). Field names match
+// Lighting::uploadSpotLights so App::uploadActiveSpotLights lights this shader
+// with no extra host code. A held torch is an omni light (cutOff=-1,
+// outerCutOff=-2 → intensity 1 in every direction).
+#define VEG_MAX_SPOT_LIGHTS 16
+struct VegSpotLight {
+    vec3 position;   // camera-relative
+    vec3 direction;
+    float cutOff;
+    float outerCutOff;
+    float constant;
+    float linear;
+    float quadratic;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+uniform VegSpotLight spotLights[VEG_MAX_SPOT_LIGHTS];
+uniform int numSpotLights;
+
 // Forward declarations
 float computeVegetationShadow(vec3 fragPosWorldSpace);
 
@@ -78,9 +98,10 @@ void main() {
         shadow = computeVegetationShadow(fs_in.FragPosRel);
     }
 
-    // Combine skylight and block light: use the maximum of the two
-    // Block light is attenuated (0.6x) to avoid overpowering natural light
-    float effectiveLight = max(fs_in.SkyLight, fs_in.BlockLight * 0.6);
+    // Sun/sky term uses skylight only; baked torch light is added separately
+    // below as a warm, sky/shadow-independent emissive term (a pure multiply
+    // can't brighten a pitch-black cave where ambient/diffuse are ~0).
+    float effectiveLight = fs_in.SkyLight;
 
     // Ambient + diffuse, modulated by AO factor and CSM shadow
     // AO affects both ambient and diffuse for enclosed space darkening
@@ -90,6 +111,29 @@ void main() {
 
     // Clamp to avoid overbright whites
     vec3 result = min(ambient + diffuse, vec3(1.0)) * texColor.rgb;
+
+    // Baked torch block-light: warm additive term (matches lighting.frag /
+    // entity_lighting.glsl) so grass near a placed torch glows in the dark.
+    result += vec3(1.0, 0.62, 0.30) * (fs_in.BlockLight * fs_in.BlockLight)
+              * 1.6 * texColor.rgb;
+
+    // Dynamic held-torch / flashlight contribution (additive). Vegetation
+    // uses a flat upward normal, so soften the N·L so side-lit grass isn't
+    // pitch black.
+    for (int i = 0; i < numSpotLights; ++i) {
+        vec3 L = spotLights[i].position - fs_in.FragPosRel;
+        float d = length(L);
+        vec3 Ln = d > 1e-4 ? L / d : vec3(0.0, 1.0, 0.0);
+        float att = 1.0 / (spotLights[i].constant
+                         + spotLights[i].linear * d
+                         + spotLights[i].quadratic * d * d);
+        float theta = dot(Ln, normalize(-spotLights[i].direction));
+        float eps = spotLights[i].cutOff - spotLights[i].outerCutOff;
+        float intensity = clamp((theta - spotLights[i].outerCutOff)
+                                / max(eps, 1e-4), 0.0, 1.0);
+        float ndotl = max(dot(normal, Ln), 0.25);
+        result += spotLights[i].diffuse * ndotl * att * intensity * texColor.rgb;
+    }
 
     // Apply underwater tint — blue-green color absorption
     if (fs_in.IsUnderwater > 0.5) {

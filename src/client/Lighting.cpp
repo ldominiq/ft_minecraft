@@ -610,16 +610,23 @@ void Lighting::uploadSpotLights(const Shader& shader,
     const int n = std::min(static_cast<int>(lights.size()), MAX_SPOT_LIGHTS);
     shader.setInt("numSpotLights", n);
 
-    const float cosInner = glm::cos(glm::radians(flashlightCutoff));
-    const float cosOuter = glm::cos(glm::radians(flashlightOuterCutoff));
+    const float flashCosInner = glm::cos(glm::radians(flashlightCutoff));
+    const float flashCosOuter = glm::cos(glm::radians(flashlightOuterCutoff));
 
     for (int i = 0; i < n; ++i) {
         const std::string p = "spotLights[" + std::to_string(i) + "].";
+        // An omni light (torch) has no cone. The shader computes
+        //   intensity = clamp((theta - outerCutOff) / (cutOff - outerCutOff), 0, 1)
+        // with theta = dot(lightDir, -dir) ∈ [-1, 1]. Picking cutOff=-1 and
+        // outerCutOff=-2 gives a nonzero epsilon (no divide-by-zero / NaN) and
+        // forces intensity to 1 in every direction → a pure point light.
+        const float cosInner = lights[i].omni ? -1.0f : flashCosInner;
+        const float cosOuter = lights[i].omni ? -2.0f : flashCosOuter;
         shader.setVec3(p + "position",  lights[i].posRel);
         shader.setVec3(p + "direction", lights[i].dir);
         shader.setVec3(p + "ambient",   glm::vec3(0.0f));
-        shader.setVec3(p + "diffuse",   glm::vec3(1.0f));
-        shader.setVec3(p + "specular",  glm::vec3(1.0f));
+        shader.setVec3(p + "diffuse",   lights[i].color);
+        shader.setVec3(p + "specular",  lights[i].color);
         shader.setFloat(p + "constant",    spotLightConstant);
         shader.setFloat(p + "linear",      spotLightLinear);
         shader.setFloat(p + "quadratic",   spotLightQuadratic);

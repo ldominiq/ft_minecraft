@@ -978,7 +978,48 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 		return false;
 	}
 
-	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN) 
+	// Torch placement: orientation is derived from the clicked face. The held
+	// item is always TORCH_FLOOR; placing on a side wall promotes it to the
+	// matching wall variant. Torches can't hang from a ceiling.
+	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item)
+		&& isTorch(std::get<BlockType>(item)))
+	{
+		if (target != TargetType::Block)
+			return false;
+
+		BlockType torchVariant;
+		if (faceNormal == glm::ivec3(0, 1, 0))
+			torchVariant = BlockType::TORCH_FLOOR;
+		else if (faceNormal == glm::ivec3(1, 0, 0))
+			torchVariant = BlockType::TORCH_WALL_EAST;
+		else if (faceNormal == glm::ivec3(-1, 0, 0))
+			torchVariant = BlockType::TORCH_WALL_WEST;
+		else if (faceNormal == glm::ivec3(0, 0, 1))
+			torchVariant = BlockType::TORCH_WALL_NORTH;
+		else if (faceNormal == glm::ivec3(0, 0, -1))
+			torchVariant = BlockType::TORCH_WALL_SOUTH;
+		else
+			return false; // underside / unsupported face
+
+		// The clicked block must be a solid support (not air / another
+		// torch), and the cell the torch would occupy must be empty so a
+		// new torch never overwrites an existing one sharing that cell.
+		if (!isBlockSolid(getBlockWorld(blockPos)))
+			return false;
+		if (getBlockWorld(blockPos + faceNormal) != BlockType::AIR)
+			return false;
+
+		// No entity-collision check: a torch has no real hitbox, so you can
+		// place one in the cell you're standing in (unlike a full block).
+		if (setBlockWorld(blockPos, faceNormal, torchVariant))
+		{
+			player.movement->inventory->removeItemsFromSlot(player.movement->inventory->activeHotbarSlot, 1);
+			return true;
+		}
+		return false;
+	}
+
+	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN)
 	{
 		if (target == TargetType::Block)
 		{
@@ -999,6 +1040,10 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			BlockType dropped = getBlockWorld(blockPos);
 
 			if (dropped == BlockType::BEDROCK) return false;
+
+			// Torches always drop as the inventory (floor) form so they
+			// stack regardless of which wall variant was mined.
+			if (isTorch(dropped)) dropped = BlockType::TORCH_FLOOR;
 
 			// random generator
 			static std::mt19937 rng(std::random_device{}());
@@ -1031,9 +1076,61 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 
 		if (target == TargetType::Block)
 			if (setBlockWorld(blockPos, std::nullopt, BlockType::AIR))
+			{
+				breakDependentTorches(blockPos, clientTick,
+					player.movement->gamemode == GAMEMODES::SURVIVAL);
 				return false;
+			}
 	}
 	return false;
+}
+
+void World::breakDependentTorches(const glm::ivec3& removedBlock, int32_t clientTick, bool dropItems)
+{
+	// outDir for each wall variant: the direction the torch points away from
+	// the wall. A wall torch in cell C is supported by the block at C-outDir,
+	// so it depends on `removedBlock` when its cell == removedBlock + outDir.
+	auto wallOutDir = [](BlockType t) -> glm::ivec3 {
+		switch (t) {
+			case BlockType::TORCH_WALL_EAST:  return { 1, 0,  0};
+			case BlockType::TORCH_WALL_WEST:  return {-1, 0,  0};
+			case BlockType::TORCH_WALL_NORTH: return { 0, 0,  1};
+			case BlockType::TORCH_WALL_SOUTH: return { 0, 0, -1};
+			default:                          return { 0, 0,  0};
+		}
+	};
+
+	std::vector<glm::ivec3> toBreak;
+
+	// Floor torch sitting on top of the removed block.
+	const glm::ivec3 above = removedBlock + glm::ivec3(0, 1, 0);
+	if (getBlockWorld(above) == BlockType::TORCH_FLOOR)
+		toBreak.push_back(above);
+
+	// Wall torch mounted on the removed block: it sits in the cell offset by
+	// its outDir from the wall, so check the 4 horizontal neighbours.
+	static const glm::ivec3 horiz[4] = {
+		{ 1, 0, 0}, {-1, 0, 0}, { 0, 0, 1}, { 0, 0, -1}
+	};
+	for (const glm::ivec3& d : horiz) {
+		const glm::ivec3 cell = removedBlock + d;
+		BlockType b = getBlockWorld(cell);
+		if (isTorch(b) && wallOutDir(b) == d)
+			toBreak.push_back(cell);
+	}
+
+	for (const glm::ivec3& torchPos : toBreak) {
+		if (!setBlockWorld(torchPos, std::nullopt, BlockType::AIR))
+			continue;
+		if (!dropItems)
+			continue;
+		static std::mt19937 rng(std::random_device{}());
+		std::uniform_real_distribution<float> angleDist(0.0f, 360.0f);
+		float randomAngle = angleDist(rng);
+		glm::vec3 spawnPos = glm::vec3(torchPos) + glm::vec3(0.5f);
+		itemEntities.push_back(std::make_shared<ItemEntity>(
+			spawnPos, randomAngle, BlockType::TORCH_FLOOR, clientTick));
+	}
 }
 
 void World::updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t clientTick)

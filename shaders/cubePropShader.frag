@@ -5,6 +5,7 @@ flat in float TexLayer;
 in vec3 vFragPosRel;
 flat in vec3 vNormal;
 flat in float vSkyLight;
+flat in float vBlockLight;
 out vec4 FragColor;
 
 uniform sampler2DArray blockTextures;
@@ -25,7 +26,15 @@ void main()
         tex.rgb /= tex.a;
     }
 
-    // Full directional + CSM shadow + point lights — dropped items react to the
-    // same lights as the terrain they're lying on.
-    FragColor = vec4(entityLitColor(tex.rgb, normalize(vNormal), vFragPosRel, vSkyLight), 1.0);
+    // vSkyLight > 2.5 is the self-lit torch sentinel (the torch item itself
+    // glows). Otherwise it's a normal 0..1 skylight and vBlockLight carries
+    // baked torch light independently (added as a warm sky/shadow-independent
+    // term inside entityLitColor — same as terrain/mobs).
+    if (vSkyLight > 2.5) {
+        FragColor = vec4(tex.rgb, 1.0);
+        return;
+    }
+
+    FragColor = vec4(entityLitColor(tex.rgb, normalize(vNormal), vFragPosRel,
+                                    clamp(vSkyLight, 0.0, 1.0), vBlockLight), 1.0);
 }

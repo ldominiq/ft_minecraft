@@ -5,7 +5,7 @@
 // Bit layout (must match include/client/PackedVertex.hpp):
 //   v0: posX:9 | posY:13 | posZ:9 | reserved:1
 //        — positions are 1/16-block fixed point (multiply by 1/16 to recover floats)
-//   v1: normal:3 | corner:2 | texLayer:10 | skyLight:4 | waterAbove:1 | reserved:12
+//   v1: normal:3 | corner:2 | texLayer:10 | skyLight:4 | waterAbove:1 | blockLight:4 | reserved:8
 
 // Face direction lookup. Matches ChunkRenderer's `face` parameter ordering:
 //   0 = front (Z+), 1 = back (Z-), 2 = top (Y+), 3 = bottom (Y-),
@@ -44,3 +44,6 @@ float unpackSkyLight(uint v1) { return float((v1 >> 15) & 0xFu) / 15.0; }
 // 1.0 if this face's block has water directly above (top faces only);
 // 0.0 otherwise. Used by the lighting fragment shader to gate caustics.
 float unpackWaterAbove(uint v1) { return float((v1 >> 19) & 0x1u); }
+// Emissive block-light (torches), 0..1. Added to lighting un-modulated by
+// sky/shadow so torch-lit caves aren't black.
+float unpackBlockLight(uint v1) { return float((v1 >> 20) & 0xFu) / 15.0; }

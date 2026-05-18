@@ -10,6 +10,9 @@ uniform bool uUseTexture;   // when true, sample uSkin; otherwise emit uColor
 // way terrain does — without it, CSM-only shadowing leaves them bright
 // underground because the cascade frustum reaches in from above unobstructed.
 uniform float uEntitySkyLight;
+// Baked torch block-light at the entity's body-center (0..1). Added as a
+// warm, sky/shadow-independent term so torches light mobs/players in caves.
+uniform float uEntityBlockLight;
 
 in vec2 vTex;
 in vec3 vFragPosRel;
@@ -34,5 +37,5 @@ void main()
     }
     // Full directional + CSM shadow + point lights; matches the terrain pipeline
     // (minus specular/SSAO) so mobs react to the same lighting as the world.
-    FragColor = vec4(entityLitColor(albedo, normalize(vNormal), vFragPosRel, uEntitySkyLight), 1.0);
+    FragColor = vec4(entityLitColor(albedo, normalize(vNormal), vFragPosRel, uEntitySkyLight, uEntityBlockLight), 1.0);
 }

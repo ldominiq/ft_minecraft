@@ -17,7 +17,12 @@ static void buildInventoryIcon(
 	if (auto* b = std::get_if<BlockType>(&item); b && *b == BlockType::BEGIN)
 		return;
 
-	if (isItemFlat(item)) {
+	// Torches are a block but, like Minecraft, show as a flat 2D icon
+	bool flat = isItemFlat(item);
+	if (auto* b = std::get_if<BlockType>(&item); b && isTorch(*b))
+		flat = true;
+
+	if (flat) {
 		const int layer = texMgr ? texMgr->getItemSpriteLayer(item) : 0;
 		build2DInventorySprite(meshVertices, origin, scale, layer);
 	} else if (auto* b = std::get_if<BlockType>(&item)) {

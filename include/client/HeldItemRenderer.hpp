@@ -29,7 +29,7 @@ class Character;
 // heldItemType of 0, BlockType::BEGIN, or BlockType::AIR all mean "nothing
 // held" and skip rendering for that entity.
 class HeldItemRenderer {
-	static constexpr int FLOATS_PER_VERT = 7;   // pos(3) + uv(2) + texLayer(1) + skyLight(1) — matches cubePropShader.vert
+	static constexpr int FLOATS_PER_VERT = 8;   // pos(3) + uv(2) + texLayer(1) + skyLight(1) + blockLight(1) — matches cubePropShader.vert
 	static constexpr int VERTS_PER_ITEM  = 36;  // matches buildCube / padded sprite
 	static constexpr int FLOATS_PER_ITEM = VERTS_PER_ITEM * FLOATS_PER_VERT;
 	static constexpr int MAX_ITEMS       = 64;  // plenty for visible players
@@ -71,7 +71,15 @@ public:
 	void drawFirstPerson(const glm::mat4& projection, const glm::mat4& view,
 	                     uint16_t heldItemType,
 	                     const Character* localCharacter = nullptr,
-	                     float skyFactor = 1.0f);
+	                     float skyFactor = 1.0f,
+	                     float blockFactor = 0.0f);
+
+	// Placed torches in the world. Reuses the per-pixel voxel-extruded mesh
+	struct PlacedTorch { glm::ivec3 worldPos; BlockType variant; };
+	void drawPlacedTorches(const glm::mat4& projection, const glm::mat4& view,
+	                       const glm::dvec3& eyePos,
+	                       const std::vector<PlacedTorch>& torches,
+	                       int torchTexLayer);
 
 	// Same uniforms App.cpp uploads on the other entity shaders go here too.
 	Shader& getShader() { return *shader; }
@@ -124,7 +132,8 @@ private:
 	void appendTransformedWeaponMesh(const std::vector<float>& canonical,
 	                                 const glm::mat4& M,
 	                                 float skyFactor,
-	                                 std::vector<float>& dst);
+	                                 std::vector<float>& dst,
+	                                 float blockFactor = 0.0f);
 
 	// Upload `cpuBuffer` to weaponVBO (growing the GPU buffer if needed) and
 	// issue one batched GL_TRIANGLES draw on weaponVAO.

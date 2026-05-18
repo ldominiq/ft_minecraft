@@ -99,7 +99,7 @@ void ChunkRenderer::updateMesh()
 	std::memset(neighbourNeedUpdate, 0, sizeof(neighbourNeedUpdate));
 }
 
-void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockType type, const int face, const float skyLightLevel, const bool waterAbove) {
+void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockType type, const int face, const float skyLightLevel, const bool waterAbove, const float blockLightLevel) {
     // Mesh vertices are baked in chunk-LOCAL coordinates so that the GPU
     // never sees the large world coordinate of the chunk origin. The
     // origin is applied per-draw via the chunkOriginWorld / chunkRel
@@ -172,7 +172,8 @@ void ChunkRenderer::addFace(const int x, const int y, const int z, const BlockTy
             packed_vertex::CORNER_FOR_VERT[i],
             texLayer,
             skyLightLevel,
-            waterAbove));
+            waterAbove,
+            blockLightLevel));
     }
 }
 
@@ -231,6 +232,7 @@ void ChunkRenderer::buildMesh() {
 	// recompute sky-light because the terrain changed.  This runs
 	// single-threaded here so there's no race with neighbors.
 	computeSkyLight();
+	computeBlockLight();
 	buildMeshData();
 	uploadMesh();
 	buildVegetationMesh();
@@ -240,6 +242,7 @@ void ChunkRenderer::buildMeshData() {
 	meshVertices.clear();
 	waterMeshVertices.clear();
 	placedWaterMeshVertices.clear();
+	torchInstances.clear();
 
 	// Only the *top* face of a water block whose top sits exactly on the
 	// sea-level plane goes to the "ocean" bucket: that's the face the
@@ -316,6 +319,30 @@ void ChunkRenderer::buildMeshData() {
         return adjacentChunk->getSkyLight(remappedX, neighborY, remappedZ);
     };
 
+    // Same as getSkyLightForFace but for emissive block-light. The dark
+    // default is 0 everywhere (no implicit light outside computed data).
+    auto getBlockLightForFace = [&](int blockX, int blockY, int blockZ,
+                                     int dx, int dy, int dz,
+                                     Direction dir) -> uint8_t {
+        int neighborX = blockX + dx;
+        int neighborY = blockY + dy;
+        int neighborZ = blockZ + dz;
+
+        if (neighborY >= HEIGHT || neighborY < 0) return 0;
+
+        if (neighborX >= 0 && neighborX < WIDTH &&
+            neighborZ >= 0 && neighborZ < DEPTH) {
+            return getBlockLight(neighborX, neighborY, neighborZ);
+        }
+
+        const auto adjacentChunk = adjacentChunks[dir].lock();
+        if (!adjacentChunk) return 0;
+
+        const int remappedX = (dx == -1 ? WIDTH - 1 : (dx == 1 ? 0 : blockX));
+        const int remappedZ = (dz == -1 ? DEPTH - 1 : (dz == 1 ? 0 : blockZ));
+        return adjacentChunk->getBlockLight(remappedX, neighborY, remappedZ);
+    };
+
     struct FaceDir {
         int dx, dy, dz;
         Direction neighborDir;
@@ -353,6 +380,16 @@ void ChunkRenderer::buildMeshData() {
                 if (currentBlock == BlockType::AIR) continue;
                 if (isBlockVegetation(currentBlock)) continue;
 
+                // Torches aren't part of the chunk mesh — the packed-vertex
+                // format can't map a partial sprite, so they'd show the whole
+                // torch image on every face. Record them for HeldItemRenderer
+                // to draw with the same voxel-extruded model as the held one.
+                if (isTorch(currentBlock)) {
+                    torchInstances.push_back({ glm::ivec3(originX + x, y, originZ + z),
+                                               currentBlock });
+                    continue;
+                }
+
                 const bool isWater = (currentBlock == BlockType::WATER);
                 const bool currentIsLeaf = isBlockLeaves(currentBlock);
                 const bool smartLeavesCullLikeFast = (sLeafRenderMode == LeafRenderMode::Smart);
@@ -367,6 +404,7 @@ void ChunkRenderer::buildMeshData() {
                     }
 
                     const float faceSkyLight = lightToFloat(getSkyLightForFace(x, y, z, face.dx, face.dy, face.dz, face.neighborDir));
+                    const float faceBlockLight = lightToFloat(getBlockLightForFace(x, y, z, face.dx, face.dy, face.dz, face.neighborDir));
                     // Top faces (faceIndex == 2) with water directly above
                     // get tagged so the fragment shader can restrict caustics
                     // to actual underwater surfaces, not just everything below
@@ -401,7 +439,7 @@ void ChunkRenderer::buildMeshData() {
                     } else if (currentBlock == BlockType::CACTUS) {
                         bool isSide = (face.faceIndex != 2 && face.faceIndex != 3);
                         if (isSide || !isBlockSolid(neighborBlock) || neighborBlock != BlockType::CACTUS) {
-                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight, waterAbove);
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight, waterAbove, faceBlockLight);
                         }
                     }
                     else if (currentIsLeaf) {
@@ -412,7 +450,7 @@ void ChunkRenderer::buildMeshData() {
                             neighborTreatedTransparent ||
                             (fancyLeaves && neighborIsLeaf) ||
                             neighborBlock == BlockType::CACTUS) {
-                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight, waterAbove);
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight, waterAbove, faceBlockLight);
                         }
                     }
                     else {
@@ -427,7 +465,7 @@ void ChunkRenderer::buildMeshData() {
                             neighborTreatsAsTransparent ||
                             (smartLeavesCullLikeFast && neighborIsLeaf) ||
                             neighborBlock == BlockType::CACTUS) {
-                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight, waterAbove);
+                            addFace(x, y, z, currentBlock, face.faceIndex, faceSkyLight, waterAbove, faceBlockLight);
                         }
                     }
                 }

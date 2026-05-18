@@ -147,7 +147,12 @@ vec3 entitySpotLightContrib(vec3 fragPosRel, vec3 normal) {
 // where it comes from: mobs/players read a per-entity uniform; dropped items
 // read a per-vertex attribute (since they're rendered in a single batched draw
 // call, a uniform can't distinguish per-item values).
-vec3 entityLitColor(vec3 albedo, vec3 normal, vec3 fragPosRel, float skyFactor) {
+// blockFactor (0..1) is baked torch block-light sampled at the entity, added
+// as a warm emissive term NOT modulated by sky/shadow so a torch lights mobs
+// / players / items in a pitch-black cave (matches lighting.frag's terrain
+// torch term). 4-arg overload keeps existing callers working (blockFactor=0).
+vec3 entityLitColor(vec3 albedo, vec3 normal, vec3 fragPosRel,
+                    float skyFactor, float blockFactor) {
     vec3 lightDir = normalize(-dirLight.direction);
     float ndotl = max(dot(normal, lightDir), 0.0);
     float shadow = entityCSMShadow(fragPosRel, normal, lightDir);
@@ -162,5 +167,10 @@ vec3 entityLitColor(vec3 albedo, vec3 normal, vec3 fragPosRel, float skyFactor) 
 
     vec3 points  = entityPointLightsContrib(fragPosRel, normal);
     vec3 spot    = entitySpotLightContrib(fragPosRel, normal);
-    return albedo * (ambient + diffuse + points + spot);
+    vec3 torch   = vec3(1.0, 0.62, 0.30) * (blockFactor * blockFactor) * 1.6;
+    return albedo * (ambient + diffuse + points + spot + torch);
+}
+
+vec3 entityLitColor(vec3 albedo, vec3 normal, vec3 fragPosRel, float skyFactor) {
+    return entityLitColor(albedo, normal, fragPosRel, skyFactor, 0.0);
 }
