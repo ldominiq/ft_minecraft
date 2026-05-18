@@ -118,6 +118,15 @@ class Chunk {
 		// Returns true if block-light has already been computed for this chunk.
 		bool hasBlockLight() const { return !blockLight.empty(); }
 
+		void addBlockLightIncremental(int lx, int ly, int lz, bool touched[3][3]);
+		void removeBlockLightIncremental(int lx, int ly, int lz, bool touched[3][3]);
+
+	private:
+		// Cross-chunk read/write helper for the two incremental ops above.
+		// Defined in Chunk.cpp; nested so it can reach adjacentChunks/blockLight.
+		struct IncLightCtx;
+	public:
+
 		void saveToStream(std::ostream& out) const; // only server? Still great to have it here.
 		void loadFromStream(std::istream& in);
 

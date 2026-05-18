@@ -59,6 +59,7 @@ private:
 
 		bool needsUpdate = false;
 		bool neighbourNeedUpdate[4] { false };
+		bool blockLightOnlyRebuild = false;
 
 		glm::vec3 cachedMinP;
 		glm::vec3 cachedMaxP;

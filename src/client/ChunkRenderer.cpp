@@ -231,8 +231,13 @@ void ChunkRenderer::buildMesh() {
 	// When called from updateMesh() (block placed/broken), we need to
 	// recompute sky-light because the terrain changed.  This runs
 	// single-threaded here so there's no race with neighbors.
-	computeSkyLight();
-	computeBlockLight();
+	// Skip the full sky/block-light BFS only for an incremental torch rebuild
+	// AND only once the chunk already has light
+	if (!blockLightOnlyRebuild || !hasSkyLight() || !hasBlockLight()) {
+		computeSkyLight();
+		computeBlockLight();
+	}
+	blockLightOnlyRebuild = false;
 	buildMeshData();
 	uploadMesh();
 	buildVegetationMesh();

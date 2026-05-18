@@ -50,6 +50,9 @@ bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
     const BlockType prev = currChunk->getBlock(x, y, z);
     currChunk->setBlockCascade(x, y, z, type);
 	currChunk->needsUpdate = true;
+	// Any non-torch edit clears a pending torch-only flag so this rebuild
+	// does a full sky/block-light recompute (re-set to true below if torch).
+	currChunk->blockLightOnlyRebuild = false;
 
 	// //update possible neighbour
 	if (x == 0)
@@ -61,18 +64,41 @@ bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 	if (z == Chunk::DEPTH - 1)
 		currChunk->neighbourNeedUpdate[NORTH] = true;
 
-	// A torch's block-light reaches up to 14 blocks (< chunk width 16), so
-	// it can spill into any of the 8 surrounding chunks — diagonals too.
-	// Each computes its light independently from torch blocks, so just mark
-	// the whole 3x3 dirty; order doesn't matter (no cross-chunk feedback).
 	if (isTorch(type) || isTorch(prev)) {
-		int lx, ly, lz, cX, cZ;
-		globalCoordsToLocalCoords(lx, ly, lz,
-			globalCoords.x, globalCoords.y, globalCoords.z, cX, cZ);
+		bool touched[3][3] = {};
+		if (isTorch(type))
+			currChunk->addBlockLightIncremental(x, y, z, touched);
+		else
+			currChunk->removeBlockLightIncremental(x, y, z, touched);
+
+		// Mesh-only rebuild of the WHOLE 3x3
+		const ChunkPos cp = currChunk->getPos(); // {chunkX, chunkZ}
 		for (int dxc = -1; dxc <= 1; ++dxc)
 			for (int dzc = -1; dzc <= 1; ++dzc)
-				if (auto c = getChunk(cX + dxc, cZ + dzc))
+				if (auto c = getChunk(cp.first + dxc, cp.second + dzc)) {
 					c->needsUpdate = true;
+					c->blockLightOnlyRebuild = true;
+				}
+	}
+	else {
+		const bool opacityChanged =
+			(isBlockSolid(type) && !isBlockTransparent(type)) !=
+			(isBlockSolid(prev) && !isBlockTransparent(prev));
+		if (opacityChanged) {
+			const ChunkPos cp = currChunk->getPos();
+			bool torchNear = currChunk->containsTorch;
+			for (int dxc = -1; !torchNear && dxc <= 1; ++dxc)
+				for (int dzc = -1; !torchNear && dzc <= 1; ++dzc)
+					if (auto c = getChunk(cp.first + dxc, cp.second + dzc))
+						if (c->containsTorch) torchNear = true;
+			if (torchNear)
+				for (int dxc = -1; dxc <= 1; ++dxc)
+					for (int dzc = -1; dzc <= 1; ++dzc)
+						if (auto c = getChunk(cp.first + dxc, cp.second + dzc)) {
+							c->needsUpdate = true;
+							c->blockLightOnlyRebuild = false; // force full recompute
+						}
+		}
 	}
 
 	return true;
