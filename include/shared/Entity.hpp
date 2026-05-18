@@ -111,7 +111,7 @@ class Entity {
 		bool aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world);
 
 		virtual glm::vec3 getDesiredMove() = 0;
-		void calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove);
+		virtual void calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove);
 		virtual void calculateNewYPosition(const ICommonWorld &world);
 		virtual void calculateUnderwaterPosition(const ICommonWorld &world);
 
