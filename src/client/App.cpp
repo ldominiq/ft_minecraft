@@ -3151,8 +3151,25 @@ void App::processInputMenus(int key, int action) {
 
 	// HANDLE EVENTS WHEN CHAT OPEN
 
+	// Closing the inventory while holding a stack on the cursor
+	auto dropCursorIfHolding = [&]() {
+		auto refs = camera->getPlayer()->inventoryExternalVarsRefs;
+		if (!refs || !refs->hand || refs->hand->second == 0)
+			return;
+		if (udpClient)
+		{
+			NetInventoryAction drop;
+			drop.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
+			drop.modifier = InventoryModifiers::INV_DROP_CURSOR;
+			udpClient->sendPacket(drop);
+		}
+		*refs->hand = { ItemType{}, 0 };
+	};
+
 	if (manager && key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 	{
+		if (manager == inventoryUI)
+			dropCursorIfHolding();
 		menuManager.reset();
 		if (!uiInteractive)
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -3160,6 +3177,7 @@ void App::processInputMenus(int key, int action) {
 	//close inventory with E too.
 	if (manager && manager == inventoryUI && key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
 	{
+		dropCursorIfHolding();
 		menuManager.reset();
 		if (!uiInteractive)
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);

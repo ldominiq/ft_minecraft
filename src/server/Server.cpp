@@ -812,6 +812,31 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 		pktsToSend.push_back(std::move(pkt));
 	};
 
+	// Closing the inventory with items still on the cursor will drop the items
+	if (pkt.modifier == InventoryModifiers::INV_DROP_CURSOR)
+	{
+		auto handPtr = player->movement->inventory->getHandPtr();
+		if (handPtr && handPtr->second > 0)
+		{
+			ItemType type = handPtr->first;
+			int amount = handPtr->second;
+
+			glm::vec3 itemPos = player->movement->getPosition()
+				+ glm::vec3(0, player->movement->getEntityHeight() * 0.6f, 0)
+				+ player->movement->getCameraDir() * 0.2f;
+
+			for (int i = 0; i < amount; ++i)
+				world->itemEntities.push_back(std::make_shared<ItemEntity>(
+					itemPos, player->movement->getYaw(), type, tick + TPS * 1.5, true));
+
+			*handPtr = { ItemType{}, 0 };
+			player->movement->inventory->setHand(*handPtr);
+			sendHand();
+			sendNewGroupPacketTo(pktsToSend, cliaddr);
+		}
+		return;
+	}
+
 	if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL || pkt.modifier == InventoryModifiers::INV_DRAG_ADD)
 	{
 		auto slots = player->movement->getDraggedSlots();
