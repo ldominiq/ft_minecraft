@@ -625,6 +625,23 @@ void Inventory<ROWS, COLS, N>::loadFromStream(std::ifstream& in)
 
     in.read(reinterpret_cast<char*>(grid.data()),
             sizeof(std::pair<ItemType, itemStackSize_t>) * grid.size());
+
+    // The grid was overwritten in place, so the freeSlots/itemsIndexes
+    // bookkeeping seeded by the constructor no longer matches what was
+    // loaded. Rebuild it from the actual contents, otherwise getFirstFreeSlot()
+    // still reports every slot as free and pickups overwrite existing items.
+    freeSlots.clear();
+    itemsIndexes.clear();
+    for (int i = 0; i < rows * cols; ++i)
+    {
+        if (grid[i].second == 0)
+        {
+            grid[i] = {};
+            freeSlots.insert(i);
+        }
+        else
+            itemsIndexes.insert({ grid[i].first, i });
+    }
 }
 
 template class Inventory<4, 9, 1>; // PlayerInventory
