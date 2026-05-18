@@ -186,10 +186,6 @@ constexpr std::array<std::pair<Grid, RecipeResult>, 21> shapelessRecipes = {{
 	   BlockType::COAL_BLOCK
 	}, {MiscType::COAL, 9}},
 
-	{{
-	   BlockType::IRON_BLOCK
-	}, {MiscType::IRON_INGOT, 9}},
-
 }};
 
 //this wastes a bit of space but it's blazingly faaast. maybe.
