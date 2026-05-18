@@ -1309,7 +1309,8 @@ void App::render() {
 		else
 		{
 			inventoryUI->drawHotbar();
-			inventoryUI->drawHealth(camera->getPlayer()->health);
+			if (camera->getPlayer()->gamemode != GAMEMODES::SPECTATOR)
+			    inventoryUI->drawHealth(camera->getPlayer()->health);
 			// Death overlay sits above the hotbar/health but below the chat
 			// recent-messages list so kill feed text stays readable.
 			inventoryUI->drawDeathScreen(camera->getPlayer()->health);
