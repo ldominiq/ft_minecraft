@@ -1412,6 +1412,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		groupPkt.push_back(player->movement->inventory->createNetInventoryPkt(slot));
 	};
 
+#ifndef NDEBUG
 	give(0, BlockType::DIRT,       200);
 	give(1, BlockType::STONE,      200);
 	give(2, BlockType::CACTUS,     200);
@@ -1432,6 +1433,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	give(15, BlockType::COAL, 64);
 	give(16, MiscType::COAL,     64);
 
+#endif
 
 	player->movement->inventory->createFullInventoryPkt(groupPkt);
 	
