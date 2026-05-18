@@ -860,56 +860,65 @@ void App::render() {
 		auto manager = menuManager.lock();
 
 		//Tick logic
-		float tickDuration = 1.0f / TPS; // 0.05s per tick
-		static float accumulator = 0.0f;
-		accumulator += deltaTime;
+		if (gameState == GameState::Playing)
+		{
+			float tickDuration = 1.0f / TPS; // 0.05s per tick
+			static float accumulator = 0.0f;
+			accumulator += deltaTime;
 
-        int simulatedTicksThisFrame = 0;
-        constexpr int kMaxSimulatedTicksPerFrame = 6;
-        std::vector<NetPlayerInputs> frameInputs;
-        frameInputs.reserve(kMaxSimulatedTicksPerFrame);
-        while (accumulator >= tickDuration && simulatedTicksThisFrame < kMaxSimulatedTicksPerFrame)
-        {
-            NetPlayerInputs tickInputs = inputs;
-            if (manager)
-                tickInputs.keys = 0;
+			int simulatedTicksThisFrame = 0;
+			constexpr int kMaxSimulatedTicksPerFrame = 6;
+			std::vector<NetPlayerInputs> frameInputs;
+			frameInputs.reserve(kMaxSimulatedTicksPerFrame);
+			while (accumulator >= tickDuration && simulatedTicksThisFrame < kMaxSimulatedTicksPerFrame)
+			{
+				NetPlayerInputs tickInputs = inputs;
+				if (manager)
+					tickInputs.keys = 0;
 
 
-            tickInputs.serverClientReconciliationTick = clientTick;
-            camera->queueInput(tickInputs, clientTick);
+				tickInputs.serverClientReconciliationTick = clientTick;
+				camera->queueInput(tickInputs, clientTick);
 
-            // Collect every tick's input; all will be sent as a batch so the
-            // server can run one physics step per entry during catch-up.
-            frameInputs.push_back(tickInputs);
+				// Collect every tick's input; all will be sent as a batch so the
+				// server can run one physics step per entry during catch-up.
+				frameInputs.push_back(tickInputs);
 
-            camera->predict(*renderer, clientTick);
+				camera->predict(*renderer, clientTick);
 
-            clientTime = clientTick * tickDuration;
-            accumulator -= tickDuration;
-            clientTickChangedTime = glfwGetTime();
-            clientTick++;
-            simulatedTicksThisFrame++;
-        }
+				clientTime = clientTick * tickDuration;
+				accumulator -= tickDuration;
+				clientTickChangedTime = glfwGetTime();
+				clientTick++;
+				simulatedTicksThisFrame++;
+			}
 
-        // Send all inputs for this frame in one datagram.
-        if (!frameInputs.empty()) {
-            if (frameInputs.size() == 1) {
-                udpClient->sendPacket(frameInputs[0]);
-            } else {
-                NetPacketGroup group;
-                for (auto& inp : frameInputs)
-                    group.add(inp);
-                udpClient->sendPacket(group);
-            }
-        }
+			// Send all inputs for this frame in one datagram.
+			if (!frameInputs.empty()) {
+				if (frameInputs.size() == 1) {
+					udpClient->sendPacket(frameInputs[0]);
+				} else {
+					NetPacketGroup group;
+					for (auto& inp : frameInputs)
+						group.add(inp);
+					udpClient->sendPacket(group);
+				}
+			}
 
-        if (simulatedTicksThisFrame == kMaxSimulatedTicksPerFrame && accumulator > tickDuration * 2.0f)
-            accumulator = tickDuration * 2.0f;
+			if (simulatedTicksThisFrame == kMaxSimulatedTicksPerFrame && accumulator > tickDuration * 2.0f)
+				accumulator = tickDuration * 2.0f;
 
-        camera->setRenderTickAlpha(accumulator / tickDuration);
-		udpClient->reliabilityKeepalive();
+			camera->setRenderTickAlpha(accumulator / tickDuration);
+			udpClient->reliabilityKeepalive();
+			camera->flushPendingSnapshot(*renderer, clientTick);
+
+
+			//for some reason mouse needs a little delay to be put to false otherwise it glitches.
+			if ((glfwGetTime() - lastMouseMoveTime) > tickDuration * 2)
+				mouseMovedRecently = false;
+		}
+
 		udpClient->receivePacket();
-        camera->flushPendingSnapshot(*renderer, clientTick);
 
         // Per-frame audio update: refresh listener pose, drive music + footstep triggers.
         if (audio) audio->update(deltaTime, gameState == GameState::Playing, *camera, *renderer);
@@ -936,16 +945,6 @@ void App::render() {
                 }
             }
         }
-
-		//for some reason mouse needs a little delay to be put to false otherwise it glitches.
-		if ((glfwGetTime() - lastMouseMoveTime) > tickDuration * 2)
-			mouseMovedRecently = false;
-
-     // Local player must be rendered from current predicted state (present time), not interpolated in the past.
-
-		// const double mouseIdleThreshold = 0.2; // seconds
-		// if (mouseMovedRecently && (glfwGetTime() - lastMouseMoveTime) > mouseIdleThreshold)
-		// 	mouseMovedRecently = false;
 
         // Maintain a moving average of the last N frame times for a stable
         // FPS display.  Push the current frame time and pop the oldest if
@@ -3006,6 +3005,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	if (glfwGetKey(window, controlsArray[HOTBAR_9]) == GLFW_PRESS) activeHotbarSlot = 8;
 
 	if (activeHotbarSlot != (uint8_t)-1) camera->getPlayer()->inventory->activeHotbarSlot = activeHotbarSlot;
+	else activeHotbarSlot = camera->getPlayer()->inventory->activeHotbarSlot;
 
 	inputs.keys = keys;
 	inputs.pitch = camera->getPlayer()->getPitch();
