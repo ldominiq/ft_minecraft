@@ -799,6 +799,10 @@ void App::loadResources() {
 void App::render() {
 
 	while (!glfwWindowShouldClose(window)) {
+
+		if (interrupted().load(std::memory_order_relaxed))
+			glfwSetWindowShouldClose(window, true);
+
 		// Rotate query index each frame
 		currentQueryIndex = (currentQueryIndex + 1) % QUERY_POOL_SIZE;
 
@@ -2924,6 +2928,7 @@ void App::transitionTo(GameState newState) {
 }
 
 void App::cleanup() {
+
     // Shutdown ImGui before terminating GLFW
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
