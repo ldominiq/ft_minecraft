@@ -799,7 +799,7 @@ void App::render() {
 
 	while (!glfwWindowShouldClose(window)) {
 
-		if (g_interrupted.load(std::memory_order_relaxed))
+		if (interrupted().load(std::memory_order_relaxed))
 			glfwSetWindowShouldClose(window, true);
 
 		// Rotate query index each frame

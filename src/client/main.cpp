@@ -2,10 +2,13 @@
 #include "UDPClient.hpp"
 #include <csignal>
 
-std::atomic<bool> g_interrupted{false};
+std::atomic<bool>& interrupted() {
+	static std::atomic<bool> flag{false};
+	return flag;
+}
 
 void handle_sigint(int) {
-	g_interrupted.store(true, std::memory_order_relaxed);
+	interrupted().store(true, std::memory_order_relaxed);
 }
 
 int main(int argc, char** argv) {

@@ -74,7 +74,7 @@
 #include "AudioManager.hpp"
 #include "ControlsMenu.hpp"
 
-extern std::atomic<bool> g_interrupted;
+std::atomic<bool>& interrupted();
 
 // Read a GPU timer query result and apply exponential moving average.
 // Returns true if a new sample was read, false if query wasn't ready.
