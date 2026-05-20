@@ -210,8 +210,7 @@ void Menu::drawInputBox(float x, float y, float w, float h, const std::string& t
 
 	// text inside box
 	float savedScale = textRenderer.getScale();
-	float textScale = 0.5f * menuScale;
-	textRenderer.setScale(textScale);
+	float baseScale = 0.5f * menuScale;
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
 	// Blinking cursor
@@ -219,7 +218,18 @@ void Menu::drawInputBox(float x, float y, float w, float h, const std::string& t
 	bool showCursor = static_cast<int>(glfwGetTime() * 2.0f) % 2 == 0;
 	if (showCursor && focused) displayText += "_";
 
-	textRenderer.renderText(displayText, x + 8.0f * menuScale, y + h * 0.25f, glm::vec3(1.0f));
+	// Auto-shrink so long text stays inside the box
+	float padX = 8.0f * menuScale;
+	float maxTextW = w - 2.0f * padX;
+	float useScale = baseScale;
+	textRenderer.setScale(useScale);
+	float textW = static_cast<float>(textRenderer.getPixelSizeOfString(displayText));
+	if (textW > maxTextW && textW > 0.0f) {
+		useScale = baseScale * (maxTextW / textW);
+		textRenderer.setScale(useScale);
+	}
+
+	textRenderer.renderText(displayText, x + padX, y + h * 0.25f, glm::vec3(1.0f));
 	textRenderer.setScale(savedScale);
 }
 
