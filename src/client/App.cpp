@@ -1233,9 +1233,23 @@ void App::render() {
                     lighting->uploadCSMUniforms(hShader, view);
                 }
                 // Pass the local ClientPlayer as Character* so the viewmodel
-                // animates when the player swings their arm.
+                // animates when the player swings their arm. Sample the
+                // player's sky-light the same way LivingEntitiesManager does
+                // so the viewmodel darkens in caves alongside the body.
+                float vmSkyFactor = 1.0f;
+                if (renderer && camera->getPlayer()) {
+                    const glm::dvec3 sampleBase = camera->getPlayer()->getPositionD();
+                    const double midY = sampleBase.y
+                        + static_cast<double>(camera->getPlayer()->getEntityHeight()) * 0.5;
+                    const glm::ivec3 bp(
+                        static_cast<int>(std::floor(sampleBase.x)),
+                        static_cast<int>(std::floor(midY)),
+                        static_cast<int>(std::floor(sampleBase.z)));
+                    vmSkyFactor = static_cast<float>(renderer->getSkyLightWorld(bp)) / 15.0f;
+                }
                 m_heldItemRenderer->drawFirstPerson(projection, view, held,
-                                                    camera->getPlayer().get());
+                                                    camera->getPlayer().get(),
+                                                    vmSkyFactor);
             }
         }
 
@@ -1674,7 +1688,8 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
           camera->isThirdPersonCameraActive() ? camera->getPlayer().get() : nullptr;
       m_heldItemRenderer->drawForEntities(projection, view, camera->getEyePosD(),
                                           renderer->livingEntities,
-                                          localForHand);
+                                          localForHand,
+                                          renderer.get());
   }
 }
 
