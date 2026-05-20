@@ -22,7 +22,7 @@ inline constexpr std::array<OreParams, 5> oreTable = {{
     { BlockType::GOLD,      3, 32, 9, 2 },
     { BlockType::DIAMOND,   1, 16, 8, 1 },
     { BlockType::URANIUM,   1, 16, 4, 1 },
-    { BlockType::COAL,      1, 256, 9, 25 },
+    { BlockType::COAL,      1, 255, 9, 25 },
 }};
 
 #endif // SERVER_TERRAIN_PARAMS_HPP

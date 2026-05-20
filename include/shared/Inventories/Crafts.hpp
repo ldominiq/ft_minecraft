@@ -38,7 +38,7 @@ struct RecipeResult {
 };
 
 // Here we define the recipes.
-constexpr std::array<std::pair<Grid, RecipeResult>, 15> orderedRecipes = {{
+constexpr std::array<std::pair<Grid, RecipeResult>, 13> orderedRecipes = {{
 	{{
 		BlockType::STONE, BlockType::STONE, BlockType::STONE,
 		BlockType::STONE, BlockType::STONE, BlockType::STONE,
@@ -111,7 +111,7 @@ constexpr std::array<std::pair<Grid, RecipeResult>, 15> orderedRecipes = {{
 	}, {BlockType::COAL_BLOCK, 1}},
 }};
 
-constexpr std::array<std::pair<Grid, RecipeResult>, 21> shapelessRecipes = {{
+constexpr std::array<std::pair<Grid, RecipeResult>, 20> shapelessRecipes = {{
 	{{
 		BlockType::STONE
 	}, {BlockType::GRASS, 1}},
