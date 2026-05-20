@@ -246,6 +246,10 @@ void App::init(const std::string& serverIp) {
 		}
 
 		auto manager = app->menuManager.lock();
+		if (manager == app->settingsMenu) {
+			app->settingsMenu->addChar(static_cast<char>(codepoint));
+			return;
+		}
 		if (manager != app->chat) return ;
 
 		app->chat->addCharToCurrMsg(static_cast<char>(codepoint));
@@ -330,10 +334,6 @@ void App::init(const std::string& serverIp) {
 				return;
 			}
 
-			if (manager == app->pauseMenu) {
-				manager->handleMouseClick(mouseX, mouseY, button, action);
-				return;
-			}
 			if (manager == app->inventoryUI)
 			{
 				manager->handleMouseClick(mouseX, mouseY, button, action);
@@ -343,7 +343,10 @@ void App::init(const std::string& serverIp) {
 					app->udpClient->sendPacket(pkt);
 					app->inventoryUI->lastAction.reset();
 				}
+				return;
 			}
+
+			manager->handleMouseClick(mouseX, mouseY, button, action);
 			return ;
 		}
 
@@ -462,16 +465,28 @@ void App::init(const std::string& serverIp) {
 	});
 
 	settingsMenu->setDoneCallback([this]() {
-		transitionTo(GameState::MainMenu);
+		if (gameState == GameState::Playing) {
+			menuManager = pauseMenu;
+		} else {
+			transitionTo(GameState::MainMenu);
+		}
 	});
 	settingsMenu->setChangeControlsCallback([this]() {
-		transitionTo(GameState::Controls);
+		if (gameState == GameState::Playing) {
+			menuManager = controlsMenu;
+		} else {
+			transitionTo(GameState::Controls);
+		}
 	});
 
 	pauseMenu->setContinueCallback([this]() {
 		menuManager.reset();
 		if (!uiInteractive)
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	});
+	pauseMenu->setSettingsCallback([this]() {
+		settingsMenu->setUsernameEditable(false);
+		menuManager = settingsMenu;
 	});
 	pauseMenu->setBackToMainMenuCallback([this]() {
 		if (udpClient && clientConnected) {
@@ -488,7 +503,11 @@ void App::init(const std::string& serverIp) {
 	});
 
 	controlsMenu->setSaveCallback([this]() {
-		transitionTo(GameState::Settings);
+		if (gameState == GameState::Playing) {
+			menuManager = settingsMenu;
+		} else {
+			transitionTo(GameState::Settings);
+		}
 	});
 
 	transitionTo(GameState::MainMenu);
@@ -2998,6 +3017,7 @@ void App::transitionTo(GameState newState) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			break;
 		case GameState::Settings:
+			settingsMenu->setUsernameEditable(true);
 			menuManager = settingsMenu;
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			break;
@@ -3158,9 +3178,25 @@ void App::processInputMenus(int key, int action) {
 
 	if (manager && key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 	{
-		menuManager.reset();
-		if (!uiInteractive)
-			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		if (manager == settingsMenu) {
+			menuManager = pauseMenu;
+		} else if (manager == controlsMenu) {
+			if (!controlsMenu->getChangeRequested())
+				menuManager = settingsMenu;
+		} else {
+			menuManager.reset();
+			if (!uiInteractive)
+				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		}
+	}
+
+	if (manager == settingsMenu && key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
+		settingsMenu->removeChar();
+
+	if (manager == controlsMenu)
+	{
+		if (controlsMenu->changeControl(key))
+			controlsArray = controlsMenu->getControlsArray();
 	}
 	//close inventory with E too.
 	if (manager && manager == inventoryUI && key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)

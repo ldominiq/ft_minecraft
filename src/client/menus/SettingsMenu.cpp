@@ -19,6 +19,7 @@ SettingsMenu::SettingsMenu(float width, float height, GLuint dirtTex)
 
 void SettingsMenu::addChar(char c)
 {
+	if (!usernameEditable) return;
 	if (username.size() >= 16) return;
 
 	username += c;
@@ -26,6 +27,7 @@ void SettingsMenu::addChar(char c)
 
 void SettingsMenu::removeChar()
 {
+	if (!usernameEditable) return;
 	if (!username.empty()) {
 		username.pop_back();
 	}
@@ -77,7 +79,8 @@ void SettingsMenu::onRender()
 	textRenderer.setScale(msgScale);
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
-	drawInputBox(nameBox.x, nameBox.y, nameBox.w, nameBox.h, username, true);
+	if (usernameEditable)
+		drawInputBox(nameBox.x, nameBox.y, nameBox.w, nameBox.h, username, true);
 
 	drawButton(doneButton.x, doneButton.y, doneButton.w, doneButton.h,
 			   doneButton.label, doneButton.hovered);

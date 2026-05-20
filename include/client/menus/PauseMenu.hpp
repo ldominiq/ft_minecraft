@@ -12,6 +12,7 @@ public:
 	~PauseMenu();
 	
 	void setContinueCallback(std::function<void()> cb) { onContinue = std::move(cb); }
+	void setSettingsCallback(std::function<void()> cb) { onSettings = std::move(cb); }
 	void setBackToMainMenuCallback(std::function<void()> cb) { onBackToMainMenu = std::move(cb); }
 
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
@@ -20,9 +21,11 @@ public:
 private:
 
 	Button continueButton;
+	Button settingsButton;
 	Button backToMainMenuButton;
 
 	std::function<void()> onContinue;
+	std::function<void()> onSettings;
 	std::function<void()> onBackToMainMenu;
 
 	void onRender() override;

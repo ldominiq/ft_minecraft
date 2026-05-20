@@ -27,6 +27,8 @@ public:
 	std::string getUsername() const { return username; }
 	void setUsername(const std::string& name) { username = name; saveUsername(); }
 
+	void setUsernameEditable(bool editable) { usernameEditable = editable; }
+
 private:
 	void onRender() override;
 	void build() override;
@@ -35,6 +37,7 @@ private:
 	void loadUsername(const char* filename = "username.cfg");
 
 	std::string username;
+	bool usernameEditable = true;
 
 	std::function<void()> onDone;
 	std::function<void()> changeControls;
