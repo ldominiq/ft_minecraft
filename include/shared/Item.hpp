@@ -172,6 +172,15 @@ enum class BlockType : ItemID {
 	DIAMOND_BLOCK,
 	URANIUM_BLOCK,
 	BEACON,
+	// Torch variants. Orientation is intrinsic to the block identity so it
+	// flows for free through the chunk palette, save files and the 8-bit
+	// NetModifiedBlockData packet. TORCH_FLOOR is the inventory/held form;
+	// wall variants are produced server-side at placement time.
+	TORCH_FLOOR,
+	TORCH_WALL_NORTH,
+	TORCH_WALL_SOUTH,
+	TORCH_WALL_EAST,
+	TORCH_WALL_WEST,
 	END
 };
 
@@ -313,6 +322,11 @@ public:
 		ItemDef{ makeBlock(BlockType::DIAMOND_BLOCK, 			"Diamond Block", 10) },
 		ItemDef{ makeBlock(BlockType::URANIUM_BLOCK, 			"Uranium Block", 10) },
 		ItemDef{ makeBlock(BlockType::BEACON, 					"Beacon", 10) },
+		ItemDef{ makeBlock(BlockType::TORCH_FLOOR, 				"Torch", 1) },
+		ItemDef{ makeBlock(BlockType::TORCH_WALL_NORTH, 		"Torch", 1) },
+		ItemDef{ makeBlock(BlockType::TORCH_WALL_SOUTH, 		"Torch", 1) },
+		ItemDef{ makeBlock(BlockType::TORCH_WALL_EAST, 			"Torch", 1) },
+		ItemDef{ makeBlock(BlockType::TORCH_WALL_WEST, 			"Torch", 1) },
 	};
 
 	// static inline std::vector<ItemDef> liquids = {
@@ -501,6 +515,21 @@ inline static bool isBlockVegetation(const BlockType &b) {
 	}
 }
 
+// Torch (any orientation). A torch is a slim non-cube light source: it does
+// not occlude neighbour faces and lets sky/block light pass through.
+inline static bool isTorch(const BlockType &b) {
+	switch (b) {
+		case BlockType::TORCH_FLOOR:
+		case BlockType::TORCH_WALL_NORTH:
+		case BlockType::TORCH_WALL_SOUTH:
+		case BlockType::TORCH_WALL_EAST:
+		case BlockType::TORCH_WALL_WEST:
+			return true;
+		default:
+			return false;
+	}
+}
+
 inline static bool isBlockTransparent(const BlockType &b) {
 	switch (b) {
 		case BlockType::OAK_LEAVES:
@@ -510,6 +539,11 @@ inline static bool isBlockTransparent(const BlockType &b) {
 		case BlockType::SPRUCE_LEAVES:
 		case BlockType::DARK_OAK_LEAVES:
 		case BlockType::CACTUS:
+		case BlockType::TORCH_FLOOR:
+		case BlockType::TORCH_WALL_NORTH:
+		case BlockType::TORCH_WALL_SOUTH:
+		case BlockType::TORCH_WALL_EAST:
+		case BlockType::TORCH_WALL_WEST:
 			return true;
 		default:
 			return false;
@@ -531,7 +565,8 @@ inline static bool isBlockLeaves(const BlockType &b) {
 }
 
 inline static bool isBlockSolid(const BlockType &b) {
-	return b != BlockType::AIR && b != BlockType::WATER && !isBlockVegetation(b);
+	return b != BlockType::AIR && b != BlockType::WATER
+		&& !isBlockVegetation(b) && !isTorch(b);
 }
 
 inline static bool isBlockLiquid(const BlockType &b) {
@@ -586,6 +621,15 @@ inline static ItemType itemIDToItemType(ItemID id)
 
 inline static bool isWeapon(const ItemType& type) {
 	return std::holds_alternative<WeaponType>(type);
+}
+
+// Items rendered as a 3D voxel slab extruded from their 2D texture (held in
+// hand and on remote players) rather than a flat sprite or a full cube.
+// All weapons, plus torches (a BlockType that is still placeable).
+inline static bool isItemVoxelExtruded(const ItemType& type) {
+	if (std::holds_alternative<WeaponType>(type)) return true;
+	if (auto* b = std::get_if<BlockType>(&type)) return isTorch(*b);
+	return false;
 }
 
 #endif

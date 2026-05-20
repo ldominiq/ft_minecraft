@@ -23,13 +23,44 @@ namespace {
 
 // Per-vertex stride in floats (pos.xyz, uv.xy, texLayer, skyLight) — must match
 // the cubePropShader vertex layout and buildCube/buildItemSprite output.
-constexpr int STRIDE = 7;
+constexpr int STRIDE = 8;
+
+// Sentinel written into the per-vertex skyLight slot to flag a fully
+// emissive (self-lit) item. cubePropShader.frag treats any value > 2.5 as
+// "render unlit at full brightness" (1.0–2.5 is reserved for block-lit
+// dropped items). Used for torches so they glow.
+constexpr float TORCH_EMISSIVE_SKYLIGHT = 3.0f;
 
 bool isNothingHeld(uint16_t heldItemType)
 {
 	return heldItemType == 0
 	    || heldItemType == static_cast<uint16_t>(BlockType::BEGIN)
 	    || heldItemType == static_cast<uint16_t>(BlockType::AIR);
+}
+
+// A torch's sprite has the flame at the image TOP, which buildWeaponVoxelMesh
+// maps to small Y. The weapon transform is built for a sword held diagonally,
+// so feeding the torch through it unrotated leaves the flame pointing the
+// wrong way. This applies a -45° spin about the Z axis, pivoted on the
+// canonical mesh CENTRE (translate to centre, rotate, translate back) so it
+// turns in place rather than swinging around the grip corner. It's applied to
+// the canonical mesh before the weapon transform so the flame ends up upright.
+// (-45° is tuned to cancel the sword grip's diagonal; not a 180° flip.)
+glm::mat4 torchUprightFlip(const std::vector<float>& canonical)
+{
+	float minX = 1e9f, maxX = -1e9f, minY = 1e9f, maxY = -1e9f;
+	for (std::size_t i = 0; i + 6 < canonical.size(); i += STRIDE) {
+		minX = std::min(minX, canonical[i + 0]);
+		maxX = std::max(maxX, canonical[i + 0]);
+		minY = std::min(minY, canonical[i + 1]);
+		maxY = std::max(maxY, canonical[i + 1]);
+	}
+	const glm::vec3 c(0.5f * (minX + maxX), 0.5f * (minY + maxY), 0.0f);
+	glm::mat4 M(1.0f);
+	M = glm::translate(M, c);
+	M = glm::rotate(M, glm::radians(-45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	M = glm::translate(M, -c);
+	return M;
 }
 
 // Hand anchor in player-local coords (X=forward, Y=up, Z=right).
@@ -175,7 +206,8 @@ void buildWeaponVoxelMesh(std::vector<float>& buf,
 	auto v = [&](float x, float y, float z, float u, float vv) {
 		buf.push_back(x); buf.push_back(y); buf.push_back(z);
 		buf.push_back(u); buf.push_back(vv); buf.push_back(L);
-		buf.push_back(0.0f);
+		buf.push_back(0.0f);  // skyLight (set per-instance later)
+		buf.push_back(0.0f);  // blockLight (torches use the emissive sentinel)
 	};
 
 	for (int py = 0; py < texSize; ++py) {
@@ -306,6 +338,20 @@ float sampleEntitySkyFactor(const ICommonWorld* world, const LivingEntity& e,
 	return static_cast<float>(world->getSkyLightWorld(bp)) / 15.0f;
 }
 
+// Baked torch block-light at the holder, so a held item lights up next to a
+// placed torch the same way the holder (mob/player) does. 0 when no world.
+float sampleEntityBlockFactor(const ICommonWorld* world, const LivingEntity& e,
+                              const glm::dvec3& sampleBase)
+{
+	if (!world) return 0.0f;
+	const double midY = sampleBase.y + static_cast<double>(e.getEntityHeight()) * 0.5;
+	const glm::ivec3 bp(
+		static_cast<int>(std::floor(sampleBase.x)),
+		static_cast<int>(std::floor(midY)),
+		static_cast<int>(std::floor(sampleBase.z)));
+	return static_cast<float>(world->getBlockLightWorld(bp)) / 15.0f;
+}
+
 // Emit the geometry for one held item into `buf` at the supplied anchor.
 // Cubes get the full orient-to-player matrix; sprites/billboards stay
 // self-oriented (X-cross is symmetric, billboard reorients per-frame).
@@ -313,18 +359,24 @@ bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
                     uint16_t heldItemType, const glm::vec3& anchorRel,
                     float yawRad, ArmPose pose,
                     float cubeScale, float spriteScale,
-                    float skyFactor)
+                    float skyFactor, float blockFactor = 0.0f)
 {
 	if (isNothingHeld(heldItemType)) return false;
 
 	ItemType type = itemIDToItemType(heldItemType);
+
+	// Voxel-extruded items (weapons, torches) render through the separate
+	// drawWeaponsForEntities() pass for a Minecraft-style 3D model. Skip
+	// them here so they aren't also drawn as a flat sprite or a full cube.
+	if (isItemVoxelExtruded(type)) return false;
+
 	const std::size_t start = buf.size();
 
 	if (isItemFlat(type)) {
 		const int layer = texMgr ? texMgr->getItemSpriteLayer(type) : 0;
 		if (auto* b = std::get_if<BlockType>(&type)) {
 			(void)b;
-			buildItemSprite(buf, 0.0f, 0.0f, 0.0f, layer, skyFactor);
+			buildItemSprite(buf, 0.0f, 0.0f, 0.0f, layer, skyFactor, blockFactor);
 			const float s = spriteScale / 0.25f;
 			transformVerts(buf, start, s,
 			               anchorRel.x,
@@ -338,7 +390,7 @@ bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
 			// not to count this slot as drawn.
 			return false;
 		} else {
-			buildItemBillboard(buf, glm::dvec3(anchorRel), layer, skyFactor);
+			buildItemBillboard(buf, glm::dvec3(anchorRel), layer, skyFactor, blockFactor);
 			const float s = spriteScale / 0.25f;
 			transformVerts(buf, start, s,
 			               anchorRel.x * (1.0f - s),
@@ -349,7 +401,7 @@ bool appendItemMesh(std::vector<float>& buf, const TextureManager* texMgr,
 	}
 
 	if (auto* b = std::get_if<BlockType>(&type)) {
-		buildCube(buf, 0.0f, 0.0f, 0.0f, 0, 0, *b, texMgr, /*isIlluminated*/false, skyFactor);
+		buildCube(buf, 0.0f, 0.0f, 0.0f, 0, 0, *b, texMgr, /*isIlluminated*/false, skyFactor, blockFactor);
 		transformVertsMat(buf, start,
 		                  cubeModelMatrix(anchorRel, yawRad, pose, cubeScale));
 		return true;
@@ -377,9 +429,10 @@ int appendForOneEntity(std::vector<float>& cpuBuffer, const TextureManager* texM
 	const ArmPose pose     = armPoseFromAnimation(asCharacter(e));
 	const glm::vec3 anchor = itemAnchorRel(worldPos, eyePos, yawRad, pose);
 	const float skyFactor  = sampleEntitySkyFactor(world, e, worldPos);
+	const float blockFactor = sampleEntityBlockFactor(world, e, worldPos);
 
 	return appendItemMesh(cpuBuffer, texMgr, e.heldItemType, anchor,
-	                      yawRad, pose, CUBE_SCALE, SPRITE_SCALE, skyFactor)
+	                      yawRad, pose, CUBE_SCALE, SPRITE_SCALE, skyFactor, blockFactor)
 	       ? 1 : 0;
 }
 
@@ -445,6 +498,10 @@ void HeldItemRenderer::initGL()
 		glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
 		                      reinterpret_cast<void*>(6 * sizeof(float)));
 		glEnableVertexAttribArray(3);
+		// aBlockLight (cubePropShader.vert location 4)
+		glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float),
+		                      reinterpret_cast<void*>(7 * sizeof(float)));
+		glEnableVertexAttribArray(4);
 	};
 
 	glGenVertexArrays(1, &VAO);
@@ -482,7 +539,8 @@ const std::vector<float>* HeldItemRenderer::getOrBuildWeaponMesh(int texLayer)
 void HeldItemRenderer::appendTransformedWeaponMesh(const std::vector<float>& canonical,
                                                    const glm::mat4& M,
                                                    float skyFactor,
-                                                   std::vector<float>& dst)
+                                                   std::vector<float>& dst,
+                                                   float blockFactor)
 {
 	const std::size_t baseFloat = dst.size();
 	dst.resize(baseFloat + canonical.size());
@@ -496,6 +554,7 @@ void HeldItemRenderer::appendTransformedWeaponMesh(const std::vector<float>& can
 		dst[baseFloat + i + 4] = canonical[i + 4];
 		dst[baseFloat + i + 5] = canonical[i + 5];
 		dst[baseFloat + i + 6] = skyFactor;
+		dst[baseFloat + i + 7] = blockFactor; // baked torch light at the holder
 	}
 }
 
@@ -524,6 +583,81 @@ void HeldItemRenderer::uploadAndDrawWeaponBatch(const glm::mat4& projection,
 	glDisable(GL_CULL_FACE);
 	glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(cpuBuffer.size() / STRIDE));
 	glEnable(GL_CULL_FACE);
+}
+
+// Placed-torch tuning. Floor torch ≈ this tall (blocks). Wall torch leans
+// outward by this angle and is offset toward/along the wall it mounts on.
+static constexpr float PT_FLOOR_HEIGHT = 0.62f;
+static constexpr float PT_WALL_HEIGHT  = 0.55f;
+static constexpr float PT_WALL_TILT_DEG = 25.0f;
+static constexpr float PT_WALL_OUT      = 0.42f; // distance from cell centre toward wall
+static constexpr float PT_WALL_DOWN     = 0.18f; // base drop below cell centre
+
+void HeldItemRenderer::drawPlacedTorches(const glm::mat4& projection, const glm::mat4& view,
+                                         const glm::dvec3& eyePos,
+                                         const std::vector<PlacedTorch>& torches,
+                                         int torchTexLayer)
+{
+	if (!textureManager || torches.empty()) return;
+
+	const std::vector<float>* canonical = getOrBuildWeaponMesh(torchTexLayer);
+	if (!canonical) return;
+
+	// Canonical mesh bbox. buildWeaponVoxelMesh maps texture column→X and
+	// row→Y with row 0 (image TOP = flame) at small Y, so the model's +Y
+	// points toward the torch BASE — we reflect Y to stand it flame-up.
+	float minX = 1e9f, maxX = -1e9f, minY = 1e9f, maxY = -1e9f;
+	for (std::size_t i = 0; i + 6 < canonical->size(); i += STRIDE) {
+		minX = std::min(minX, (*canonical)[i + 0]);
+		maxX = std::max(maxX, (*canonical)[i + 0]);
+		minY = std::min(minY, (*canonical)[i + 1]);
+		maxY = std::max(maxY, (*canonical)[i + 1]);
+	}
+	const float cx = 0.5f * (minX + maxX);
+	const float modelH = std::max(maxY - minY, 1e-3f);
+
+	// C: centre X on the post, base at local origin. Model +Y already points
+	// up (flame at top), so no Y reflection — just shift minY to 0.
+	glm::mat4 C(1.0f);
+	C[3] = glm::vec4(-cx, -minY, 0.0f, 1.0f);
+
+	cpuBuffer.clear();
+	for (const auto& t : torches) {
+		glm::vec3 base = glm::vec3(glm::dvec3(t.worldPos) - eyePos);
+
+		glm::mat4 M(1.0f);
+		if (t.variant == BlockType::TORCH_FLOOR) {
+			const float s = PT_FLOOR_HEIGHT / modelH;
+			M = glm::translate(M, base + glm::vec3(0.5f, 0.0f, 0.5f));
+			M = glm::scale(M, glm::vec3(s));
+			M = M * C;
+		} else {
+			glm::vec3 outDir(0.0f);
+			switch (t.variant) {
+				case BlockType::TORCH_WALL_EAST:  outDir = glm::vec3( 1, 0,  0); break;
+				case BlockType::TORCH_WALL_WEST:  outDir = glm::vec3(-1, 0,  0); break;
+				case BlockType::TORCH_WALL_NORTH: outDir = glm::vec3( 0, 0,  1); break;
+				case BlockType::TORCH_WALL_SOUTH: outDir = glm::vec3( 0, 0, -1); break;
+				default: break;
+			}
+			const float s = PT_WALL_HEIGHT / modelH;
+			const glm::vec3 axis = glm::normalize(glm::cross(glm::vec3(0, 1, 0), outDir));
+			glm::vec3 anchor = base + glm::vec3(0.5f)
+			                 - outDir * PT_WALL_OUT
+			                 + glm::vec3(0.0f, -PT_WALL_DOWN, 0.0f);
+			M = glm::translate(M, anchor);
+			M = glm::rotate(M, glm::radians(PT_WALL_TILT_DEG), axis);
+			M = glm::scale(M, glm::vec3(s));
+			M = M * C;
+		}
+		// Emissive sentinel (> 1.0): cubePropShader renders the torch unlit
+		// at full brightness so it glows like a light source.
+		appendTransformedWeaponMesh(*canonical, M, TORCH_EMISSIVE_SKYLIGHT, cpuBuffer);
+	}
+
+	glm::mat4 viewRot = view;
+	viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	uploadAndDrawWeaponBatch(projection, viewRot);
 }
 
 void HeldItemRenderer::drawForEntities(const glm::mat4& projection, const glm::mat4& view,
@@ -603,7 +737,7 @@ void HeldItemRenderer::drawWeaponsForEntities(const glm::mat4& projection, const
 	auto appendEntityWeapon = [&](const LivingEntity& e, const glm::dvec3& worldPos) {
 		if (!e.DoDraw() || isNothingHeld(e.heldItemType)) return;
 		ItemType type = itemIDToItemType(e.heldItemType);
-		if (!isWeapon(type)) return;
+		if (!isItemVoxelExtruded(type)) return;
 
 		const std::vector<float>* canonical =
 			getOrBuildWeaponMesh(textureManager->getItemSpriteLayer(type));
@@ -680,9 +814,14 @@ void HeldItemRenderer::drawWeaponsForEntities(const glm::mat4& projection, const
 		M = M * orient;
 		M = glm::scale(M, glm::vec3(TP_WEAPON_SIZE));
 		M = glm::translate(M, glm::vec3(-1.0f, 0.0f, 0.0f));
-		const float skyFactor = sampleEntitySkyFactor(world, e, worldPos);
+		float skyFactor = sampleEntitySkyFactor(world, e, worldPos);
+		const float blockFactor = sampleEntityBlockFactor(world, e, worldPos);
+		if (auto* tb = std::get_if<BlockType>(&type); tb && isTorch(*tb)) {
+			skyFactor = TORCH_EMISSIVE_SKYLIGHT; // torch glows, render unlit
+			M = M * torchUprightFlip(*canonical); // flame up, not down
+		}
 
-		appendTransformedWeaponMesh(*canonical, M, skyFactor, cpuBuffer);
+		appendTransformedWeaponMesh(*canonical, M, skyFactor, cpuBuffer, blockFactor);
 	};
 
 	if (localPlayer) {
@@ -704,7 +843,8 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
                                        const glm::mat4& view,
                                        uint16_t heldItemType,
                                        const Character* localCharacter,
-                                       float skyFactor)
+                                       float skyFactor,
+                                       float blockFactor)
 {
 	if (isNothingHeld(heldItemType)) return;
 
@@ -735,7 +875,7 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 	// sword-shaped voxel mesh instead of a slab-with-paint. The vert count is
 	// variable (depends on the weapon's silhouette), so this path uses its
 	// own VAO/VBO and bypasses the 36-vert/item slot entirely.
-	if (isItemFlat(type) && isWeapon(type) && textureManager) {
+	if (isItemVoxelExtruded(type) && textureManager) {
 		const std::vector<float>* canonical =
 			getOrBuildWeaponMesh(textureManager->getItemSpriteLayer(type));
 		if (!canonical) return;
@@ -758,7 +898,12 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 		glm::mat4 viewRot = view;
 		viewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 		cpuBuffer.clear();
-		appendTransformedWeaponMesh(*canonical, glm::inverse(viewRot) * M, skyFactor, cpuBuffer);
+		float vmSky = skyFactor;
+		if (auto* tb = std::get_if<BlockType>(&type); tb && isTorch(*tb)) {
+			vmSky = TORCH_EMISSIVE_SKYLIGHT; // torch glows, render unlit
+			M = M * torchUprightFlip(*canonical); // flame up, not down
+		}
+		appendTransformedWeaponMesh(*canonical, glm::inverse(viewRot) * M, vmSky, cpuBuffer, blockFactor);
 
 		// 1P viewmodel renders always-on-top: clear depth before drawing.
 		// uploadAndDrawWeaponBatch handles the rest of the GL state shared
@@ -775,14 +920,14 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 		const int layer = textureManager ? textureManager->getItemSpriteLayer(type) : 0;
 		if (auto* b = std::get_if<BlockType>(&type)) {
 			(void)b;
-			buildItemSprite(cpuBuffer, 0.0f, 0.0f, 0.0f, layer, skyFactor);
+			buildItemSprite(cpuBuffer, 0.0f, 0.0f, 0.0f, layer, skyFactor, blockFactor);
 			const float s = VM_SPRITE / 0.25f;
 			transformVerts(cpuBuffer, start, s,
 			               anchorRel.x,
 			               anchorRel.y - 0.5f * VM_SPRITE,
 			               anchorRel.z);
 		} else {
-			buildItemBillboard(cpuBuffer, glm::dvec3(anchorRel), layer, skyFactor);
+			buildItemBillboard(cpuBuffer, glm::dvec3(anchorRel), layer, skyFactor, blockFactor);
 			const float s = VM_SPRITE / 0.25f;
 			transformVerts(cpuBuffer, start, s,
 			               anchorRel.x * (1.0f - s),
@@ -792,7 +937,7 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 		drawnSomething = true;
 	} else if (auto* b = std::get_if<BlockType>(&type)) {
 		buildCube(cpuBuffer, 0.0f, 0.0f, 0.0f, 0, 0, *b, textureManager,
-		          /*isIlluminated*/false, skyFactor);
+		          /*isIlluminated*/false, skyFactor, blockFactor);
 		// Camera-space matrix. Order: translate to hand → arm swing around
 		// camera-X (screen right) → small rest tilts for a 3/4 readable view
 		// → scale → recenter Y (source cube has y in [0, 0.2]

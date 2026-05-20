@@ -15,7 +15,8 @@
 //        (positions are quantized at 1/16 block; range 0-511 / 0-8191 / 0-511
 //         which covers a 16x256x16 chunk plus head-room for face boundaries)
 //
-//   v1: normal:3 | corner:2 | texLayer:10 | skyLight:4 | waterAbove:1 | reserved:12
+//   v1: normal:3 | corner:2 | texLayer:10 | skyLight:4 | waterAbove:1 |
+//       blockLight:4 (bits 20-23) | reserved:8
 //        normal     — face direction index 0..5 (matches mesher's `face` param,
 //                     indexes into NORMALS[6] in the GLSL include)
 //        corner     — quad corner index 0..3 (UVs reconstructed in the shader)
@@ -59,7 +60,8 @@ inline uint32_t quantizeSkyLight(float skyLight01) {
 inline PackedVertex pack(float px, float py, float pz,
                          uint32_t normalIdx, uint32_t cornerIdx,
                          uint32_t texLayer, float skyLight01,
-                         bool waterAbove = false) {
+                         bool waterAbove = false,
+                         float blockLight01 = 0.0f) {
     const uint32_t qx = quantizePos(px, 0x1FFu);   // 9 bits
     const uint32_t qy = quantizePos(py, 0x1FFFu);  // 13 bits
     const uint32_t qz = quantizePos(pz, 0x1FFu);   // 9 bits
@@ -72,7 +74,8 @@ inline PackedVertex pack(float px, float py, float pz,
          | ((cornerIdx & 0x3u) << 3)
          | ((texLayer  & 0x3FFu) << 5)
          | ((quantizeSkyLight(skyLight01) & 0xFu) << 15)
-         | ((waterAbove ? 1u : 0u) << 19);
+         | ((waterAbove ? 1u : 0u) << 19)
+         | ((quantizeSkyLight(blockLight01) & 0xFu) << 20);
     return v;
 }
 

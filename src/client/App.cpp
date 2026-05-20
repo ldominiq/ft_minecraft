@@ -1237,6 +1237,7 @@ void App::render() {
                 // player's sky-light the same way LivingEntitiesManager does
                 // so the viewmodel darkens in caves alongside the body.
                 float vmSkyFactor = 1.0f;
+                float vmBlockFactor = 0.0f;
                 if (renderer && camera->getPlayer()) {
                     const glm::dvec3 sampleBase = camera->getPlayer()->getPositionD();
                     const double midY = sampleBase.y
@@ -1246,10 +1247,11 @@ void App::render() {
                         static_cast<int>(std::floor(midY)),
                         static_cast<int>(std::floor(sampleBase.z)));
                     vmSkyFactor = static_cast<float>(renderer->getSkyLightWorld(bp)) / 15.0f;
+                    vmBlockFactor = static_cast<float>(renderer->getBlockLightWorld(bp)) / 15.0f;
                 }
                 m_heldItemRenderer->drawFirstPerson(projection, view, held,
                                                     camera->getPlayer().get(),
-                                                    vmSkyFactor);
+                                                    vmSkyFactor, vmBlockFactor);
             }
         }
 
@@ -1517,6 +1519,9 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         lighting->uploadCSMUniforms(*vegShader, view);
         vegShader->setInt("shadowsEnabled", lighting->isShadowsEnabled());
 
+        // Held-torch / flashlight dynamic lights so grass lights up in hand.
+        uploadActiveSpotLights(*vegShader);
+
         // Fog for vegetation
         uploadFogUniforms(*vegShader, fogEnabled, skyLUTTex,
                           lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
@@ -1690,6 +1695,25 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
                                           renderer->livingEntities,
                                           localForHand,
                                           renderer.get());
+
+      // Placed torches: gather every visible torch and draw them with the
+      // same voxel-extruded model as the held one (one batched pass).
+      if (renderer) {
+          std::vector<HeldItemRenderer::PlacedTorch> torches;
+          for (auto& weak : renderer->getRenderedChunks()) {
+              auto chunk = weak.lock();
+              if (!chunk) continue;
+              for (const auto& ti : chunk->getTorchInstances())
+                  torches.push_back({ ti.worldPos, ti.variant });
+          }
+          if (!torches.empty()) {
+              const int torchLayer =
+                  textureManager.getBlockTextures(BlockType::TORCH_FLOOR).getLayerForFace(0);
+              m_heldItemRenderer->drawPlacedTorches(projection, view,
+                                                    camera->getEyePosD(),
+                                                    torches, torchLayer);
+          }
+      }
   }
 }
 
@@ -1734,6 +1758,53 @@ void App::uploadActiveSpotLights(Shader& shader) const
         for (auto& r : remotes) {
             if (static_cast<int>(lights.size()) >= Lighting::MAX_SPOT_LIGHTS) break;
             lights.push_back({ r.posRel, r.dir });
+        }
+    }
+
+    // Held-torch dynamic point lights. heldItemType is already synced for
+    // every player via NetEntityMove, so this works in multiplayer with no
+    // new packet. Modelled as omni spot lights (full sphere) so they reuse
+    // the existing budget; flashlights + torches share MAX_SPOT_LIGHTS and
+    // the nearest candidates win.
+    const glm::vec3 kTorchColor(1.0f, 0.65f, 0.32f);
+    auto isTorchHeld = [](uint16_t id) -> bool {
+        ItemType t = itemIDToItemType(id);
+        auto* b = std::get_if<BlockType>(&t);
+        return b && isTorch(*b);
+    };
+
+    if (camera && camera->getPlayer() && isTorchHeld(camera->getPlayer()->heldItemType)
+        && static_cast<int>(lights.size()) < Lighting::MAX_SPOT_LIGHTS) {
+        Lighting::SpotLightUpload t;
+        t.posRel = glm::vec3(0.0f, -0.3f, 0.0f); // roughly at hand height
+        t.dir    = camera->getPlayer()->getCameraDir();
+        t.color  = kTorchColor;
+        t.omni   = true;
+        lights.push_back(t);
+    }
+
+    if (renderer && camera) {
+        const glm::dvec3 eyePos = camera->getEyePosD();
+        struct TorchHit { float d2; glm::vec3 posRel; };
+        std::vector<TorchHit> torches;
+        for (auto& le : renderer->livingEntities) {
+            if (!le || le->getLivingEntityType() != PLAYER) continue;
+            if (le->getID() == static_cast<entityID>(-1)) continue;
+            if (!isTorchHeld(le->heldItemType)) continue;
+            glm::vec3 posRel = glm::vec3(le->getPositionD() - eyePos);
+            posRel.y += static_cast<float>(le->getEntityHeight()) * 0.9f;
+            torches.push_back({ glm::dot(posRel, posRel), posRel });
+        }
+        std::sort(torches.begin(), torches.end(),
+                  [](const TorchHit& a, const TorchHit& b) { return a.d2 < b.d2; });
+        for (auto& th : torches) {
+            if (static_cast<int>(lights.size()) >= Lighting::MAX_SPOT_LIGHTS) break;
+            Lighting::SpotLightUpload t;
+            t.posRel = th.posRel;
+            t.dir    = glm::vec3(0.0f, -1.0f, 0.0f);
+            t.color  = kTorchColor;
+            t.omni   = true;
+            lights.push_back(t);
         }
     }
 

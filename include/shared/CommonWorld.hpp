@@ -29,6 +29,9 @@ public:
 	// is not loaded so unbuilt-neighbor reads default to sunlit, matching
 	// Chunk::getSkyLight's policy.
 	virtual uint8_t getSkyLightWorld(glm::ivec3 globalCoords) const = 0;
+	// Emissive torch block-light at a world block position (0–15). Returns 0
+	// when the chunk is not loaded (dark default), matching Chunk::getBlockLight.
+	virtual uint8_t getBlockLightWorld(glm::ivec3 globalCoords) const = 0;
     virtual ~ICommonWorld() = default;
 };
 
@@ -49,6 +52,7 @@ class CommonWorld : public ICommonWorld{
 		std::shared_ptr<ChunkT> getChunk(int chunkX, int chunkZ);
 		BlockType getBlockWorld(glm::ivec3 globalCoords) const override;
 		uint8_t getSkyLightWorld(glm::ivec3 globalCoords) const override;
+		uint8_t getBlockLightWorld(glm::ivec3 globalCoords) const override;
 		virtual bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) = 0;
 		bool isBlockVisibleWorld(glm::ivec3 globalCoords);
 

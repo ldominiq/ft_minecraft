@@ -36,12 +36,18 @@ class ChunkRenderer : public Chunk {
 	uint placedWaterMeshVertexCount = 0;
 	std::vector<PackedVertex> placedWaterMeshVertices;
 
+public:
+	struct TorchInstance { glm::ivec3 worldPos; BlockType variant; };
+private:
+
+	std::vector<TorchInstance> torchInstances;
+
 	const TextureManager* textureManager = nullptr;
 
 	std::unique_ptr<VegetationRenderer> vegetationRenderer;
 
     void addFace(int x, int y, int z, BlockType type, int face, float skyLightLevel,
-                 bool waterAbove = false); // Add a face to the mesh vertices (solid blocks)
+                 bool waterAbove = false, float blockLightLevel = 0.0f); // Add a face to the mesh vertices (solid blocks)
 	// Push a water face into `out` (caller picks ocean vs placed bucket).
 	void addWaterFace(int x, int y, int z, int face, float skyLightLevel,
 	                  std::vector<PackedVertex>& out);
@@ -53,6 +59,7 @@ class ChunkRenderer : public Chunk {
 
 		bool needsUpdate = false;
 		bool neighbourNeedUpdate[4] { false };
+		bool blockLightOnlyRebuild = false;
 
 		glm::vec3 cachedMinP;
 		glm::vec3 cachedMaxP;
@@ -84,6 +91,8 @@ class ChunkRenderer : public Chunk {
 		static void setSeaLevel(int sl) { sSeaLevel = sl; }
 
 		inline VegetationRenderer* getVegetationRenderer() const { return vegetationRenderer.get(); }
+
+		const std::vector<TorchInstance>& getTorchInstances() const { return torchInstances; }
 
 		// Leaf-rendering strategy. Drives both mesh emission and fragment-shader
 		// alpha test. Switching modes only affects the *next* mesh rebuild; for

@@ -416,6 +416,11 @@ void TextureManager::setupBlockTextureMapping() {
 		{ BlockType::DIAMOND_BLOCK,         layer("diamond_block") },
 		{ BlockType::URANIUM_BLOCK,         layer("emerald_block") },
 		{ BlockType::BEACON,                layer("beacon") },
+		{ BlockType::TORCH_FLOOR,           layer("torch_on") },
+		{ BlockType::TORCH_WALL_NORTH,      layer("torch_on") },
+		{ BlockType::TORCH_WALL_SOUTH,      layer("torch_on") },
+		{ BlockType::TORCH_WALL_EAST,       layer("torch_on") },
+		{ BlockType::TORCH_WALL_WEST,       layer("torch_on") },
     };
     for (const auto& [type, l] : uniformBlocks) {
         blockTextureMap[type] = BlockTextures::uniform(l);

@@ -8,6 +8,7 @@ in VS_OUT {
     float TexLayer;
     float SkyLight; // 0.0 = fully underground, 1.0 = open sky
     float WaterAbove; // 1.0 iff this face has a water block directly above
+    float BlockLight; // Emissive torch light, 0..1 (not sky-modulated)
 } fs_in;
 
 out vec4 FragColor;
@@ -224,6 +225,10 @@ void main()
         float strength   = c * depthFade * upFactor * sunUp * shadowGate * 2.0 * AmbientOcclusion;
         result += dirLight.diffuse * strength;
     }
+
+    // Emissive torch block-light. Baked per-vertex (BFS in the chunk), so
+    // this is free per-fragment and scales to unlimited placed torches.
+    result += vec3(1.0, 0.62, 0.30) * (fs_in.BlockLight * fs_in.BlockLight) * 1.6;
 
     if (renderType == 1) {
         FragColor = vec4(norm * 0.5 + 0.5, 1.0); // Visualize normals

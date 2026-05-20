@@ -67,6 +67,17 @@ uint8_t CommonWorld<ChunkT>::getSkyLightWorld(glm::ivec3 globalCoords) const
 }
 
 template <typename ChunkT>
+uint8_t CommonWorld<ChunkT>::getBlockLightWorld(glm::ivec3 globalCoords) const
+{
+	int x, y, z;
+	auto chunk = resolveTarget(globalCoords, std::nullopt, x, y, z);
+	// Chunk not loaded / no emitters -> dark (0), matching Chunk::getBlockLight.
+	if (!chunk)
+		return 0;
+	return chunk->getBlockLight(x, y, z);
+}
+
+template <typename ChunkT>
 bool CommonWorld<ChunkT>::isBlockVisibleWorld(glm::ivec3 globalCoords)
 {
 	int x, y, z;
@@ -191,6 +202,14 @@ TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& h
 
         // Check if this block exists in your world
         if (isBlockVisibleWorld(blockPos)) {
+            hitBlock = blockPos;
+            return TargetType::Block;
+        }
+
+        // Torches are non-solid so isBlockVisibleWorld() skips them, but the
+        // ray must still stop on one so it can be selected (broken) and so a
+        // new torch placed nearby doesn't tunnel through and overwrite it.
+        if (isTorch(getBlockWorld(blockPos))) {
             hitBlock = blockPos;
             return TargetType::Block;
         }

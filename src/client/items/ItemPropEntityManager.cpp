@@ -63,6 +63,7 @@ size_t ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>
 		// (1.0) when the chunk isn't loaded — same default getSkyLightWorld
 		// returns and what Chunk::getSkyLight uses for not-yet-computed grids.
 		float skyFactor = 1.0f;
+		float blockFactor = 0.0f;
 		if (world) {
 			const glm::dvec3 itemPos = entity->get()->getPositionD();
 			const glm::ivec3 bp(
@@ -70,10 +71,14 @@ size_t ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>
 				static_cast<int>(std::floor(itemPos.y + 0.125)),
 				static_cast<int>(std::floor(itemPos.z)));
 			skyFactor = static_cast<float>(world->getSkyLightWorld(bp)) / 15.0f;
+			// Baked torch block-light, carried in its own vertex attribute so
+			// the item gets the warm emissive term even in full daylight-grid
+			// cells at night (cubePropShader adds it independent of skylight).
+			blockFactor = static_cast<float>(world->getBlockLightWorld(bp)) / 15.0f;
 		}
 
 		//add the meshes of a prop to the back of the buffer
-		entity->get()->createMesh(vertices, eyePos, textureManager, skyFactor);
+		entity->get()->createMesh(vertices, eyePos, textureManager, skyFactor, blockFactor);
 		memcpy(buffer.data() + i * ITEM_SIZE,
 			vertices.data(),
 			ITEM_SIZE * sizeof(float)
@@ -117,8 +122,9 @@ void ItemPropEntityManager::initGL()
     // Allocate a fixed-size buffer ONCE (say, for up to 1 million floats)
     glBufferData(GL_ARRAY_BUFFER, MAX_BUFFER_SIZE, nullptr, GL_DYNAMIC_DRAW);
 
-    // 7 floats per vertex: pos(3) + uv(2) + texLayer(1) + skyLight(1).
-    constexpr GLsizei stride = 7 * sizeof(float);
+    // 8 floats per vertex: pos(3) + uv(2) + texLayer(1) + skyLight(1) +
+    // blockLight(1).
+    constexpr GLsizei stride = 8 * sizeof(float);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
     glEnableVertexAttribArray(0);
@@ -131,6 +137,9 @@ void ItemPropEntityManager::initGL()
 
     glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(3);
+
+    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
+    glEnableVertexAttribArray(4);
 
     glBindVertexArray(0);
 }

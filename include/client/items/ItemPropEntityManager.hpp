@@ -16,9 +16,10 @@ class ICommonWorld;
 
 class ItemPropEntityManager {
 
-	// 6 faces * 6 verts * 7 floats (pos3 + uv2 + texLayer + skyLight) per cube.
-	// Sprite/billboard items pad up to the same 36-vert/252-float slot.
-	const int ITEM_SIZE = 252;
+	// 6 faces * 6 verts * 8 floats (pos3 + uv2 + texLayer + skyLight +
+	// blockLight) per cube. Sprite/billboard items pad to the same
+	// 36-vert/288-float slot.
+	const int ITEM_SIZE = 288;
 	const int MAX_CAPACITY = 10000;
 	const int MAX_BUFFER_SIZE = ITEM_SIZE * MAX_CAPACITY * sizeof(float);
 

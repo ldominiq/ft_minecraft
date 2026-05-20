@@ -47,8 +47,12 @@ bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
     // Place/break the block, cascading to clear any land vegetation above when breaking.
     // Land vegetation is tracked only in the block grid; buildVegetationMesh() derives
     // instances by scanning blocks, so no separate vegetation list sync is needed.
+    const BlockType prev = currChunk->getBlock(x, y, z);
     currChunk->setBlockCascade(x, y, z, type);
 	currChunk->needsUpdate = true;
+	// Any non-torch edit clears a pending torch-only flag so this rebuild
+	// does a full sky/block-light recompute (re-set to true below if torch).
+	currChunk->blockLightOnlyRebuild = false;
 
 	// //update possible neighbour
 	if (x == 0)
@@ -59,6 +63,43 @@ bool Renderer::setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> 
 		currChunk->neighbourNeedUpdate[SOUTH] = true;
 	if (z == Chunk::DEPTH - 1)
 		currChunk->neighbourNeedUpdate[NORTH] = true;
+
+	if (isTorch(type) || isTorch(prev)) {
+		bool touched[3][3] = {};
+		if (isTorch(type))
+			currChunk->addBlockLightIncremental(x, y, z, touched);
+		else
+			currChunk->removeBlockLightIncremental(x, y, z, touched);
+
+		// Mesh-only rebuild of the WHOLE 3x3
+		const ChunkPos cp = currChunk->getPos(); // {chunkX, chunkZ}
+		for (int dxc = -1; dxc <= 1; ++dxc)
+			for (int dzc = -1; dzc <= 1; ++dzc)
+				if (auto c = getChunk(cp.first + dxc, cp.second + dzc)) {
+					c->needsUpdate = true;
+					c->blockLightOnlyRebuild = true;
+				}
+	}
+	else {
+		const bool opacityChanged =
+			(isBlockSolid(type) && !isBlockTransparent(type)) !=
+			(isBlockSolid(prev) && !isBlockTransparent(prev));
+		if (opacityChanged) {
+			const ChunkPos cp = currChunk->getPos();
+			bool torchNear = currChunk->containsTorch;
+			for (int dxc = -1; !torchNear && dxc <= 1; ++dxc)
+				for (int dzc = -1; !torchNear && dzc <= 1; ++dzc)
+					if (auto c = getChunk(cp.first + dxc, cp.second + dzc))
+						if (c->containsTorch) torchNear = true;
+			if (torchNear)
+				for (int dxc = -1; dxc <= 1; ++dxc)
+					for (int dzc = -1; dzc <= 1; ++dzc)
+						if (auto c = getChunk(cp.first + dxc, cp.second + dzc)) {
+							c->needsUpdate = true;
+							c->blockLightOnlyRebuild = false; // force full recompute
+						}
+		}
+	}
 
 	return true;
 }
@@ -262,6 +303,23 @@ void Renderer::receiveChunk(const NetChunkData& pkt) {
 		linkNeighbors(pkt.X, pkt.Z, newChunk);
 		chunks[{pkt.X, pkt.Z}] = newChunk;
 		chunkReceiveTime[{pkt.X, pkt.Z}] = std::chrono::steady_clock::now();
+		// Block-light AFTER linkNeighbors so the cross-chunk torch BFS can
+		// reach into already-loaded neighbours. Chunks stream in any order,
+		// so if this chunk or any neighbour has a torch, mark the whole 3x3
+		// dirty: late-arriving torch chunks must relight earlier neighbours,
+		// and this chunk must relight once its own neighbours finish loading.
+		newChunk->computeBlockLight();
+		if (newChunk->containsTorch) {
+			for (int dxc = -1; dxc <= 1; ++dxc)
+				for (int dzc = -1; dzc <= 1; ++dzc)
+					if (auto c = getChunk(pkt.X + dxc, pkt.Z + dzc))
+						c->needsUpdate = true;
+		} else {
+			for (int dxc = -1; dxc <= 1; ++dxc)
+				for (int dzc = -1; dzc <= 1; ++dzc)
+					if (auto c = getChunk(pkt.X + dxc, pkt.Z + dzc))
+						if (c->containsTorch) { newChunk->needsUpdate = true; }
+		}
 		// newChunk->buildMesh();
         data->second.chunkBuffer.clear();
     }

@@ -103,6 +103,11 @@ public:
     struct SpotLightUpload {
         glm::vec3 posRel;
         glm::vec3 dir;
+        // Per-light colour/cone. Defaults reproduce the white flashlight cone;
+        // a held torch sets a warm colour and `omni` for a full-sphere point
+        // light (cone cutoffs forced to cos(180°) = -1).
+        glm::vec3 color{1.0f, 0.8f, 0.5f};
+        bool omni = false;
     };
     // Max simultaneous spot lights — must match MAX_SPOT_LIGHTS in lighting.frag
     // and ENTITY_MAX_SPOT_LIGHTS in entity_lighting.glsl.

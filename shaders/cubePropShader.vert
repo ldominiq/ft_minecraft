@@ -7,6 +7,9 @@ layout (location = 2) in float aTexLayer;
 // Per-vertex rather than uniform because every item in the world is packed
 // into a single draw call.
 layout (location = 3) in float aSkyLight;
+// Per-vertex baked torch block-light, 0..1. Separate from aSkyLight so an
+// item can be both sky-lit and torch-lit (no one-float encoding tricks).
+layout (location = 4) in float aBlockLight;
 
 out vec2 TexCoord;
 flat out float TexLayer;
@@ -14,6 +17,7 @@ flat out float TexLayer;
 out vec3 vFragPosRel;
 flat out vec3 vNormal;
 flat out float vSkyLight;
+flat out float vBlockLight;
 
 // Translation-free view (camera at origin of render space). aPos is already
 // camera-relative, so we never want the full view (its translation would
@@ -44,4 +48,5 @@ void main()
     int face = (gl_VertexID / 6) % 6;
     vNormal = FACE_NORMALS[face];
     vSkyLight = aSkyLight;
+    vBlockLight = aBlockLight;
 }

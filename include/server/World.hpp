@@ -154,6 +154,11 @@ class World final : public CommonWorld<ChunkGeneration>
 		void updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t clientTick);	
 
 		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
+
+		// When the block at `removedBlock` is cleared, remove any torch that
+		// was attached to it (floor torch on top, wall torch on its side) and
+		// if `dropItems` spawn a Torch item where each one stood.
+		void breakDependentTorches(const glm::ivec3& removedBlock, int32_t clientTick, bool dropItems);
 		void setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type);
 
 		void trySpawnNightMobs(const std::vector<CPlayerInfo>& players);

@@ -106,6 +106,27 @@ class Chunk {
 		// Returns true if sky-light has already been computed for this chunk.
 		bool hasSkyLight() const { return !skyLight.empty(); }
 
+		// Compute block-light (emissive light from torches) using the same
+		// BFS flood-fill as sky-light, but seeded at torch blocks instead of
+		// the open sky. Call alongside computeSkyLight() before meshing.
+		void computeBlockLight();
+
+		// Get the block-light level at a local block position (0-15).
+		// Returns 0 (dark) for out-of-bounds or not-yet-computed.
+		uint8_t getBlockLight(int x, int y, int z) const;
+
+		// Returns true if block-light has already been computed for this chunk.
+		bool hasBlockLight() const { return !blockLight.empty(); }
+
+		void addBlockLightIncremental(int lx, int ly, int lz, bool touched[3][3]);
+		void removeBlockLightIncremental(int lx, int ly, int lz, bool touched[3][3]);
+
+	private:
+		// Cross-chunk read/write helper for the two incremental ops above.
+		// Defined in Chunk.cpp; nested so it can reach adjacentChunks/blockLight.
+		struct IncLightCtx;
+	public:
+
 		void saveToStream(std::ostream& out) const; // only server? Still great to have it here.
 		void loadFromStream(std::istream& in);
 
@@ -133,6 +154,14 @@ class Chunk {
 		// Indexed as: x + WIDTH * (y + HEIGHT * z)
 		// Computed client-side during mesh building via BFS flood-fill.
 		std::vector<uint8_t> skyLight;
+
+		// Block-light level per block (0 = none, 15 = at a light source).
+		// Same indexing as skyLight. Seeded at torches; BFS-propagated.
+		std::vector<uint8_t> blockLight;
+
+	public:
+		bool containsTorch = false;
+	protected:
 
 		std::array<BiomeType, WIDTH * DEPTH> biomeMap{}; // Biome type per block
 };

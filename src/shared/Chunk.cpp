@@ -50,6 +50,9 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
     }
 
     blockIndices.set(index, paletteIndex);
+
+    if (isTorch(type))
+        containsTorch = true; // cleared/refreshed authoritatively in computeBlockLight()
 }
 
 bool Chunk::setBlockCascade(int x, int y, int z, BlockType type) {
@@ -241,6 +244,327 @@ void Chunk::computeSkyLight() {
     // old empty vector (fallback to 15, see getSkyLight()) or the
     // fully-computed one.
     std::swap(skyLight, localSkyLight);
+}
+
+uint8_t Chunk::getBlockLight(int x, int y, int z) const {
+    if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH)
+        return 0;
+    if (blockLight.empty())
+        return 0; // Not computed yet / no emitters — fully dark.
+    return blockLight[x + WIDTH * (y + HEIGHT * z)];
+}
+
+// Block-light propagation. Each chunk computes its own light INDEPENDENTLY
+// from the actual torch blocks within reach (its own + the surrounding
+// chunks, diagonals included), by running the BFS over a region expanded by
+// MARGIN on the X/Z sides. Because it depends only on torch *blocks* (never
+// on a neighbour's computed light) there is no cross-chunk feedback: placing
+// lights correctly across seams/diagonals, and breaking clears immediately.
+// The expensive cross-chunk scan is skipped entirely when no torch is in or
+// next to this chunk (the common case — generated terrain has none).
+void Chunk::computeBlockLight() {
+    static constexpr int MARGIN = 14;          // max torch travel (14 → 0)
+    static constexpr int EW = WIDTH + 2 * MARGIN;
+    static constexpr int ED = DEPTH + 2 * MARGIN;
+
+    std::vector<uint8_t> localBlockLight(BLOCK_COUNT, 0);
+
+    // Resolve a block at coords that may extend MARGIN outside this chunk,
+    // chaining at most one X and one Z hop through adjacentChunks (MARGIN <
+    // WIDTH so a coordinate never crosses more than one border per axis).
+    auto resolve = [&](int gx, int gy, int gz) -> BlockType {
+        if (gy < 0 || gy >= HEIGHT) return BlockType::AIR;
+        int lx = gx, lz = gz, sx = 0, sz = 0;
+        if (lx < 0)        { sx = -1; lx += WIDTH; }
+        else if (lx >= WIDTH) { sx = 1; lx -= WIDTH; }
+        if (lz < 0)        { sz = -1; lz += DEPTH; }
+        else if (lz >= DEPTH) { sz = 1; lz -= DEPTH; }
+        if (sx == 0 && sz == 0) return getBlock(lx, gy, lz);
+        Chunk* cur = this;
+        std::shared_ptr<Chunk> hold;
+        if (sx != 0) {
+            hold = adjacentChunks[sx == 1 ? EAST : WEST].lock();
+            if (!hold) return BlockType::AIR;
+            cur = hold.get();
+        }
+        if (sz != 0) {
+            std::shared_ptr<Chunk> hold2 =
+                cur->adjacentChunks[sz == 1 ? NORTH : SOUTH].lock();
+            if (!hold2) return BlockType::AIR;
+            return hold2->getBlock(lx, gy, lz);
+        }
+        return cur->getBlock(lx, gy, lz);
+    };
+
+    struct LightNode { int16_t x, y, z; };
+    std::queue<LightNode> lightQueue;
+
+    // ── Own torches (cheap, also refreshes containsTorch authoritatively) ──
+    std::vector<uint8_t> expanded; // allocated only if cross-chunk needed
+    bool foundOwn = false;
+    for (int x = 0; x < WIDTH && !foundOwn; ++x)
+        for (int z = 0; z < DEPTH && !foundOwn; ++z)
+            for (int y = 0; y < HEIGHT; ++y)
+                if (isTorch(getBlock(x, y, z))) { foundOwn = true; break; }
+    containsTorch = foundOwn;
+
+    // The 9 contributing chunks (self + 8 around), locked ONCE here and held
+    // alive for the whole pass. Diagonals chain one X then one Z hop, exactly
+    // like resolve(). chunkAt(0,0) is *this* (returned as null; handled below).
+    auto chunkAt = [&](int cx, int cz) -> std::shared_ptr<Chunk> {
+        if (cx != 0) {
+            auto a = adjacentChunks[cx == 1 ? EAST : WEST].lock();
+            if (!a || cz == 0) return a;
+            return a->adjacentChunks[cz == 1 ? NORTH : SOUTH].lock();
+        }
+        if (cz != 0) return adjacentChunks[cz == 1 ? NORTH : SOUTH].lock();
+        return nullptr;
+    };
+    std::shared_ptr<Chunk> held[3][3];
+    bool neighborTorch = false;
+    for (int cx = -1; cx <= 1; ++cx)
+        for (int cz = -1; cz <= 1; ++cz) {
+            if (cx == 0 && cz == 0) continue;
+            held[cx + 1][cz + 1] = chunkAt(cx, cz);
+            if (auto* c = held[cx + 1][cz + 1].get(); c && c->containsTorch)
+                neighborTorch = true;
+        }
+
+    if (!containsTorch && !neighborTorch) {
+        std::swap(blockLight, localBlockLight); // nothing emits — all dark
+        return;
+    }
+
+    // Cross-chunk path. Seeds are collected by scanning ONLY the chunks that
+    // actually contain a torch (containsTorch) in their own local coords — no
+    // per-cell weak_ptr locking. Empty neighbours (the vast majority) cost
+    // nothing. We also track the torch Y-range so the BFS volume can be
+    // clamped to [minY-MARGIN, maxY+MARGIN] instead of the full 256 columns:
+    // light can't travel more than MARGIN, so everything outside that band is
+    // 0 anyway. A surface torch shrinks the volume/zero-fill/BFS/copy ~9x.
+    const int gxLo = -MARGIN, gxHi = WIDTH - 1 + MARGIN;
+    const int gzLo = -MARGIN, gzHi = DEPTH - 1 + MARGIN;
+
+    std::vector<LightNode> seeds;
+    int gyMin = HEIGHT, gyMax = -1;
+    auto seedChunk = [&](Chunk* c, int baseGx, int baseGz) {
+        if (!c || !c->containsTorch) return;
+        for (int lx = 0; lx < WIDTH; ++lx) {
+            const int gx = baseGx + lx;
+            if (gx < gxLo || gx > gxHi) continue;
+            for (int lz = 0; lz < DEPTH; ++lz) {
+                const int gz = baseGz + lz;
+                if (gz < gzLo || gz > gzHi) continue;
+                for (int gy = 0; gy < HEIGHT; ++gy)
+                    if (isTorch(c->getBlock(lx, gy, lz))) {
+                        seeds.push_back({(int16_t)gx, (int16_t)gy, (int16_t)gz});
+                        gyMin = std::min(gyMin, gy);
+                        gyMax = std::max(gyMax, gy);
+                    }
+            }
+        }
+    };
+    seedChunk(this, 0, 0);
+    for (int cx = -1; cx <= 1; ++cx)
+        for (int cz = -1; cz <= 1; ++cz) {
+            if (cx == 0 && cz == 0) continue;
+            seedChunk(held[cx + 1][cz + 1].get(), cx * WIDTH, cz * DEPTH);
+        }
+
+    if (seeds.empty()) {
+        std::swap(blockLight, localBlockLight); // stale flags, nothing emits
+        return;
+    }
+
+    // Y band the BFS is allowed to touch (clamped to the world).
+    const int gyLo = std::max(0, gyMin - MARGIN);
+    const int gyHi = std::min(HEIGHT - 1, gyMax + MARGIN);
+    const int EH   = gyHi - gyLo + 1;
+    auto eIdx = [=](int gx, int gy, int gz) -> int {
+        return (gx + MARGIN) + EW * ((gy - gyLo) + EH * (gz + MARGIN));
+    };
+
+    expanded.assign((size_t)EW * EH * ED, 0);
+    for (const LightNode& s : seeds) {
+        expanded[eIdx(s.x, s.y, s.z)] = 14;
+        lightQueue.push(s);
+    }
+
+    static constexpr int dx[] = { 1, -1,  0,  0,  0,  0 };
+    static constexpr int dy[] = { 0,  0,  1, -1,  0,  0 };
+    static constexpr int dz[] = { 0,  0,  0,  0,  1, -1 };
+    while (!lightQueue.empty()) {
+        LightNode c = lightQueue.front();
+        lightQueue.pop();
+        uint8_t cur = expanded[eIdx(c.x, c.y, c.z)];
+        if (cur <= 1) continue;
+        uint8_t spread = cur - 1;
+        for (int dir = 0; dir < 6; ++dir) {
+            int nx = c.x + dx[dir], ny = c.y + dy[dir], nz = c.z + dz[dir];
+            if (nx < gxLo || nx > gxHi || ny < gyLo || ny > gyHi ||
+                nz < gzLo || nz > gzHi)
+                continue;
+            BlockType nb = resolve(nx, ny, nz);
+            if (isBlockSolid(nb) && !isBlockTransparent(nb)) continue;
+            int ni = eIdx(nx, ny, nz);
+            if (expanded[ni] < spread) {
+                expanded[ni] = spread;
+                lightQueue.push({(int16_t)nx, (int16_t)ny, (int16_t)nz});
+            }
+        }
+    }
+
+    // Copy the central (this-chunk) region out. Rows outside the lit band
+    // stay 0 (localBlockLight is zero-initialised).
+    for (int x = 0; x < WIDTH; ++x)
+        for (int z = 0; z < DEPTH; ++z)
+            for (int y = gyLo; y <= gyHi; ++y)
+                localBlockLight[x + WIDTH * (y + HEIGHT * z)] =
+                    expanded[eIdx(x, y, z)];
+
+    std::swap(blockLight, localBlockLight);
+}
+
+namespace {
+    constexpr int LDX[6] = { 1, -1,  0,  0,  0,  0 };
+    constexpr int LDY[6] = { 0,  0,  1, -1,  0,  0 };
+    constexpr int LDZ[6] = { 0,  0,  0,  0,  1, -1 };
+    // Mirrors computeBlockLight's occlusion rule: a torch (non-solid) and
+    // transparent blocks let light pass; opaque solids stop it.
+    inline bool lightPasses(BlockType b) {
+        return !(isBlockSolid(b) && !isBlockTransparent(b));
+    }
+}
+
+// Shared cross-chunk context for the two incremental ops
+struct Chunk::IncLightCtx {
+    Chunk* g[3][3] = {};
+    std::shared_ptr<Chunk> hold[3][3];
+    bool (*touched)[3];
+
+    IncLightCtx(Chunk* self, bool t[3][3]) : touched(t) {
+        g[1][1] = self;
+        hold[2][1] = self->adjacentChunks[EAST].lock();  g[2][1] = hold[2][1].get();
+        hold[0][1] = self->adjacentChunks[WEST].lock();  g[0][1] = hold[0][1].get();
+        hold[1][2] = self->adjacentChunks[NORTH].lock(); g[1][2] = hold[1][2].get();
+        hold[1][0] = self->adjacentChunks[SOUTH].lock(); g[1][0] = hold[1][0].get();
+        if (g[2][1]) {
+            hold[2][2] = g[2][1]->adjacentChunks[NORTH].lock(); g[2][2] = hold[2][2].get();
+            hold[2][0] = g[2][1]->adjacentChunks[SOUTH].lock(); g[2][0] = hold[2][0].get();
+        }
+        if (g[0][1]) {
+            hold[0][2] = g[0][1]->adjacentChunks[NORTH].lock(); g[0][2] = hold[0][2].get();
+            hold[0][0] = g[0][1]->adjacentChunks[SOUTH].lock(); g[0][0] = hold[0][0].get();
+        }
+    }
+
+    Chunk* resolve(int rx, int ry, int rz, int& ox, int& oy, int& oz) {
+        if (ry < 0 || ry >= HEIGHT) return nullptr;
+        const int cox = rx < 0 ? -1 : (rx >= WIDTH ? 1 : 0);
+        const int coz = rz < 0 ? -1 : (rz >= DEPTH ? 1 : 0);
+        Chunk* c = g[cox + 1][coz + 1];
+        if (!c) return nullptr;
+        ox = rx - cox * WIDTH; oy = ry; oz = rz - coz * DEPTH;
+        if (ox < 0 || ox >= WIDTH || oz < 0 || oz >= DEPTH) return nullptr;
+        return c;
+    }
+    BlockType blk(int rx, int ry, int rz) {
+        int x, y, z; Chunk* c = resolve(rx, ry, rz, x, y, z);
+        return c ? c->getBlock(x, y, z) : BlockType::AIR;
+    }
+    int light(int rx, int ry, int rz) {
+        int x, y, z; Chunk* c = resolve(rx, ry, rz, x, y, z);
+        if (!c || c->blockLight.empty()) return 0;
+        return c->blockLight[x + WIDTH * (y + HEIGHT * z)];
+    }
+    void setLight(int rx, int ry, int rz, int v) {
+        int x, y, z; Chunk* c = resolve(rx, ry, rz, x, y, z);
+        if (!c) return;
+        if (c->blockLight.empty()) c->blockLight.assign(BLOCK_COUNT, 0);
+        c->blockLight[x + WIDTH * (y + HEIGHT * z)] = (uint8_t)v;
+        const int cox = rx < 0 ? -1 : (rx >= WIDTH ? 1 : 0);
+        const int coz = rz < 0 ? -1 : (rz >= DEPTH ? 1 : 0);
+        touched[cox + 1][coz + 1] = true;
+    }
+};
+
+void Chunk::addBlockLightIncremental(int lx, int ly, int lz, bool touched[3][3])
+{
+    IncLightCtx ctx(this, touched);
+    struct N { int x, y, z; };
+    std::queue<N> q;
+
+    ctx.setLight(lx, ly, lz, 14);
+    q.push({ lx, ly, lz });
+    while (!q.empty()) {
+        N p = q.front(); q.pop();
+        const int lv = ctx.light(p.x, p.y, p.z);
+        if (lv <= 1) continue;
+        const int s = lv - 1;
+        for (int d = 0; d < 6; ++d) {
+            const int nx = p.x + LDX[d], ny = p.y + LDY[d], nz = p.z + LDZ[d];
+            if (!lightPasses(ctx.blk(nx, ny, nz))) continue;
+            if (ctx.light(nx, ny, nz) < s) {
+                ctx.setLight(nx, ny, nz, s);
+                q.push({ nx, ny, nz });
+            }
+        }
+    }
+    touched[1][1] = true; // host chunk's mesh rebuilds for the block change
+}
+
+void Chunk::removeBlockLightIncremental(int lx, int ly, int lz, bool touched[3][3])
+{
+    IncLightCtx ctx(this, touched);
+    struct D { int x, y, z, lv; };
+    struct N { int x, y, z; };
+    std::queue<D> dark;
+    std::queue<N> relight;
+
+    const int lv0 = ctx.light(lx, ly, lz);
+    ctx.setLight(lx, ly, lz, 0);
+    dark.push({ lx, ly, lz, lv0 });
+
+    // 1
+    while (!dark.empty()) {
+        D p = dark.front(); dark.pop();
+        for (int d = 0; d < 6; ++d) {
+            const int nx = p.x + LDX[d], ny = p.y + LDY[d], nz = p.z + LDZ[d];
+            const int nlv = ctx.light(nx, ny, nz);
+            if (nlv == 0) continue;
+            if (nlv < p.lv) {
+                ctx.setLight(nx, ny, nz, 0);
+                dark.push({ nx, ny, nz, nlv });
+            } else {
+                relight.push({ nx, ny, nz }); // still lit elsewhere
+            }
+        }
+    }
+
+    // 2
+    while (!relight.empty()) {
+        N p = relight.front(); relight.pop();
+        const int lv = ctx.light(p.x, p.y, p.z);
+        if (lv <= 1) continue;
+        const int s = lv - 1;
+        for (int d = 0; d < 6; ++d) {
+            const int nx = p.x + LDX[d], ny = p.y + LDY[d], nz = p.z + LDZ[d];
+            if (!lightPasses(ctx.blk(nx, ny, nz))) continue;
+            if (ctx.light(nx, ny, nz) < s) {
+                ctx.setLight(nx, ny, nz, s);
+                relight.push({ nx, ny, nz });
+            }
+        }
+    }
+
+    // The removed torch may not have been this chunk's only one
+    bool still = false;
+    for (int x = 0; x < WIDTH && !still; ++x)
+        for (int z = 0; z < DEPTH && !still; ++z)
+            for (int y = 0; y < HEIGHT; ++y)
+                if (isTorch(getBlock(x, y, z))) { still = true; break; }
+    containsTorch = still;
+    touched[1][1] = true;
 }
 
 void Chunk::saveToStream(std::ostream& out) const {
