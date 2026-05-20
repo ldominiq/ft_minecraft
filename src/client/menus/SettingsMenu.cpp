@@ -12,6 +12,7 @@ SettingsMenu::SettingsMenu(float width, float height, GLuint dirtTex)
 {
 	doneButton.label = "Done";
 	changeControlsButton.label = "Controls";
+	graphicsButton.label = "Graphics";
 	resize(width, height);
 	username = "nameless";
 	loadUsername();
@@ -51,6 +52,11 @@ void SettingsMenu::build()
 	changeControlsButton.x = centerX - btnW / 2.0f;
 	changeControlsButton.y = nameBox.y - btnH - 20.0f * menuScale;
 
+	graphicsButton.w = btnW;
+	graphicsButton.h = btnH;
+	graphicsButton.x = centerX - btnW / 2.0f;
+	graphicsButton.y = changeControlsButton.y - btnH - 20.0f * menuScale;
+
 	doneButton.w = btnW;
 	doneButton.h = btnH;
 	doneButton.x = centerX - btnW / 2.0f;
@@ -84,9 +90,12 @@ void SettingsMenu::onRender()
 
 	drawButton(doneButton.x, doneButton.y, doneButton.w, doneButton.h,
 			   doneButton.label, doneButton.hovered);
-	
+
 	drawButton(changeControlsButton.x, changeControlsButton.y, changeControlsButton.w, changeControlsButton.h,
 			   changeControlsButton.label, changeControlsButton.hovered);
+
+	drawButton(graphicsButton.x, graphicsButton.y, graphicsButton.w, graphicsButton.h,
+			   graphicsButton.label, graphicsButton.hovered);
 
 	textRenderer.setScale(savedScale);
 }
@@ -103,6 +112,10 @@ void SettingsMenu::handleMouseMove(double mouseX, double mouseY)
 	changeControlsButton.hovered =
 		glX >= changeControlsButton.x && glX <= changeControlsButton.x + changeControlsButton.w &&
 		glY >= changeControlsButton.y && glY <= changeControlsButton.y + changeControlsButton.h;
+
+	graphicsButton.hovered =
+		glX >= graphicsButton.x && glX <= graphicsButton.x + graphicsButton.w &&
+		glY >= graphicsButton.y && glY <= graphicsButton.y + graphicsButton.h;
 }
 
 void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, int action)
@@ -121,6 +134,11 @@ void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, in
 	if (glX >= changeControlsButton.x && glX <= changeControlsButton.x + changeControlsButton.w &&
 		glY >= changeControlsButton.y && glY <= changeControlsButton.y + changeControlsButton.h) {
 		if (changeControls) changeControls();
+	}
+
+	if (glX >= graphicsButton.x && glX <= graphicsButton.x + graphicsButton.w &&
+		glY >= graphicsButton.y && glY <= graphicsButton.y + graphicsButton.h) {
+		if (onGraphics) onGraphics();
 	}
 }
 

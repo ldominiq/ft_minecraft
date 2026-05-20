@@ -97,6 +97,7 @@ void App::init(const std::string& serverIp) {
 		if (app->mainMenu) app->mainMenu->resize(width, height);
 		if (app->multiplayerMenu) app->multiplayerMenu->resize(width, height);
 		if (app->settingsMenu) app->settingsMenu->resize(width, height);
+		if (app->graphicsMenu) app->graphicsMenu->resize(width, height);
 		if (app->pauseMenu) app->pauseMenu->resize(width, height);
 		if (app->controlsMenu) app->controlsMenu->resize(width, height);
     });
@@ -431,8 +432,35 @@ void App::init(const std::string& serverIp) {
 	mainMenu = std::make_shared<MainMenu>(screenWidth, screenHeight, menuDirtTex);
 	multiplayerMenu = std::make_shared<MultiplayerMenu>(screenWidth, screenHeight, menuDirtTex);
 	settingsMenu = std::make_shared<SettingsMenu>(screenWidth, screenHeight, menuDirtTex);
+	graphicsMenu = std::make_shared<GraphicsMenu>(screenWidth, screenHeight, menuDirtTex);
 	pauseMenu = std::make_shared<PauseMenu>(screenWidth, screenHeight);
 	controlsMenu = std::make_shared<ControlsMenu>(screenWidth, screenHeight, menuDirtTex);
+
+	graphicsMenu->addToggle("V-Sync",
+		[this]() { return vsync; },
+		[this](bool v) { vsync = v; glfwSwapInterval(v ? 1 : 0); });
+	graphicsMenu->addToggle("Shadows",
+		[this]() { return lighting && lighting->isShadowsEnabled(); },
+		[this](bool v) { if (lighting) lighting->setShadowsEnabled(v); });
+	graphicsMenu->addToggle("SSAO",
+		[this]() { return ssao && ssao->isEnabled(); },
+		[this](bool v) { if (ssao) ssao->setEnabled(v); });
+	graphicsMenu->addToggle("MSAA",
+		[this]() { return renderer && renderer->isMSAAEnabled(); },
+		[this](bool v) { if (renderer) renderer->setMSAAEnabled(v); });
+	graphicsMenu->addToggle("Fog",
+		[this]() { return fogEnabled; },
+		[this](bool v) { fogEnabled = v; });
+	graphicsMenu->addIntSlider("Chunk Load Radius", 4, 32,
+		[this]() {
+			if (camera && camera->getPlayer())
+				return static_cast<int>(camera->getPlayer()->getLoadRadius());
+			return 16;
+		},
+		[this](int v) {
+			if (camera && camera->getPlayer())
+				camera->getPlayer()->setLoadRadius(static_cast<uint8_t>(v));
+		});
 	controlsArray = controlsMenu->getControlsArray();
 
 	mainMenu->setButtonCallback([this](int btn) {
@@ -477,6 +505,13 @@ void App::init(const std::string& serverIp) {
 		} else {
 			transitionTo(GameState::Controls);
 		}
+	});
+	settingsMenu->setGraphicsCallback([this]() {
+		menuManager = graphicsMenu;
+	});
+
+	graphicsMenu->setDoneCallback([this]() {
+		menuManager = settingsMenu;
 	});
 
 	pauseMenu->setContinueCallback([this]() {
@@ -3062,6 +3097,7 @@ void App::cleanup() {
 	mainMenu.reset();
 	multiplayerMenu.reset();
 	settingsMenu.reset();
+	graphicsMenu.reset();
 	controlsMenu.reset();
     pauseMenu.reset();
     autoExposure.reset();
@@ -3155,10 +3191,19 @@ void App::processInputMenus(int key, int action) {
 	}
 	else if (gameState == GameState::Settings)
 	{
-		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
-			settingsMenu->removeChar();
-		else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-			transitionTo(GameState::MainMenu);
+		auto mgr = menuManager.lock();
+		if (mgr == graphicsMenu)
+		{
+			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+				menuManager = settingsMenu;
+		}
+		else
+		{
+			if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
+				settingsMenu->removeChar();
+			else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+				transitionTo(GameState::MainMenu);
+		}
 	}
 	else if (gameState == GameState::Controls)
 	{
@@ -3180,6 +3225,8 @@ void App::processInputMenus(int key, int action) {
 	{
 		if (manager == settingsMenu) {
 			menuManager = pauseMenu;
+		} else if (manager == graphicsMenu) {
+			menuManager = settingsMenu;
 		} else if (manager == controlsMenu) {
 			if (!controlsMenu->getChangeRequested())
 				menuManager = settingsMenu;
