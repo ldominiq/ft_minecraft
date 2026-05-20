@@ -169,6 +169,7 @@ private:
 	std::shared_ptr<InventoryUI> inventoryUI;
 	std::unique_ptr<DebugHUD> debugHUD;
 	bool showHUD = false;
+	bool hudVisible = true;
 
 	// Main menu screens
 	std::shared_ptr<MainMenu> mainMenu;

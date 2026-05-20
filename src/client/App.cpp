@@ -1328,12 +1328,13 @@ void App::render() {
 		}
 		else
 		{
-			inventoryUI->drawHotbar();
-			inventoryUI->drawHealth(camera->getPlayer()->health);
-			// Death overlay sits above the hotbar/health but below the chat
-			// recent-messages list so kill feed text stays readable.
+			if (hudVisible) {
+				inventoryUI->drawHotbar();
+				inventoryUI->drawHealth(camera->getPlayer()->health);
+				chat->renderRecentMessages();
+			}
+			// Death overlay always shown so the player can see they died even with HUD hidden.
 			inventoryUI->drawDeathScreen(camera->getPlayer()->health);
-			chat->renderRecentMessages();
 		}
 
 		if (showHUD) {
@@ -3236,6 +3237,15 @@ void App::processInput() {
     }
     if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_RELEASE) {
         f3Held = false;
+    }
+
+    // Toggle in-game HUD (F2): hotbar, health, crosshair and chat messages
+    if (glfwGetKey(window, GLFW_KEY_F2) == GLFW_PRESS && !f2Held) {
+        hudVisible = !hudVisible;
+        f2Held = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_F2) == GLFW_RELEASE) {
+        f2Held = false;
     }
 
     // Show/Hide debug window
