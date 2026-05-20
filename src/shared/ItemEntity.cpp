@@ -12,11 +12,11 @@ ItemEntity::ItemEntity(const glm::vec3 &position, float yaw, ItemType type, int3
 
 	if (isLaunched)
 	{
-		float angle = glm::radians(yaw) + (float(rand()) / RAND_MAX - 0.5f) * 0.2f; // small random offset
-		float speed = 0.1f + (float(rand()) / RAND_MAX) * 0.05f; // 0.1–0.15
+		float angle = glm::radians(yaw) + (float(rand()) / float(RAND_MAX) - 0.5f) * 0.2f; // small random offset
+		float speed = 0.1f + (float(rand()) / float(RAND_MAX)) * 0.05f; // 0.1–0.15
 		velocity.x = std::cos(angle) * speed;
 		velocity.z = std::sin(angle) * speed;
-		velocity.y = 0.2f + (float(rand()) / RAND_MAX) * 0.1f;	// Pop upwards a bit
+		velocity.y = 0.2f + (float(rand()) / float(RAND_MAX)) * 0.1f;	// Pop upwards a bit
 	}    
 }
 
