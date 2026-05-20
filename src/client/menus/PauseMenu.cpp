@@ -50,21 +50,9 @@ void PauseMenu::handleMouseClick(double mouseX, double mouseY, int button, int a
 	float glY = fullscreenHeight - static_cast<float>(mouseY);
 	float glX = static_cast<float>(mouseX);
 
-	if (glX >= continueButton.x && glX <= continueButton.x + continueButton.w &&
-		glY >= continueButton.y && glY <= continueButton.y + continueButton.h) {
-		if (onContinue) onContinue();
-	}
-
-	if (glX >= settingsButton.x && glX <= settingsButton.x + settingsButton.w &&
-		glY >= settingsButton.y && glY <= settingsButton.y + settingsButton.h) {
-		if (onSettings) onSettings();
-	}
-
-	if (glX >= backToMainMenuButton.x && glX <= backToMainMenuButton.x + backToMainMenuButton.w &&
-		glY >= backToMainMenuButton.y && glY <= backToMainMenuButton.y + backToMainMenuButton.h) {
-		if (onBackToMainMenu) onBackToMainMenu();
-	}
-
+	if (isInside(continueButton, glX, glY) && onContinue) onContinue();
+	if (isInside(settingsButton, glX, glY) && onSettings) onSettings();
+	if (isInside(backToMainMenuButton, glX, glY) && onBackToMainMenu) onBackToMainMenu();
 }
 
 void PauseMenu::handleMouseMove(double mouseX, double mouseY)
@@ -73,10 +61,7 @@ void PauseMenu::handleMouseMove(double mouseX, double mouseY)
 	float glX = static_cast<float>(mouseX);
 
 	for (auto& button : {&continueButton, &settingsButton, &backToMainMenuButton})
-	{
-		button->hovered = glX >= button->x && glX <= button->x + button->w &&
-						  glY >= button->y && glY <= button->y + button->h;
-	}
+		updateHover(*button, glX, glY);
 }
 
 void PauseMenu::onRender()

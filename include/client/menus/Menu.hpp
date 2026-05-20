@@ -37,6 +37,7 @@ class Menu {
 			Button track;
 			std::string label;
 			bool isInt = false;
+			int precision = 0; // decimal places for float sliders
 			float minVal = 0.0f;
 			float maxVal = 1.0f;
 			std::function<float()> getF;

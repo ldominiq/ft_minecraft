@@ -241,28 +241,26 @@ void Menu::updateHover(Button& b, float glX, float glY)
 
 void Menu::drawToggle(const Toggle& t)
 {
-	bool on = t.get ? t.get() : false;
-	std::string label = t.label + ": " + (on ? "ON" : "OFF");
+	std::string label = t.label + ": " + (t.get() ? "ON" : "OFF");
 	drawButton(t.btn.x, t.btn.y, t.btn.w, t.btn.h, label, t.btn.hovered, t.btn.enabled);
 }
 
 bool Menu::clickToggle(Toggle& t, float glX, float glY)
 {
 	if (!isInside(t.btn, glX, glY)) return false;
-	if (t.get && t.set) t.set(!t.get());
+	t.set(!t.get());
 	return true;
 }
 
 void Menu::applySliderAtX(Slider& s, float glX)
 {
-	float t = (glX - s.track.x) / s.track.w;
-	t = std::clamp(t, 0.0f, 1.0f);
+	if (s.track.w <= 0.0f) return;
+	float t = std::clamp((glX - s.track.x) / s.track.w, 0.0f, 1.0f);
 	float v = s.minVal + t * (s.maxVal - s.minVal);
-	if (s.isInt) {
-		if (s.setI) s.setI(static_cast<int>(std::round(v)));
-	} else {
-		if (s.setF) s.setF(v);
-	}
+	if (s.isInt)
+		s.setI(static_cast<int>(std::round(v)));
+	else
+		s.setF(v);
 }
 
 bool Menu::clickSlider(Slider& s, float glX, float glY)
@@ -288,11 +286,9 @@ void Menu::drawSlider(const Slider& s)
 	drawSimpleQuad(s.track.x, s.track.y, s.track.w, s.track.h,
 				   glm::vec4(0.15f, 0.15f, 0.2f, 0.85f));
 
-	float current = s.isInt
-		? static_cast<float>(s.getI ? s.getI() : 0)
-		: (s.getF ? s.getF() : 0.0f);
-	float t = (current - s.minVal) / std::max(1e-6f, (s.maxVal - s.minVal));
-	t = std::clamp(t, 0.0f, 1.0f);
+	float current = s.isInt ? static_cast<float>(s.getI()) : s.getF();
+	float t = std::clamp((current - s.minVal) / std::max(1e-6f, (s.maxVal - s.minVal)),
+						 0.0f, 1.0f);
 
 	float fillW = t * s.track.w;
 	drawSimpleQuad(s.track.x, s.track.y, fillW, s.track.h,
@@ -313,7 +309,7 @@ void Menu::drawSlider(const Slider& s)
 	if (s.isInt)
 		ss << s.label << ": " << static_cast<int>(std::round(current));
 	else
-		ss << s.label << ": " << std::fixed << std::setprecision(0) << current;
+		ss << s.label << ": " << std::fixed << std::setprecision(s.precision) << current;
 	std::string text = ss.str();
 
 	float labelWidth = textRenderer.getPixelSizeOfString(text);

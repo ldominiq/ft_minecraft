@@ -461,6 +461,7 @@ void App::init(const std::string& serverIp) {
 			if (camera && camera->getPlayer())
 				camera->getPlayer()->setLoadRadius(static_cast<uint8_t>(v));
 		});
+	graphicsMenu->commit();
 	controlsArray = controlsMenu->getControlsArray();
 
 	mainMenu->setButtonCallback([this](int btn) {
@@ -3167,6 +3168,21 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	return inputs;
 }
 
+bool App::popSubMenuOnEscape() {
+	auto mgr = menuManager.lock();
+	if (mgr == graphicsMenu) {
+		menuManager = settingsMenu;
+		return true;
+	}
+	if (mgr == controlsMenu) {
+		// Don't pop while a key rebind is pending — the rebinder consumes ESC.
+		if (!controlsMenu->getChangeRequested())
+			menuManager = settingsMenu;
+		return true;
+	}
+	return false;
+}
+
 void App::processInputMenus(int key, int action) {
 
 	// Handle input for non-Playing menu states
@@ -3191,19 +3207,12 @@ void App::processInputMenus(int key, int action) {
 	}
 	else if (gameState == GameState::Settings)
 	{
-		auto mgr = menuManager.lock();
-		if (mgr == graphicsMenu)
-		{
-			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-				menuManager = settingsMenu;
-		}
-		else
-		{
-			if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
-				settingsMenu->removeChar();
-			else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-				transitionTo(GameState::MainMenu);
-		}
+		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS && popSubMenuOnEscape())
+			return;
+		if (key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
+			settingsMenu->removeChar();
+		else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			transitionTo(GameState::MainMenu);
 	}
 	else if (gameState == GameState::Controls)
 	{
@@ -3225,12 +3234,7 @@ void App::processInputMenus(int key, int action) {
 	{
 		if (manager == settingsMenu) {
 			menuManager = pauseMenu;
-		} else if (manager == graphicsMenu) {
-			menuManager = settingsMenu;
-		} else if (manager == controlsMenu) {
-			if (!controlsMenu->getChangeRequested())
-				menuManager = settingsMenu;
-		} else {
+		} else if (!popSubMenuOnEscape()) {
 			menuManager.reset();
 			if (!uiInteractive)
 				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);

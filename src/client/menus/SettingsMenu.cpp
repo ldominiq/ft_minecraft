@@ -105,17 +105,9 @@ void SettingsMenu::handleMouseMove(double mouseX, double mouseY)
 	float glY = fullscreenHeight - static_cast<float>(mouseY);
 	float glX = static_cast<float>(mouseX);
 
-	doneButton.hovered =
-		glX >= doneButton.x && glX <= doneButton.x + doneButton.w &&
-		glY >= doneButton.y && glY <= doneButton.y + doneButton.h;
-	
-	changeControlsButton.hovered =
-		glX >= changeControlsButton.x && glX <= changeControlsButton.x + changeControlsButton.w &&
-		glY >= changeControlsButton.y && glY <= changeControlsButton.y + changeControlsButton.h;
-
-	graphicsButton.hovered =
-		glX >= graphicsButton.x && glX <= graphicsButton.x + graphicsButton.w &&
-		glY >= graphicsButton.y && glY <= graphicsButton.y + graphicsButton.h;
+	updateHover(doneButton, glX, glY);
+	updateHover(changeControlsButton, glX, glY);
+	updateHover(graphicsButton, glX, glY);
 }
 
 void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, int action)
@@ -126,20 +118,9 @@ void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, in
 	float glY = fullscreenHeight - static_cast<float>(mouseY);
 	float glX = static_cast<float>(mouseX);
 
-	if (glX >= doneButton.x && glX <= doneButton.x + doneButton.w &&
-		glY >= doneButton.y && glY <= doneButton.y + doneButton.h) {
-		if (onDone) onDone();
-	}
-
-	if (glX >= changeControlsButton.x && glX <= changeControlsButton.x + changeControlsButton.w &&
-		glY >= changeControlsButton.y && glY <= changeControlsButton.y + changeControlsButton.h) {
-		if (changeControls) changeControls();
-	}
-
-	if (glX >= graphicsButton.x && glX <= graphicsButton.x + graphicsButton.w &&
-		glY >= graphicsButton.y && glY <= graphicsButton.y + graphicsButton.h) {
-		if (onGraphics) onGraphics();
-	}
+	if (isInside(doneButton, glX, glY) && onDone) onDone();
+	if (isInside(changeControlsButton, glX, glY) && changeControls) changeControls();
+	if (isInside(graphicsButton, glX, glY) && onGraphics) onGraphics();
 }
 
 void SettingsMenu::saveUsername(const char* filename)

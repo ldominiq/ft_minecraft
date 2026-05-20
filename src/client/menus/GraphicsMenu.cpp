@@ -27,22 +27,22 @@ void GraphicsMenu::addToggle(const std::string& label,
 	t.get = std::move(get);
 	t.set = std::move(set);
 	toggles.push_back(std::move(t));
-	build();
 }
 
 void GraphicsMenu::addFloatSlider(const std::string& label, float min, float max,
 								  std::function<float()> get,
-								  std::function<void(float)> set)
+								  std::function<void(float)> set,
+								  int precision)
 {
 	Slider s;
 	s.label = label;
 	s.minVal = min;
 	s.maxVal = max;
 	s.isInt = false;
+	s.precision = precision;
 	s.getF = std::move(get);
 	s.setF = std::move(set);
 	sliders.push_back(std::move(s));
-	build();
 }
 
 void GraphicsMenu::addIntSlider(const std::string& label, int min, int max,
@@ -57,7 +57,6 @@ void GraphicsMenu::addIntSlider(const std::string& label, int min, int max,
 	s.getI = std::move(get);
 	s.setI = std::move(set);
 	sliders.push_back(std::move(s));
-	build();
 }
 
 void GraphicsMenu::build()

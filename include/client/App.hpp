@@ -116,6 +116,10 @@ private:
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
 	void processInputMenus(int key, int action);
+	// If the currently-open menu is a sub-page of another, swap to the parent and
+	// return true. Returns false otherwise so the caller can apply default ESC
+	// behavior (transitioning game state, closing overlays, etc.).
+	bool popSubMenuOnEscape();
 	bool connectToServer(const std::string& ip);
 	void transitionTo(GameState newState);
     void updateWindowTitle();
