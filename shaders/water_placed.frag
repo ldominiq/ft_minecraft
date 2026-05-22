@@ -95,7 +95,8 @@ void main() {
     vec3 nT = sampleTangentNormal(distortedTexCoords);
     vec3 normal = normalize(faceT * nT.x + faceB * nT.y + faceN * nT.z);
 
-    // Underwater back face match the surrounding fogged water volume instead
+    // Underwater back face: match the surrounding fogged water volume instead
+    if (!gl_FrontFacing) {
         vec3 viewUW = normalize(toCameraVector);
         vec3 reflLight = reflect(-sunDir, normal);
         float glint = pow(max(dot(reflLight, viewUW), 0.0), 80.0);
