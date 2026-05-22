@@ -1309,6 +1309,7 @@ void App::render() {
 		else
 		{
 			inventoryUI->drawHotbar();
+            inventoryUI->drawCrosshair();
 			if (camera->getPlayer()->gamemode != GAMEMODES::SPECTATOR)
 			    inventoryUI->drawHealth(camera->getPlayer()->health);
 			// Death overlay sits above the hotbar/health but below the chat
