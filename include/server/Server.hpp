@@ -78,6 +78,8 @@ private:
 	void dispatchPacket(PacketPtr &pkt, sockaddr_in &cliaddr);
 	void receiveConnect(NetConnect &pkt, const sockaddr_in &cliaddr);
 	void receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr);
+	void removePlayer(std::vector<CPlayerInfo>::iterator player);
+	void timeoutSilentClients();
 	void receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &clieaddr);
 	void receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_in &clieddr);
 	void receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr);

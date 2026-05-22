@@ -289,10 +289,13 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
             if (p != players.end()) {
                 p->recvRel.expectedSeq    = 1;
                 p->recvRel.lastProgressAt = currTick;
+                p->lastSeenAt             = currTick;
             }
         }
         return;
     }
+
+    player->lastSeenAt = currTick;
 
     // Known peer: route through the reliability layer.
     auto result = reliabilityIngest(player->recvRel, std::move(pkt), currTick);
@@ -336,6 +339,10 @@ void Server::gameTick()
 	// Despawn mobs with no player nearby once per second.
 	if (tick > 0 && tick % static_cast<int>(TPS) == 0)
 		despawnDistantMobs();
+
+	// Evict crashed / silently-gone clients once per second.
+	if (tick > 0 && tick % static_cast<int>(TPS) == 0)
+		timeoutSilentClients();
 
 	// Broadcast every 20 ticks (~1s)
 	if (tick % static_cast<int>(TPS) == 0)
@@ -466,35 +473,43 @@ void Server::sendEntitiesSnapshotTo(const sockaddr_in &cliaddr)
 
 void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 {
+	(void)pkt;
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 	if (player == players.end())
 		return ;
+	removePlayer(player);
+}
 
+void Server::removePlayer(std::vector<CPlayerInfo>::iterator player)
+{
 	const auto &ent = std::find(world->livingEntities.begin(), world->livingEntities.end(), player->movement);
-	if (ent == world->livingEntities.end())
-		return ;
+	const bool hasEntity = ent != world->livingEntities.end();
 
-	for (CPlayerInfo &p : players)
+	if (hasEntity)
 	{
-		if (player->movement == p.movement) continue;
+		for (CPlayerInfo &p : players)
+		{
+			if (player->movement == p.movement) continue;
 
-		NetEntityMove pkt;
+			NetEntityMove pkt;
 
-		pkt.eEntityType = ent->get()->getEntityType();
-		pkt.entityID = ent->get()->getID();
-		pkt.type = -1;
+			pkt.eEntityType = ent->get()->getEntityType();
+			pkt.entityID = ent->get()->getID();
+			pkt.type = -1;
+			pkt.flags = pkt.flags | PacketFlags::Reliable;
 
-		//not really needed info
-		pkt.positionX = ent->get()->getPosition().x;
-		pkt.positionY = ent->get()->getPosition().y;
-		pkt.positionZ = ent->get()->getPosition().z;
+			//not really needed info
+			pkt.positionX = ent->get()->getPosition().x;
+			pkt.positionY = ent->get()->getPosition().y;
+			pkt.positionZ = ent->get()->getPosition().z;
 
-		pkt.yaw = ent->get()->yaw;
-		pkt.pitch = ent->get()->pitch;
+			pkt.yaw = ent->get()->yaw;
+			pkt.pitch = ent->get()->pitch;
 
-		pkt.entityName = ent->get()->getName();
+			pkt.entityName = ent->get()->getName();
 
-		sendPacketTo(pkt, p.addr);
+			sendPacketTo(pkt, p.addr);
+		}
 	}
 
 	// Push back to inventory items in crafting station and hand to prevent lose
@@ -533,9 +548,37 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 	messages.push_back(player->movement->getName() + " left the game.");
 
 	// Erase rather than clear: ids are never reused, so the entry stays dead.
+	// Always drop the player from players/PlayerKnownChunks even if the
+	// living-entity lookup failed, otherwise timeoutSilentClients() would
+	// keep re-timing-out the same stale entry.
 	world->PlayerKnownChunks.erase(player->id);
-	world->livingEntities.erase(ent);
+	if (hasEntity)
+		world->livingEntities.erase(ent);
 	players.erase(player);
+}
+
+void Server::timeoutSilentClients()
+{
+	// A connected client streams NetPlayerInputs every tick (~20/s), so any gap
+	// this long means it crashed or its NetDisconnect was dropped on exit.
+	constexpr auto CLIENT_TIMEOUT = std::chrono::seconds(10);
+
+	for (auto it = players.begin(); it != players.end();)
+	{
+		if (currTick - it->lastSeenAt > CLIENT_TIMEOUT)
+		{
+			std::cout << "[Server] Client '" << it->movement->getName()
+			          << "' timed out (no packets for "
+			          << std::chrono::duration_cast<std::chrono::seconds>(CLIENT_TIMEOUT).count()
+			          << "s), removing.\n";
+					  
+			size_t idx = static_cast<size_t>(it - players.begin());
+			removePlayer(it);
+			it = players.begin() + idx;
+		}
+		else
+			++it;
+	}
 }
 
 void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliaddr)
@@ -988,6 +1031,7 @@ void Server::despawnDistantMobs()
 			pkt.eEntityType = e->getEntityType();
 			pkt.entityID = e->getID();
 			pkt.type = -1;
+			pkt.flags = pkt.flags | PacketFlags::Reliable;
 			pkt.positionX = e->getPositionD().x;
 			pkt.positionY = e->getPositionD().y;
 			pkt.positionZ = e->getPositionD().z;
@@ -1021,6 +1065,7 @@ void Server::sendDeaths()
 					ent->onDeath(*world); // respawn now after animation window
 					ent->deathBroadcast = false; // reset for potential respawn
 					ent->diedByExplosion = false;
+					world->updateRegionStreaming(players);
 				}
 				else {
 					le = world->livingEntities.erase(le);
@@ -1045,6 +1090,7 @@ void Server::sendDeaths()
 			pkt.eEntityType = ent->getEntityType();
 			pkt.entityID    = ent->getID();
 			pkt.type        = static_cast<uint16_t>(-1);
+			pkt.flags       = pkt.flags | PacketFlags::Reliable;
 			pkt.positionX   = ent->getPositionD().x;
 			pkt.positionY   = ent->getPositionD().y;
 			pkt.positionZ   = ent->getPositionD().z;
