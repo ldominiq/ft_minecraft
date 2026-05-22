@@ -988,6 +988,7 @@ void Server::despawnDistantMobs()
 			pkt.eEntityType = e->getEntityType();
 			pkt.entityID = e->getID();
 			pkt.type = -1;
+			pkt.flags = pkt.flags | PacketFlags::Reliable;
 			pkt.positionX = e->getPositionD().x;
 			pkt.positionY = e->getPositionD().y;
 			pkt.positionZ = e->getPositionD().z;
@@ -1045,6 +1046,7 @@ void Server::sendDeaths()
 			pkt.eEntityType = ent->getEntityType();
 			pkt.entityID    = ent->getID();
 			pkt.type        = static_cast<uint16_t>(-1);
+			pkt.flags       = pkt.flags | PacketFlags::Reliable;
 			pkt.positionX   = ent->getPositionD().x;
 			pkt.positionY   = ent->getPositionD().y;
 			pkt.positionZ   = ent->getPositionD().z;
