@@ -108,7 +108,7 @@ bool AudioManager::loadMusic(BiomeType biome, const std::string& path) {
         std::cerr << "[Audio] missing music: " << path << std::endl;
         return false;
     }
-    stream->setLooping(true);
+    stream->setLooping(false);
     musicCache[biome] = std::move(stream);
     return true;
 }
@@ -613,7 +613,7 @@ void AudioManager::crossfadeTo(BiomeType b, float seconds) {
 
     // Start the new track silent on the music bus, then fade in. Must use musicBus.play()
     SoLoud::handle h = musicBus.play(*it->second, 0.0f);
-    engine.setLooping(h, true);
+    engine.setLooping(h, false);
     engine.fadeVolume(h, musicVolume, seconds);
     activeMusicHandle = h;
     musicPaused = false;

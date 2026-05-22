@@ -349,6 +349,7 @@ void TextureManager::setupBlockTextureMapping() {
         { BlockType::GOLD,                  layer("gold_ore") },
         { BlockType::DIAMOND,               layer("diamond_ore") },
         { BlockType::URANIUM,               layer("emerald_ore") },
+        { BlockType::COAL,                  layer("coal_ore") },
         { BlockType::WATER,                 waterTinted },
         { BlockType::SHORT_GRASS,           biomeShortGrassLayer[BiomeType::PLAINS] }, // will be overridden by biome-specific tints in shader
         { BlockType::CORNFLOWER,            layer("cornflower") },

@@ -276,6 +276,8 @@ void WaterRenderer::setupSurfaceShader(Shader& shader,
                       lighting->getSkyExposure(), fogStart, fogEnd, fogStrength,
                       lighting->getDirectionalLightDirection());
 
+    lighting->uploadUnderwaterUniforms(shader);
+
     glActiveTexture(GL_TEXTURE0 + TextureUnits::WATER_DUDV);
     glBindTexture(GL_TEXTURE_2D, dudvTexture);
     shader.setInt("dudvMap", TextureUnits::WATER_DUDV);

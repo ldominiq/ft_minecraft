@@ -36,6 +36,7 @@ uniform float fogStrength;
 uniform bool fogEnabled;
 uniform bool hdrMode; // HDR: keep fog linear, tonemap once at the end.
 uniform vec3 sunDir;
+uniform vec3 underwaterFogColor;
 
 #include "sky_common.glsl"
 
@@ -84,6 +85,32 @@ void main() {
 
     reflectTexCoords += totalDistortion;
 
+   // underwater ceiling
+   if (!gl_FrontFacing) {
+        vec3 normalUW = sampleNormal(textureCoords
+            + sampleDistortion(textureCoords) * waveStrength);
+        vec3 viewUW = normalize(toCameraVector);
+
+        // Sun glint coming through the surface
+        vec3 reflLight = reflect(-sunDir, normalUW);
+        float glint = pow(max(dot(reflLight, viewUW), 0.0), 80.0);
+        float dayFactor = smoothstep(twilightLow, twilightHigh, sunDir.y);
+
+        // Shift the base toward a dedicated night color so the surface
+        // tracks the day/night cycle
+        float dayT = smoothstep(-0.1, 0.2, sunDir.y);
+        vec3 baseColor = mix(vec3(0.0, 0.096, 0.085), underwaterFogColor, dayT);
+        vec3 col = baseColor + lightColor * glint * 2.0 * dayFactor;
+
+        // Thin near the eye (see through it), opaque far away (merges with
+        // the fog). length(toCameraVector) is the distance to this fragment.
+        float d = length(toCameraVector);
+        float a = mix(0.12, 0.85, smoothstep(2.0, 35.0, d));
+
+        FragColor = vec4(col, a);
+        return;
+    }
+
     vec4 waterColor = vec4(0.0, 0.3, 0.5, 1.0);
     vec4 murkyWaterColor = vec4(0.0, 0.5, 0.275, 1.0);
 
@@ -120,11 +147,6 @@ void main() {
     FragColor.a = clamp(waterDepth/5.0, 0.0, 1.0); // softens the edges of the water
 //    FragColor = normalMapColor;
 //    FragColor = vec4(waterDepth/50.0);
-
-	if (!gl_FrontFacing) {
-		// draw the inside with transparency
-		FragColor.a *= 0.8;
-	}
 
     // Distance-based color shift: real water turns sky-blue at distance.
     // Mix toward the sky color sampled in the view direction. This is on top

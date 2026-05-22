@@ -293,14 +293,14 @@ void ControlsMenu::loadControlsDefaults() {
 	controlsArray[LEFT]					= GLFW_KEY_A;
 	controlsArray[RIGHT]				= GLFW_KEY_D;
     controlsArray[UP]					= GLFW_KEY_SPACE;
-    controlsArray[DOWN]					= GLFW_KEY_LEFT_SHIFT;
+    controlsArray[SNEAK]				= GLFW_KEY_LEFT_SHIFT;
     controlsArray[DESTROY_BLOCK]		= GLFW_MOUSE_BUTTON_LEFT;
     controlsArray[PLACE_BLOCK]			= GLFW_MOUSE_BUTTON_RIGHT;
     controlsArray[TOGGLE_FULLSCREEN]	= GLFW_KEY_F11;
     controlsArray[TOGGLE_WIREFRAME]		= GLFW_KEY_F1;
     controlsArray[TOGGLE_HUD]			= GLFW_KEY_F2;
     controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_F6;
-    controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
+    controlsArray[RUN]					= GLFW_KEY_LEFT_CONTROL;
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
 	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
 	controlsArray[PLAYER_LIST]			= GLFW_KEY_TAB;

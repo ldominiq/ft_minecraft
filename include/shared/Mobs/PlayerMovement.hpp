@@ -46,6 +46,7 @@ struct PlayerMovement : public virtual LivingEntity {
 	void updatePosition();
 	void updateCameraVectors();
 	void applyFallDamage() override;
+	void calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove) override;
 	void calculateNewPosition(const ICommonWorld &world) override;
 	void attack(LivingEntity &victim) override;
 

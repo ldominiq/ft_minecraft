@@ -40,6 +40,7 @@ uniform float fogEnd;
 uniform float fogStrength;
 uniform bool fogEnabled;
 uniform vec3 sunDir;
+uniform vec3 underwaterFogColor;
 
 #include "sky_common.glsl"
 
@@ -94,6 +95,21 @@ void main() {
     vec3 nT = sampleTangentNormal(distortedTexCoords);
     vec3 normal = normalize(faceT * nT.x + faceB * nT.y + faceN * nT.z);
 
+    // Underwater back face: match the surrounding fogged water volume instead
+    if (!gl_FrontFacing) {
+        vec3 viewUW = normalize(toCameraVector);
+        vec3 reflLight = reflect(-sunDir, normal);
+        float glint = pow(max(dot(reflLight, viewUW), 0.0), 80.0);
+        float dayFactor = smoothstep(twilightLow, twilightHigh, sunDir.y);
+        float dayT = smoothstep(-0.1, 0.2, sunDir.y);
+        vec3 baseColor = mix(vec3(0.0, 0.096, 0.085), underwaterFogColor, dayT);
+        vec3 col = baseColor + lightColor * glint * 2.0 * dayFactor;
+        float d = length(toCameraVector);
+        float a = mix(0.12, 0.85, smoothstep(2.0, 35.0, d));
+        FragColor = vec4(col, a);
+        return;
+    }
+
     vec3 viewVector = normalize(toCameraVector);
     vec3 viewIncoming = -viewVector;
 
@@ -122,10 +138,6 @@ void main() {
     vec3 col = mix(reflectColor, refractColor, refractiveFactor);
     col = mix(col, waterColor, 0.2) + specularHighlights;
     FragColor = vec4(col, 0.75);
-
-    if (!gl_FrontFacing) {
-        FragColor.a *= 0.8;
-    }
 
     // Distance-based horizon mix — even small ponds benefit a little when
     // looking across a long stretch of placed water.
