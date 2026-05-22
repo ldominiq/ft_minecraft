@@ -3006,6 +3006,7 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 	if (glfwGetKey(window, controlsArray[HOTBAR_9]) == GLFW_PRESS) activeHotbarSlot = 8;
 
 	if (activeHotbarSlot != (uint8_t)-1) camera->getPlayer()->inventory->activeHotbarSlot = activeHotbarSlot;
+    else activeHotbarSlot = camera->getPlayer()->inventory->activeHotbarSlot;
 
 	inputs.keys = keys;
 	inputs.pitch = camera->getPlayer()->getPitch();
