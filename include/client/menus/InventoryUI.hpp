@@ -159,6 +159,7 @@ class InventoryUI : public Menu
 		bool checkInventoryDrag(NetInventoryAction &pkt);
 		void drawHotbar();
 		void drawHealth(float health) const;
+		void drawCrosshair() const;
 		// Red vignette + "YOU DIED" overlay shown while local health<=0; fades in
 		// from the moment of death and resets once we respawn. Cheap: a few quads
 		// plus two text draws. Safe to call every frame regardless of state.
