@@ -4,7 +4,7 @@ Required GLFW dependencies for Wayland and X11:
 sudo apt install libwayland-dev libxkbcommon-dev xorg-dev
 
 
-RUN:
+Run:
 
 mkdir build
 cd build

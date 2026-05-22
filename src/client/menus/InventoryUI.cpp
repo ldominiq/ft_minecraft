@@ -347,6 +347,16 @@ void InventoryUI::drawHealth(float health) const
 
 	drawSimpleQuad(hotbar.x + offset, hotbar.y + hotbar.height + 10, hotbar.width - offset * 2, hotbar.height / 5.0f, glm::vec4(0,0,0,0.4f));
 
+	glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+}
+
+void InventoryUI::drawCrosshair() const {
+
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 	// draw cross hair. Eventually might want to be a texture. And not in "drawHealth"
 	drawSimpleQuad(
 		fullscreenWidth / 2.0f - 10,

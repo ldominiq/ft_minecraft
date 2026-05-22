@@ -274,18 +274,21 @@ void App::init(const std::string& serverIp) {
 		app->processInputMenus(key, action);
 		if (manager) return ;
 
-		auto mapKeyToBit = [](int key) -> uint16_t {
-			switch (key) {
-				case GLFW_KEY_W: return IN_FORWARD;
-				case GLFW_KEY_S: return IN_BACKWARD;
-				case GLFW_KEY_A: return IN_LEFT;
-				case GLFW_KEY_D: return IN_RIGHT;
-				case GLFW_KEY_SPACE: return IN_UP;   // jump
-				case GLFW_KEY_LEFT_SHIFT: return IN_RUN;
-				case GLFW_KEY_LEFT_CONTROL: return IN_DOWN;
-				case GLFW_KEY_Q: return IN_DROP;
-				default: return 0; // key not tracked
-			}
+		auto controlsArray = app->controlsMenu->getControlsArray();
+		std::unordered_map<int, uint16_t> keyMap = {
+			{ controlsArray[FORWARD],   IN_FORWARD },
+			{ controlsArray[BACKWARD],  IN_BACKWARD },
+			{ controlsArray[LEFT],      IN_LEFT },
+			{ controlsArray[RIGHT],     IN_RIGHT },
+			{ controlsArray[UP],        IN_UP },
+			{ controlsArray[SNEAK],      IN_SNEAK },
+			{ controlsArray[RUN], IN_RUN },
+			{ GLFW_KEY_Q,               IN_DROP }
+		};
+
+		auto mapKeyToBit = [&keyMap](int key) -> uint16_t {
+			auto it = keyMap.find(key);
+			return (it != keyMap.end()) ? it->second : 0;
 		};
 
 		bool hotbarUpdated = app->controlsArray[HOTBAR_1] == key ||
@@ -1384,7 +1387,9 @@ void App::render() {
 		else
 		{
 			inventoryUI->drawHotbar();
-			inventoryUI->drawHealth(camera->getPlayer()->health);
+            inventoryUI->drawCrosshair();
+			if (camera->getPlayer()->gamemode != GAMEMODES::SPECTATOR)
+			    inventoryUI->drawHealth(camera->getPlayer()->health);
 			// Death overlay sits above the hotbar/health but below the chat
 			// recent-messages list so kill feed text stays readable.
 			inventoryUI->drawDeathScreen(camera->getPlayer()->health);
@@ -3133,10 +3138,10 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 
 	if (glfwGetKey(window, controlsArray[UP]) == GLFW_PRESS)
 		keys |= IN_UP;
-	if (glfwGetKey(window, controlsArray[DOWN]) == GLFW_PRESS)
-		keys |= IN_DOWN;
+	if (glfwGetKey(window, controlsArray[SNEAK]) == GLFW_PRESS)
+		keys |= IN_SNEAK;
 
-	if (glfwGetKey(window, controlsArray[MOVE_FAST]) == GLFW_PRESS)
+	if (glfwGetKey(window, controlsArray[RUN]) == GLFW_PRESS)
 		keys |= IN_RUN;
 	
 	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
@@ -3230,6 +3235,21 @@ void App::processInputMenus(int key, int action) {
 
 	// HANDLE EVENTS WHEN CHAT OPEN
 
+	// Closing the inventory while holding a stack on the cursor
+	auto dropCursorIfHolding = [&]() {
+		auto refs = camera->getPlayer()->inventoryExternalVarsRefs;
+		if (!refs || !refs->hand || refs->hand->second == 0)
+			return;
+		if (udpClient)
+		{
+			NetInventoryAction drop;
+			drop.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
+			drop.modifier = InventoryModifiers::INV_DROP_CURSOR;
+			udpClient->sendPacket(drop);
+		}
+		*refs->hand = { ItemType{}, 0 };
+	};
+
 	if (manager && key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 	{
 		if (manager == settingsMenu) {
@@ -3239,6 +3259,8 @@ void App::processInputMenus(int key, int action) {
 			if (!uiInteractive)
 				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 		}
+        if (manager == inventoryUI)
+            dropCursorIfHolding();
 	}
 
 	if (manager == settingsMenu && key == GLFW_KEY_BACKSPACE && (action == GLFW_PRESS || action == GLFW_REPEAT))
@@ -3252,6 +3274,7 @@ void App::processInputMenus(int key, int action) {
 	//close inventory with E too.
 	if (manager && manager == inventoryUI && key == controlsArray[TOGGLE_INVENTORY] && action == GLFW_PRESS)
 	{
+		dropCursorIfHolding();
 		menuManager.reset();
 		if (!uiInteractive)
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);

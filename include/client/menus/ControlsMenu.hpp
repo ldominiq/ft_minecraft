@@ -12,8 +12,8 @@ constexpr int AMOUNT_OF_CONFIGURABLE_CONTROLS = 13;
     X(LEFT)          		\
     X(RIGHT)         		\
     X(UP)            		\
-    X(DOWN)             	\
-    X(MOVE_FAST)        	\
+    X(SNEAK)             	\
+    X(RUN)       			\
     X(TOGGLE_FULLSCREEN)	\
     X(TOGGLE_WIREFRAME)		\
     X(TOGGLE_DEBUG)			\

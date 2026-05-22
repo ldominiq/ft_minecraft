@@ -17,11 +17,12 @@ struct OreParams {
     int veinsPerChunk;  // Number of veins per chunk
 };
 
-inline constexpr std::array<OreParams, 4> oreTable = {{
+inline constexpr std::array<OreParams, 5> oreTable = {{
     { BlockType::IRON,      5, 64, 9, 20 },
     { BlockType::GOLD,      3, 32, 9, 2 },
     { BlockType::DIAMOND,   1, 16, 8, 1 },
     { BlockType::URANIUM,   1, 16, 4, 1 },
+    { BlockType::COAL,      1, 255, 9, 25 },
 }};
 
 #endif // SERVER_TERRAIN_PARAMS_HPP

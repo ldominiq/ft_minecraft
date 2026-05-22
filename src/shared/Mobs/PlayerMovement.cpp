@@ -90,7 +90,7 @@ void PlayerMovement::updatePosition()
     if (inputs.keys & IN_UP)
         this->position.y += velocity;
 
-    if (inputs.keys & IN_DOWN)
+    if (inputs.keys & IN_SNEAK)
         this->position.y -= velocity;
 
     if (prevPosition != this->position)
@@ -135,7 +135,8 @@ glm::vec3 PlayerMovement::getDesiredMove()
 	float slipperiness = onGround ? SM_DEFAULT : SM_AIRBORNE; 
 
 	float movementMultiplier = MM_WALKING;
-	if (inputs.keys & IN_RUN) movementMultiplier = MM_SPRINTING;
+	if (inputs.keys & IN_RUN) movementMultiplier *= MM_SPRINTING;
+	if (inputs.keys & IN_SNEAK) movementMultiplier *= MM_SNEAKING;
 
 	//x and z inverted for some obscure reason
 	float lx = 0.0f, lz = 0.0f;
@@ -259,6 +260,42 @@ void PlayerMovement::calculateUnderwaterPosition(const ICommonWorld &world)
 	}
 
 	setPosition(pos);
+}
+
+void PlayerMovement::calculateNewXZPosition(const ICommonWorld &world, glm::vec3 &desiredMove)
+{
+	NetPlayerInputs inputs = lastInputsPktRecvd;
+
+	// Prevent walking off edges while sneaking
+	if ((inputs.keys & IN_SNEAK) && onGround) {
+
+		auto canMoveSafely = [&](float dx, float dz) -> bool {
+
+			glm::dvec3 testPos = position;
+			testPos.x += dx;
+			testPos.z += dz;
+
+			AABB box = constructAABB(testPos);
+
+			// Slightly below feet
+			AABB supportCheck = box.movedBy(0.0f, -0.05f, 0.0f);
+
+			return aabbCollidesWithWorld(supportCheck, world);
+		};
+
+		// Cancel movement that would leave ground support
+		if (std::abs(desiredMove.x) > EPS) {
+			if (!canMoveSafely(desiredMove.x, 0.0f))
+				desiredMove.x = 0.0f;
+		}
+
+		if (std::abs(desiredMove.z) > EPS) {
+			if (!canMoveSafely(0.0f, desiredMove.z))
+				desiredMove.z = 0.0f;
+		}
+	}
+
+	Entity::calculateNewXZPosition(world, desiredMove);
 }
 
 void PlayerMovement::calculateNewPosition(const ICommonWorld &world)

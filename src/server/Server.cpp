@@ -497,6 +497,37 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		sendPacketTo(pkt, p.addr);
 	}
 
+	// Push back to inventory items in crafting station and hand to prevent lose
+	{
+		auto &inv   = player->movement->inventory;
+		auto &craft = player->movement->craftingStation;
+
+		auto salvage = [&](ItemType type, int amount) {
+			while (amount > 0)
+			{
+				int before = amount;
+				if (inv->insertItems(type, amount) == INVALID_SLOT || amount == before)
+					break; // inventory full: remaining items are lost (as before)
+			}
+		};
+
+		int craftSlots = craft->getRows() * craft->getCols();
+		for (int i = 0; i < craftSlots; ++i)
+		{
+			auto s = craft->getSlot(i);
+			if (s.second == 0) continue;
+			salvage(s.first, s.second);
+			craft->setSlot(i, 0, 0);
+		}
+
+		auto handPtr = inv->getHandPtr();
+		if (handPtr && handPtr->second > 0)
+		{
+			salvage(handPtr->first, handPtr->second);
+			*handPtr = { ItemType{}, 0 };
+		}
+	}
+
 	player->movement->savePlayerDataToFile("playerdata/" + player->movement->getName() + "_" + std::to_string(world->getTerrainParams().seed) + ".dat");
 
 	messages.push_back(player->movement->getName() + " left the game.");
@@ -811,6 +842,31 @@ void Server::receiveInventoryAction(NetInventoryAction &pkt, const sockaddr_in &
 		pkt->slot = handId;
 		pktsToSend.push_back(std::move(pkt));
 	};
+
+	// Closing the inventory with items still on the cursor will drop the items
+	if (pkt.modifier == InventoryModifiers::INV_DROP_CURSOR)
+	{
+		auto handPtr = player->movement->inventory->getHandPtr();
+		if (handPtr && handPtr->second > 0)
+		{
+			ItemType type = handPtr->first;
+			int amount = handPtr->second;
+
+			glm::vec3 itemPos = player->movement->getPosition()
+				+ glm::vec3(0, player->movement->getEntityHeight() * 0.6f, 0)
+				+ player->movement->getCameraDir() * 0.2f;
+
+			for (int i = 0; i < amount; ++i)
+				world->itemEntities.push_back(std::make_shared<ItemEntity>(
+					itemPos, player->movement->getYaw(), type, tick + TPS * 1.5, true));
+
+			*handPtr = { ItemType{}, 0 };
+			player->movement->inventory->setHand(*handPtr);
+			sendHand();
+			sendNewGroupPacketTo(pktsToSend, cliaddr);
+		}
+		return;
+	}
 
 	if (pkt.modifier == InventoryModifiers::INV_DRAG_CANCEL || pkt.modifier == InventoryModifiers::INV_DRAG_ADD)
 	{
@@ -1412,6 +1468,7 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 		groupPkt.push_back(player->movement->inventory->createNetInventoryPkt(slot));
 	};
 
+#ifndef NDEBUG
 	give(0, BlockType::DIRT,       200);
 	give(1, BlockType::STONE,      200);
 	give(2, BlockType::CACTUS,     200);
@@ -1428,11 +1485,17 @@ void Server::sendAccept(const sockaddr_in &cliaddr)
 	give(11, BlockType::SAND,     64);
 	give(12, BlockType::NETHERRACK,     64);
 	give(13, BlockType::BEACON,     64);
-	give(14, BlockType::TORCH_FLOOR,     64);
+	give(14, BlockType::TORCH_FLOOR, 64);
+	give(15, BlockType::COAL, 64);
+	give(16, MiscType::COAL,     64);
 
+#endif
 
 	player->movement->inventory->createFullInventoryPkt(groupPkt);
-	
+	// Send the (empty) crafting station too so a reconnecting client can't keep
+	// showing a stale crafting grid from before it disconnected.
+	player->movement->craftingStation->createFullInventoryPkt(groupPkt);
+
 	NetPlayerGameMode gameModePkt;
 	gameModePkt.gamemode = static_cast<std::underlying_type_t<GAMEMODES>>(player->movement->gamemode);
 	groupPkt.push_back(std::make_unique<NetPlayerGameMode>(gameModePkt));

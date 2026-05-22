@@ -90,6 +90,7 @@ enum class BlockType : ItemID {
 	GOLD,
 	DIAMOND,
 	URANIUM,
+	COAL,
 	LAVA,
 	SHORT_GRASS,
 	CORNFLOWER,
@@ -201,6 +202,7 @@ enum class MiscType : ItemID {
 	GOLD_INGOT,
 	URANIUM_INGOT,
 	DIAMOND,
+	COAL,
 	EMPTY_BUCKET,
 	WATER_BUCKET,
 	END
@@ -357,6 +359,7 @@ public:
 		ItemDef{ makeMisc(MiscType::GOLD_INGOT, "Gold Ingot", "gold_ingot") },
 		ItemDef{ makeMisc(MiscType::URANIUM_INGOT, "Uranium Ingot", "emerald") },
 		ItemDef{ makeMisc(MiscType::DIAMOND,    "Diamond",    "diamond")    },
+		ItemDef{ makeMisc(MiscType::COAL,    "Coal",    "coal")    },
 		ItemDef{ makeMisc(MiscType::EMPTY_BUCKET, "Empty Bucket", "bucket_empty") },
 		ItemDef{ makeMisc(MiscType::WATER_BUCKET, "Water Bucket", "bucket_water") }
 	};
