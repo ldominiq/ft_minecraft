@@ -289,10 +289,13 @@ void Server::dispatch(const uint8_t *data, int n, sockaddr_in &cliaddr)
             if (p != players.end()) {
                 p->recvRel.expectedSeq    = 1;
                 p->recvRel.lastProgressAt = currTick;
+                p->lastSeenAt             = currTick;
             }
         }
         return;
     }
+
+    player->lastSeenAt = currTick;
 
     // Known peer: route through the reliability layer.
     auto result = reliabilityIngest(player->recvRel, std::move(pkt), currTick);
@@ -336,6 +339,10 @@ void Server::gameTick()
 	// Despawn mobs with no player nearby once per second.
 	if (tick > 0 && tick % static_cast<int>(TPS) == 0)
 		despawnDistantMobs();
+
+	// Evict crashed / silently-gone clients once per second.
+	if (tick > 0 && tick % static_cast<int>(TPS) == 0)
+		timeoutSilentClients();
 
 	// Broadcast every 20 ticks (~1s)
 	if (tick % static_cast<int>(TPS) == 0)
@@ -466,10 +473,15 @@ void Server::sendEntitiesSnapshotTo(const sockaddr_in &cliaddr)
 
 void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 {
+	(void)pkt;
 	auto player = NetUtils::findPlayerByAddr(players, cliaddr);
 	if (player == players.end())
 		return ;
+	removePlayer(player);
+}
 
+void Server::removePlayer(std::vector<CPlayerInfo>::iterator player)
+{
 	const auto &ent = std::find(world->livingEntities.begin(), world->livingEntities.end(), player->movement);
 	if (ent == world->livingEntities.end())
 		return ;
@@ -483,6 +495,7 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 		pkt.eEntityType = ent->get()->getEntityType();
 		pkt.entityID = ent->get()->getID();
 		pkt.type = -1;
+		pkt.flags = pkt.flags | PacketFlags::Reliable;
 
 		//not really needed info
 		pkt.positionX = ent->get()->getPosition().x;
@@ -536,6 +549,30 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 	world->PlayerKnownChunks.erase(player->id);
 	world->livingEntities.erase(ent);
 	players.erase(player);
+}
+
+void Server::timeoutSilentClients()
+{
+	// A connected client streams NetPlayerInputs every tick (~20/s), so any gap
+	// this long means it crashed or its NetDisconnect was dropped on exit.
+	constexpr auto CLIENT_TIMEOUT = std::chrono::seconds(10);
+
+	for (auto it = players.begin(); it != players.end();)
+	{
+		if (currTick - it->lastSeenAt > CLIENT_TIMEOUT)
+		{
+			std::cout << "[Server] Client '" << it->movement->getName()
+			          << "' timed out (no packets for "
+			          << std::chrono::duration_cast<std::chrono::seconds>(CLIENT_TIMEOUT).count()
+			          << "s), removing.\n";
+					  
+			size_t idx = static_cast<size_t>(it - players.begin());
+			removePlayer(it);
+			it = players.begin() + idx;
+		}
+		else
+			++it;
+	}
 }
 
 void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliaddr)

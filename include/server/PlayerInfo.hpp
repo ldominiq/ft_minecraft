@@ -69,6 +69,9 @@ class CPlayerInfo
 
 		bool connected; //unused
 		float pingMs = -1.0f;
+
+		// Last time any datagram was received from this client
+		std::chrono::steady_clock::time_point lastSeenAt = std::chrono::steady_clock::now();
 };
 
 #endif
