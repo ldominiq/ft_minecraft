@@ -763,7 +763,7 @@ void InventoryUI::onRender()
 			return ;
 
 		if (inv->getSlot(i).second)
-			textRenderer.renderText(std::to_string(inv->getSlot(i).second), inventorySlots[i].x, inventorySlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
+			textRenderer.renderText(std::to_string(inv->getSlot(i).second), inventorySlots[i].x + 3 * menuScale, inventorySlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
 		buildInventoryIcon(meshVertices, inv->getItemAtSlot(i),
@@ -779,7 +779,7 @@ void InventoryUI::onRender()
 			return ;
 
 		if (inv->getSlot(i).second)
-			textRenderer.renderText(std::to_string(inv->getSlot(i).second), craftingStationSlots[i].x, craftingStationSlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
+			textRenderer.renderText(std::to_string(inv->getSlot(i).second), craftingStationSlots[i].x + 3 * menuScale, craftingStationSlots[i].y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
 		buildInventoryIcon(meshVertices, inv->getItemAtSlot(i),
