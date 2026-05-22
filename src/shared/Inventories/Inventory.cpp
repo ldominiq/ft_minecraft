@@ -76,7 +76,11 @@ void Inventory<ROWS, COLS, N>::setSlot(int slot, itemStackSize_t amount, ItemTyp
 				break;
 			}
 		}
-		itemsIndexes.insert({ type, slot });
+		// The cursor (HAND_ID) is synced via raw setHand()/grid writes that
+		// bypass index maintenance, so it must never enter itemsIndexes or it
+		// leaves a permanently stale entry.
+		if (slot != HAND_ID)
+			itemsIndexes.insert({ type, slot });
 	}
 
 	if (freeSlots.count(slot))
@@ -374,6 +378,14 @@ int Inventory<ROWS, COLS, N>::insertItems(ItemType item, int &amount)
 
 	for(auto itemSlot = itemSlots.first; itemSlot != itemSlots.second; itemSlot++)
 	{
+		// Never stack pickups onto the cursor, and skip stale index entries
+		// whose slot no longer actually holds this item: blindly bumping the
+		// count would leave a slot with amount > 0 but a "nothing" type.
+		if (itemSlot->second == HAND_ID
+			|| grid[itemSlot->second].first != item
+			|| grid[itemSlot->second].second == 0)
+			continue;
+
 		auto& stack = grid[itemSlot->second].second;
 
 		if (stack >= MAX_STACK_SIZE)
@@ -613,6 +625,23 @@ void Inventory<ROWS, COLS, N>::loadFromStream(std::ifstream& in)
 
     in.read(reinterpret_cast<char*>(grid.data()),
             sizeof(std::pair<ItemType, itemStackSize_t>) * grid.size());
+
+    // The grid was overwritten in place, so the freeSlots/itemsIndexes
+    // bookkeeping seeded by the constructor no longer matches what was
+    // loaded. Rebuild it from the actual contents, otherwise getFirstFreeSlot()
+    // still reports every slot as free and pickups overwrite existing items.
+    freeSlots.clear();
+    itemsIndexes.clear();
+    for (int i = 0; i < rows * cols; ++i)
+    {
+        if (grid[i].second == 0)
+        {
+            grid[i] = {};
+            freeSlots.insert(i);
+        }
+        else
+            itemsIndexes.insert({ grid[i].first, i });
+    }
 }
 
 template class Inventory<4, 9, 1>; // PlayerInventory

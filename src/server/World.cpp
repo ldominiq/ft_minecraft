@@ -1045,6 +1045,16 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			// stack regardless of which wall variant was mined.
 			if (isTorch(dropped)) dropped = BlockType::TORCH_FLOOR;
 
+			// Ore blocks drop their raw resource item rather than the block.
+			ItemType droppedItem = dropped;
+			switch (dropped)
+			{
+				case BlockType::DIAMOND:  droppedItem = MiscType::DIAMOND;        break;
+				case BlockType::URANIUM:  droppedItem = MiscType::URANIUM_INGOT;  break;
+				case BlockType::COAL:     droppedItem = MiscType::COAL;           break;
+				default: break;
+			}
+
 			// random generator
 			static std::mt19937 rng(std::random_device{}());
 			std::uniform_real_distribution<float> angleDist(0.0f, 360.0f);
@@ -1067,7 +1077,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			// spawn the entity at block center + offset
 			glm::vec3 spawnPos = glm::vec3(blockPos) + glm::vec3(0.5f) + positionOffset;
 
-			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, dropped, clientTick));
+			itemEntities.push_back(std::make_shared<ItemEntity>(spawnPos, randomAngle, droppedItem, clientTick));
 		}
 		else if (target == TargetType::LivingEntity && livingEntity)
 		{
