@@ -73,7 +73,7 @@ class SSAO {
 
         // Hemisphere sample kernel
         static constexpr int MAX_KERNEL_SIZE = 64;
-        int kernelSize = 4;
+        int kernelSize = 10;
         std::vector<glm::vec3> ssaoKernel;
 
         // 4x4 noise texture for random rotation
@@ -95,9 +95,9 @@ class SSAO {
         GLuint quadVAO = 0;
 
         // Tweakable
-        float radius = 3.63f;
-        float bias   = 0.088f;
-        float power  = 0.25f;
+        float radius = 2.0f;
+        float bias   = 0.17f;
+        float power  = 1.79f;
         bool blurEnabled = true;
 
         
