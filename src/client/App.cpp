@@ -1328,7 +1328,7 @@ void App::render() {
 		}
 		else
 		{
-			if (hudVisible) {
+			if (showGameHUD) {
 				inventoryUI->drawHotbar();
 				inventoryUI->drawHealth(camera->getPlayer()->health);
 				chat->renderRecentMessages();
@@ -1337,7 +1337,7 @@ void App::render() {
 			inventoryUI->drawDeathScreen(camera->getPlayer()->health);
 		}
 
-		if (showHUD) {
+		if (showDebugHUD) {
 			debugHUD->update(cachedDebugStats);
 			debugHUD->render();
 		}
@@ -3232,19 +3232,19 @@ void App::processInput() {
     // Toggle debug HUD (F3)
     if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS && !f3Held &&
         glfwGetKey(window, GLFW_KEY_A) != GLFW_PRESS) {
-        showHUD = !showHUD;
+        showDebugHUD = !showDebugHUD;
         f3Held = true;
     }
     if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_RELEASE) {
         f3Held = false;
     }
 
-    // Toggle in-game HUD (F2): hotbar, health, crosshair and chat messages
-    if (glfwGetKey(window, GLFW_KEY_F2) == GLFW_PRESS && !f2Held) {
-        hudVisible = !hudVisible;
+    // Toggle in-game HUD: hotbar, health, crosshair and chat messages
+    if (glfwGetKey(window, controlsArray[TOGGLE_HUD]) == GLFW_PRESS && !f2Held) {
+        showGameHUD = !showGameHUD;
         f2Held = true;
     }
-    if (glfwGetKey(window, GLFW_KEY_F2) == GLFW_RELEASE) {
+    if (glfwGetKey(window, controlsArray[TOGGLE_HUD]) == GLFW_RELEASE) {
         f2Held = false;
     }
 

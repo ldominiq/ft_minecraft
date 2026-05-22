@@ -168,8 +168,8 @@ private:
 	std::shared_ptr<Chat> chat;
 	std::shared_ptr<InventoryUI> inventoryUI;
 	std::unique_ptr<DebugHUD> debugHUD;
-	bool showHUD = false;
-	bool hudVisible = true;
+	bool showDebugHUD = false;
+	bool showGameHUD = true;
 
 	// Main menu screens
 	std::shared_ptr<MainMenu> mainMenu;

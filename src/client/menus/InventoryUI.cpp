@@ -280,8 +280,11 @@ void InventoryUI::drawHotbar()
 		if (sel < hotbarSlots.size())
 		{
 			const auto& s = hotbarSlots[sel];
-			float t      = 2.0f * menuScale;            // outer bright border thickness
-			float tInner = std::max(1.0f, 1.0f * menuScale); // inner dark separator
+			// Clamp both so the outer frame is never thinner than the inner
+			// separator, and cap by half the slot so neither draws past it.
+			float maxT   = 0.5f * std::min(s.width, s.height);
+			float t      = std::min(maxT, std::max(1.0f, 2.0f * menuScale)); // outer bright border
+			float tInner = std::min(t,    std::max(1.0f, 1.0f * menuScale)); // inner dark separator
 			glm::vec4 bright(1.0f, 1.0f, 1.0f, 1.0f);
 			glm::vec4 shadow(0.0f, 0.0f, 0.0f, 0.55f);
 
