@@ -1331,17 +1331,19 @@ void App::render() {
 		}
 		else
 		{
-			inventoryUI->drawHotbar();
-            inventoryUI->drawCrosshair();
-			if (camera->getPlayer()->gamemode != GAMEMODES::SPECTATOR)
-			    inventoryUI->drawHealth(camera->getPlayer()->health);
+			if (showGameHUD) {
+				inventoryUI->drawHotbar();
+                inventoryUI->drawCrosshair();
+                if (camera->getPlayer()->gamemode != GAMEMODES::SPECTATOR)
+                    inventoryUI->drawHealth(camera->getPlayer()->health);
+				chat->renderRecentMessages();
+			}
 			// Death overlay sits above the hotbar/health but below the chat
 			// recent-messages list so kill feed text stays readable.
 			inventoryUI->drawDeathScreen(camera->getPlayer()->health);
-			chat->renderRecentMessages();
 		}
 
-		if (showHUD) {
+		if (showDebugHUD) {
 			debugHUD->update(cachedDebugStats);
 			debugHUD->render();
 		}
@@ -3254,11 +3256,20 @@ void App::processInput() {
     // Toggle debug HUD (F3)
     if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS && !f3Held &&
         glfwGetKey(window, GLFW_KEY_A) != GLFW_PRESS) {
-        showHUD = !showHUD;
+        showDebugHUD = !showDebugHUD;
         f3Held = true;
     }
     if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_RELEASE) {
         f3Held = false;
+    }
+
+    // Toggle in-game HUD: hotbar, health, crosshair and chat messages
+    if (glfwGetKey(window, controlsArray[TOGGLE_HUD]) == GLFW_PRESS && !f2Held) {
+        showGameHUD = !showGameHUD;
+        f2Held = true;
+    }
+    if (glfwGetKey(window, controlsArray[TOGGLE_HUD]) == GLFW_RELEASE) {
+        f2Held = false;
     }
 
     // Show/Hide debug window

@@ -1,5 +1,7 @@
 #include "InventoryUI.hpp"
 
+#include <algorithm>
+
 constexpr float textScale = 0.3f;
 
 // Append the inventory icon for one item to the vertex stream. Routes to a
@@ -270,10 +272,33 @@ void InventoryUI::drawHotbar()
 	for (auto &hotbarSlotCoord : hotbarSlots)
 	{
 		drawSimpleQuad(hotbarSlotCoord.x, hotbarSlotCoord.y, hotbarSlotCoord.width, hotbarSlotCoord.height, hotbarColor);
-		if (i == inv->activeHotbarSlot)
-			drawSimpleQuad(hotbarSlotCoord.x, hotbarSlotCoord.y, hotbarSlotCoord.width, hotbarSlotCoord.height, glm::vec4(0,0,0,0.4f));
-
 		i++;
+	}
+
+	{
+		uint8_t sel = inv->activeHotbarSlot;
+		if (sel < hotbarSlots.size())
+		{
+			const auto& s = hotbarSlots[sel];
+			// Clamp both so the outer frame is never thinner than the inner
+			// separator, and cap by half the slot so neither draws past it.
+			float maxT   = 0.5f * std::min(s.width, s.height);
+			float t      = std::min(maxT, std::max(1.0f, 2.0f * menuScale)); // outer bright border
+			float tInner = std::min(t,    std::max(1.0f, 1.0f * menuScale)); // inner dark separator
+			glm::vec4 bright(1.0f, 1.0f, 1.0f, 1.0f);
+			glm::vec4 shadow(0.0f, 0.0f, 0.0f, 0.55f);
+
+			// Outer bright frame (top / bottom / left / right strips around the slot)
+			drawSimpleQuad(s.x - t,           s.y + s.height,    s.width + 2 * t, t,           bright);
+			drawSimpleQuad(s.x - t,           s.y - t,           s.width + 2 * t, t,           bright);
+			drawSimpleQuad(s.x - t,           s.y,               t,               s.height,    bright);
+			drawSimpleQuad(s.x + s.width,     s.y,               t,               s.height,    bright);
+
+			drawSimpleQuad(s.x,               s.y + s.height - tInner, s.width,    tInner,     shadow);
+			drawSimpleQuad(s.x,               s.y,                     s.width,    tInner,     shadow);
+			drawSimpleQuad(s.x,               s.y,                     tInner,     s.height,   shadow);
+			drawSimpleQuad(s.x + s.width - tInner, s.y,                tInner,     s.height,   shadow);
+		}
 	}
 
 	i = 0;

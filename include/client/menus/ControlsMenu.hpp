@@ -24,7 +24,7 @@ constexpr int AMOUNT_OF_CONFIGURABLE_CONTROLS = 13;
 	/*from here on the controls aren't user-configurable*/	\
     X(DESTROY_BLOCK)       	\
 	X(PLACE_BLOCK)      	\
-    X(TOGGLE_SHADER)		\
+    X(TOGGLE_HUD)		\
     X(CLOSE_WINDOW)			\
 	X(HOTBAR_1)				\
 	X(HOTBAR_2)				\
