@@ -67,7 +67,7 @@ enum Inputs : uint16_t {
 	IN_LEFT			= 1 << 2,
 	IN_RIGHT		= 1 << 3,
 	IN_UP			= 1 << 4, //jump
-	IN_DOWN			= 1 << 5,
+	IN_SNEAK			= 1 << 5,
 	IN_RUN			= 1 << 6,
 	IN_DROP			= 1 << 7,
 
