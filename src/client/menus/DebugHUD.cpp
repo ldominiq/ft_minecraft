@@ -20,13 +20,13 @@ void DebugHUD::build()
 void DebugHUD::onRender()
 {
     const float pad = 8.0f * menuScale;
-    const float lineH = 18.0f * menuScale;
+    const float lineH = 18.0f * menuScale * textScale * 3;
     const float bgPadX = 2.0f * menuScale;   // horizontal inset inside each bg
     const glm::vec4 bgColor{ 0.0f, 0.0f, 0.0f, 0.0f };
     const glm::vec3 white{ 1.0f, 1.0f, 1.0f };
 
     const float textX = pad;
-    float textY = static_cast<float>(fullscreenHeight) - pad - 4.0f * menuScale;
+    float textY = static_cast<float>(fullscreenHeight) - pad - 4.0f * menuScale * textScale * 5;
 
     char buf[64];
 

@@ -233,6 +233,14 @@ void App::init(const std::string& serverIp) {
 		app->lastMouseMoveTime = glfwGetTime();
     });
 
+    glfwSetScrollCallback(window, [](GLFWwindow* w, double xoffset, double yoffset) {
+        App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
+
+        int slot = app->camera->getPlayer()->inventory->activeHotbarSlot;
+        if (slot - yoffset >= 0 && slot - yoffset < 9)
+            app->camera->getPlayer()->inventory->activeHotbarSlot -= yoffset;
+    });
+
 	glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int codepoint) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		if (!app) return;

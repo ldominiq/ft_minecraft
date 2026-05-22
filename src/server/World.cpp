@@ -923,7 +923,7 @@ void World::setWaterWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> fac
 	currChunk->setBlock(x, y, z, type);
 }
 
-bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t clientTick)
+void World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t clientTick, std::vector<PacketPtr> &pktsToSend)
 {
 	LivingEntity* livingEntity = nullptr;
 	glm::ivec3 blockPos, faceNormal;
@@ -948,8 +948,11 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 				{
 					player.movement->inventory->removeItemsFromSlot(activeSlot, 1);
 					int one = 1;
-					player.movement->inventory->insertItems(MiscType::EMPTY_BUCKET, one);
-					return true;
+					int slot = player.movement->inventory->insertItems(MiscType::EMPTY_BUCKET, one);
+					pktsToSend.push_back(player.movement->inventory->createNetInventoryPkt(activeSlot));
+					if (slot != activeSlot)
+						pktsToSend.push_back(player.movement->inventory->createNetInventoryPkt(slot));
+					return ;
 				}
 			}
 			else if (m == MiscType::EMPTY_BUCKET)
@@ -961,8 +964,11 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 					{
 						player.movement->inventory->removeItemsFromSlot(activeSlot, 1);
 						int one = 1;
-						player.movement->inventory->insertItems(MiscType::WATER_BUCKET, one);
-						return true;
+						int slot = player.movement->inventory->insertItems(MiscType::WATER_BUCKET, one);
+						pktsToSend.push_back(player.movement->inventory->createNetInventoryPkt(activeSlot));
+						if (slot != activeSlot)
+							pktsToSend.push_back(player.movement->inventory->createNetInventoryPkt(slot));
+						return ;
 					}
 				}
 			}
@@ -975,7 +981,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 		player.movement->hasBeaconSet = true;
 		player.movement->beaconPos = blockPos;
 		player.targetedMessages.push_back("[server] Spawn point set!");
-		return false;
+		return ;
 	}
 
 	// Torch placement: orientation is derived from the clicked face. The held
@@ -985,7 +991,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 		&& isTorch(std::get<BlockType>(item)))
 	{
 		if (target != TargetType::Block)
-			return false;
+			return ;
 
 		BlockType torchVariant;
 		if (faceNormal == glm::ivec3(0, 1, 0))
@@ -999,24 +1005,25 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 		else if (faceNormal == glm::ivec3(0, 0, -1))
 			torchVariant = BlockType::TORCH_WALL_SOUTH;
 		else
-			return false; // underside / unsupported face
+			return ; // underside / unsupported face
 
 		// The clicked block must be a solid support (not air / another
 		// torch), and the cell the torch would occupy must be empty so a
 		// new torch never overwrites an existing one sharing that cell.
 		if (!isBlockSolid(getBlockWorld(blockPos)))
-			return false;
+			return ;
 		if (getBlockWorld(blockPos + faceNormal) != BlockType::AIR)
-			return false;
+			return ;
 
 		// No entity-collision check: a torch has no real hitbox, so you can
 		// place one in the cell you're standing in (unlike a full block).
 		if (setBlockWorld(blockPos, faceNormal, torchVariant))
 		{
 			player.movement->inventory->removeItemsFromSlot(player.movement->inventory->activeHotbarSlot, 1);
-			return true;
+			pktsToSend.push_back(player.movement->inventory->createNetInventoryPkt(activeSlot));
+			return ;
 		}
-		return false;
+		return ;
 	}
 
 	if (pkt.mouseButtons & IN_RIGHT_CLICK && std::holds_alternative<BlockType>(item) && std::get<BlockType>(item) != BlockType::BEGIN)
@@ -1025,11 +1032,12 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 		{
 			//set block
 			for (const auto &entity : livingEntities)
-				if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return false; //only checks collision with living entities
+				if (entity->entityCollidesWithBlock(blockPos + faceNormal)) return ; //only checks collision with living entities
 			if (setBlockWorld(blockPos, faceNormal, std::get<BlockType>(item)))
 			{
-				player.movement->inventory->removeItemsFromSlot(player.movement->inventory->activeHotbarSlot, 1);
-				return true;
+				player.movement->inventory->removeItemsFromSlot(activeSlot, 1);
+				pktsToSend.push_back(player.movement->inventory->createNetInventoryPkt(activeSlot));
+				return ;
 			}
 		}
 	}
@@ -1039,7 +1047,7 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 		{
 			BlockType dropped = getBlockWorld(blockPos);
 
-			if (dropped == BlockType::BEDROCK) return false;
+			if (dropped == BlockType::BEDROCK) return ;
 
 			// Torches always drop as the inventory (floor) form so they
 			// stack regardless of which wall variant was mined.
@@ -1089,10 +1097,10 @@ bool World::processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseIn
 			{
 				breakDependentTorches(blockPos, clientTick,
 					player.movement->gamemode == GAMEMODES::SURVIVAL);
-				return false;
+				return ;
 			}
 	}
-	return false;
+	return ;
 }
 
 void World::breakDependentTorches(const glm::ivec3& removedBlock, int32_t clientTick, bool dropItems)

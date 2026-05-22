@@ -631,16 +631,9 @@ void Server::receivePlayerMouseInputs(NetPlayerMouseInputs &pkt, const sockaddr_
 	if (player->movement->health <= 0.0f || player->movement->pendingDeathRemovalTicks > 0)
 		return;
 
-	if (world->processPlayerMouseInputs(*player, pkt, tick))
-	{
-		NetInventory dropItem;
-		int slot = player->movement->inventory->activeHotbarSlot;
-		dropItem.inventoryTypeID = static_cast<uint8_t>(InventoryType::PLAYER);
-		dropItem.type = player->movement->inventory->getActiveItemID();
-		dropItem.amount = player->movement->inventory->getSlot(slot).second;
-		dropItem.slot = slot;
-		sendPacketTo(dropItem, cliaddr);
-	}
+	std::vector<PacketPtr> pktsToSend;
+	world->processPlayerMouseInputs(*player, pkt, tick, pktsToSend);
+	sendNewGroupPacketTo(pktsToSend, cliaddr);
 
 	if (pkt.mouseButtons & (IN_LEFT_CLICK | IN_RIGHT_CLICK))
 		player->movement->pendingArmSwing = true;

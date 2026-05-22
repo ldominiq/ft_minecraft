@@ -173,6 +173,7 @@ void InventoryUI::build()
 	craftingResultSlot.x = std::min(craftingResultSlot.x, maxX);
 
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+	textRenderer.setScale(textScale);
 }
 
 InventoryUI::~InventoryUI()

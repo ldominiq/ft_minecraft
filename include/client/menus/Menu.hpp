@@ -56,7 +56,7 @@ class Menu {
 		int menuWidth = 0;
 		int menuHeight = 0;
 		float menuScale = 0;
-		float textScale = 0.3f;
+		float textScale = 1.0f;
 
 		Typer textRenderer;
 		Typer titleRenderer;
