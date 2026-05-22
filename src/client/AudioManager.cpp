@@ -166,7 +166,10 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/footsteps/grass/grass5.wav",
         "assets/sounds/footsteps/grass/grass6.wav",
         });
-    loadSfx(SoundId::Footstep_Water,   {"assets/sounds/footsteps/water/splash1.wav"});
+    loadSfx(SoundId::Footstep_Water, {
+        "assets/sounds/liquids/splash.wav",
+        "assets/sounds/liquids/splash2.wav",
+        });
 
     // Block break / place — keyed by material group.
     loadSfx(SoundId::Break_Stone,  {
@@ -199,7 +202,6 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/blocks/gravel/gravel3.wav",
         "assets/sounds/blocks/gravel/gravel4.wav",
         });
-    loadSfx(SoundId::Break_Leaves, {"assets/sounds/blocks/break/leaves.wav"});
     loadSfx(SoundId::Break_Snow, {
         "assets/sounds/blocks/snow/snow1.wav",
         "assets/sounds/blocks/snow/snow2.wav",
@@ -285,7 +287,6 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/mobs/creeper/explode3.wav",
         "assets/sounds/mobs/creeper/explode4.wav"});
 
-    loadSfx(SoundId::Player_Jump,        {"assets/sounds/player/jump.wav"});
     loadSfx(SoundId::Player_Splash,      {
         "assets/sounds/liquids/splash.wav",
         "assets/sounds/liquids/splash2.wav",
@@ -327,7 +328,6 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/player/damage/hit3.wav"});
     // Generic Minecraft-style "block pop" used for pickup up items
     loadSfx(SoundId::Block_Pop,          {"assets/sounds/player/pop.wav"});
-    loadSfx(SoundId::UI_Click,           {"assets/sounds/ui/button_click.wav"});
 
     // Per-biome ambient music. Streamed (no full decode in RAM).
     loadMusic(BiomeType::PLAINS,         "assets/sounds/music/plains.ogg");

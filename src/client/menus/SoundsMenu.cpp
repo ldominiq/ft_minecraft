@@ -1,4 +1,4 @@
-#include "GraphicsMenu.hpp"
+#include "SoundsMenu.hpp"
 #include <GLFW/glfw3.h>
 
 static constexpr float DESIGN_W = 960.0f;
@@ -11,25 +11,14 @@ static constexpr float ROW_GAP = 10.0f;
 static constexpr float DONE_W = 200.0f;
 static constexpr float DONE_H = 40.0f;
 
-GraphicsMenu::GraphicsMenu(float width, float height, GLuint dirtTex)
+SoundsMenu::SoundsMenu(float width, float height, GLuint dirtTex)
 	: Menu(DESIGN_W, DESIGN_H), dirtTexture(dirtTex)
 {
 	doneButton.label = "Done";
 	resize(width, height);
 }
 
-void GraphicsMenu::addToggle(const std::string& label,
-							 std::function<bool()> get,
-							 std::function<void(bool)> set)
-{
-	Toggle t;
-	t.label = label;
-	t.get = std::move(get);
-	t.set = std::move(set);
-	toggles.push_back(std::move(t));
-}
-
-void GraphicsMenu::build()
+void SoundsMenu::build()
 {
 	float centerX = fullscreenWidth / 2.0f;
 	float rowW = ROW_W * menuScale;
@@ -39,14 +28,6 @@ void GraphicsMenu::build()
 	float topY = fullscreenHeight - 130.0f * menuScale;
 	float y = topY - rowH;
 
-	for (auto& t : toggles)
-	{
-		t.btn.x = centerX - rowW / 2.0f;
-		t.btn.y = y;
-		t.btn.w = rowW;
-		t.btn.h = rowH;
-		y -= rowH + rowGap;
-	}
 	for (auto& s : sliders)
 	{
 		s.track.x = centerX - rowW / 2.0f;
@@ -62,7 +43,7 @@ void GraphicsMenu::build()
 	doneButton.y = 60.0f * menuScale;
 }
 
-void GraphicsMenu::handleMouseClick(double mouseX, double mouseY, int button, int action)
+void SoundsMenu::handleMouseClick(double mouseX, double mouseY, int button, int action)
 {
 	if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
@@ -76,9 +57,6 @@ void GraphicsMenu::handleMouseClick(double mouseX, double mouseY, int button, in
 
 	if (action != GLFW_PRESS) return;
 
-	for (auto& t : toggles)
-		if (clickToggle(t, glX, glY)) return;
-
 	for (auto& s : sliders)
 		if (clickSlider(s, glX, glY)) return;
 
@@ -88,13 +66,10 @@ void GraphicsMenu::handleMouseClick(double mouseX, double mouseY, int button, in
 	}
 }
 
-void GraphicsMenu::handleMouseMove(double mouseX, double mouseY)
+void SoundsMenu::handleMouseMove(double mouseX, double mouseY)
 {
 	float glY = fullscreenHeight - static_cast<float>(mouseY);
 	float glX = static_cast<float>(mouseX);
-
-	for (auto& t : toggles)
-		updateHover(t.btn, glX, glY);
 
 	for (auto& s : sliders)
 	{
@@ -105,7 +80,7 @@ void GraphicsMenu::handleMouseMove(double mouseX, double mouseY)
 	updateHover(doneButton, glX, glY);
 }
 
-void GraphicsMenu::onRender()
+void SoundsMenu::onRender()
 {
 	drawTiledBackground(dirtTexture);
 
@@ -114,14 +89,11 @@ void GraphicsMenu::onRender()
 	titleRenderer.setScale(0.4f * menuScale);
 	titleRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
-	std::string title = "Graphics";
+	std::string title = "Sounds";
 	float titleWidth = titleRenderer.getPixelSizeOfString(title);
 	float titleX = (fullscreenWidth - titleWidth) / 2.0f;
 	float titleY = fullscreenHeight - 80.0f * menuScale;
 	titleRenderer.renderText(title, titleX, titleY, glm::vec3(1.0f));
-
-	for (auto& t : toggles)
-		drawToggle(t);
 
 	for (auto& s : sliders)
 		drawSlider(s);

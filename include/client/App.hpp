@@ -75,6 +75,7 @@
 #include "PauseMenu.hpp"
 #include "AudioManager.hpp"
 #include "ControlsMenu.hpp"
+#include "SoundsMenu.hpp"
 
 std::atomic<bool>& interrupted();
 
@@ -183,6 +184,7 @@ private:
 	std::shared_ptr<GraphicsMenu> graphicsMenu;
 	std::shared_ptr<PauseMenu> pauseMenu;
 	std::shared_ptr<ControlsMenu> controlsMenu;
+	std::shared_ptr<SoundsMenu> soundsMenu;
 	GLuint menuDirtTex = 0;
 
 	std::unique_ptr<PlayerListHUD> playerListHUD;
