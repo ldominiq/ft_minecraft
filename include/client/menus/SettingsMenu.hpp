@@ -19,6 +19,7 @@ public:
 	}
 	void setChangeControlsCallback(std::function<void()> cb) { changeControls = std::move(cb); }
 	void setGraphicsCallback(std::function<void()> cb) { onGraphics = std::move(cb); }
+	void setSoundsCallback(std::function<void()> cb) { onSounds = std::move(cb); }
 
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
 	void handleMouseMove(double mouseX, double mouseY) override;
@@ -43,11 +44,13 @@ private:
 	std::function<void()> onDone;
 	std::function<void()> changeControls;
 	std::function<void()> onGraphics;
+	std::function<void()> onSounds;
 
 	GLuint dirtTexture = 0;
 	Button doneButton;
 	Button changeControlsButton;
 	Button graphicsButton;
+	Button soundsButton;
 	Button nameBox; // box
 };
 

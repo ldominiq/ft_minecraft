@@ -154,7 +154,7 @@ private:
 
     // ---- volumes (cached so sliders survive restart of music tracks) ------
     float masterVolume = 1.0f;
-    float musicVolume  = 0.0f;
+    float musicVolume  = 0.8f;
     float sfxVolume    = 1.0f;
 
     // Per-SoundId multiplier; filled with 1.0 in init().

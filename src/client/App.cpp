@@ -100,6 +100,7 @@ void App::init(const std::string& serverIp) {
 		if (app->graphicsMenu) app->graphicsMenu->resize(width, height);
 		if (app->pauseMenu) app->pauseMenu->resize(width, height);
 		if (app->controlsMenu) app->controlsMenu->resize(width, height);
+		if (app->soundsMenu) app->soundsMenu->resize(width, height);
     });
 
     glfwMakeContextCurrent(window);
@@ -438,6 +439,7 @@ void App::init(const std::string& serverIp) {
 	graphicsMenu = std::make_shared<GraphicsMenu>(screenWidth, screenHeight, menuDirtTex);
 	pauseMenu = std::make_shared<PauseMenu>(screenWidth, screenHeight);
 	controlsMenu = std::make_shared<ControlsMenu>(screenWidth, screenHeight, menuDirtTex);
+    soundsMenu = std::make_shared<SoundsMenu>(screenWidth, screenHeight, menuDirtTex);
 
 	graphicsMenu->addToggle("V-Sync",
 		[this]() { return vsync; },
@@ -466,6 +468,39 @@ void App::init(const std::string& serverIp) {
 		});
 	graphicsMenu->commit();
 	controlsArray = controlsMenu->getControlsArray();
+
+    
+    soundsMenu->addIntSlider("Master Volume", 0, 100,
+        [this]() {
+            if (audio)
+                return static_cast<int>(audio->getMasterVolume() * 100);
+            return 100;
+        },
+        [this](int v) {
+            if (audio)
+                audio->setMasterVolume(static_cast<float>(v) / 100);
+        });
+    soundsMenu->addIntSlider("Music Volume", 0, 100,
+        [this]() {
+            if (audio)
+                return static_cast<int>(audio->getMusicVolume() * 100);
+            return 100;
+        },
+        [this](int v) {
+            if (audio)
+                audio->setMusicVolume(static_cast<float>(v) / 100);
+        });
+    soundsMenu->addIntSlider("Effects Volume", 0, 100,
+        [this]() {
+            if (audio)
+                return static_cast<int>(audio->getSfxVolume() * 100);
+            return 100;
+        },
+        [this](int v) {
+            if (audio)
+                audio->setSfxVolume(static_cast<float>(v) / 100);
+        });
+    soundsMenu->commit();
 
 	mainMenu->setButtonCallback([this](int btn) {
 		switch (btn) {
@@ -515,6 +550,14 @@ void App::init(const std::string& serverIp) {
 	});
 
 	graphicsMenu->setDoneCallback([this]() {
+		menuManager = settingsMenu;
+	});
+
+	settingsMenu->setSoundsCallback([this]() {
+		menuManager = soundsMenu;
+	});
+
+	soundsMenu->setDoneCallback([this]() {
 		menuManager = settingsMenu;
 	});
 
@@ -3107,6 +3150,7 @@ void App::cleanup() {
 	settingsMenu.reset();
 	graphicsMenu.reset();
 	controlsMenu.reset();
+	soundsMenu.reset();
     pauseMenu.reset();
     autoExposure.reset();
     sceneFBO.reset();
@@ -3179,6 +3223,10 @@ NetPlayerInputs App::buildPlayerInputsPacket()
 bool App::popSubMenuOnEscape() {
 	auto mgr = menuManager.lock();
 	if (mgr == graphicsMenu) {
+		menuManager = settingsMenu;
+		return true;
+	}
+	if (mgr == soundsMenu) {
 		menuManager = settingsMenu;
 		return true;
 	}

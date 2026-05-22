@@ -13,6 +13,7 @@ SettingsMenu::SettingsMenu(float width, float height, GLuint dirtTex)
 	doneButton.label = "Done";
 	changeControlsButton.label = "Controls";
 	graphicsButton.label = "Graphics";
+	soundsButton.label = "Sounds";
 	resize(width, height);
 	username = "nameless";
 	loadUsername();
@@ -57,6 +58,11 @@ void SettingsMenu::build()
 	graphicsButton.x = centerX - btnW / 2.0f;
 	graphicsButton.y = changeControlsButton.y - btnH - 20.0f * menuScale;
 
+	soundsButton.w = btnW;
+	soundsButton.h = btnH;
+	soundsButton.x = centerX - btnW / 2.0f;
+	soundsButton.y = graphicsButton.y - btnH - 20.0f * menuScale;
+
 	doneButton.w = btnW;
 	doneButton.h = btnH;
 	doneButton.x = centerX - btnW / 2.0f;
@@ -97,6 +103,9 @@ void SettingsMenu::onRender()
 	drawButton(graphicsButton.x, graphicsButton.y, graphicsButton.w, graphicsButton.h,
 			   graphicsButton.label, graphicsButton.hovered);
 
+	drawButton(soundsButton.x, soundsButton.y, soundsButton.w, soundsButton.h,
+			   soundsButton.label, soundsButton.hovered);
+
 	textRenderer.setScale(savedScale);
 }
 
@@ -108,6 +117,7 @@ void SettingsMenu::handleMouseMove(double mouseX, double mouseY)
 	updateHover(doneButton, glX, glY);
 	updateHover(changeControlsButton, glX, glY);
 	updateHover(graphicsButton, glX, glY);
+	updateHover(soundsButton, glX, glY);
 }
 
 void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, int action)
@@ -121,6 +131,7 @@ void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, in
 	if (isInside(doneButton, glX, glY) && onDone) onDone();
 	if (isInside(changeControlsButton, glX, glY) && changeControls) changeControls();
 	if (isInside(graphicsButton, glX, glY) && onGraphics) onGraphics();
+	if (isInside(soundsButton, glX, glY) && onSounds) onSounds();
 }
 
 void SettingsMenu::saveUsername(const char* filename)
