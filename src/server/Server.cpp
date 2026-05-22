@@ -1022,6 +1022,7 @@ void Server::sendDeaths()
 					ent->onDeath(*world); // respawn now after animation window
 					ent->deathBroadcast = false; // reset for potential respawn
 					ent->diedByExplosion = false;
+					world->updateRegionStreaming(players);
 				}
 				else {
 					le = world->livingEntities.erase(le);
