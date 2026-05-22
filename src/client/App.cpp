@@ -3358,11 +3358,11 @@ void App::processInput() {
         f4Held = false;
     }
 
-	if (glfwGetKey(window, controlsArray[THIRD_PERSON_CAMERA]) == GLFW_PRESS && !ThirdPersonCameraKeyActive) {
+	if (glfwGetKey(window, controlsArray[THIRD_PERSON_VIEW]) == GLFW_PRESS && !ThirdPersonCameraKeyActive) {
 		ThirdPersonCameraKeyActive = true;
 		camera->toggleThirdPersonCamera();
 	}
-	if (glfwGetKey(window, controlsArray[THIRD_PERSON_CAMERA]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
+	if (glfwGetKey(window, controlsArray[THIRD_PERSON_VIEW]) == GLFW_RELEASE && ThirdPersonCameraKeyActive) {
 		ThirdPersonCameraKeyActive = false;
 	}
 

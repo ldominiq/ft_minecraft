@@ -3,7 +3,7 @@
 static constexpr float DESIGN_W = 960.0f;
 static constexpr float DESIGN_H = 540.0f;
 
-static constexpr float BTN_W = 200.0f;
+static constexpr float BTN_W = 300.0f;
 static constexpr float BTN_H = 40.0f;
 
 ControlsMenu::ControlsMenu(float width, float height, GLuint dirtTex)
@@ -184,7 +184,7 @@ void ControlsMenu::loadControlsDefaults() {
     controlsArray[TOGGLE_DEBUG]			= GLFW_KEY_F6;
     controlsArray[MOVE_FAST]			= GLFW_KEY_LEFT_CONTROL;
     controlsArray[CLOSE_WINDOW]			= GLFW_KEY_ESCAPE;
-	controlsArray[THIRD_PERSON_CAMERA]	= GLFW_KEY_F5;
+	controlsArray[THIRD_PERSON_VIEW]	= GLFW_KEY_F5;
 	controlsArray[PLAYER_LIST]			= GLFW_KEY_TAB;
 	controlsArray[TOGGLE_INVENTORY]		= GLFW_KEY_E;
 	
