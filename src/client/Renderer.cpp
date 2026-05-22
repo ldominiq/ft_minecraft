@@ -120,6 +120,9 @@ void Renderer::clearCache()
 	maxRenderedChunkDist = 0.0f;
 	cameraFrustum = Frustum();
 	frustumEyePos = glm::dvec3(0.0);
+	livingEntities.clear();
+	itemEntities.clear();
+	entitiesMap.clear();
 }
 
 void Renderer::updateChunk(const NetModifiedBlockData &pkt)

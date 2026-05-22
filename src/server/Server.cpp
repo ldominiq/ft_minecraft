@@ -483,31 +483,33 @@ void Server::receiveDisconnect(NetDisconnect &pkt, const sockaddr_in &cliaddr)
 void Server::removePlayer(std::vector<CPlayerInfo>::iterator player)
 {
 	const auto &ent = std::find(world->livingEntities.begin(), world->livingEntities.end(), player->movement);
-	if (ent == world->livingEntities.end())
-		return ;
+	const bool hasEntity = ent != world->livingEntities.end();
 
-	for (CPlayerInfo &p : players)
+	if (hasEntity)
 	{
-		if (player->movement == p.movement) continue;
+		for (CPlayerInfo &p : players)
+		{
+			if (player->movement == p.movement) continue;
 
-		NetEntityMove pkt;
+			NetEntityMove pkt;
 
-		pkt.eEntityType = ent->get()->getEntityType();
-		pkt.entityID = ent->get()->getID();
-		pkt.type = -1;
-		pkt.flags = pkt.flags | PacketFlags::Reliable;
+			pkt.eEntityType = ent->get()->getEntityType();
+			pkt.entityID = ent->get()->getID();
+			pkt.type = -1;
+			pkt.flags = pkt.flags | PacketFlags::Reliable;
 
-		//not really needed info
-		pkt.positionX = ent->get()->getPosition().x;
-		pkt.positionY = ent->get()->getPosition().y;
-		pkt.positionZ = ent->get()->getPosition().z;
+			//not really needed info
+			pkt.positionX = ent->get()->getPosition().x;
+			pkt.positionY = ent->get()->getPosition().y;
+			pkt.positionZ = ent->get()->getPosition().z;
 
-		pkt.yaw = ent->get()->yaw;
-		pkt.pitch = ent->get()->pitch;
+			pkt.yaw = ent->get()->yaw;
+			pkt.pitch = ent->get()->pitch;
 
-		pkt.entityName = ent->get()->getName();
+			pkt.entityName = ent->get()->getName();
 
-		sendPacketTo(pkt, p.addr);
+			sendPacketTo(pkt, p.addr);
+		}
 	}
 
 	// Push back to inventory items in crafting station and hand to prevent lose
@@ -546,8 +548,12 @@ void Server::removePlayer(std::vector<CPlayerInfo>::iterator player)
 	messages.push_back(player->movement->getName() + " left the game.");
 
 	// Erase rather than clear: ids are never reused, so the entry stays dead.
+	// Always drop the player from players/PlayerKnownChunks even if the
+	// living-entity lookup failed, otherwise timeoutSilentClients() would
+	// keep re-timing-out the same stale entry.
 	world->PlayerKnownChunks.erase(player->id);
-	world->livingEntities.erase(ent);
+	if (hasEntity)
+		world->livingEntities.erase(ent);
 	players.erase(player);
 }
 
