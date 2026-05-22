@@ -150,7 +150,7 @@ class World final : public CommonWorld<ChunkGeneration>
 		std::vector<std::pair<glm::ivec3, BlockType>> updatedBlocks;
 
 		//returns true if item has been placed
-		bool processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t clientTick);
+		void processPlayerMouseInputs(CPlayerInfo &player, const NetPlayerMouseInputs &pkt, int32_t clientTick, std::vector<PacketPtr> &pktsToSend);
 		void updateEntitiesPosition(const std::vector<CPlayerInfo> &players, int32_t clientTick);	
 
 		bool setBlockWorld(glm::ivec3 globalCoords, std::optional<glm::ivec3> faceNormal, BlockType type) override;
