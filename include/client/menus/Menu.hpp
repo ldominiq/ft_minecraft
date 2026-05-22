@@ -83,11 +83,22 @@ class Menu {
 		bool clickSlider(Slider& s, float glX, float glY);
 		void dragSlider(Slider& s, float glX);
 
+		std::vector<Slider> sliders;
+
 	private:
 		static void applySliderAtX(Slider& s, float glX);
 
 	public:
 		static GLuint loadTexture2D(const char* path, bool pixelated = true, int* outWidth = nullptr, int* outHeight = nullptr);
+
+		void addFloatSlider(const std::string& label, float min, float max,
+							std::function<float()> get,
+							std::function<void(float)> set,
+							int precision = 0);
+
+		void addIntSlider(const std::string& label, int min, int max,
+						  std::function<int()> get,
+						  std::function<void(int)> set);
 
 	protected:
 

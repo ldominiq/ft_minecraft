@@ -166,6 +166,10 @@ void AudioManager::loadAllAssets() {
         "assets/sounds/footsteps/grass/grass5.wav",
         "assets/sounds/footsteps/grass/grass6.wav",
         });
+    loadSfx(SoundId::Footstep_Water, {
+        "assets/sounds/liquids/splash.wav",
+        "assets/sounds/liquids/splash2.wav",
+        });
 
     // Block break / place — keyed by material group.
     loadSfx(SoundId::Break_Stone,  {
