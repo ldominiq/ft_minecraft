@@ -71,6 +71,7 @@
 #include "MainMenu.hpp"
 #include "MultiplayerMenu.hpp"
 #include "SettingsMenu.hpp"
+#include "GraphicsMenu.hpp"
 #include "PauseMenu.hpp"
 #include "AudioManager.hpp"
 #include "ControlsMenu.hpp"
@@ -115,6 +116,10 @@ private:
 	NetPlayerInputs buildPlayerInputsPacket();
     void processInput();
 	void processInputMenus(int key, int action);
+	// If the currently-open menu is a sub-page of another, swap to the parent and
+	// return true. Returns false otherwise so the caller can apply default ESC
+	// behavior (transitioning game state, closing overlays, etc.).
+	bool popSubMenuOnEscape();
 	bool connectToServer(const std::string& ip);
 	void transitionTo(GameState newState);
     void updateWindowTitle();
@@ -175,6 +180,7 @@ private:
 	std::shared_ptr<MainMenu> mainMenu;
 	std::shared_ptr<MultiplayerMenu> multiplayerMenu;
 	std::shared_ptr<SettingsMenu> settingsMenu;
+	std::shared_ptr<GraphicsMenu> graphicsMenu;
 	std::shared_ptr<PauseMenu> pauseMenu;
 	std::shared_ptr<ControlsMenu> controlsMenu;
 	GLuint menuDirtTex = 0;

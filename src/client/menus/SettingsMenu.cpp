@@ -12,6 +12,7 @@ SettingsMenu::SettingsMenu(float width, float height, GLuint dirtTex)
 {
 	doneButton.label = "Done";
 	changeControlsButton.label = "Controls";
+	graphicsButton.label = "Graphics";
 	resize(width, height);
 	username = "nameless";
 	loadUsername();
@@ -19,6 +20,7 @@ SettingsMenu::SettingsMenu(float width, float height, GLuint dirtTex)
 
 void SettingsMenu::addChar(char c)
 {
+	if (!usernameEditable) return;
 	if (username.size() >= 16) return;
 
 	username += c;
@@ -26,6 +28,7 @@ void SettingsMenu::addChar(char c)
 
 void SettingsMenu::removeChar()
 {
+	if (!usernameEditable) return;
 	if (!username.empty()) {
 		username.pop_back();
 	}
@@ -48,6 +51,11 @@ void SettingsMenu::build()
 	changeControlsButton.h = btnH;
 	changeControlsButton.x = centerX - btnW / 2.0f;
 	changeControlsButton.y = nameBox.y - btnH - 20.0f * menuScale;
+
+	graphicsButton.w = btnW;
+	graphicsButton.h = btnH;
+	graphicsButton.x = centerX - btnW / 2.0f;
+	graphicsButton.y = changeControlsButton.y - btnH - 20.0f * menuScale;
 
 	doneButton.w = btnW;
 	doneButton.h = btnH;
@@ -77,13 +85,17 @@ void SettingsMenu::onRender()
 	textRenderer.setScale(msgScale);
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
-	drawInputBox(nameBox.x, nameBox.y, nameBox.w, nameBox.h, username, true);
+	if (usernameEditable)
+		drawInputBox(nameBox.x, nameBox.y, nameBox.w, nameBox.h, username, true);
 
 	drawButton(doneButton.x, doneButton.y, doneButton.w, doneButton.h,
 			   doneButton.label, doneButton.hovered);
-	
+
 	drawButton(changeControlsButton.x, changeControlsButton.y, changeControlsButton.w, changeControlsButton.h,
 			   changeControlsButton.label, changeControlsButton.hovered);
+
+	drawButton(graphicsButton.x, graphicsButton.y, graphicsButton.w, graphicsButton.h,
+			   graphicsButton.label, graphicsButton.hovered);
 
 	textRenderer.setScale(savedScale);
 }
@@ -93,13 +105,9 @@ void SettingsMenu::handleMouseMove(double mouseX, double mouseY)
 	float glY = fullscreenHeight - static_cast<float>(mouseY);
 	float glX = static_cast<float>(mouseX);
 
-	doneButton.hovered =
-		glX >= doneButton.x && glX <= doneButton.x + doneButton.w &&
-		glY >= doneButton.y && glY <= doneButton.y + doneButton.h;
-	
-	changeControlsButton.hovered =
-		glX >= changeControlsButton.x && glX <= changeControlsButton.x + changeControlsButton.w &&
-		glY >= changeControlsButton.y && glY <= changeControlsButton.y + changeControlsButton.h;
+	updateHover(doneButton, glX, glY);
+	updateHover(changeControlsButton, glX, glY);
+	updateHover(graphicsButton, glX, glY);
 }
 
 void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, int action)
@@ -110,15 +118,9 @@ void SettingsMenu::handleMouseClick(double mouseX, double mouseY, int button, in
 	float glY = fullscreenHeight - static_cast<float>(mouseY);
 	float glX = static_cast<float>(mouseX);
 
-	if (glX >= doneButton.x && glX <= doneButton.x + doneButton.w &&
-		glY >= doneButton.y && glY <= doneButton.y + doneButton.h) {
-		if (onDone) onDone();
-	}
-
-	if (glX >= changeControlsButton.x && glX <= changeControlsButton.x + changeControlsButton.w &&
-		glY >= changeControlsButton.y && glY <= changeControlsButton.y + changeControlsButton.h) {
-		if (changeControls) changeControls();
-	}
+	if (isInside(doneButton, glX, glY) && onDone) onDone();
+	if (isInside(changeControlsButton, glX, glY) && changeControls) changeControls();
+	if (isInside(graphicsButton, glX, glY) && onGraphics) onGraphics();
 }
 
 void SettingsMenu::saveUsername(const char* filename)

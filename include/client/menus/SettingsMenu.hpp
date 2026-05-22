@@ -18,6 +18,7 @@ public:
 		};
 	}
 	void setChangeControlsCallback(std::function<void()> cb) { changeControls = std::move(cb); }
+	void setGraphicsCallback(std::function<void()> cb) { onGraphics = std::move(cb); }
 
 	void handleMouseClick(double mouseX, double mouseY, int button, int action) override;
 	void handleMouseMove(double mouseX, double mouseY) override;
@@ -27,6 +28,8 @@ public:
 	std::string getUsername() const { return username; }
 	void setUsername(const std::string& name) { username = name; saveUsername(); }
 
+	void setUsernameEditable(bool editable) { usernameEditable = editable; }
+
 private:
 	void onRender() override;
 	void build() override;
@@ -35,13 +38,16 @@ private:
 	void loadUsername(const char* filename = "username.cfg");
 
 	std::string username;
+	bool usernameEditable = true;
 
 	std::function<void()> onDone;
 	std::function<void()> changeControls;
+	std::function<void()> onGraphics;
 
 	GLuint dirtTexture = 0;
 	Button doneButton;
 	Button changeControlsButton;
+	Button graphicsButton;
 	Button nameBox; // box
 };
 

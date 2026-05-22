@@ -1,6 +1,11 @@
 
 #include "Menu.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
+#include <sstream>
+
 Menu::Menu(float width, float height)
 : DESIGN_WIDTH(width), DESIGN_HEIGHT(height),
   textRenderer("fonts/upheavtt.ttf"),
@@ -230,6 +235,98 @@ void Menu::drawInputBox(float x, float y, float w, float h, const std::string& t
 	}
 
 	textRenderer.renderText(displayText, x + padX, y + h * 0.25f, glm::vec3(1.0f));
+	textRenderer.setScale(savedScale);
+}
+
+bool Menu::isInside(const Button& b, float glX, float glY)
+{
+	return glX >= b.x && glX <= b.x + b.w &&
+		   glY >= b.y && glY <= b.y + b.h;
+}
+
+void Menu::updateHover(Button& b, float glX, float glY)
+{
+	b.hovered = isInside(b, glX, glY);
+}
+
+void Menu::drawToggle(const Toggle& t)
+{
+	std::string label = t.label + ": " + (t.get() ? "ON" : "OFF");
+	drawButton(t.btn.x, t.btn.y, t.btn.w, t.btn.h, label, t.btn.hovered, t.btn.enabled);
+}
+
+bool Menu::clickToggle(Toggle& t, float glX, float glY)
+{
+	if (!isInside(t.btn, glX, glY)) return false;
+	t.set(!t.get());
+	return true;
+}
+
+void Menu::applySliderAtX(Slider& s, float glX)
+{
+	if (s.track.w <= 0.0f) return;
+	float t = std::clamp((glX - s.track.x) / s.track.w, 0.0f, 1.0f);
+	float v = s.minVal + t * (s.maxVal - s.minVal);
+	if (s.isInt)
+		s.setI(static_cast<int>(std::round(v)));
+	else
+		s.setF(v);
+}
+
+bool Menu::clickSlider(Slider& s, float glX, float glY)
+{
+	if (!isInside(s.track, glX, glY)) return false;
+	s.dragging = true;
+	applySliderAtX(s, glX);
+	return true;
+}
+
+void Menu::dragSlider(Slider& s, float glX)
+{
+	if (!s.dragging) return;
+	applySliderAtX(s, glX);
+}
+
+void Menu::drawSlider(const Slider& s)
+{
+	float border = 2.0f * menuScale;
+	drawSimpleQuad(s.track.x - border, s.track.y - border,
+				   s.track.w + 2 * border, s.track.h + 2 * border,
+				   glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+	drawSimpleQuad(s.track.x, s.track.y, s.track.w, s.track.h,
+				   glm::vec4(0.15f, 0.15f, 0.2f, 0.85f));
+
+	float current = s.isInt ? static_cast<float>(s.getI()) : s.getF();
+	float t = std::clamp((current - s.minVal) / std::max(1e-6f, (s.maxVal - s.minVal)),
+						 0.0f, 1.0f);
+
+	float fillW = t * s.track.w;
+	drawSimpleQuad(s.track.x, s.track.y, fillW, s.track.h,
+				   glm::vec4(0.35f, 0.45f, 0.7f, 0.9f));
+
+	float knobW = 6.0f * menuScale;
+	float knobX = s.track.x + fillW - knobW / 2.0f;
+	knobX = std::clamp(knobX, s.track.x, s.track.x + s.track.w - knobW);
+	drawSimpleQuad(knobX, s.track.y - 2.0f * menuScale,
+				   knobW, s.track.h + 4.0f * menuScale,
+				   glm::vec4(0.9f, 0.9f, 0.95f, 1.0f));
+
+	float savedScale = textRenderer.getScale();
+	textRenderer.setScale(0.4f * menuScale);
+	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
+
+	std::ostringstream ss;
+	if (s.isInt)
+		ss << s.label << ": " << static_cast<int>(std::round(current));
+	else
+		ss << s.label << ": " << std::fixed << std::setprecision(s.precision) << current;
+	std::string text = ss.str();
+
+	float labelWidth = textRenderer.getPixelSizeOfString(text);
+	float ascent = textRenderer.getAscent();
+	float labelX = s.track.x + (s.track.w - labelWidth) / 2.0f;
+	float labelY = s.track.y + (s.track.h - ascent) / 2.0f;
+	textRenderer.renderText(text, labelX, labelY, glm::vec3(1.0f));
 	textRenderer.setScale(savedScale);
 }
 

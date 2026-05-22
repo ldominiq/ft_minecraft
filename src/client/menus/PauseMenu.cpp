@@ -29,10 +29,16 @@ void PauseMenu::build()
 	continueButton.y = fullscreenHeight - halfY;
 	continueButton.label = "Continue";
 
+	settingsButton.w = btnW;
+	settingsButton.h = btnH;
+	settingsButton.x = centerX - btnW / 2.0f;
+	settingsButton.y = continueButton.y - btnH - 20.0f * menuScale;
+	settingsButton.label = "Settings";
+
 	backToMainMenuButton.w = btnW;
 	backToMainMenuButton.h = btnH;
 	backToMainMenuButton.x = centerX - btnW / 2.0f;
-	backToMainMenuButton.y = continueButton.y - btnH - 20.0f * menuScale;
+	backToMainMenuButton.y = settingsButton.y - btnH - 20.0f * menuScale;
 	backToMainMenuButton.label = "Main Menu";
 }
 
@@ -44,16 +50,9 @@ void PauseMenu::handleMouseClick(double mouseX, double mouseY, int button, int a
 	float glY = fullscreenHeight - static_cast<float>(mouseY);
 	float glX = static_cast<float>(mouseX);
 
-	if (glX >= continueButton.x && glX <= continueButton.x + continueButton.w &&
-		glY >= continueButton.y && glY <= continueButton.y + continueButton.h) {
-		if (onContinue) onContinue();
-	}
-
-	if (glX >= backToMainMenuButton.x && glX <= backToMainMenuButton.x + backToMainMenuButton.w &&
-		glY >= backToMainMenuButton.y && glY <= backToMainMenuButton.y + backToMainMenuButton.h) {
-		if (onBackToMainMenu) onBackToMainMenu();
-	}
-
+	if (isInside(continueButton, glX, glY) && onContinue) onContinue();
+	if (isInside(settingsButton, glX, glY) && onSettings) onSettings();
+	if (isInside(backToMainMenuButton, glX, glY) && onBackToMainMenu) onBackToMainMenu();
 }
 
 void PauseMenu::handleMouseMove(double mouseX, double mouseY)
@@ -61,16 +60,14 @@ void PauseMenu::handleMouseMove(double mouseX, double mouseY)
 	float glY = fullscreenHeight - static_cast<float>(mouseY);
 	float glX = static_cast<float>(mouseX);
 
-	for (auto& button : {&continueButton, &backToMainMenuButton})
-	{
-		button->hovered = glX >= button->x && glX <= button->x + button->w &&
-						  glY >= button->y && glY <= button->y + button->h;
-	}
+	for (auto& button : {&continueButton, &settingsButton, &backToMainMenuButton})
+		updateHover(*button, glX, glY);
 }
 
 void PauseMenu::onRender()
 {
 	drawSimpleQuad(0, 0, fullscreenWidth, fullscreenHeight, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
 	drawButton(continueButton.x, continueButton.y, continueButton.w, continueButton.h, continueButton.label, continueButton.hovered);
+	drawButton(settingsButton.x, settingsButton.y, settingsButton.w, settingsButton.h, settingsButton.label, settingsButton.hovered);
 	drawButton(backToMainMenuButton.x, backToMainMenuButton.y, backToMainMenuButton.w, backToMainMenuButton.h, backToMainMenuButton.label, backToMainMenuButton.hovered);
 }

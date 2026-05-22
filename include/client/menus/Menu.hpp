@@ -7,6 +7,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <GLFW/glfw3.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,6 +24,27 @@ class Menu {
 			std::string label;
 			bool hovered = false;
 			bool enabled = true;
+		};
+
+		struct Toggle {
+			Button btn;
+			std::string label;
+			std::function<bool()> get;
+			std::function<void(bool)> set;
+		};
+
+		struct Slider {
+			Button track;
+			std::string label;
+			bool isInt = false;
+			int precision = 0; // decimal places for float sliders
+			float minVal = 0.0f;
+			float maxVal = 1.0f;
+			std::function<float()> getF;
+			std::function<void(float)> setF;
+			std::function<int()> getI;
+			std::function<void(int)> setI;
+			bool dragging = false;
 		};
 		
 		int DESIGN_WIDTH = 0;
@@ -51,6 +73,18 @@ class Menu {
 		void drawTiledBackground(GLuint &texture);
 		void drawButton(float x, float y, float w, float h, const std::string& label, bool hovered, bool enabled = true);
 		void drawInputBox(float x, float y, float w, float h, const std::string& text, bool focused);
+		void drawToggle(const Toggle& t);
+		void drawSlider(const Slider& s);
+
+		static bool isInside(const Button& b, float glX, float glY);
+		static void updateHover(Button& b, float glX, float glY);
+
+		bool clickToggle(Toggle& t, float glX, float glY);
+		bool clickSlider(Slider& s, float glX, float glY);
+		void dragSlider(Slider& s, float glX);
+
+	private:
+		static void applySliderAtX(Slider& s, float glX);
 
 	public:
 		static GLuint loadTexture2D(const char* path, bool pixelated = true, int* outWidth = nullptr, int* outHeight = nullptr);
