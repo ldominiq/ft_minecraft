@@ -2,8 +2,6 @@
 
 #include <algorithm>
 
-constexpr float textScale = 0.3f;
-
 // Append the inventory icon for one item to the vertex stream. Routes to a
 // flat sprite for vegetation/weapons/misc and to an isometric cube for full
 // blocks, so blocks still look 3D and items look like 2D Minecraft items.
@@ -173,7 +171,7 @@ void InventoryUI::build()
 	craftingResultSlot.x = std::min(craftingResultSlot.x, maxX);
 
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
-	textRenderer.setScale(textScale);
+	textRenderer.setScale(0.35f * menuScale);
 }
 
 InventoryUI::~InventoryUI()
@@ -268,7 +266,6 @@ void InventoryUI::drawHotbar()
 	if (!inv)
 		return ;
 
-	// drawSimpleQuad(hotbar.x, hotbar.y, hotbar.width, hotbar.height, glm::vec4(0,0,0,0.5));
 	uint8_t i = 0;
 	for (auto &hotbarSlotCoord : hotbarSlots)
 	{
@@ -305,7 +302,7 @@ void InventoryUI::drawHotbar()
 	i = 0;
 	for (auto &hotbarSlotCoord : hotbarSlots)
 	{
-		textRenderer.renderText(std::to_string(inv->getSlot(i).second), hotbarSlotCoord.x, hotbarSlotCoord.y + hotbar.height * 0.7, glm::vec3(1.0f));
+		textRenderer.renderText(std::to_string(inv->getSlot(i).second), hotbarSlotCoord.x + 3 * menuScale, hotbarSlotCoord.y + hotbar.height * 0.7, glm::vec3(1.0f));
 
 		//could optimize and only redo if inventory/hotbar has changed. TODO ?
 		buildInventoryIcon(meshVertices, inv->getItemAtSlot(i),
