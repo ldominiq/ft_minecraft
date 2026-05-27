@@ -64,7 +64,7 @@ class SSAO {
         int SCR_WIDTH;
         int SCR_HEIGHT;
         bool enabled = true;
-        bool halfResolution = true;   // Half-res SSAO for ~4x perf gain
+        bool halfResolution = false;   // Half-res SSAO for ~4x perf gain
         bool resolutionChanged = false;
 
         // Dirty flags - avoid re-uploading uniforms every frame
