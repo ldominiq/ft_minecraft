@@ -96,7 +96,7 @@ void main() {
     float farDist = t1o;
 
     // Integration
-    const int SAMPLES = 16;     // More samples than runtime — this is precomputed
+    const int SAMPLES = 16;     // More samples than runtime - this is precomputed
     const int SAMPLES_SUN = 8;
     float segment = farDist / float(SAMPLES);
 

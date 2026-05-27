@@ -322,7 +322,7 @@ void PlayerMovement::calculateNewPosition(const ICommonWorld &world)
 	if (skipDuplicateInputs) {
 		// Server path: drain the per-player input queue, running one physics step per
 		// queued input.  When the client sends N inputs in a single frame (low FPS
-		// catch-up), all N packets end up here and each gets its own step — keeping
+		// catch-up), all N packets end up here and each gets its own step - keeping
 		// server and client tick counts in sync instead of the server skipping to the
 		// last input and being N-1 ticks behind.
 		if (pendingInputs.empty())

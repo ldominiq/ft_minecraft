@@ -183,7 +183,7 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius, flo
     // Don't evict chunks that arrived in the last few seconds: the player
     // position can lag a teleport/respawn by a handful of frames (NetPlayerMove
     // is unreliable), and during that window freshly-received chunks would be
-    // erased by distance even though the server already marked them sent — so
+    // erased by distance even though the server already marked them sent - so
     // they'd never be re-streamed and the area would have permanent holes.
     constexpr auto RECENT_CHUNK_GRACE = std::chrono::seconds(3);
     const auto now = std::chrono::steady_clock::now();
@@ -209,7 +209,7 @@ void Renderer::organizeChunks(const std::pair<int, int> pos, int loadRadius, flo
             auto rt = chunkReceiveTime.find(chunkPos);
             if (rt != chunkReceiveTime.end() && now - rt->second < RECENT_CHUNK_GRACE)
             {
-                // Recently arrived — keep it; player position may still be
+                // Recently arrived - keep it; player position may still be
                 // catching up after a teleport/respawn.
                 ++it;
             }
@@ -347,7 +347,7 @@ void Renderer::updateVegetationUniforms(const glm::mat4& view, const glm::mat4& 
 	vegetationShader->setMat4("projection", projection);
 	vegetationShader->setVec4("clipPlane", clipPlane);
 	vegetationShader->setVec3("viewPos", viewPos);
-	// Graphics-quality knobs — uploaded here too so vegetation in water
+	// Graphics-quality knobs - uploaded here too so vegetation in water
 	// refraction respects the same sway/density settings as the main pass.
 	vegetationShader->setInt  ("vegetationSwayQuality", vegetationSwayQuality);
 	vegetationShader->setFloat("vegetationSwayMaxDist", vegetationSwayMaxDistance);
@@ -435,7 +435,7 @@ void Renderer::renderVegetationOnly(const glm::mat4& view, const glm::dvec3& eye
 		const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
 		                                   static_cast<double>(chunk->getOriginZ()));
 		const glm::dvec3 chunkRelD = chunkOriginWorldD - cameraPos;
-		// Vegetation distance cap — separate from terrain so the user can
+		// Vegetation distance cap - separate from terrain so the user can
 		// keep distant terrain visible while killing distant leaf overdraw.
 		if (vegMaxDistSq > 0.0f) {
 			const float dSq = static_cast<float>(chunkRelD.x * chunkRelD.x + chunkRelD.z * chunkRelD.z);
@@ -513,7 +513,7 @@ void Renderer::renderShadow(const std::shared_ptr<Shader> &shaderProgram, const 
 			clipMaxZ < -1.0f || clipMinZ > 1.0f)
 			continue;
 
-		// Mesh is in chunk-local space — supply the world origin so the
+		// Mesh is in chunk-local space - supply the world origin so the
 		// vertex shader can reconstruct world positions before projecting
 		// into the light's clip space.
       const glm::dvec3 chunkOriginWorldD(static_cast<double>(chunk->getOriginX()), 0.0,
@@ -562,7 +562,7 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 		ent->hasHorizontalInput = (pkt.positionFlags & 0x01) != 0;
 		ent->setOnGround((pkt.positionFlags & 0x02) != 0);
 		// IClientEntity virtually inherits LivingEntity (the diamond with Creeper
-		// forces it), so static_pointer_cast can't cross the virtual base — the
+		// forces it), so static_pointer_cast can't cross the virtual base - the
 		// downcast needs RTTI. Done once here and reused for arm swing / death /
 		// creeper below. Hoisting triggerArmSwing+triggerDeath onto Entity would
 		// dodge the cast, but they're animation hooks meaningless for items and
@@ -592,7 +592,7 @@ void Renderer::onEntity(NetEntityMove &pkt, double serverTime)
 		{
 			if (ice)
 			{
-				// Latch the explosion flag before the audio layer reads it next frame —
+				// Latch the explosion flag before the audio layer reads it next frame -
 				// otherwise the death sweep can't tell "killed while primed" from "fuse expired".
 				if (auto le = std::dynamic_pointer_cast<LivingEntity>(ent))
 					le->diedByExplosion = (pkt.positionFlags & 0x20) != 0;

@@ -8,7 +8,7 @@
 // Used by ChunkRenderer for both solid terrain and water meshes. Decoded in
 // the vertex shaders via shaders/terrain_vertex_decode.glsl.
 //
-// Bit layout — chosen so positions can be stored at 1/16-block resolution to
+// Bit layout - chosen so positions can be stored at 1/16-block resolution to
 // faithfully represent sub-block geometry (cactus side-inset, etc.).
 //
 //   v0: posX:9 | posY:13 | posZ:9 | reserved:1
@@ -17,13 +17,13 @@
 //
 //   v1: normal:3 | corner:2 | texLayer:10 | skyLight:4 | waterAbove:1 |
 //       blockLight:4 (bits 20-23) | reserved:8
-//        normal     — face direction index 0..5 (matches mesher's `face` param,
+//        normal     - face direction index 0..5 (matches mesher's `face` param,
 //                     indexes into NORMALS[6] in the GLSL include)
-//        corner     — quad corner index 0..3 (UVs reconstructed in the shader)
-//        texLayer   — texture array layer (10 bits = 1024 layers)
-//        skyLight   — quantized sky-light level 0..15 (matches the engine's
+//        corner     - quad corner index 0..3 (UVs reconstructed in the shader)
+//        texLayer   - texture array layer (10 bits = 1024 layers)
+//        skyLight   - quantized sky-light level 0..15 (matches the engine's
 //                     internal 4-bit value; lossless)
-//        waterAbove — 1 iff this face's block has a water block directly
+//        waterAbove - 1 iff this face's block has a water block directly
 //                     above it. Only meaningful for top faces; consumed by
 //                     the fragment shader to gate caustics so they don't
 //                     appear on dry cave floors that just happen to sit

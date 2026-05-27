@@ -44,7 +44,7 @@ uniform int   vegetationDensity;
 void main() {
     // ── Density culling: cheapest path wins ─────────────────────────
     // Park skipped instances at clip-space (2,2,2,1) so they're trivially
-    // culled — vertex still runs but exits before the expensive math below.
+    // culled - vertex still runs but exits before the expensive math below.
     if (vegetationDensity > 1 && (gl_InstanceID % vegetationDensity) != 0) {
         gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         gl_ClipDistance[0] = -1.0;
@@ -68,7 +68,7 @@ void main() {
     bool isUnderwater = (worldPos.y < seaLevel);
 
     // ── Sway: skip entirely on quality 0 ────────────────────────────
-    // Uniform branch — coherent across all fragments, so the GPU only
+    // Uniform branch - coherent across all fragments, so the GPU only
     // executes the path that's selected; the others cost nothing.
     if (vegetationSwayQuality > 0) {
         // Distance-based LOD: fade sway out as we approach the cutoff.
@@ -99,7 +99,7 @@ void main() {
                     swayX = bend * s;
                     swayZ = bend * 0.7 * s; // reuse the sin to avoid a second call
                 } else {
-                    // Full quality — original 5-sin organic motion
+                    // Full quality - original 5-sin organic motion
                     swayX = bend * sin(time * 0.35 + worldPos.x * 0.4 + worldPos.z * 0.25 + plantPhase);
                     swayZ = bend * sin(time * 0.28 + worldPos.x * 0.3 + worldPos.z * 0.5 + plantPhase + 1.57);
                     swayX += bend * 0.3  * sin(time * 0.6 + worldPos.z * 0.7 + plantPhase * 0.5);
@@ -115,7 +115,7 @@ void main() {
                     swayX = aPos.y * 0.08 * s;
                     swayZ = swayX * 0.3; // reuse the sin
                 } else {
-                    // Full quality — original 3-sin land sway
+                    // Full quality - original 3-sin land sway
                     float sway = aPos.y * 0.08
                         * sin(time * 1.5 + worldPos.x * 0.8 + worldPos.z * 0.6 + plantPhase)
                         + aPos.y * 0.03

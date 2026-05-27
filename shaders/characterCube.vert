@@ -16,16 +16,16 @@ out vec2 vTex;
 out vec3 vFragPosRel;
 out vec3 vNormal;
 
-// Matches the character cube face indexing in src/client/characters/cube.cpp —
+// Matches the character cube face indexing in src/client/characters/cube.cpp -
 // NOT the block face order in blockRenderingHelperFunctions.hpp. Character rig
 // axes: +X = character front (face), +Y = up, +Z = character left.
 const vec3 FACE_NORMALS[6] = vec3[6](
-    vec3( 1.0, 0.0,  0.0),  // 0: +X — character front (face)
-    vec3(-1.0, 0.0,  0.0),  // 1: -X — character back
-    vec3( 0.0, 1.0,  0.0),  // 2: +Y — top
-    vec3( 0.0,-1.0,  0.0),  // 3: -Y — bottom
-    vec3( 0.0, 0.0, -1.0),  // 4: -Z — character right
-    vec3( 0.0, 0.0,  1.0)   // 5: +Z — character left
+    vec3( 1.0, 0.0,  0.0),  // 0: +X - character front (face)
+    vec3(-1.0, 0.0,  0.0),  // 1: -X - character back
+    vec3( 0.0, 1.0,  0.0),  // 2: +Y - top
+    vec3( 0.0,-1.0,  0.0),  // 3: -Y - bottom
+    vec3( 0.0, 0.0, -1.0),  // 4: -Z - character right
+    vec3( 0.0, 0.0,  1.0)   // 5: +Z - character left
 );
 
 void main()

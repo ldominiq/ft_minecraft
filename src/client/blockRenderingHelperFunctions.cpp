@@ -160,7 +160,7 @@ void buildItemBillboard(
 	const double lenSq = toCam.x * toCam.x + toCam.z * toCam.z;
 	glm::dvec3 rightD;
 	if (lenSq < 1e-9) {
-		// Item is directly above/below the eye — pick an arbitrary right.
+		// Item is directly above/below the eye - pick an arbitrary right.
 		rightD = glm::dvec3(1.0, 0.0, 0.0);
 	} else {
 		toCam /= std::sqrt(lenSq);

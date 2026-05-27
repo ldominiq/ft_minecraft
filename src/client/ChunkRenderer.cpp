@@ -1,7 +1,7 @@
 
 #include "ChunkRenderer.hpp"
 
-// Default to "Smart" — keep alpha cutouts on outer leaf surfaces, but cull
+// Default to "Smart" - keep alpha cutouts on outer leaf surfaces, but cull
 // the wasted internal faces. Closest match to the original look at a fraction
 // of the vertex count.
 ChunkRenderer::LeafRenderMode ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Smart;
@@ -253,7 +253,7 @@ void ChunkRenderer::buildMeshData() {
 	// sea-level plane goes to the "ocean" bucket: that's the face the
 	// planar reflection/refraction FBOs were rendered for. Side faces of
 	// the same sea-level block, placed/spread water, and deeper top faces
-	// all go to the sky-reflection bucket — that shader is independent of
+	// all go to the sky-reflection bucket - that shader is independent of
 	// any global plane and works for arbitrarily-oriented water.
 	const int waterSurfaceY = sSeaLevel;
 
@@ -287,16 +287,16 @@ void ChunkRenderer::buildMeshData() {
     // Look up the sky-light value for a face.
     //
     // We want the light level of the AIR block that the face is
-    // exposed to — that tells us how much sky exposure this face has.
+    // exposed to - that tells us how much sky exposure this face has.
     //
     // For faces within this chunk: straightforward array lookup.
     //
     // For faces at chunk borders: we read the adjacent chunk's
     // skyLight array.  This is safe because computeSkyLight() uses
-    // std::swap — the member array is either the previous fully-
+    // std::swap - the member array is either the previous fully-
     // computed result or the new one, never a partial write.
     // If the neighbor hasn't computed skyLight yet (empty array),
-    // getSkyLight() returns 15 (assume sunlit — corrected on rebuild).
+    // getSkyLight() returns 15 (assume sunlit - corrected on rebuild).
     auto getSkyLightForFace = [&](int blockX, int blockY, int blockZ,
                                    int dx, int dy, int dz,
                                    Direction dir) -> uint8_t {
@@ -372,7 +372,7 @@ void ChunkRenderer::buildMeshData() {
     // In Fast/Smart, leaves are treated as opaque blocks for mesh-emission
     // decisions: faces between leaves and other leaves (or between leaves
     // and other solid blocks) are skipped. In Fancy, leaves stay transparent
-    // and every face is emitted — the original behaviour.
+    // and every face is emitted - the original behaviour.
     const bool leavesAreTransparentForMesh =
         (sLeafRenderMode == LeafRenderMode::Fancy);
 
@@ -385,7 +385,7 @@ void ChunkRenderer::buildMeshData() {
                 if (currentBlock == BlockType::AIR) continue;
                 if (isBlockVegetation(currentBlock)) continue;
 
-                // Torches aren't part of the chunk mesh — the packed-vertex
+                // Torches aren't part of the chunk mesh - the packed-vertex
                 // format can't map a partial sprite, so they'd show the whole
                 // torch image on every face. Record them for HeldItemRenderer
                 // to draw with the same voxel-extruded model as the held one.
@@ -429,7 +429,7 @@ void ChunkRenderer::buildMeshData() {
                         if (neighborBlock == BlockType::AIR || isBlockTransparent(neighborBlock) || isBlockVegetation(neighborBlock)) {
                             // Only the *top* face of a water block sitting
                             // exactly on the sea-level plane goes into the
-                            // planar-reflection bucket — that face is the one
+                            // planar-reflection bucket - that face is the one
                             // sampled by the reflection/refraction FBOs.
                             // Everything else (side faces of sea-level blocks,
                             // placed/spread water, deeper top faces) uses the
@@ -492,9 +492,9 @@ void ChunkRenderer::uploadMesh() {
 
     // Packed terrain vertex layout (8 bytes per vertex). Decoded in
     // shaders/terrain_vertex_decode.glsl.
-    //   location 0: v0  (uint) — pos.x | pos.y | pos.z (1/16 fixed point)
-    //   location 1: v1  (uint) — normal | corner | texLayer | skyLight
-    // NOTE: glVertexAttribIPointer (the I variant) — integer attributes are
+    //   location 0: v0  (uint) - pos.x | pos.y | pos.z (1/16 fixed point)
+    //   location 1: v1  (uint) - normal | corner | texLayer | skyLight
+    // NOTE: glVertexAttribIPointer (the I variant) - integer attributes are
     // delivered as uint without the float conversion path.
     GLsizei stride = sizeof(PackedVertex);
     glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<void *>(offsetof(PackedVertex, v0)));
@@ -506,7 +506,7 @@ void ChunkRenderer::uploadMesh() {
     meshVertices.clear();
     meshVertices.shrink_to_fit();
 
-    // Upload water mesh — same packed format.
+    // Upload water mesh - same packed format.
     if (!waterMeshVertices.empty()) {
         if (waterVAO == 0)
             glGenVertexArrays(1, &waterVAO);
@@ -530,7 +530,7 @@ void ChunkRenderer::uploadMesh() {
     waterMeshVertices.clear();
     waterMeshVertices.shrink_to_fit();
 
-    // Upload placed-water mesh — same packed format, separate VAO/VBO so we
+    // Upload placed-water mesh - same packed format, separate VAO/VBO so we
     // can bind the simpler sky-reflection shader for it without re-issuing
     // ocean draws.
     if (!placedWaterMeshVertices.empty()) {

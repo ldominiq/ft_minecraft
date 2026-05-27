@@ -169,7 +169,7 @@
 //         return true;
 //     }
 
-//     // No more input available (EOF or read error) — let caller handle seeking/looping.
+//     // No more input available (EOF or read error) - let caller handle seeking/looping.
 //     return false;
 // }
 

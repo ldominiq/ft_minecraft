@@ -153,7 +153,7 @@ void Lighting::renderCloudsLowRes(const glm::mat4& view, const glm::mat4& projec
     glm::vec3 sunDirNorm = glm::normalize(getDirectionalLightDirection());
     float sunElevation = sunDirNorm.y;  // Can be negative (below horizon)
     float dayFactor = glm::smoothstep(-0.2f, 0.1f, sunElevation);  // Fade from -0.2 to 0.1
-    // Very dim night ambient — auto-exposure + gamma encode lifts dark linear
+    // Very dim night ambient - auto-exposure + gamma encode lifts dark linear
     // values a lot in display space, so the linear floor has to stay tiny.
     float nightAmbient = 0.002f;
     float dayAmbient = 0.5f;
@@ -240,7 +240,7 @@ void Lighting::drawSky(const glm::mat4& view, const glm::mat4& projection, glm::
 glm::vec3 Lighting::getAnimatedLightCubePosition(int i) const {
     if (i < 0 || i >= 3) return glm::vec3(0.0f);
 
-    // Shared centroid of the three configured positions — the swirl orbits
+    // Shared centroid of the three configured positions - the swirl orbits
     // around it, so if any cube is repositioned via setPointLightPosition
     // the formation re-centers naturally.
     const glm::vec3 center = (pointLightPositions[0]
@@ -256,7 +256,7 @@ glm::vec3 Lighting::getAnimatedLightCubePosition(int i) const {
     const float a = t * orbitSpeed + phase;
 
     // Tilted ring whose tilt slowly breathes and whose tilt axis precesses
-    // around Y — the plane wobbles instead of staying flat.
+    // around Y - the plane wobbles instead of staying flat.
     const float tilt = glm::radians(35.0f) + std::sin(t * 0.3f) * glm::radians(20.0f);
     const float yaw  = t * 0.15f;
 
@@ -296,7 +296,7 @@ void Lighting::compositeCloudsToBackbuffer(GLuint sceneColorTex, GLuint sceneDep
     cloudCompositeShader->setInt("sceneDepth", TextureUnits::SCENE_DEPTH);
 
     // Cloud texture (low-res RGBA from the volumetric march). If clouds are disabled
-    // or the FBO isn't ready, bind 0 — the shader's cloudOpacity early-out handles it.
+    // or the FBO isn't ready, bind 0 - the shader's cloudOpacity early-out handles it.
     glActiveTexture(GL_TEXTURE0 + TextureUnits::CLOUDS);
     glBindTexture(GL_TEXTURE_2D, getCloudTexture());
     cloudCompositeShader->setInt("cloudTex", TextureUnits::CLOUDS);
@@ -348,7 +348,7 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
 
         auto model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(posRelD));
-        // Tumble on two arbitrary, non-orthogonal axes at different rates —
+        // Tumble on two arbitrary, non-orthogonal axes at different rates -
         // the composition gives a constantly-shifting orientation.
         model = glm::rotate(model, t * 1.5f + phase,
                             glm::normalize(glm::vec3(0.5f, 1.0f, 0.3f)));
@@ -374,7 +374,7 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
     GLboolean prevDepthMask;
     glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
     GLboolean prevBlend = glIsEnabled(GL_BLEND);
-    // Capture RGB and alpha factors separately — the caller may have set
+    // Capture RGB and alpha factors separately - the caller may have set
     // them via glBlendFuncSeparate with differing values, and restoring with
     // plain glBlendFunc would silently collapse RGB to whatever the alpha
     // factors were. We restore with glBlendFuncSeparate below.
@@ -390,7 +390,7 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
 
     const int N = kLightCubeTrailLength;
     // Newest written slot is (head - 1). k=1 is one frame behind the live
-    // cube — skip k=0 since that's exactly where the main cube already drew.
+    // cube - skip k=0 since that's exactly where the main cube already drew.
     for (unsigned int i = 0; i < 3; ++i) {
         if (!pointLightsOn[i]) continue;
         const glm::vec3 baseCol = pointLightDiffuse[i];
@@ -403,7 +403,7 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
 
             // age ∈ [0,1]: 0 = newest tail segment, 1 = oldest.
             const float age = static_cast<float>(k) / static_cast<float>(N - 1);
-            // Quadratic fade — bright near the head, fast falloff into the tail.
+            // Quadratic fade - bright near the head, fast falloff into the tail.
             const float fade = (1.0f - age) * (1.0f - age);
 
             const float scale = 0.16f * (0.25f + 0.75f * fade);
@@ -417,7 +417,7 @@ void Lighting::drawLightCubes(const glm::mat4& view, const glm::mat4& projection
                                 glm::normalize(glm::vec3(0.5f, 1.0f, 0.3f)));
             model = glm::scale(model, glm::vec3(scale));
 
-            // Brightness scaled by fade — additive blending then makes the
+            // Brightness scaled by fade - additive blending then makes the
             // newest segments dominate while the tail melts into the scene.
             lightCubeShader->setVec3("cubeColor", baseCol * fade * 0.7f);
             lightCubeShader->setMat4("model", model);
@@ -521,7 +521,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
     // The following code implements both steps each frame.
     shader.use();
 
-    // set light uniforms — subtract in double then narrow, otherwise far-from-origin
+    // set light uniforms - subtract in double then narrow, otherwise far-from-origin
     // coords lose precision via catastrophic cancellation in the f32 difference.
     shader.setVec3("viewPos", glm::vec3(0.0f));
     shader.setVec3("lightPos", glm::vec3(glm::dvec3(lightPos) - eyePos));
@@ -566,7 +566,7 @@ void Lighting::uploadLightingUniforms(const Shader &shader, const glm::dvec3 &ey
         // HDR mode gives us headroom above 1.0: push direct sun and daytime ambient
         // higher so the final tonemap has real dynamic range and shadowed areas
         // stay readable. Both boosts are blended in with `day` so they fade to 1.0
-        // at night — without this, the night ambient comes out 1.6× brighter than
+        // at night - without this, the night ambient comes out 1.6× brighter than
         // the pre-HDR look, and auto-exposure then makes night feel like day.
         const float ambientBoost = hdrEnabled ? glm::mix(1.0f, 1.6f, day) : 1.0f;
         const float diffuseBoost = hdrEnabled ? glm::mix(1.0f, 1.8f, day) : 1.0f;
@@ -850,7 +850,7 @@ void Lighting::drawCSMDebugView(const glm::vec3& cameraPos, const glm::vec3& cam
         // The 8 corners of the NDC cube [-1,1]^3, transformed by inverse(lightSpaceMatrix), give the world-space ortho box
         if (showLightFrustums && c < static_cast<int>(csmLightSpaceMatrices.size())) {
             auto lightCorners = getFrustumCornersWorldSpace(
-                glm::mat4(1.0f), // identity view — the lightSpaceMatrix already includes both proj and view
+                glm::mat4(1.0f), // identity view - the lightSpaceMatrix already includes both proj and view
                 csmLightSpaceMatrices[c]
             );
             // Note: getFrustumCornersWorldSpace computes inv(proj * view), so passing (identity, lsm)
@@ -1230,7 +1230,7 @@ void Lighting::initCSMResources()
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
-    // FBO — layer attachment is done per-pass in updateCSMShadowMaps()
+    // FBO - layer attachment is done per-pass in updateCSMShadowMaps()
     glGenFramebuffers(1, &csmFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, csmFBO);
 
@@ -1304,7 +1304,7 @@ void Lighting::setShadowFarPlane(float farPlane)
 {
     if (farPlane == cameraFarPlane) return;
     cameraFarPlane = farPlane;
-    // Splits scale with the far plane — recompute to stay proportional.
+    // Splits scale with the far plane - recompute to stay proportional.
     recomputeCascadeSplits();
     // Texture array dimensions don't depend on far plane, so no rebuild needed.
 }

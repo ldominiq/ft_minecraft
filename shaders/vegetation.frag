@@ -75,7 +75,7 @@ void main() {
     // Sample texture from array (premultiplied alpha)
     vec4 texColor = texture(blockTextures, vec3(fs_in.TexCoord, fs_in.TexLayer));
 
-    // Discard transparent pixels — threshold raised to catch semi-transparent
+    // Discard transparent pixels - threshold raised to catch semi-transparent
     // mipmap edge pixels that would otherwise occlude terrain behind
     if (texColor.a < 0.5)
         discard;
@@ -135,7 +135,7 @@ void main() {
         result += spotLights[i].diffuse * ndotl * att * intensity * texColor.rgb;
     }
 
-    // Apply underwater tint — blue-green color absorption
+    // Apply underwater tint - blue-green color absorption
     if (fs_in.IsUnderwater > 0.5) {
         vec3 waterTint = vec3(0.4, 0.7, 0.6);
         result *= waterTint;

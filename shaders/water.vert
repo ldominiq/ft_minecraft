@@ -28,19 +28,19 @@ uniform vec2 waveAnchor;
 uniform float waveTime;
 
 // Sum of two Gerstner waves. Returns vertical displacement only (we don't
-// circular-displace the xz, since the mesh is a 1×1 grid per quad — pure y
+// circular-displace the xz, since the mesh is a 1×1 grid per quad - pure y
 // displacement is enough to give silhouette wobble and parallax).
 //
 
 float gerstnerY(vec2 worldXZ) {
-    // Wave 1 — broad, slow.
+    // Wave 1 - broad, slow.
     const vec2  dir1 = vec2( 0.7071,  0.7071);
     const float len1 = 16.0;
     const float amp1 = 0.05; // wave amplitude (max vertical displacement)
     const float k1   = 6.28318530718 / len1;
     float phase1     = k1 * dot(dir1, worldXZ) - waveTime * 1.5;
 
-    // Wave 2 — small, fast, crossing direction.
+    // Wave 2 - small, fast, crossing direction.
     const vec2  dir2 = vec2(-0.5,     0.866);
     const float len2 = 7.0;
     const float amp2 = 0.024; // smaller amplitude for the second wave
@@ -56,7 +56,7 @@ void main() {
 
     // Displace water-surface vertices. A vertex sits on the surface when
     // either:
-    //   - its face normal is +Y (top face — all four corners are surface verts), or
+    //   - its face normal is +Y (top face - all four corners are surface verts), or
     //   - it's a side face vertex on the upper edge of the block.
     // Mesher emits 6 verts per face with cornerIdx cycling 0,1,2,2,3,0; for
     // side faces, corners 2 and 3 are the upper edge (top-right / top-left

@@ -42,7 +42,7 @@ void WaterFramebuffer::setHDR(bool enabled) {
     hdrEnabled = enabled;
 
     // Rebuild both color attachments with the new internal format. Depth attachments
-    // don't depend on HDR but we tear down the whole FBO for simplicity — this only
+    // don't depend on HDR but we tear down the whole FBO for simplicity - this only
     // runs when the user toggles the HDR setting, not per frame.
     destroyReflection();
     destroyRefraction();
@@ -113,7 +113,7 @@ GLuint WaterFramebuffer::createTextureAttachment(int width, int height) {
     // In HDR mode the scene shader writes linear radiance that can exceed 1.0
     // (dirLight ambient/diffuse boosts in Lighting::uploadLightingUniforms).
     // R11F_G11F_B10F gives us float headroom with the same bandwidth as RGB8
-    // and no alpha channel cost — the reflection/refraction passes don't use
+    // and no alpha channel cost - the reflection/refraction passes don't use
     // alpha. water.frag samples this texture and feeds the result into the
     // HDR scene buffer, which the final composite tonemaps once.
     const GLenum internalFmt = hdrEnabled ? GL_R11F_G11F_B10F : GL_RGB8;

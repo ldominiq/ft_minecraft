@@ -60,7 +60,7 @@ size_t ItemPropEntityManager::updateMesh(std::vector<std::shared_ptr<ItemEntity>
 
 		// Sample the world's sky-light grid at the item's drop position so it
 		// darkens in caves the way terrain does. Falls back to fully sunlit
-		// (1.0) when the chunk isn't loaded — same default getSkyLightWorld
+		// (1.0) when the chunk isn't loaded - same default getSkyLightWorld
 		// returns and what Chunk::getSkyLight uses for not-yet-computed grids.
 		float skyFactor = 1.0f;
 		float blockFactor = 0.0f;
@@ -165,14 +165,14 @@ void ItemPropEntityManager::draw(const glm::mat4 &projection, const glm::mat4 &v
 
 	shader->setMat4("projection", projection);
 	// Note: written as "viewRot" (translation-free) to match the name
-	// Lighting::uploadCSMUniforms sets — that call also writes "view" (with
+	// Lighting::uploadCSMUniforms sets - that call also writes "view" (with
 	// translation) which the CSM lookup uses, so they don't collide.
 	shader->setMat4("viewRot", viewRot);
 
 	// Sprite-style drops (vegetation, weapons, misc) are emitted as a cross
 	// of two flat quads; disable backface culling so they're visible from
 	// every angle.
-	// Draw only the slots updateMesh actually wrote — non-drawable entities
+	// Draw only the slots updateMesh actually wrote - non-drawable entities
 	// are skipped during compaction, so issuing entities.size() vertices would
 	// waste CPU/GPU work emitting zeroed/padded triangles for them.
 	glDisable(GL_CULL_FACE);

@@ -22,7 +22,7 @@ flat out float vBlockLight;
 // Translation-free view (camera at origin of render space). aPos is already
 // camera-relative, so we never want the full view (its translation would
 // double-subtract). Matches the name lighting.vert uses, which is also what
-// Lighting::uploadCSMUniforms sets — no collision.
+// Lighting::uploadCSMUniforms sets - no collision.
 uniform mat4 viewRot;
 uniform mat4 projection;
 

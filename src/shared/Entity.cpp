@@ -29,7 +29,7 @@ AABB Entity::constructAABB(const glm::dvec3 &pos) {
 };
 
 bool Entity::aabbCollidesWithWorld(const AABB &box, const ICommonWorld &world) {
-    // compute block search bounds (floor in double — at 5M, float floor of
+    // compute block search bounds (floor in double - at 5M, float floor of
     // min.x + EPS would land on the wrong integer because the LSB is ~0.5m).
     int minX = (int)std::floor(box.min.x + EPS);
     int maxX = (int)std::floor(box.max.x - EPS);

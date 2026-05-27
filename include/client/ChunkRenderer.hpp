@@ -98,13 +98,13 @@ private:
 		// alpha test. Switching modes only affects the *next* mesh rebuild; for
 		// instant effect call buildMesh() on every loaded chunk (or press F3+A).
 		//
-		//   Fast   — leaves treated as opaque blocks. Mesher culls leaf-to-leaf
+		//   Fast   - leaves treated as opaque blocks. Mesher culls leaf-to-leaf
 		//            and solid-to-leaf faces. Fragment shader skips alpha test.
 		//            Cheapest; leaves look like solid green cubes.
-		//   Fancy  — leaves treated as transparent (original behaviour). Every
+		//   Fancy  - leaves treated as transparent (original behaviour). Every
 		//            face emitted, including leaves seen through other leaves.
 		//            Most expensive; visually richest.
-		//   Smart  — leaves alpha-tested (cutouts visible on outer faces) but
+		//   Smart  - leaves alpha-tested (cutouts visible on outer faces) but
 		//            mesher culls like Fast. Outer surface looks like leaves;
 		//            inside each canopy is hollow.
 		enum class LeafRenderMode { Fast, Fancy, Smart };

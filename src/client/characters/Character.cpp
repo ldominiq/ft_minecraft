@@ -233,7 +233,7 @@ void Character::swingArmAnimation(float deltaTime)
 	{
 		characterBodyParts.onArmSwingAnimation = false;
 		characterBodyParts.armSwingPhase = 0.0f;
-		// Reset the right arm/forearm to rest — walking animation will take over if needed.
+		// Reset the right arm/forearm to rest - walking animation will take over if needed.
 		characterBodyParts.rightArm->rotation = glm::mat4(1.0f);
 		characterBodyParts.rightForearm->rotation = glm::mat4(1.0f);
 		return;
@@ -244,7 +244,7 @@ void Character::swingArmAnimation(float deltaTime)
 	float curve = sin(t * M_PI); // 0 → 1 → 0
 
 	// Arm rotates forward (bringing the forearm down in front of the body) and the
-	// forearm bends a bit extra — mimics a simple overhead-ish punch/break motion.
+	// forearm bends a bit extra - mimics a simple overhead-ish punch/break motion.
 	float shoulderAngle = curve * 1.6f;          // swing forward/down
 	float elbowAngle    = curve * 0.6f;          // slight forearm bend
 

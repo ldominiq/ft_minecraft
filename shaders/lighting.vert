@@ -25,7 +25,7 @@ uniform mat4 viewRot;
 uniform vec3 chunkRel;
 // Per-chunk: chunkOrigin in world space (float). Used only to reconstruct
 // world-space FragPos for lighting / shadows / fog. Suffers the same
-// precision quantization at huge distances as before — but the *geometry*
+// precision quantization at huge distances as before - but the *geometry*
 // (gl_Position) is computed from the precise camera-relative path.
 uniform vec3 chunkOriginWorld;
 

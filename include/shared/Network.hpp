@@ -391,7 +391,7 @@ inline ReliabilityIngest reliabilityIngest(
     }
     // seq > expected: hole detected. Drop packets wildly past the window so a
     // peer can't waste a slot with a giant seq, then evict from the tail if
-    // the buffer would overflow — packets near expectedSeq are what unblocks
+    // the buffer would overflow - packets near expectedSeq are what unblocks
     // the stream, so we keep those and shed the furthest-ahead ones.
     if (seq - r.expectedSeq > ReliabilityReceiver::kMaxReorderWindow) {
         return out;

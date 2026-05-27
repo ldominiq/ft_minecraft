@@ -158,7 +158,7 @@ void main()
     // Sample the texture array using (u, v, layer)
     vec4 texColor = texture(blockTextures, vec3(fs_in.TexCoord, fs_in.TexLayer));
 
-    // Alpha test (cutout discard) — toggleable. In "Fast" leaf mode the host
+    // Alpha test (cutout discard) - toggleable. In "Fast" leaf mode the host
     // sets useAlphaTest=false so leaf cubes render fully opaque (no cutouts)
     // and the GPU keeps early-Z fully effective.
     if (useAlphaTest && texColor.a < 0.1)
@@ -178,7 +178,7 @@ void main()
     // SSAO
     float AmbientOcclusion = 1.0;
     if (ssaoEnabled == 1) {
-        // Use full viewport size, not texture size — the SSAO texture may
+        // Use full viewport size, not texture size - the SSAO texture may
         // be half-resolution (when blur is disabled + halfRes is on).
         vec2 ssaoUV = gl_FragCoord.xy / screenSize;
         AmbientOcclusion = texture(ssaoTexture, ssaoUV).r;
@@ -196,11 +196,11 @@ void main()
     for(int i = 0; i < NR_POINT_LIGHTS; i++)
         result += CalcPointLight(pointLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
     // phase 3: spot lights (local flashlight + any remote players whose
-    // flashlights are on this frame — host caps at MAX_SPOT_LIGHTS).
+    // flashlights are on this frame - host caps at MAX_SPOT_LIGHTS).
     for (int i = 0; i < numSpotLights; ++i)
         result += CalcSpotLight(spotLights[i], norm, fs_in.FragPosRel, viewDir, AmbientOcclusion, color);
 
-    // Caustics — only on faces that are *actually* under a water block.
+    // Caustics - only on faces that are *actually* under a water block.
     // The WaterAbove flag is baked at mesh time (top faces whose +Y
     // neighbour is water). This is stricter than "below sea level" (which
     // lit cave floors) and stricter than SkyLight (which leaks sideways
@@ -257,7 +257,7 @@ void main()
     {
         vec3 cascadeColor;
         if (debugCascadeLayer == 0)
-            cascadeColor = vec3(1.0, 0.0, 0.0);  // Red   — closest
+            cascadeColor = vec3(1.0, 0.0, 0.0);  // Red   - closest
         else if (debugCascadeLayer == 1)
             cascadeColor = vec3(0.0, 1.0, 0.0);  // Green
         else if (debugCascadeLayer == 2)
@@ -265,7 +265,7 @@ void main()
         else if (debugCascadeLayer == 3)
             cascadeColor = vec3(1.0, 1.0, 0.0);  // Yellow
         else
-            cascadeColor = vec3(1.0, 0.0, 1.0);  // Magenta — farthest
+            cascadeColor = vec3(1.0, 0.0, 1.0);  // Magenta - farthest
 
         // Mix: 80% original color + 20% cascade tint
         FragColor = vec4(mix(FragColor.rgb, cascadeColor, 0.2), FragColor.a);
@@ -333,7 +333,7 @@ float CSMShadowCalculation(vec3 fragPosRel)
         projCoords.y < 0.0 || projCoords.y > 1.0)
         return 0.0;
 
-    // 5. Bias — scale proportional to the texel size of this cascade.
+    // 5. Bias - scale proportional to the texel size of this cascade.
     //    Larger cascades cover more world space per texel, so they
     //    need proportionally more bias.  We derive the scale from the
     //    shadow map resolution vs the cascade's projected extent (which
@@ -483,7 +483,7 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir, float ao, vec3 texC
     // Diffuse & specular: also scaled by skyFactor.
     // Without this, caves lit by the sun at an angle (no terrain
     // between sun and cave interior from the CSM's perspective)
-    // would still receive full diffuse/specular — looking bright
+    // would still receive full diffuse/specular - looking bright
     // underground.  skyFactor tells us the block is enclosed, so
     // direct sunlight shouldn't reach it regardless of the shadow
     // map's opinion.

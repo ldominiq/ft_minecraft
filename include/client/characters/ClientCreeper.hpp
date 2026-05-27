@@ -22,7 +22,7 @@ class ClientCreeper : public Creeper, public IClientEntity
 		// fuse animation keeps advancing while the creeper stands still.
 		void tickFuseAnimation(float deltaTime);
 
-		// Visible primed (fused) state — client toggles from packet flag, draw pulses the body.
+		// Visible primed (fused) state - client toggles from packet flag, draw pulses the body.
 		bool clientPrimed = false;
 
 		// Smoothed 0..1 inflation; drives torso/head scale and wobble.

@@ -51,7 +51,7 @@ vec2 sampleDistortion(vec2 baseUV) {
           + (texture(dudvMap, c2).rg * 2.0 - 1.0) * 0.5);
 }
 
-// Two-tap normal map sampling at different scales — the small-scale layer
+// Two-tap normal map sampling at different scales - the small-scale layer
 // adds high-frequency ripple detail without retiling the big waves.
 vec3 sampleNormal(vec2 distortedUV) {
     vec4 n1 = texture(normalMap, distortedUV);
@@ -76,7 +76,7 @@ void main() {
     // Multi-octave dudv distortion
     vec2 totalDistortion = sampleDistortion(textureCoords) * waveStrength * clamp(waterDepth/20.0, 0.0, 1.0);
 
-    // Refraction also bends through the rippled surface — use a smaller
+    // Refraction also bends through the rippled surface - use a smaller
     // factor so the underwater silhouette stays readable while still
     // tracking the surface dudv, then clamp to keep the sample inside the
     // refraction FBO (otherwise we'd read the above-water clipped region).
@@ -118,7 +118,7 @@ void main() {
     vec4 refractColor = texture(refractionTexture, refractTexCoords);
     refractColor = mix(refractColor, murkyWaterColor, clamp(waterDepth/60.0, 0.0, 1.0));
 
-    // Multi-octave normal — see sampleNormal().
+    // Multi-octave normal - see sampleNormal().
     // Use the *first* sampled UV (consistent with old single-tap behavior) for
     // the distortion that drives normals.
     vec2 distortedTexCoords = textureCoords + totalDistortion;
@@ -150,7 +150,7 @@ void main() {
 
     // Distance-based color shift: real water turns sky-blue at distance.
     // Mix toward the sky color sampled in the view direction. This is on top
-    // of any fog blend below — the two together give a smooth horizon.
+    // of any fog blend below - the two together give a smooth horizon.
     float viewDist = length(toCameraVector);
     {
         vec3 viewDirToFrag = normalize(-toCameraVector);

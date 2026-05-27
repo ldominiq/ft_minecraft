@@ -46,7 +46,7 @@ void TerrainDebugWindow::setRegenerateCallback(void(*callback)(void*), void* use
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Noise helpers — mirror ChunkGeneration private methods exactly
+// Noise helpers - mirror ChunkGeneration private methods exactly
 // ─────────────────────────────────────────────────────────────────────────────
 
 void TerrainDebugWindow::reseedNoise(int32_t seed) {
@@ -229,15 +229,15 @@ void TerrainDebugWindow::updateTexture(const TerrainGenerationParams& params) {
             uint8_t r, g, b;
 
             if (h < sl) {
-                // Below sea level — actual water. Distinguish river/lake from plain ocean.
+                // Below sea level - actual water. Distinguish river/lake from plain ocean.
                 if (riverMask > 0.05f) {
-                    // River water — vivid cyan-blue
+                    // River water - vivid cyan-blue
                     float t = glm::clamp(riverMask, 0.0f, 1.0f);
                     r = (uint8_t)(20  + (1.0f - t) * 30);
                     g = (uint8_t)(120 + t * 60);
                     b = (uint8_t)(230 - t * 30);
                 } else if (lakeMask > 0.05f) {
-                    // Lake water — teal
+                    // Lake water - teal
                     float t = glm::clamp(lakeMask, 0.0f, 1.0f);
                     r = (uint8_t)(20  + (1.0f - t) * 20);
                     g = (uint8_t)(170 - t * 50);
@@ -319,7 +319,7 @@ void TerrainDebugWindow::render(TerrainGenerationParams& params) {
     ImGui::SetNextItemWidth(200.0f);
     if (ImGui::SliderInt("View range (chunks)", &viewRangeChunks, 10, 2000)) navChanged = true;
 
-    // Step buttons — jump by a quarter of the view range
+    // Step buttons - jump by a quarter of the view range
     const int step = std::max(1, viewRangeChunks / 4);
     if (ImGui::Button("W<<"))  { camX -= step * 4 * 16; navChanged = true; } ImGui::SameLine();
     if (ImGui::Button("W<"))   { camX -= step * 16;     navChanged = true; } ImGui::SameLine();
@@ -329,7 +329,7 @@ void TerrainDebugWindow::render(TerrainGenerationParams& params) {
     if (ImGui::Button("E>>"))  { camX += step * 4 * 16; navChanged = true; }
     if (ImGui::Button("Reset view")) { camX = 0; camZ = 0; viewRangeChunks = 200; navChanged = true; }
 
-    // High-res toggle — reallocates texture if changed
+    // High-res toggle - reallocates texture if changed
     bool newHighRes = highRes;
     if (ImGui::Checkbox("High Res (512x512, slower)", &newHighRes) && newHighRes != highRes) {
         highRes = newHighRes;

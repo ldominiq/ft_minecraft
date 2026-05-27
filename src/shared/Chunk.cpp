@@ -108,13 +108,13 @@ bool Chunk::isBlockVisible(glm::ivec3 pos) {
 //
 // HOW IT WORKS (Minecraft-style BFS flood-fill):
 //
-// 1) SEEDING PHASE  — For every (x, z) column in the chunk, we walk
+// 1) SEEDING PHASE  - For every (x, z) column in the chunk, we walk
 //    downward from y=HEIGHT-1.  As long as the block is transparent
 //    (air / water / leaves), it gets light level 15 (full sunlight)
 //    and is pushed into a BFS queue.  The moment we hit a solid block,
-//    we stop — sunlight doesn't penetrate straight through stone.
+//    we stop - sunlight doesn't penetrate straight through stone.
 //
-// 2) SPREADING PHASE — Classic BFS.  For each block in the queue we
+// 2) SPREADING PHASE - Classic BFS.  For each block in the queue we
 //    try all 6 neighbors (±x, ±y, ±z).  If the neighbor is transparent
 //    and its current light < (our light - 1), we update it and push it.
 //    This means light "leaks" sideways into caves through openings,
@@ -134,7 +134,7 @@ uint8_t Chunk::getSkyLight(int x, int y, int z) const {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH)
         return 0;
     if (skyLight.empty())
-        return 15; // Not computed yet — assume full sunlight.
+        return 15; // Not computed yet - assume full sunlight.
                     // This is the correct default for the common case
                     // (surface blocks).  When concurrent chunk builds
                     // read a neighbor that hasn't been built yet, the
@@ -153,11 +153,11 @@ void Chunk::computeSkyLight() {
     // filled array and read incorrect values.  By keeping the old
     // array in place until the new one is ready, concurrent readers
     // always see either the previous fully-computed result or the
-    // new one — never a half-baked intermediate state.
+    // new one - never a half-baked intermediate state.
     std::vector<uint8_t> localSkyLight(BLOCK_COUNT, 0);
 
     // We'll use a queue of (x, y, z) positions to flood-fill light.
-    // "struct" to keep it readable — each entry is a block to process.
+    // "struct" to keep it readable - each entry is a block to process.
     struct LightNode {
         int16_t x, y, z;
     };
@@ -168,7 +168,7 @@ void Chunk::computeSkyLight() {
     // assign light=15 (direct sunlight) and enqueue for BFS spreading.
     //
     // Why enqueue every sunlit block?  Because a sunlit block could be
-    // next to a cliff face where the terrain is taller — its horizontal
+    // next to a cliff face where the terrain is taller - its horizontal
     // neighbor might be a dark air block inside the ground that needs
     // light.  The BFS loop below will quickly skip interior blocks
     // (all their neighbors are already at 15), so this is efficient.
@@ -215,7 +215,7 @@ void Chunk::computeSkyLight() {
             int neighborZ = current.z + dz[dir];
 
             // Stay within chunk bounds (we don't cross chunk borders
-            // for now — that would require the neighbors to be loaded
+            // for now - that would require the neighbors to be loaded
             // and would complicate threading; this is good enough for
             // visible cave darkening within a chunk).
             if (neighborX < 0 || neighborX >= WIDTH ||
@@ -240,7 +240,7 @@ void Chunk::computeSkyLight() {
 
     // Publish the fully-computed array.  std::swap is fast (just
     // swaps internal pointers) and makes the transition atomic from
-    // the perspective of any concurrent reader — they either see the
+    // the perspective of any concurrent reader - they either see the
     // old empty vector (fallback to 15, see getSkyLight()) or the
     // fully-computed one.
     std::swap(skyLight, localSkyLight);
@@ -250,7 +250,7 @@ uint8_t Chunk::getBlockLight(int x, int y, int z) const {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH)
         return 0;
     if (blockLight.empty())
-        return 0; // Not computed yet / no emitters — fully dark.
+        return 0; // Not computed yet / no emitters - fully dark.
     return blockLight[x + WIDTH * (y + HEIGHT * z)];
 }
 
@@ -261,7 +261,7 @@ uint8_t Chunk::getBlockLight(int x, int y, int z) const {
 // on a neighbour's computed light) there is no cross-chunk feedback: placing
 // lights correctly across seams/diagonals, and breaking clears immediately.
 // The expensive cross-chunk scan is skipped entirely when no torch is in or
-// next to this chunk (the common case — generated terrain has none).
+// next to this chunk (the common case - generated terrain has none).
 void Chunk::computeBlockLight() {
     static constexpr int MARGIN = 14;          // max torch travel (14 → 0)
     static constexpr int EW = WIDTH + 2 * MARGIN;
@@ -331,12 +331,12 @@ void Chunk::computeBlockLight() {
         }
 
     if (!containsTorch && !neighborTorch) {
-        std::swap(blockLight, localBlockLight); // nothing emits — all dark
+        std::swap(blockLight, localBlockLight); // nothing emits - all dark
         return;
     }
 
     // Cross-chunk path. Seeds are collected by scanning ONLY the chunks that
-    // actually contain a torch (containsTorch) in their own local coords — no
+    // actually contain a torch (containsTorch) in their own local coords - no
     // per-cell weak_ptr locking. Empty neighbours (the vast majority) cost
     // nothing. We also track the torch Y-range so the BFS volume can be
     // clamped to [minY-MARGIN, maxY+MARGIN] instead of the full 256 columns:
@@ -583,7 +583,7 @@ void Chunk::saveToStream(std::ostream& out) const {
 	// Save block data
     blockIndices.saveToStream(out);
 
-    // Biome map — serialised as fixed-width uint8_t, independent of BiomeType's in-memory size
+    // Biome map - serialised as fixed-width uint8_t, independent of BiomeType's in-memory size
     for (const auto& b : biomeMap) {
         uint8_t v = static_cast<uint8_t>(b);
         out.write(reinterpret_cast<const char*>(&v), sizeof(v));
@@ -664,7 +664,7 @@ void Chunk::loadFromStream(std::istream& in) {
 
 		vegetation.push_back(veg);
         
-		// Don't overwrite water blocks with sea vegetation —
+		// Don't overwrite water blocks with sea vegetation -
 		// sea vegetation is rendered purely via the vegetation renderer
 		if (!isSeaVegetation(veg.type)) {
 			setBlock(veg.x, veg.y, veg.z, veg.type);

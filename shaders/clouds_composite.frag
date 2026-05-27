@@ -3,7 +3,7 @@
 // Post-terrain cloud composite + (in HDR mode) final tonemap.
 //
 // Reads the resolved (non-MSAA) scene color/depth and the low-res cloud RGBA texture,
-// and composites clouds over the scene per-pixel using actual scene depth — no
+// and composites clouds over the scene per-pixel using actual scene depth - no
 // gl_FragDepth hacks.
 //
 // Two paths:
@@ -36,7 +36,7 @@ uniform bool  hdrMode;            // true = blend in HDR + final tonemap here
 // compresses midtone saturation.
 uniform float saturation;
 
-// ACES filmic tone mapping — Krzysztof Narkowicz's cheap fit (2015).
+// ACES filmic tone mapping - Krzysztof Narkowicz's cheap fit (2015).
 // Returns gamma-encoded (display-space) values: the ACES curve is applied to
 // linear input, then pow(1/2.2) encodes to display space (we don't use
 // GL_FRAMEBUFFER_SRGB, so gamma is done by hand).
@@ -91,11 +91,11 @@ void main() {
             vec3 entry = cameraPosWorld + t * r;
             vec4 clip  = projection * view * vec4(entry, 1.0);
             float cloudDepth = clamp(clip.z / clip.w * 0.5 + 0.5, 0.0, 1.0);
-            // sceneZ == 1.0 means the pixel is sky (no terrain) — always composite.
+            // sceneZ == 1.0 means the pixel is sky (no terrain) - always composite.
             composite = (cloudDepth <= sceneZ);
         }
     }
-    // Inside the cloud layer: always composite (skip the depth-plane check —
+    // Inside the cloud layer: always composite (skip the depth-plane check -
     // it would snap to the near plane and cause blinking when the camera
     // crosses the slab boundary at speed).
 

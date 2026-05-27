@@ -499,7 +499,7 @@ void ChunkGeneration::placeTree(BlockStorage &blocks, int trunkWorldX, int trunk
 
     // -------------------- Canopy variants --------------------
     auto placeRoundCanopy = [&]() {
-        // Oak / Birch / Dark Oak — round pyramid with organic ragged edges.
+        // Oak / Birch / Dark Oak - round pyramid with organic ragged edges.
         constexpr int leafRadii[4] = {2, 2, 1, 0};
         for (int layer = 0; layer < 4; ++layer)
             placeLeafLayer(canopyCX, canopyCZ, surfaceY + treeHeight - 2 + layer,
@@ -726,7 +726,7 @@ void ChunkGeneration::generateTrees(BlockStorage &blocks, const TerrainGeneratio
             const BiomeType biome = biomeForColumn(worldX, worldZ, surfaceY,
                                                    localTrunkX, localTrunkZ);
 
-            // One chance roll per column — every biome consumes this roll
+            // One chance roll per column - every biome consumes this roll
             // up front so cross-biome reproducibility is preserved.
             const int chanceRoll = static_cast<int>(rng() % 1000);
             const TreeSpec spec = rollTreeSpec(biome, chanceRoll, rng);
@@ -1244,18 +1244,18 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
         return BiomeType::TUNDRA;
     }
 
-    // Nether — hot, arid, elevated terrain (high or peak peaks)
+    // Nether - hot, arid, elevated terrain (high or peak peaks)
     if (ct == ClimateTemperature::HOT &&
         ch == ClimateHumidity::ARID &&
         cpv >= ClimatePeaksValleys::HIGH)
         return BiomeType::NETHER;
 
-    // Volcanic — hot, arid, flat-to-mid terrain (elevated Nether already claimed above)
+    // Volcanic - hot, arid, flat-to-mid terrain (elevated Nether already claimed above)
     if (ct == ClimateTemperature::HOT &&
         ch == ClimateHumidity::ARID)
         return BiomeType::VOLCANIC;
 
-    // Mesa — hot, dry/arid-but-not-arid (ARID is claimed by VOLCANIC above), or
+    // Mesa - hot, dry/arid-but-not-arid (ARID is claimed by VOLCANIC above), or
     //        warm/hot + dry + not too eroded
     if ((ct == ClimateTemperature::WARM || ct == ClimateTemperature::HOT) &&
         ch <= ClimateHumidity::DRY &&
@@ -1266,45 +1266,45 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     if (ct == ClimateTemperature::HOT && ch == ClimateHumidity::DRY)
         return BiomeType::MESA;
 
-    // Red Desert — warm + arid flat lands (distinct from hot MESA)
+    // Red Desert - warm + arid flat lands (distinct from hot MESA)
     if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::ARID &&
         ce >= ClimateErosion::E4)
         return BiomeType::RED_DESERT;
 
-    // Desert — warm/hot, arid/dry only (NEUTRAL excluded so Savanna can claim WARM+NEUTRAL)
+    // Desert - warm/hot, arid/dry only (NEUTRAL excluded so Savanna can claim WARM+NEUTRAL)
     if ((ct == ClimateTemperature::WARM || ct == ClimateTemperature::HOT) &&
         ch <= ClimateHumidity::DRY && height < 110)
         return BiomeType::DESERT;
 
-    // Savanna — warm, moderate (checked before Jungle/Swamp to avoid being swallowed)
+    // Savanna - warm, moderate (checked before Jungle/Swamp to avoid being swallowed)
     if (ct == ClimateTemperature::WARM && ch == ClimateHumidity::NEUTRAL &&
         cc >= ClimateContinentalness::MID_INLAND &&
         cpv <= ClimatePeaksValleys::MID)
         return BiomeType::SAVANNA;
 
-    // Jungle — hot and wet
+    // Jungle - hot and wet
     if ((ct == ClimateTemperature::HOT && ch >= ClimateHumidity::HUMID) || 
         (ct == ClimateTemperature::WARM && ch == ClimateHumidity::WET))
         return BiomeType::JUNGLE;
 
-    // Swamp — temperate/warm, wet, flat/valley
+    // Swamp - temperate/warm, wet, flat/valley
     if ((ct == ClimateTemperature::TEMPERATE || ct == ClimateTemperature::WARM) &&
         ch >= ClimateHumidity::HUMID &&
         cpv <= ClimatePeaksValleys::LOW &&
         cc <= ClimateContinentalness::NEAR_INLAND)
         return BiomeType::SWAMP;
 
-    // Dark Forest — cool/temperate, humid
+    // Dark Forest - cool/temperate, humid
     if (ct <= ClimateTemperature::TEMPERATE && ch >= ClimateHumidity::HUMID)
         return BiomeType::DARK_FOREST;
 
-    // Mountain — high peaks, inland (checked before Birch Forest so mountainous
+    // Mountain - high peaks, inland (checked before Birch Forest so mountainous
     // temperate+neutral terrain becomes mountains, not forest)
     if (cpv >= ClimatePeaksValleys::HIGH && cc == ClimateContinentalness::FAR_INLAND &&
         ch <= ClimateHumidity::NEUTRAL)
         return BiomeType::MOUNTAIN;
 
-    // Birch Forest — temperate, neutral humidity, low/mid terrain
+    // Birch Forest - temperate, neutral humidity, low/mid terrain
     if (ct == ClimateTemperature::TEMPERATE &&
         (ch == ClimateHumidity::DRY))
         return BiomeType::BIRCH_FOREST;
@@ -1330,7 +1330,7 @@ BiomeType ChunkGeneration::computeBiome(const TerrainGenerationParams& terrainPa
     // float pv = getPV(terrainParams, worldX, worldZ);
     // float aridity = (1.0f - humidCoarse) * tempCoarse;
 
-    // // MESA: hot + very dry — terracotta terrain
+    // // MESA: hot + very dry - terracotta terrain
     // if (tempCoarse > 0.60f && humidCoarse < 0.35f && aridity > 0.25f)
     //     return BiomeType::MESA;
 
@@ -1504,7 +1504,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
             };
             std::mt19937 rng(seedData);
 
-            // Skip some columns for variety — spawn chance is per-biome
+            // Skip some columns for variety - spawn chance is per-biome
             int spawnChance; // out of 100
             switch (biome) {
                 case BiomeType::PLAINS:       spawnChance = 10; break;
@@ -1704,7 +1704,7 @@ void ChunkGeneration::generateVegetation(const BlockStorage &blocks, const Terra
                         vegetation.push_back(veg);
                     }
                 }
-                // Don't store in block grid — keep water blocks intact
+                // Don't store in block grid - keep water blocks intact
             } else {
                 // Land vegetation: stored only in the block grid.
                 // buildVegetationMesh() scans blocks to derive instances for rendering.

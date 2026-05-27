@@ -23,37 +23,37 @@ void createCube()
     if (cubeVAO != 0) return;
 
     static const float vertices[] = {
-        // +X face (front) — faceIndex 0 — CCW from outside (+X)
+        // +X face (front) - faceIndex 0 - CCW from outside (+X)
         +0.5f, -0.5f, +0.5f,  0.0f,  1.0f, 1.0f,
         +0.5f, -0.5f, -0.5f,  0.0f,  0.0f, 1.0f,
         +0.5f, +0.5f, -0.5f,  0.0f,  0.0f, 0.0f,
         +0.5f, +0.5f, +0.5f,  0.0f,  1.0f, 0.0f,
 
-        // -X face (back) — faceIndex 1
+        // -X face (back) - faceIndex 1
         -0.5f, -0.5f, -0.5f,  1.0f,  1.0f, 1.0f,
         -0.5f, -0.5f, +0.5f,  1.0f,  0.0f, 1.0f,
         -0.5f, +0.5f, +0.5f,  1.0f,  0.0f, 0.0f,
         -0.5f, +0.5f, -0.5f,  1.0f,  1.0f, 0.0f,
 
-        // +Y face (top) — faceIndex 2
+        // +Y face (top) - faceIndex 2
         -0.5f, +0.5f, +0.5f,  2.0f,  0.0f, 0.0f,
         +0.5f, +0.5f, +0.5f,  2.0f,  0.0f, 1.0f,
         +0.5f, +0.5f, -0.5f,  2.0f,  1.0f, 1.0f,
         -0.5f, +0.5f, -0.5f,  2.0f,  1.0f, 0.0f,
 
-        // -Y face (bottom) — faceIndex 3 (V-flipped relative to top)
+        // -Y face (bottom) - faceIndex 3 (V-flipped relative to top)
         -0.5f, -0.5f, -0.5f,  3.0f,  1.0f, 1.0f,
         +0.5f, -0.5f, -0.5f,  3.0f,  1.0f, 0.0f,
         +0.5f, -0.5f, +0.5f,  3.0f,  0.0f, 0.0f,
         -0.5f, -0.5f, +0.5f,  3.0f,  0.0f, 1.0f,
 
-        // -Z face (character right) — faceIndex 4
+        // -Z face (character right) - faceIndex 4
         -0.5f, +0.5f, -0.5f,  4.0f,  0.0f, 0.0f,
         +0.5f, +0.5f, -0.5f,  4.0f,  1.0f, 0.0f,
         +0.5f, -0.5f, -0.5f,  4.0f,  1.0f, 1.0f,
         -0.5f, -0.5f, -0.5f,  4.0f,  0.0f, 1.0f,
 
-        // +Z face (character left) — faceIndex 5
+        // +Z face (character left) - faceIndex 5
         -0.5f, -0.5f, +0.5f,  5.0f,  1.0f, 1.0f,
         +0.5f, -0.5f, +0.5f,  5.0f,  0.0f, 1.0f,
         +0.5f, +0.5f, +0.5f,  5.0f,  0.0f, 0.0f,
@@ -90,11 +90,11 @@ void createCube()
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
 
-    // aFaceIndex (location 1) — stored as float, cast to int in shader
+    // aFaceIndex (location 1) - stored as float, cast to int in shader
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
 
-    // aFaceCorner (location 2) — skin-auth UV corner in [0,1]^2
+    // aFaceCorner (location 2) - skin-auth UV corner in [0,1]^2
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(4 * sizeof(float)));
 

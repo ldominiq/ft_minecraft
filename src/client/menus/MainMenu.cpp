@@ -156,7 +156,7 @@ void MainMenu::onRender()
 	textRenderer.setScale(smallScale);
 	textRenderer.setProjection(fullscreenWidth, fullscreenHeight);
 
-	textRenderer.renderText("pre-pre-pre-alpha", 10.0f * menuScale, 10.0f * menuScale, glm::vec3(0.7f));
+	textRenderer.renderText("alpha 1.0", 10.0f * menuScale, 10.0f * menuScale, glm::vec3(0.7f));
 
 	// Credits (bottom-right)
 	std::string credits = "Created by ldominiq & lskraber";

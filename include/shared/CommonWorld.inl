@@ -231,7 +231,7 @@ TargetType CommonWorld<ChunkT>::getTarget(const LivingEntity& src, glm::ivec3& h
 template <typename ChunkT>
 bool CommonWorld<ChunkT>::isUnderwater(const glm::dvec3 &position) const
 {
-	// Floor in double space — at large world coords (~1e6) float can't
+	// Floor in double space - at large world coords (~1e6) float can't
 	// represent 1-block increments, which mis-floors near block boundaries.
 	glm::ivec3 blockPos = glm::ivec3(glm::floor(position));
 

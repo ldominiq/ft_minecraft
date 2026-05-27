@@ -1,13 +1,13 @@
 #version 460 core
 
 uniform vec3 uColor;        // fallback color when no skin is bound
-uniform sampler2D uSkin;    // 2D skin texture. V=0 is top of image; no V-flip applied — UVs are already in skin-auth space.
+uniform sampler2D uSkin;    // 2D skin texture. V=0 is top of image; no V-flip applied - UVs are already in skin-auth space.
 uniform bool uUseTexture;   // when true, sample uSkin; otherwise emit uColor
 
 // Sky-light at the entity's body-center, sampled host-side from the chunk
 // sky-light grid and uploaded per entity. 0 = pitch-black cave, 1 = open sky.
 // Mirrors fs_in.SkyLight in lighting.frag so mobs/players darken in caves the
-// way terrain does — without it, CSM-only shadowing leaves them bright
+// way terrain does - without it, CSM-only shadowing leaves them bright
 // underground because the cascade frustum reaches in from above unobstructed.
 uniform float uEntitySkyLight;
 // Baked torch block-light at the entity's body-center (0..1). Added as a
