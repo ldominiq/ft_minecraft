@@ -31,14 +31,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
-# FastNoise
-FetchContent_Declare(
-  fastnoise
-  GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite.git
-  GIT_TAG master
-)
-FetchContent_MakeAvailable(fastnoise)
-
 # stb_image
 FetchContent_Declare(
   stb
@@ -268,7 +260,6 @@ target_include_directories(ft_minecraft PRIVATE
 	${CMAKE_SOURCE_DIR}/include/shared/Mobs
 	${CMAKE_SOURCE_DIR}/include/shared/Inventories
     ${glm_SOURCE_DIR}
-    ${fastnoise_SOURCE_DIR}/Cpp
     ${glad_SOURCE_DIR}/include
     ${stb_SOURCE_DIR}
 	${zstd_SOURCE_DIR}/lib
@@ -302,7 +293,6 @@ target_include_directories(ft_minecraft_server PRIVATE
 	${CMAKE_SOURCE_DIR}/include/shared/Mobs
 	${CMAKE_SOURCE_DIR}/include/shared/Inventories
     ${glm_SOURCE_DIR}
-    ${fastnoise_SOURCE_DIR}/Cpp
 	${zstd_SOURCE_DIR}/lib
 )
 # Should look into restructure stuff so we can remove glad from server

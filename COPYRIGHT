@@ -1,0 +1,33 @@
+ft_minecraft — Pimp My World
+Copyright (C) 2026 Leonard Skraber <lskraber@student.42lausanne.ch>
+Copyright (C) 2026 Lucas Dominique  <ldominiq@student.42lausanne.ch>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+----------------------------------------------------------------------
+
+Note on bundled assets:
+
+The source code of ft_minecraft is licensed under the GNU AGPLv3 (see LICENSE).
+The assets shipped under assets/ are NOT covered by the AGPLv3 and remain
+the property of their respective authors. They are used here for
+non-commercial, educational purposes within the scope of the 42 school
+project. See the "Credits & Assets" section of README.md for details:
+
+  - Music:    patrickdearteaga.com
+  - SFX:      Mojang Studios (Minecraft)
+  - Textures: 16x C-Tetra, Alternate Ingots, Minetest Game default textures
+
+Anyone redistributing this project should review the licensing terms of
+each asset source before bundling them.
