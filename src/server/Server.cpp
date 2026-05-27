@@ -451,7 +451,7 @@ void Server::sendEntitiesSnapshotTo(const sockaddr_in &cliaddr)
 		if (!entity || entity.get() == selfEntity) continue;
 
 		// Mirror sendEntitiesPositionDeltas's packet layout exactly. Any
-		// field added there needs to land here too — keep the two in sync.
+		// field added there needs to land here too - keep the two in sync.
 		NetEntityMove pkt;
 		pkt.eEntityType = entity->getEntityType();
 		pkt.entityID = entity->getID();
@@ -600,7 +600,7 @@ void Server::receivePlayerInputs(NetPlayerInputs &pkt, const sockaddr_in &cliadd
 
 	// Resolve the player's currently-held item id and flag a broadcast if it
 	// changed. Re-checking on every input packet also catches inventory
-	// mutations (drops, pickups, swaps) that don't touch the hotbar index —
+	// mutations (drops, pickups, swaps) that don't touch the hotbar index -
 	// they'd otherwise need their own dirty flag to reach NetEntityMove.
 	{
 		uint16_t newHeldType = player->movement->inventory->getActiveItemID();
@@ -1100,7 +1100,7 @@ void Server::sendDeaths()
 			
 			if (ent->diedByExplosion && ent->getLivingEntityType() != PLAYER)
 			{
-				// No body left — creepers that self-detonate vanish immediately.
+				// No body left - creepers that self-detonate vanish immediately.
 				le = world->livingEntities.erase(le);
 				continue;
 			}
@@ -1180,7 +1180,7 @@ void Server::sendChunk(CPlayerInfo &player)
 		sendPacketTo(CH, player.addr);
 
         // 3. Split into packets. Each CHUNK_DATA is Reliable, so the layer
-        //    guarantees in-order delivery — no per-fragment sequence needed.
+        //    guarantees in-order delivery - no per-fragment sequence needed.
         //    Account for packet encoding overhead: 1(type)+4(seq)+1(flags)+4(X)+4(Z)+4(len) = 18 bytes
         size_t payloadCapacity = MAXLINE - 18;
 
@@ -1349,7 +1349,7 @@ void Server::sendNewGroupPacketTo(std::vector<PacketPtr>& pkts, const sockaddr_i
     // Groups carry state that's always reliable-worthy today (modified blocks,
     // connect handshake batches). Mark the outer envelope reliable so the
     // whole batch is delivered in order. Inner packets are unpacked after
-    // ingest and bypass the reliability layer — their own flags are ignored.
+    // ingest and bypass the reliability layer - their own flags are ignored.
     NetPacketGroup group;
     group.flags = group.flags | PacketFlags::Reliable;
     int currSize = 8; // header (6) + u16 group count (2)

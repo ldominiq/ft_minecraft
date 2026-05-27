@@ -33,7 +33,7 @@ using entityID = uint32_t;
 // AABB stored in double so that block-collision math (floor(min.x + EPS) ...)
 // stays correct at very large world coordinates. With float, at 5M coords the
 // LSB is ~0.5m and adding entityWidth*0.5 to a player's position rounds to a
-// different block boundary on +X vs -X — manifesting as the player visually
+// different block boundary on +X vs -X - manifesting as the player visually
 // clipping into blocks asymmetrically.
 struct AABB {
     glm::dvec3 min;
@@ -148,7 +148,7 @@ class Entity {
 		void applyImpulse(const glm::vec3& impulse) { velocity += impulse; }
 		inline virtual EEntityTypes getEntityType() const = 0;
 		virtual void calculateNewPosition(const ICommonWorld &world);
-		// Legacy getter — returns float-precision snapshot of the position.
+		// Legacy getter - returns float-precision snapshot of the position.
 		// Use getPositionD() when you need the precision (camera path, etc).
 		inline const glm::vec3 getPosition() const { return glm::vec3(position); }
 		inline const glm::dvec3 getPositionD() const { return position; }

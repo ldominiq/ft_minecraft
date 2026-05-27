@@ -22,7 +22,7 @@ void ItemPropEntity::createMesh(std::vector<float> &meshVertices, const glm::dve
 	const float rz = static_cast<float>(relD.z);
 
 	// Torches drop as a billboard sprite (like misc items / vanilla drops),
-	// not a cube — the cube would tile the whole torch image on each face.
+	// not a cube - the cube would tile the whole torch image on each face.
 	if (auto* tb = std::get_if<BlockType>(&type); tb && isTorch(*tb)) {
 		const int layer = texMgr ? texMgr->getItemSpriteLayer(type) : 0;
 		buildItemBillboard(meshVertices, relD, layer, skyFactor, blockFactor);
@@ -31,7 +31,7 @@ void ItemPropEntity::createMesh(std::vector<float> &meshVertices, const glm::dve
 
 	if (isItemFlat(type)) {
 		const int layer = texMgr ? texMgr->getItemSpriteLayer(type) : 0;
-		// Vegetation is rooted in the world — render as a stationary X-cross
+		// Vegetation is rooted in the world - render as a stationary X-cross
 		// matching how plants are drawn in chunks. Tools / ingots / misc
 		// items have no fixed orientation, so they billboard around Y like
 		// vanilla Minecraft drops.

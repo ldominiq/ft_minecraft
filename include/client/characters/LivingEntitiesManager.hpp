@@ -32,7 +32,7 @@ class LivingEntitiesManager
 				  const ICommonWorld* world);
 
 		// Exposed so App.cpp can call lighting->uploadLightingUniforms/uploadCSMUniforms
-		// on the entity shader before draw() — entity_lighting.glsl uses the same
+		// on the entity shader before draw() - entity_lighting.glsl uses the same
 		// uniform names as lighting.frag so nothing else has to change.
 		Shader& getShader() { return characterShader; }
 

@@ -30,7 +30,7 @@ class ItemPropEntityManager {
 
 	// Repack the per-entity vertex slots into the GPU buffer, skipping entities
 	// whose DoDraw() returns false. Returns the number of slots actually
-	// written — draw() uses this so glDrawArrays issues vertices only for
+	// written - draw() uses this so glDrawArrays issues vertices only for
 	// rendered items instead of dragging the whole vector through the GPU.
 	// `world` is used to sample chunk sky-light at each item's position so
 	// items darken in caves like terrain does; may be null (defaults to 1.0).

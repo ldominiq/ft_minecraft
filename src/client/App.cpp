@@ -71,7 +71,7 @@ void App::init(const std::string& serverIp) {
     
     audio = std::make_unique<AudioManager>();
     // If SoLoud can't open a backend (headless / no audio device / driver mismatch),
-    // drop the manager rather than leave it half-initialised — every playSfx*/update
+    // drop the manager rather than leave it half-initialised - every playSfx*/update
     // call later guards on `if (audio)`, so the game runs silent instead of crashing.
     if (!audio->init()) {
         std::cerr << "[Audio] disabled (init failed)" << std::endl;
@@ -150,7 +150,7 @@ void App::init(const std::string& serverIp) {
     gBuffer = std::make_shared<GBuffer>(screenWidth, screenHeight);
     ssao = std::make_shared<SSAO>(screenWidth, screenHeight);
 
-    // Scene FBO (MSAA) — sample count must match the GLFW window hint above.
+    // Scene FBO (MSAA) - sample count must match the GLFW window hint above.
     // hdrEnabled selects between GL_RGBA16F (HDR) and GL_RGBA8 (LDR fallback).
     sceneFBO = std::make_unique<SceneFramebuffer>(screenWidth, screenHeight, 8, hdrEnabled);
 
@@ -679,7 +679,7 @@ void App::setUdpClientPacketCallback()
 					}
 					audio->onCreeperExploded(key, epos, listenerPos);
 				}
-				// Hurt one-shot (server bit 0x10). Skip on the death packet (type == -1) — the
+				// Hurt one-shot (server bit 0x10). Skip on the death packet (type == -1) - the
 				// AudioManager's death-edge sweep handles that case with the proper death sfx.
 				if (audio
 				    && p.eEntityType == EEntityTypes::LIVING_ENTITIES
@@ -890,7 +890,7 @@ void App::loadResources() {
     gBufferShader->use();
     gBufferShader->setInt("blockTextures", 0);
 
-    // Z-prepass shader — minimal vertex transform + alpha-test discard.
+    // Z-prepass shader - minimal vertex transform + alpha-test discard.
     depthPrepassShader = std::make_shared<Shader>(
         "shaders/terrain_depth_prepass.vert", "shaders/terrain_depth_prepass.frag");
     depthPrepassShader->use();
@@ -1218,7 +1218,7 @@ void App::render() {
 		if (waterMoveOffset2 > 1.0f) waterMoveOffset2 -= 1.0f;
 		waterRenderer->setWaterMoveFactor(waterMoveOffset);
 		waterRenderer->setWaterMoveFactor2(waterMoveOffset2);
-		// Non-wrapping wave phase — drives Gerstner displacement in the
+		// Non-wrapping wave phase - drives Gerstner displacement in the
 		// vertex shader. Independent of waterMoveOffset (which wraps for
 		// dudv UV scrolling).
 		waterRenderer->advanceWaveTime(deltaTime);
@@ -1266,7 +1266,7 @@ void App::render() {
 
         if (wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    	// render to screen — pass useSSAO=false when GBuffer was skipped this frame
+    	// render to screen - pass useSSAO=false when GBuffer was skipped this frame
     	renderScene(view, projection, clipPlane);
 
     	// Render water with proper shader setup
@@ -1275,11 +1275,11 @@ void App::render() {
         if (waterVisible || placedWaterVisible) {
             const float chunkDist = renderer->getMaxRenderedChunkDist();
             waterRenderer->setFogParams(fogEnabled, chunkDist * fogStartFraction, chunkDist, fogStrength);
-            // Ocean surface — needs the planar reflection/refraction textures
+            // Ocean surface - needs the planar reflection/refraction textures
             // produced by the passes above; only run when there's any to draw.
             if (waterVisible)
                 waterRenderer->renderWaterSurface(projection);
-            // Placed/spread water surface — sky-reflection shader, independent
+            // Placed/spread water surface - sky-reflection shader, independent
             // of any global plane. Drawn after ocean so its own depth writes
             // sort against ocean fragments at the same Y.
             if (placedWaterVisible)
@@ -1313,7 +1313,7 @@ void App::render() {
             lighting->setSkyExposure(manualExposure);
         }
 
-        // cameraEyeWorld must match the eye encoded in `view` — the composite
+        // cameraEyeWorld must match the eye encoded in `view` - the composite
         // shader reconstructs the view ray via inverse(projection*view) and
         // computes (farWorld - cameraPosWorld). Mismatches also skew the
         // inside-layer check used to skip the depth-plane comparison.
@@ -1328,7 +1328,7 @@ void App::render() {
         // First-person viewmodel for the local player's held item. Drawn into
         // the backbuffer (post clouds composite) so it always lands on top of
         // the world but underneath the HUD/menus that come below. Skipped in
-        // third-person — drawForEntities already attached the item to the body.
+        // third-person - drawForEntities already attached the item to the body.
         if (m_heldItemRenderer && camera && !camera->isThirdPersonCameraActive()) {
             const uint16_t held = camera->getPlayer()->heldItemType;
             if (held != 0) {
@@ -1595,7 +1595,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         vegShader->setMat4("view", view);
         vegShader->setMat4("projection", projection);
         // Vegetation fragments now use FragPosRel (camera-relative) for fog distances,
-        // so viewPos is the origin of render space — vec3(0).
+        // so viewPos is the origin of render space - vec3(0).
         vegShader->setVec3("viewPos", glm::vec3(0.0f));
 
         // Use the same day/night cycle as the main lighting system
@@ -1604,7 +1604,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         float day = glm::clamp(sunElevation * 2.0f, 0.0f, 1.0f);
         day = glm::smoothstep(0.0f, 1.0f, day);
 
-        // Matches the value in Lighting::uploadLightingUniforms — kept in sync
+        // Matches the value in Lighting::uploadLightingUniforms - kept in sync
         // so terrain and vegetation share the same night-time floor.
         constexpr float nightAmbientMin = 0.05f;
         glm::vec3 ambientColor = lighting->getDirectionalAmbientColor() * (nightAmbientMin + (1.0f - nightAmbientMin) * day);
@@ -1654,7 +1654,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
         // ── Z-prepass ────────────────────────────────────────────────
         // Render terrain depth-only with color writes off. Subsequent color
         // pass uses GL_EQUAL so each pixel only runs the heavy lighting
-        // shader once, regardless of overdraw — big win in dense jungle.
+        // shader once, regardless of overdraw - big win in dense jungle.
         depthPrepassShader->use();
         depthPrepassShader->setMat4("projection", projection);
         depthPrepassShader->setVec4("clipPlane", clipPlane);
@@ -1769,7 +1769,7 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
 	}
 
 	// Keep the local player's heldItemType in sync with their inventory each
-	// frame — no server packet reports our own held item back to us, and
+	// frame - no server packet reports our own held item back to us, and
 	// HeldItemRenderer reads this field uniformly for every entity.
 	if (localPlayer.inventory) {
 		localPlayer.heldItemType = localPlayer.inventory->getActiveItemID();
@@ -1791,14 +1791,14 @@ void App::renderScene(const glm::mat4 &view, const glm::mat4 &projection, const 
   // end of render() so it lands on top of the final composited frame.
   if (m_heldItemRenderer) {
       // cubePropShader.frag pulls dir/point/CSM uniforms the same way the
-      // dropped-item path does — upload them here too so held items don't
+      // dropped-item path does - upload them here too so held items don't
       // render unlit.
       Shader& hShader = m_heldItemRenderer->getShader();
       lighting->uploadLightingUniforms(hShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
       uploadActiveSpotLights(hShader);
       lighting->uploadCSMUniforms(hShader, view);
 
-      // Pass the local player explicitly — it lives only in
+      // Pass the local player explicitly - it lives only in
       // livingEntitiesManager, not in renderer->livingEntities, so without
       // this branch the local hand never renders in third-person.
       LivingEntity* localForHand =
@@ -1855,7 +1855,7 @@ void App::uploadActiveSpotLights(Shader& shader) const
             glm::vec3 posRel = glm::vec3(le->getPositionD() - eyePos);
             posRel.y += static_cast<float>(le->getEntityHeight()) * 0.9f;
 
-            // Look direction from yaw/pitch — mirrors PlayerMovement::updateCameraVectors.
+            // Look direction from yaw/pitch - mirrors PlayerMovement::updateCameraVectors.
             const float yr = glm::radians(le->yaw);
             const float pr = glm::radians(le->pitch);
             glm::vec3 dir = glm::normalize(glm::vec3(
@@ -2221,7 +2221,7 @@ void App::debugWindow() {
                     ImGui::SliderFloat("Hilt offset Y", t.hiltDY, -1.0f, 1.0f, "%.3f");
                     ImGui::SliderFloat("Hilt offset Z", t.hiltDZ, -1.0f, 1.0f, "%.3f");
                     if (ImGui::SliderFloat("Voxel depth", t.voxelDepth, 1.0f/64.0f, 0.5f, "%.4f")) {
-                        // Depth is baked into the cached extrusion — invalidate
+                        // Depth is baked into the cached extrusion - invalidate
                         // so it rebuilds next frame at the new thickness.
                         if (m_heldItemRenderer) m_heldItemRenderer->clearWeaponMeshCache();
                     }
@@ -2262,7 +2262,7 @@ void App::debugWindow() {
                 }
 
                 if (ImGui::BeginTabItem("Graphics Quality")) {
-                    // Preset buttons — apply shadow + water + vegetation + SSAO together.
+                    // Preset buttons - apply shadow + water + vegetation + SSAO together.
                     if (ImGui::Button("Performance")) {
                         // Shadows
                         lighting->setCascadeCount(2);
@@ -2270,14 +2270,14 @@ void App::debugWindow() {
                         lighting->setShadowFarPlane(250.0f);
                         lighting->setPcfQuality(Lighting::PcfQuality::Low);
                         lighting->setShadowAlphaTest(false);
-                        // Water — disable reflection, half-res refraction without vegetation
+                        // Water - disable reflection, half-res refraction without vegetation
                         waterRenderer->setReflectionEnabled(false);
                         waterRenderer->setRefractionResolutionScale(0.5f, screenWidth, screenHeight);
                         waterRenderer->setRefractionVegetationEnabled(false);
                         waterRenderer->setReflectionMaxDistance(0.0f);
                         // Vegetation distance limiter (jungle scenes)
                         renderer->setVegetationMaxDistance(100.0f);
-                        // Vegetation: no sway, half density — biggest jungle win
+                        // Vegetation: no sway, half density - biggest jungle win
                         renderer->setVegetationSwayQuality(0);
                         renderer->setVegetationSwayMaxDistance(0.0f);
                         renderer->setVegetationDensity(2);
@@ -2324,7 +2324,7 @@ void App::debugWindow() {
                         renderer->setVegetationSwayMaxDistance(0.0f);
                         renderer->setVegetationDensity(1);
                         depthPrepassEnabled = true;
-                        // High: original look — leaves transparent, every face emitted.
+                        // High: original look - leaves transparent, every face emitted.
                         ChunkRenderer::sLeafRenderMode = ChunkRenderer::LeafRenderMode::Fancy;
                         for (auto &cp : renderer->getRenderedChunks()) if (auto c = cp.lock()) c->buildMesh();
                     }
@@ -2409,9 +2409,9 @@ void App::debugWindow() {
                                 chunk->buildMesh();
                     }
                     ImGui::SetItemTooltip(
-                        "Fast  — leaves render as solid green cubes. Mesher culls leaf-to-leaf and solid-to-leaf faces. Cheapest.\n"
-                        "Fancy — original look: leaves are alpha-tested, every face emitted (you can see leaves through other leaves). Most expensive.\n"
-                        "Smart — leaves keep alpha cutouts on outer faces, but mesher skips internal faces. Hollow canopies; recommended balance.");
+                        "Fast  - leaves render as solid green cubes. Mesher culls leaf-to-leaf and solid-to-leaf faces. Cheapest.\n"
+                        "Fancy - original look: leaves are alpha-tested, every face emitted (you can see leaves through other leaves). Most expensive.\n"
+                        "Smart - leaves keep alpha cutouts on outer faces, but mesher skips internal faces. Hollow canopies; recommended balance.");
 
                     if (ImGui::Button("Rebuild all chunk meshes")) {
                         for (auto &chunkPtr : renderer->getRenderedChunks())
@@ -2488,7 +2488,7 @@ void App::debugWindow() {
                                 sceneFBO->setHDR(hdrEnabled);
                                 lighting->setHDREnabled(hdrEnabled);
                                 // Water reflection/refraction targets must match the scene's
-                                // color space — otherwise HDR scene radiance gets clamped to
+                                // color space - otherwise HDR scene radiance gets clamped to
                                 // [0,1] in those FBOs and water.frag then samples LDR values
                                 // back into the HDR scene buffer.
                                 if (waterRenderer)
@@ -2499,7 +2499,7 @@ void App::debugWindow() {
                                 if (!hdrEnabled)
                                     lighting->setSkyExposure(manualExposure);
                             }
-                            // Saturation works in either HDR or LDR mode — it's applied in
+                            // Saturation works in either HDR or LDR mode - it's applied in
                             // display space at the end of clouds_composite. Default 1.2 to
                             // compensate for the tonemap's midtone desaturation when fed
                             // sRGB-encoded textures (see clouds_composite.frag).
@@ -2870,7 +2870,7 @@ void App::debugWindow() {
                 // ── Settings ─────────────────────────────────────────────
                 if (ImGui::BeginTabItem("Settings")) {
                     // Audio sliders are skipped entirely when init() failed and we nulled
-                    // the manager — the rest of the Settings tab is unrelated and still useful.
+                    // the manager - the rest of the Settings tab is unrelated and still useful.
                     if (audio) {
                     float masterVolume = audio->getMasterVolume();
                     float musicVolume = audio->getMusicVolume();
@@ -3238,7 +3238,7 @@ bool App::popSubMenuOnEscape() {
 		return true;
 	}
 	if (mgr == controlsMenu) {
-		// Don't pop while a key rebind is pending — the rebinder consumes ESC.
+		// Don't pop while a key rebind is pending - the rebinder consumes ESC.
 		if (!controlsMenu->getChangeRequested())
 			menuManager = settingsMenu;
 		return true;

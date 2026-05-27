@@ -11,7 +11,7 @@ void main(void) {
     gl_Position = transformationMatrix * vec4(position, 0.0, 1.0);
     float ty = (position.y + 1.0) / 2.0;
     if (flipY)
-        textureCoords = vec2((position.x + 1.0) / 2.0, ty);         // no flip — correct for FBOs
+        textureCoords = vec2((position.x + 1.0) / 2.0, ty);         // no flip - correct for FBOs
     else
-        textureCoords = vec2((position.x + 1.0) / 2.0, 1.0 - ty);   // flip — correct for loaded textures
+        textureCoords = vec2((position.x + 1.0) / 2.0, 1.0 - ty);   // flip - correct for loaded textures
 }

@@ -21,7 +21,7 @@
 
 namespace {
 
-// Per-vertex stride in floats (pos.xyz, uv.xy, texLayer, skyLight) — must match
+// Per-vertex stride in floats (pos.xyz, uv.xy, texLayer, skyLight) - must match
 // the cubePropShader vertex layout and buildCube/buildItemSprite output.
 constexpr int STRIDE = 8;
 
@@ -73,9 +73,9 @@ glm::mat4 torchUprightFlip(const std::vector<float>& canonical)
 constexpr float SHOULDER_HEIGHT = 1.394f;
 constexpr float SHOULDER_RIGHT  = 0.348f;
 constexpr float ARM_LENGTH      = 0.697f;
-constexpr float ARM_REST_ANGLE  = 0.45f; // ~26° forward — visible held pose at rest
+constexpr float ARM_REST_ANGLE  = 0.45f; // ~26° forward - visible held pose at rest
 // buildCube(isIlluminated=false) emits a 0.2-unit cube centered at (0, 0.1, 0);
-// these scales are applied straight to that source size — final cube size in
+// these scales are applied straight to that source size - final cube size in
 // world units is CUBE_SOURCE_SIZE * CUBE_SCALE.
 constexpr float CUBE_SOURCE_SIZE = 0.2f;
 constexpr float CUBE_Y_CENTER    = 0.1f; // half-height: source verts span y in [0, 0.2]
@@ -125,7 +125,7 @@ constexpr float VM_BOB_GAIN_Y  = 0.06f; // 1P walking bob, vertical (camera-spac
 constexpr float VM_BOB_GAIN_X  = 0.04f; // 1P walking sway, horizontal
 
 // Separate shoulder + elbow rotations for the right arm at the current frame.
-// We need both — collapsing them into one angle on a straight arm makes the
+// We need both - collapsing them into one angle on a straight arm makes the
 // hand overshoot vertically during a punch (the bent forearm has a much
 // shorter "up" reach than a 90°+30° straight-arm rotation would have).
 struct ArmPose { float shoulder; float elbow; };
@@ -226,13 +226,13 @@ void buildWeaponVoxelMesh(std::vector<float>& buf,
 			const float u    = (px + 0.5f) * cell;
 			const float vTex = (py + 0.5f) * cell;
 
-			// FRONT (+Z) — always visible.
+			// FRONT (+Z) - always visible.
 			v(x0, y0, z1, u, vTex); v(x1, y0, z1, u, vTex); v(x1, y1, z1, u, vTex);
 			v(x1, y1, z1, u, vTex); v(x0, y1, z1, u, vTex); v(x0, y0, z1, u, vTex);
-			// BACK (-Z) — always visible (slab is one voxel deep, no neighbors behind).
+			// BACK (-Z) - always visible (slab is one voxel deep, no neighbors behind).
 			v(x1, y0, z0, u, vTex); v(x0, y0, z0, u, vTex); v(x0, y1, z0, u, vTex);
 			v(x0, y1, z0, u, vTex); v(x1, y1, z0, u, vTex); v(x1, y0, z0, u, vTex);
-			// TOP (+Y) — emit only if no opaque neighbor in the +Y direction.
+			// TOP (+Y) - emit only if no opaque neighbor in the +Y direction.
 			if (!opaqueAt(px, py + 1)) {
 				v(x0, y1, z1, u, vTex); v(x1, y1, z1, u, vTex); v(x1, y1, z0, u, vTex);
 				v(x1, y1, z0, u, vTex); v(x0, y1, z0, u, vTex); v(x0, y1, z1, u, vTex);
@@ -301,7 +301,7 @@ glm::vec3 itemAnchorRel(const glm::dvec3& worldPos, const glm::dvec3& eyePos,
 // not just the shoulder), apply cube-local tilts for a readable 3-face view,
 // scale, and recenter.
 // buildCube here outputs a 0.2-unit cube centered at (0, CUBE_Y_CENTER, 0),
-// not a 0..1 cube — so the recenter step only nudges Y, never -0.5 on all axes.
+// not a 0..1 cube - so the recenter step only nudges Y, never -0.5 on all axes.
 glm::mat4 cubeModelMatrix(const glm::vec3& anchorRel, float yawRad,
                           ArmPose pose, float scale)
 {
@@ -313,7 +313,7 @@ glm::mat4 cubeModelMatrix(const glm::vec3& anchorRel, float yawRad,
 	M = glm::rotate(M, -yawRad, glm::vec3(0.0f, 1.0f, 0.0f));
 	// Cube follows the forearm's world rotation around player-right.
 	M = glm::rotate(M, forearmAngle, glm::vec3(0.0f, 0.0f, 1.0f));
-	// Cube-local presentation tilts — applied in the cube's own frame so the
+	// Cube-local presentation tilts - applied in the cube's own frame so the
 	// three-face view is preserved through every yaw / arm-swing pose.
 	M = glm::rotate(M, TP_REST_TILT_Y, glm::vec3(0.0f, 1.0f, 0.0f));
 	M = glm::rotate(M, TP_REST_TILT_X, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -605,7 +605,7 @@ void HeldItemRenderer::drawPlacedTorches(const glm::mat4& projection, const glm:
 
 	// Canonical mesh bbox. buildWeaponVoxelMesh maps texture column→X and
 	// row→Y with row 0 (image TOP = flame) at small Y, so the model's +Y
-	// points toward the torch BASE — we reflect Y to stand it flame-up.
+	// points toward the torch BASE - we reflect Y to stand it flame-up.
 	float minX = 1e9f, maxX = -1e9f, minY = 1e9f, maxY = -1e9f;
 	for (std::size_t i = 0; i + 6 < canonical->size(); i += STRIDE) {
 		minX = std::min(minX, (*canonical)[i + 0]);
@@ -617,7 +617,7 @@ void HeldItemRenderer::drawPlacedTorches(const glm::mat4& projection, const glm:
 	const float modelH = std::max(maxY - minY, 1e-3f);
 
 	// C: centre X on the post, base at local origin. Model +Y already points
-	// up (flame at top), so no Y reflection — just shift minY to 0.
+	// up (flame at top), so no Y reflection - just shift minY to 0.
 	glm::mat4 C(1.0f);
 	C[3] = glm::vec4(-cx, -minY, 0.0f, 1.0f);
 
@@ -669,7 +669,7 @@ void HeldItemRenderer::drawForEntities(const glm::mat4& projection, const glm::m
 	cpuBuffer.clear();
 	int itemCount = 0;
 
-	// Local player isn't in renderer->livingEntities — feed it in here so its
+	// Local player isn't in renderer->livingEntities - feed it in here so its
 	// hand renders in third-person.
 	if (localPlayer && itemCount < MAX_ITEMS) {
 		glm::dvec3 worldPos = localPlayer->getPositionD();
@@ -775,7 +775,7 @@ void HeldItemRenderer::drawWeaponsForEntities(const glm::mat4& projection, const
 
 		// Map the canonical mesh's diagonal hilt→tip onto -along (so the
 		// blade points AWAY from the hand toward the tip, since canonical
-		// hilt-corner is at (1, 0) and tip-corner is at (0, 1) — i.e.
+		// hilt-corner is at (1, 0) and tip-corner is at (0, 1) - i.e.
 		// canonical (-1, 1, 0) direction is the hilt→tip diagonal).
 		// We send canonical (-1, 1, 0) to along, canonical (0, 0, 1) to
 		// sideOrtho (blade thickness across the side of the body), and pick
@@ -871,7 +871,7 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 	ItemType type = itemIDToItemType(heldItemType);
 	const std::size_t start = cpuBuffer.size();
 
-	// Weapons get a dedicated per-pixel-extruded mesh path — a true 3D
+	// Weapons get a dedicated per-pixel-extruded mesh path - a true 3D
 	// sword-shaped voxel mesh instead of a slab-with-paint. The vert count is
 	// variable (depends on the weapon's silhouette), so this path uses its
 	// own VAO/VBO and bypasses the 36-vert/item slot entirely.
@@ -980,7 +980,7 @@ void HeldItemRenderer::drawFirstPerson(const glm::mat4& projection,
 	shader->setMat4("projection", projection);
 	shader->setMat4("viewRot", viewRot);
 
-	// Always-on-top: clear depth (force mask on first — clouds composite may
+	// Always-on-top: clear depth (force mask on first - clouds composite may
 	// have left it disabled), then keep depth test enabled for cube self-sort.
 	glDepthMask(GL_TRUE);
 	glClear(GL_DEPTH_BUFFER_BIT);

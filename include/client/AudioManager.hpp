@@ -85,7 +85,7 @@ public:
     void shutdown();
 
     // Per-frame: drives 3D listener, biome music crossfade, footsteps, mob audio.
-    // `isPlaying` mirrors App::GameState::Playing — false suspends music + mutes triggers.
+    // `isPlaying` mirrors App::GameState::Playing - false suspends music + mutes triggers.
     void update(float deltaTime, bool isPlaying, Camera& cam, Renderer& world);
 
     // Switch ambient music. Crossfades over ~3s
@@ -170,7 +170,7 @@ private:
     // ---- listener-jump detection ------------------------------------------
     // Player respawn / debug teleport moves the listener in a single frame. Active 3D voices
     // (especially long ones like the creeper fuse) keep playing at their absolute world coords,
-    // and SoLoud's spatializer recomputes their pan/volume against the new listener — the
+    // and SoLoud's spatializer recomputes their pan/volume against the new listener - the
     // result is an audible click/glitch on the next buffer. Tracking the listener position
     // lets us detect that jump and stop the long-running 3D voices we own.
     glm::dvec3 prevListenerPos{0.0};
@@ -197,7 +197,7 @@ private:
         glm::dvec3       lastPos{};               // last seen position, used for 3D death/explode sfx
         // Position of the most recently consumed snapshot. We compute footstep deltas from THIS,
         // not from snapshots[size-2], because Renderer.cpp wipes & reseeds the snapshots vector
-        // whenever there's a >100ms server-side gap — losing the first move-after-idle every
+        // whenever there's a >100ms server-side gap - losing the first move-after-idle every
         // stop/go cycle (chase→attack→chase). Caching it here survives the reseed.
         glm::dvec3       lastConsumedPos{};
         bool             hasLastConsumedPos = false;
@@ -216,7 +216,7 @@ private:
         // prevPrimed before, which mis-fired when a primed creeper got killed mid-fuse).
         bool             diedByExplosion = false;
         // SoLoud voice for the active creeper fuse one-shot. Tracked so we can stop it on
-        // unprime / death / explode — otherwise the sample keeps playing at the creeper's old
+        // unprime / death / explode - otherwise the sample keeps playing at the creeper's old
         // position and glitches when the listener jumps (player death + respawn far away).
         SoLoud::handle   fuseHandle   = 0;
         // Set when the packet handler fires a death sfx; sweep skips it to avoid double-firing.

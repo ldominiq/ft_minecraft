@@ -39,7 +39,7 @@ struct std::hash<ChunkPos> {
         std::size_t h2 = std::hash<int>()(p.second);
 		// original formula produced collisions in a very predictable pattern. see boost::hash_combine
 		// 2654435761u large odd number - 0x9e3779b9u = 2^32 / φ so input 0 doesn't output 0
-		// (h1 << 6) + (h1 >> 2) — this mixes h1 with itself at two different bit positions, so the output depends on h1 in a non-trivial way.
+		// (h1 << 6) + (h1 >> 2) - this mixes h1 with itself at two different bit positions, so the output depends on h1 in a non-trivial way.
         return h1 ^ (h2 * 2654435761u + 0x9e3779b9u + (h1 << 6) + (h1 >> 2));
     }
 };

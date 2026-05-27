@@ -269,7 +269,7 @@ void VegetationRenderer::render() const {
     // Disable face culling so both sides of quads are visible
     glDisable(GL_CULL_FACE);
 
-    // No blending — rely on discard in fragment shader for transparent pixels.
+    // No blending - rely on discard in fragment shader for transparent pixels.
     // Blending + depth writes causes transparent parts of the quad to occlude
     // terrain behind (see-through holes depending on draw order / angle).
 

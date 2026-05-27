@@ -45,12 +45,12 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 	std::unordered_set<ChunkPos> chunksToBuild; // chunk to build and upload mesh
 	// When each chunk's last fragment arrived. Used to give newly-received
 	// chunks a grace period before organizeChunks is allowed to evict them
-	// by distance — otherwise a stale player position right after a teleport
+	// by distance - otherwise a stale player position right after a teleport
 	// or respawn can erase chunks that JUST arrived, and the server (which
 	// already marked them sent in PlayerKnownChunks) never re-sends them.
 	std::unordered_map<ChunkPos, std::chrono::steady_clock::time_point> chunkReceiveTime;
 	std::vector<std::weak_ptr<ChunkRenderer>> renderedChunks;
-	// Cached visibility list from the most recent terrain pass — reused by
+	// Cached visibility list from the most recent terrain pass - reused by
 	// renderVegetationOnly so we don't re-run frustum culling. Mutable because
 	// render() is const-qualified.
 	mutable std::vector<std::shared_ptr<ChunkRenderer>> m_lastVisibleChunks;
@@ -70,7 +70,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 	// Water-pass helpers. Both render entry points iterate the same chunk
 	// list with the same cull/uniform logic, differing only in which VAO
-	// they bind and which vertex count they draw — factored out so the two
+	// they bind and which vertex count they draw - factored out so the two
 	// flavors (ocean / placed) share the loop body.
 	bool waterChunkCulled(const ChunkRenderer& chunk) const;
 	template <typename BucketFn>
@@ -115,7 +115,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 		float getVegetationMaxDistance() const { return vegetationMaxDistance; }
 		void  setVegetationMaxDistance(float d) { vegetationMaxDistance = d; }
 
-		// Wind sway shader cost — uniform-controlled branch in vegetation.vert.
+		// Wind sway shader cost - uniform-controlled branch in vegetation.vert.
 		//   0 = none (skip all sin/cos sway math), 1 = low (1 sin), 2 = high (current 3-5 sin)
 		int  getVegetationSwayQuality() const { return vegetationSwayQuality; }
 		void setVegetationSwayQuality(int q)  { vegetationSwayQuality = (q < 0 ? 0 : (q > 2 ? 2 : q)); }
@@ -146,7 +146,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		/// Render only the terrain chunk loop (no vegetation). Populates the
 		/// internal visibility cache so a subsequent `renderVegetationOnly`
-		/// call can reuse the same chunk list — used by the Z-prepass path,
+		/// call can reuse the same chunk list - used by the Z-prepass path,
 		/// where terrain runs twice (prepass + color) and vegetation once.
 		void renderTerrainOnly(const std::shared_ptr<Shader>& shaderProgram,
 		                       const glm::mat4& view,
@@ -170,7 +170,7 @@ class Renderer final : public CommonWorld<ChunkRenderer> {
 
 		/// Returns true if any *ocean* (planar) water is visible in the
 		/// current frustum. Used to gate the planar reflection/refraction
-		/// passes — placed-bucket water doesn't need them.
+		/// passes - placed-bucket water doesn't need them.
 		bool hasVisibleWater() const;
 		/// Returns true if any *placed* water (sky-reflection bucket) is
 		/// visible in the current frustum.

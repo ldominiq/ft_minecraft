@@ -185,7 +185,7 @@ struct NetPlayerMove final : public Packet {
 
 	// Player position is sent in double precision so that, far from world
 	// origin, the wire value doesn't snap to the f32 grid (~0.06 units at
-	// x=1e6) — which would re-introduce visible jitter every server tick.
+	// x=1e6) - which would re-introduce visible jitter every server tick.
 	double positionX;
 	double positionY;
 	double positionZ;
@@ -281,7 +281,7 @@ struct NetEntityMove final : public Packet {
 	uint16_t type = 0;	// stone/dirt/etc.. for block - zombie/creeper/etc... for living entity. -1 to erase the entity
 
 	// Position is sent in double precision. At ~5M blocks from origin, f32 ULP is
-	// ~0.5 blocks — diagonal walking quantizes onto a coarser grid for X vs Z and
+	// ~0.5 blocks - diagonal walking quantizes onto a coarser grid for X vs Z and
 	// produces visible zig-zag on the receiving client (sender's own position is
 	// fine because it predicts locally). dvec3 keeps sub-block precision past 1e8.
 	double positionX;

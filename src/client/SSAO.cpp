@@ -93,7 +93,7 @@ void SSAO::generateFramebuffers() {
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cerr << "ERROR::SSAO::FRAMEBUFFER_NOT_COMPLETE" << std::endl;
 
-    // Blur FBO — at full resolution for smooth upscaling
+    // Blur FBO - at full resolution for smooth upscaling
     glGenFramebuffers(1, &ssaoBlurFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
     glGenTextures(1, &ssaoBlurTexture);
@@ -174,7 +174,7 @@ void SSAO::renderSSAO(const GBuffer& gBuffer, const glm::mat4& projection) {
 }
 
 void SSAO::blurSSAO() {
-    // Blur FBO is always at full resolution — this upsamples half-res SSAO
+    // Blur FBO is always at full resolution - this upsamples half-res SSAO
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
     glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
     glClear(GL_COLOR_BUFFER_BIT);

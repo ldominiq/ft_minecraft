@@ -8,7 +8,7 @@ LivingEntitiesManager::LivingEntitiesManager() : characterShader("shaders/charac
 	//builds the meshes for the cube (body parts)
 	createCube();
 
-	// Load entity skins. Missing files fall through — manager::get returns 0
+	// Load entity skins. Missing files fall through - manager::get returns 0
 	// and we render with per-limb colors as a fallback.
 	skinManager.load("player",  "assets/skins/steve.png");
 	skinManager.load("creeper", "assets/skins/creeper.png");

@@ -35,7 +35,7 @@ void ClientCreeper::setPartsDimensions()
 	armScaleX = armScaleY = armScaleZ = 0.0f;
 	armTransZ = armTransY = 0.0f;
 
-	// Four small square-cross-section legs — one at each torso corner, outside the body.
+	// Four small square-cross-section legs - one at each torso corner, outside the body.
 	legScaleX = 6.0f;
 	legScaleY = 6.0f;
 	legScaleZ = 6.0f;
@@ -85,7 +85,7 @@ void ClientCreeper::createCharacterAt(const glm::vec3 &pos, float width, float h
 	character.addChild(head);
 
 	// Four legs at the torso corners. Translation values are expressed in leg-local
-	// units (Space composes as scale-then-translate internally — see Character.cpp for
+	// units (Space composes as scale-then-translate internally - see Character.cpp for
 	// the identical pattern on zombie legs).
 	auto makeLeg = [&](float txLocal, float tzLocal) {
 		auto leg = std::make_shared<Shape>(glm::vec3(0.18f, 0.6f, 0.18f));

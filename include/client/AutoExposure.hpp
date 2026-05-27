@@ -15,7 +15,7 @@ class Shader;
 //   - call submit() each frame AFTER sceneFBO->resolve() and BEFORE the
 //     cloud composite (the resolved color is what we meter on)
 //   - call update(dt, currentExposure) to get the new smoothed exposure
-//     (will be 1 frame behind submit() — which is fine and free)
+//     (will be 1 frame behind submit() - which is fine and free)
 class AutoExposure {
 public:
     AutoExposure();

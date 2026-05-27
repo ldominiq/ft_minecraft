@@ -1,7 +1,7 @@
 #version 460 core
 // Z-prepass fragment shader. When useAlphaTest is true, discards transparent
 // texels (leaf cutouts) so the depth buffer matches what the color pass will
-// produce — without this, GL_EQUAL would fail on transparent edges and leaves
+// produce - without this, GL_EQUAL would fail on transparent edges and leaves
 // would vanish. In Fast leaf mode the host sets useAlphaTest=false, the
 // fragment shader becomes a no-op, and early-Z is fully unleashed.
 in vec2 TexCoord;

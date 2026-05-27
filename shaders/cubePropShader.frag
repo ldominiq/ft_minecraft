@@ -29,7 +29,7 @@ void main()
     // vSkyLight > 2.5 is the self-lit torch sentinel (the torch item itself
     // glows). Otherwise it's a normal 0..1 skylight and vBlockLight carries
     // baked torch light independently (added as a warm sky/shadow-independent
-    // term inside entityLitColor — same as terrain/mobs).
+    // term inside entityLitColor - same as terrain/mobs).
     if (vSkyLight > 2.5) {
         FragColor = vec4(tex.rgb, 1.0);
         return;

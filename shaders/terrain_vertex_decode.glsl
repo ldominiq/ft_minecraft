@@ -4,7 +4,7 @@
 //
 // Bit layout (must match include/client/PackedVertex.hpp):
 //   v0: posX:9 | posY:13 | posZ:9 | reserved:1
-//        — positions are 1/16-block fixed point (multiply by 1/16 to recover floats)
+//        - positions are 1/16-block fixed point (multiply by 1/16 to recover floats)
 //   v1: normal:3 | corner:2 | texLayer:10 | skyLight:4 | waterAbove:1 | blockLight:4 | reserved:8
 
 // Face direction lookup. Matches ChunkRenderer's `face` parameter ordering:
@@ -29,7 +29,7 @@ const vec2 CORNERS[4] = vec2[4](
 );
 
 vec3 unpackPos(uint v0) {
-    // 1/16 block fixed point — divide to recover float position.
+    // 1/16 block fixed point - divide to recover float position.
     return vec3(
         float( v0        & 0x1FFu),
         float((v0 >>  9) & 0x1FFFu),

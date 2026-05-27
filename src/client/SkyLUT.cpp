@@ -16,7 +16,7 @@ SkyLUT::~SkyLUT() {
 }
 
 void SkyLUT::createResources() {
-    // LUT texture — RGBA16F for Rayleigh (RGB) + Mie (A)
+    // LUT texture - RGBA16F for Rayleigh (RGB) + Mie (A)
     glGenTextures(1, &lutTexture);
     glBindTexture(GL_TEXTURE_2D, lutTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, LUT_WIDTH, LUT_HEIGHT, 0, GL_RGBA, GL_FLOAT, nullptr);

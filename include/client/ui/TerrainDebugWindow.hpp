@@ -30,7 +30,7 @@ private:
     void reseedNoise(int32_t seed);
     void resizeTexture(int newSize);
 
-    // Terrain sampling helpers — mirrors ChunkGeneration private methods exactly
+    // Terrain sampling helpers - mirrors ChunkGeneration private methods exactly
     float sampleContinentalness(const TerrainGenerationParams& p, float wx, float wz);
     float sampleErosion(const TerrainGenerationParams& p, float wx, float wz);
     float samplePV(const TerrainGenerationParams& p, float wx, float wz);

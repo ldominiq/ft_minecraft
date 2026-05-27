@@ -29,7 +29,7 @@ class Character;
 // heldItemType of 0, BlockType::BEGIN, or BlockType::AIR all mean "nothing
 // held" and skip rendering for that entity.
 class HeldItemRenderer {
-	static constexpr int FLOATS_PER_VERT = 8;   // pos(3) + uv(2) + texLayer(1) + skyLight(1) + blockLight(1) — matches cubePropShader.vert
+	static constexpr int FLOATS_PER_VERT = 8;   // pos(3) + uv(2) + texLayer(1) + skyLight(1) + blockLight(1) - matches cubePropShader.vert
 	static constexpr int VERTS_PER_ITEM  = 36;  // matches buildCube / padded sprite
 	static constexpr int FLOATS_PER_ITEM = VERTS_PER_ITEM * FLOATS_PER_VERT;
 	static constexpr int MAX_ITEMS       = 64;  // plenty for visible players
@@ -53,7 +53,7 @@ public:
 
 	// One batched draw for every visible LivingEntity holding something.
 	// `localPlayer` is processed alongside `entities` so the local player's
-	// hand renders in third-person — it's tracked by livingEntitiesManager
+	// hand renders in third-person - it's tracked by livingEntitiesManager
 	// but not present in `renderer->livingEntities`. Pass nullptr to skip.
 	// Skips entities with DoDraw()==false (first-person mode hides the
 	// local mesh, so the viewmodel takes over via drawFirstPerson) and any
@@ -66,7 +66,7 @@ public:
 
 	// Viewmodel for the local player. Skips when nothing is held
 	// (heldItemType 0 / BEGIN / AIR).
-	// `localCharacter` lets the viewmodel animate during arm swings — pass
+	// `localCharacter` lets the viewmodel animate during arm swings - pass
 	// the same ClientPlayer used elsewhere; nullptr keeps the cube static.
 	void drawFirstPerson(const glm::mat4& projection, const glm::mat4& view,
 	                     uint16_t heldItemType,

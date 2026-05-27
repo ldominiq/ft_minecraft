@@ -23,7 +23,7 @@ class GBuffer {
         
         GLuint fbo = 0; // Framebuffer object
         GLuint gPosition = 0;
-        GLuint gNormal = 0;     // RGB16F — view-space normal
+        GLuint gNormal = 0;     // RGB16F - view-space normal
         GLuint depthTexture = 0; // depth texture (sampleable, replaces renderbuffer)
 
         int SCR_WIDTH = 0;

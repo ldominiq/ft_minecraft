@@ -26,7 +26,7 @@ uniform vec3 cameraPosWorld;
 uniform float seaLevel;
 uniform float exposure;  // exposure for simple tone mapping (1 - exp(-exposure * color))
 // When false, the scene framebuffer is HDR (RGBA16F) and the final tonemap is
-// performed once in clouds_composite. We must NOT tonemap here in that case —
+// performed once in clouds_composite. We must NOT tonemap here in that case -
 // emit linear radiance instead. Defaults to true for the LDR path.
 uniform bool tonemapHere;
 uniform float atmDensity;    // 1.0 = Earth-like, lower -> closer to space

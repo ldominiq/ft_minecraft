@@ -25,7 +25,7 @@ WaterRenderer::WaterRenderer(int screenWidth, int screenHeight) {
     fbos = std::make_unique<WaterFramebuffer>(screenWidth, screenHeight);
     waterShader = std::make_unique<Shader>("shaders/water.vert", "shaders/water.frag");
     // Sky-reflection shader for water that isn't on the planar (sea-level)
-    // plane — placed buckets, spread water, exposed deep-ocean side faces.
+    // plane - placed buckets, spread water, exposed deep-ocean side faces.
     placedWaterShader = std::make_unique<Shader>("shaders/water_placed.vert", "shaders/water_placed.frag");
     dudvTexture = waterShader->loadTexture("assets/textures/waterDudv.png");
     waterNormalTexture = waterShader->loadTexture("assets/textures/normalMap.png");
@@ -68,7 +68,7 @@ void WaterRenderer::setDependencies(const std::shared_ptr<Lighting> &lightingRef
 }
 
 void WaterRenderer::advanceWaveTime(float dt) {
-    // Wrap at 2π * 1024 — large enough that the wrap is invisible (cos is
+    // Wrap at 2π * 1024 - large enough that the wrap is invisible (cos is
     // periodic in 2π), small enough that float precision stays good.
     constexpr float kTwoPi = 6.28318530717958647692f;
     constexpr float kWrap  = kTwoPi * 1024.0f;
@@ -81,7 +81,7 @@ void WaterRenderer::setRefractionResolutionScale(float scale, int displayWidth, 
     if (scale > 1.0f) scale = 1.0f;
     refractionResolutionScale = scale;
 
-    // Recreate the refraction FBO at the new size — one-shot, not per frame.
+    // Recreate the refraction FBO at the new size - one-shot, not per frame.
     const int w = static_cast<int>(static_cast<float>(displayWidth)  * scale);
     const int h = static_cast<int>(static_cast<float>(displayHeight) * scale);
     fbos->resizeRefraction(w, h);
@@ -135,7 +135,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
 
     lighting->uploadLightingUniforms(*sceneShader, reflectCamPosD, reflectedDir);
     // Skip uploadCSMUniforms: it binds csmDepthMaps which was just written by the shadow pass
-    // milliseconds ago — binding it for reading here causes an implicit driver sync stall.
+    // milliseconds ago - binding it for reading here causes an implicit driver sync stall.
     sceneShader->setInt("ssaoEnabled", 0);
     sceneShader->setFloat("shadows.enabled", 0.0f);
     // Render reflection scene
@@ -156,7 +156,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
         reflectViewRot[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
         renderer->updateFrustum(projection * reflectViewRot, reflectCamPosD);
 
-        // Optionally cap the per-chunk render distance for reflection only —
+        // Optionally cap the per-chunk render distance for reflection only -
         // distant terrain rarely contributes meaningfully to a reflection but
         // costs the same draw-call/vertex work as the main pass.
         const float prevDistCap = renderer->getMaxRenderDistanceOverride();
@@ -166,7 +166,7 @@ void WaterRenderer::renderWaterReflectionPass(const std::shared_ptr<Shader> &sce
         renderer->setMaxRenderDistanceOverride(prevDistCap);
     }
     // When reflection is disabled we still ran drawSky() above so the FBO
-    // contains a usable sky-tinted image — water surface will sample it as
+    // contains a usable sky-tinted image - water surface will sample it as
     // a plain reflection of the sky, which is cheap and looks fine.
 
     glDisable(GL_CLIP_DISTANCE0);
@@ -196,7 +196,7 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
 
     // Render refraction scene
     lighting->uploadLightingUniforms(*sceneShader, camera->getEyePosD(), camera->getPlayer()->getCameraDir());
-    // Skip uploadCSMUniforms: same shadow texture hazard as reflection — and underwater
+    // Skip uploadCSMUniforms: same shadow texture hazard as reflection - and underwater
     // fragments don't need shadow computation at all.
     sceneShader->setInt("ssaoEnabled", 0);
     sceneShader->setFloat("shadows.enabled", 0.0f);
@@ -204,7 +204,7 @@ void WaterRenderer::renderWaterRefractionPass(const std::shared_ptr<Shader>& sce
     // them here would re-introduce caustics on terrain the sun can't reach
     sceneShader->setFloat("causticsEnabled", 0.0f);
     texMgr.bind(GL_TEXTURE0);
-    // Sea vegetation in refraction is expensive in dense biomes — toggleable.
+    // Sea vegetation in refraction is expensive in dense biomes - toggleable.
     if (refractionRendersVegetation)
         renderer->updateVegetationUniforms(view, projection, clipPlane, glm::vec3(camera->getEyePosD()));
     renderer->render(sceneShader, view, camera->getEyePosD(), refractionRendersVegetation);
@@ -226,7 +226,7 @@ void WaterRenderer::setupSurfaceShader(Shader& shader,
     // Y is also anchored: side faces of placed-water blocks use Y for V,
     // and without this the texture would translate vertically as the eye
     // moves up/down (since cameraRelPos.y = worldY - eye.y). The ocean
-    // shader only uses XZ and ignores the Y component — uniform is a
+    // shader only uses XZ and ignores the Y component - uniform is a
     // silent no-op there.
     const double period = (dudvTiling > 0.0f) ? (1.0 / static_cast<double>(dudvTiling)) : 1.0;
     const double anchorX = std::floor(eyePosD.x / period) * period;
@@ -240,7 +240,7 @@ void WaterRenderer::setupSurfaceShader(Shader& shader,
     shader.setMat4("projection", projection);
     shader.setMat4("viewRot", viewRot);
     // Sun direction (toward-sun convention, matching dirLight). Set
-    // explicitly — uploadFogUniforms only writes sunDir when fog is on.
+    // explicitly - uploadFogUniforms only writes sunDir when fog is on.
     shader.setVec3("sunDir", sunDir);
     shader.setVec3("lightColor", lighting->getDirectionalDiffuseColor());
     // Sun-elevation fade band for specular (sunDir.y in [0.235, 0.315]

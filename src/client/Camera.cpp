@@ -151,16 +151,16 @@ static double ddaFirstSolidHit(const Renderer &world,
 		sideDist[axis] += deltaDist[axis];
 
 		const BlockType b = world.getBlockWorld(blockPos);
-		// END = chunk not loaded — don't trap the camera against missing geometry.
+		// END = chunk not loaded - don't trap the camera against missing geometry.
 		if (b != BlockType::END && isBlockSolid(b))
 			return entryDist;
 	}
 }
 
 // Pull the third-person camera in toward the player when a solid block sits
-// between them, so the view never goes through terrain. Sweep five rays — the
+// between them, so the view never goes through terrain. Sweep five rays - the
 // central eye→camera ray plus four offset by ±kProbeRadius perpendicular to
-// it — so lateral geometry beside the camera (a wall just to the side, a
+// it - so lateral geometry beside the camera (a wall just to the side, a
 // corner, etc.) shrinks the offset too. A single ray missed those cases and
 // left the near plane poking through walls.
 //
@@ -205,7 +205,7 @@ void Camera::updateThirdPersonCollision(const Renderer &world, float deltaTime)
 	glm::dvec3 right = glm::cross(rayDir, worldUp);
 	double rLen = glm::length(right);
 	if (rLen < 1e-6) {
-		// rayDir is parallel to worldUp (looking straight up/down) — use any
+		// rayDir is parallel to worldUp (looking straight up/down) - use any
 		// perpendicular axis to avoid a degenerate basis.
 		right = glm::dvec3(1.0, 0.0, 0.0);
 	} else {
@@ -214,7 +214,7 @@ void Camera::updateThirdPersonCollision(const Renderer &world, float deltaTime)
 	const glm::dvec3 up = glm::cross(right, rayDir); // already unit length
 
 	// Probe radius approximates the camera frustum's lateral extent at the near
-	// plane. At FOV 80° and near 0.1 the near-plane half-width is ~0.15 — pad
+	// plane. At FOV 80° and near 0.1 the near-plane half-width is ~0.15 - pad
 	// a bit so the swept volume covers the corners with a small skin.
 	constexpr double kProbeRadius = 0.25;
 
@@ -239,7 +239,7 @@ void Camera::updateThirdPersonCollision(const Renderer &world, float deltaTime)
 		static_cast<float>((hitDistance - kCameraSkin) / fullLen), 0.0f, 1.0f);
 
 	if (targetFraction < cameraDistanceFraction) {
-		// Snap in — collision must take effect this frame.
+		// Snap in - collision must take effect this frame.
 		cameraDistanceFraction = targetFraction;
 	} else {
 		// Ease back out so the camera doesn't pop when a block clears.
@@ -418,7 +418,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 		}
 
 		// Health is not simulated client-side for PvP/explosion damage, so a position-only
-		// match would silently drop the server's authoritative health update — including the
+		// match would silently drop the server's authoritative health update - including the
 		// killing blow that should trigger the death screen.
 		const bool healthMatches = std::abs(it->health - effectiveCorrection.health) < 0.001f;
 
@@ -438,7 +438,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
 		}
 	}
 
-	// Guard: stale correction older than oldest history entry — already processed
+	// Guard: stale correction older than oldest history entry - already processed
 	if (!predictedStates.empty() &&
      effectiveCorrection.serverClientReconciliationTick < predictedStates.front().serverClientReconciliationTick)
 	{
@@ -522,7 +522,7 @@ void Camera::reconcile(const PredictedStates &correction, int32_t clientTick, co
     if (horizontalPosErr > reconcilePosErrorThreshold || verticalPosErr > reconcilePosErrorThreshold || velocityErr > reconcileVelErrorThreshold)
 	{
         // Smooth visual popping by setting a bounded camera offset that decays over time.
-		// Computed in double then downcast — the diff itself is small (sub-block).
+		// Computed in double then downcast - the diff itself is small (sub-block).
 		glm::dvec3 desiredVisualOffsetD = oldCurrentState.position - reconciledCurrentState.position;
 		constexpr float kMaxVisualOffset = 0.35f;
 		const float desiredLen = static_cast<float>(glm::length(desiredVisualOffsetD));
@@ -571,7 +571,7 @@ void Camera::onSnapshot(NetPlayerMove &pkt)
 
 	// Normally we skip snapshots whose ack tick we've already processed. But the server's
 	// ack tick is frozen while the player is dead (inputs are blocked), so the killing-blow
-	// snapshot — and the respawn snapshot — share the same tick as the last pre-death one.
+	// snapshot - and the respawn snapshot - share the same tick as the last pre-death one.
 	// Accept those by letting health changes through even when the tick hasn't advanced.
 	if (lastAppliedServerClientReconciliationTick != -1 &&
 		((long)(pkt.serverClientReconciliationTick) - (long)(lastAppliedServerClientReconciliationTick) <= 0)

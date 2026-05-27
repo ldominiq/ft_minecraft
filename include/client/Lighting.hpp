@@ -109,7 +109,7 @@ public:
         glm::vec3 color{1.0f, 0.8f, 0.5f};
         bool omni = false;
     };
-    // Max simultaneous spot lights — must match MAX_SPOT_LIGHTS in lighting.frag
+    // Max simultaneous spot lights - must match MAX_SPOT_LIGHTS in lighting.frag
     // and ENTITY_MAX_SPOT_LIGHTS in entity_lighting.glsl.
     static constexpr int MAX_SPOT_LIGHTS = 16;
     // Upload the active flashlight set into spotLights[0..n-1] + numSpotLights.

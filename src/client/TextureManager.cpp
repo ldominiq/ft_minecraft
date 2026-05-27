@@ -206,7 +206,7 @@ bool TextureManager::loadResourcePack(const std::string& path, int textureSize) 
     std::cout << "Loaded " << realTextureCount << " textures into array from: "
               << blockTextureDir << " and " << itemTextureDir
               << " (+1 missing-texture checker, " << layerCount << " base layers)" << std::endl;
-    // Return false when we couldn't find any real textures — callers that want
+    // Return false when we couldn't find any real textures - callers that want
     // to abort or warn the user can still do so, while the renderer below
     // operates on the checker-only atlas without crashing.
     return hasAnyTexture;
@@ -300,7 +300,7 @@ void TextureManager::setupBlockTextureMapping() {
     };
 
     // ── Tinted variants ────────────────────────────────────────────
-    // Minecraft grass/leaves textures are grayscale — the game multiplies
+    // Minecraft grass/leaves textures are grayscale - the game multiplies
     // them by a biome color at runtime.  We do it once at load time.
 
     // Biome grass tints

@@ -26,7 +26,7 @@ uniform vec3 chunkRel;
 uniform vec2 texAnchor;
 // Vertical companion to texAnchor.xz, used by side-face UVs so the texture
 // stays world-space-stable when the eye moves up or down. Anchored to a
-// multiple of the dudv repeat period on the CPU — same trick as XZ.
+// multiple of the dudv repeat period on the CPU - same trick as XZ.
 uniform float texAnchorY;
 uniform float tiling;
 
@@ -71,7 +71,7 @@ void main() {
     gl_Position = clipSpace;
 
     // Per-face UV projection. Side faces project onto (horizontal axis, Y)
-    // so the dudv texture doesn't smear vertically — using only XZ would
+    // so the dudv texture doesn't smear vertically - using only XZ would
     // give a constant UV across a side face's vertical extent, which is
     // exactly what made the sides look stretched. Y has no anchor (chunk
     // height is bounded, so it stays in f32 range) and feeds V directly.

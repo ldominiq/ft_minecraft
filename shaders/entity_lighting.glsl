@@ -6,7 +6,7 @@
 // Differences from the terrain pipeline:
 //   - No specular (entities have no spec maps).
 //   - No SSAO (entities are too small for screen-space AO to add anything).
-//   - 3-tap PCF instead of up to 5x5 — entity shadow edges don't need it.
+//   - 3-tap PCF instead of up to 5x5 - entity shadow edges don't need it.
 
 #define ENTITY_NR_POINT_LIGHTS 3
 #define ENTITY_MAX_CASCADES 5
@@ -87,7 +87,7 @@ float entityCSMShadow(vec3 fragPosRel, vec3 normal, vec3 lightDir) {
         return 0.0;
 
     float biasedZ = pc.z - bias;
-    // 3-tap PCF — cheap, sufficient for entity-scale geometry.
+    // 3-tap PCF - cheap, sufficient for entity-scale geometry.
     float lit = 0.0;
     lit += texture(shadowMapArray, vec4(pc.xy,                  layer, biasedZ));
     lit += texture(shadowMapArray, vec4(pc.xy + texelSize,       layer, biasedZ));
@@ -111,7 +111,7 @@ vec3 entityPointLightsContrib(vec3 fragPosRel, vec3 normal) {
     return sum;
 }
 
-// Spot light (single slot) — Lambertian with attenuation + cone falloff.
+// Spot light (single slot) - Lambertian with attenuation + cone falloff.
 // Mirrors lighting.frag::CalcSpotLight minus specular.
 vec3 entitySpotLightContribOne(EL_SpotLight s, vec3 fragPosRel, vec3 normal) {
     vec3 toLight = s.position - fragPosRel;
@@ -138,7 +138,7 @@ vec3 entitySpotLightContrib(vec3 fragPosRel, vec3 normal) {
 }
 
 // Final lit color. Mirrors lighting.frag's CalcDirLight (without specular):
-//   ambient *= (1 - shadow*0.5)   [shadowed-ambient floor — see lighting.frag:443]
+//   ambient *= (1 - shadow*0.5)   [shadowed-ambient floor - see lighting.frag:443]
 //   diffuse *= (1 - shadow)
 // Then applies sky-light modulation so caves
 // darken entities the same way they darken terrain.

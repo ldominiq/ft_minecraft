@@ -5,7 +5,7 @@
 // each frame to drive auto-exposure adaptation.
 //
 // We do a 3x3 jittered tap pattern to absorb noise from bright pixels (sun,
-// specular highlights). The cost is trivial — 9 samples * 64 * 64 fragments.
+// specular highlights). The cost is trivial - 9 samples * 64 * 64 fragments.
 
 in vec2 vUV;
 out float FragColor;

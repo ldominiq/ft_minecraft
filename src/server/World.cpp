@@ -104,7 +104,7 @@ void World::dumpHeightmap(const TerrainGenerationParams& params, int centerChunk
 		imgLakeNoise.resize(npixels); imgLakeMask.resize(npixels);
 	}
 
-    // Precompute erosion spline range once — used in every pixel
+    // Precompute erosion spline range once - used in every pixel
     float eroMin = std::numeric_limits<float>::infinity();
     float eroMax = -std::numeric_limits<float>::infinity();
     for (const auto& sp : erosionSpline) {
@@ -1327,7 +1327,7 @@ void World::trySpawnNightMobs(const std::vector<CPlayerInfo> &players)
 		return;
 
 	// Night-time check: sun elevation is cos(skyTimeOffset * 0.1) (see Lighting.cpp).
-	// Negative elevation means the sun is below the horizon — i.e. night.
+	// Negative elevation means the sun is below the horizon - i.e. night.
 	// Using this formulation avoids wrap-around issues as skyTimeOffset accumulates.
 	// Surface spawning is gated on night; cave spawning runs regardless so mining
 	// stays hazardous during the day too.
@@ -1341,7 +1341,7 @@ void World::trySpawnNightMobs(const std::vector<CPlayerInfo> &players)
 	constexpr int SCAN_TOP_Y = 200;
 	constexpr int SCAN_BOTTOM_Y = 4;
 
-	// Cave spawning parameters — closer than surface spawns so mobs actually
+	// Cave spawning parameters - closer than surface spawns so mobs actually
 	// show up near a mining player, and biased to Y bands around the player.
 	constexpr int CAVE_MIN_DIST = 16;
 	constexpr int CAVE_MAX_DIST = 48;
@@ -1427,7 +1427,7 @@ void World::trySpawnNightMobs(const std::vector<CPlayerInfo> &players)
 		if (yHi - yLo < 2) return false;
 
 		// Scan downward from a random Y in the band looking for an air pocket
-		// (2+ air blocks) sitting on a solid floor — somewhere a mob can stand.
+		// (2+ air blocks) sitting on a solid floor - somewhere a mob can stand.
 		int startY = std::uniform_int_distribution<int>(yLo, yHi)(spawnRng);
 		bool airAbove1 = isAir(startY + 2);
 		bool airAbove2 = isAir(startY + 1);

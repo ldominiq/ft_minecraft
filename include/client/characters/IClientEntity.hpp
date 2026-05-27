@@ -19,7 +19,7 @@ class IClientEntity : public virtual LivingEntity, public virtual Character {
 		bool hasRenderPos = false;
 
 		// Name of the skin PNG to bind when rendering this entity. Empty string
-		// means "no skin — fall back to per-limb colors"
+		// means "no skin - fall back to per-limb colors"
 		// Resolved against SkinManager at draw time.
 		virtual std::string skinName() const { return ""; }
 };

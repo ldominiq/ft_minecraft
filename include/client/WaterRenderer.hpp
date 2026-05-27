@@ -58,7 +58,7 @@ public:
     float dudvTiling = 0.03f;
 
     // ── Runtime graphics-quality settings ──────────────────────────────
-    // Toggling these is free at steady state — they're either uniform/CPU
+    // Toggling these is free at steady state - they're either uniform/CPU
     // checks or one-shot FBO rebuilds (refraction scale).
     bool isReflectionEnabled() const           { return reflectionEnabled; }
     void setReflectionEnabled(bool enabled)    { reflectionEnabled = enabled; }

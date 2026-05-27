@@ -5,7 +5,7 @@
 // reflection texture is mirrored across y == seaLevel and the refraction
 // texture is clipped at y == seaLevel, so neither of them is meaningful for
 // this geometry. Instead we read reflection from the sky LUT and treat the
-// "underwater" term as a flat blue tint — nothing here depends on the
+// "underwater" term as a flat blue tint - nothing here depends on the
 // fragment's world Y, so it shades correctly at any height.
 
 in vec4 clipSpace;
@@ -44,7 +44,7 @@ uniform vec3 underwaterFogColor;
 
 #include "sky_common.glsl"
 
-// Two-octave dudv — same idea as ocean shader. Each octave gets its own
+// Two-octave dudv - same idea as ocean shader. Each octave gets its own
 // scroll (moveFactor / moveFactor2) so the GL_REPEAT wrap is integer-clean
 // and the two layers drift apart over time without snapping.
 vec2 sampleDistortion(vec2 baseUV) {
@@ -114,7 +114,7 @@ void main() {
     vec3 viewIncoming = -viewVector;
 
     // Sky reflection. Perturb in the face's tangent plane (T, B) so the
-    // jitter is consistent across face orientations — the old `reflectDir.xz`
+    // jitter is consistent across face orientations - the old `reflectDir.xz`
     // shake assumed a horizontal surface.
     vec3 reflectDir = reflect(viewIncoming, normal);
     reflectDir += (faceT * totalDistortion.x + faceB * totalDistortion.y);
@@ -127,7 +127,7 @@ void main() {
     // Fresnel
     float refractiveFactor = clamp(dot(viewVector, normal), 0.001, 0.999);
 
-    // Soft + sharp specular stacked — same pattern as ocean shader.
+    // Soft + sharp specular stacked - same pattern as ocean shader.
     vec3 reflectedLight = reflect(-sunDir, normal);
     float specSoft  = pow(max(dot(reflectedLight, viewVector), 0.0), shineDamper);
     float specSharp = pow(max(dot(reflectedLight, viewVector), 0.0), 200.0);
@@ -139,7 +139,7 @@ void main() {
     col = mix(col, waterColor, 0.2) + specularHighlights;
     FragColor = vec4(col, 0.75);
 
-    // Distance-based horizon mix — even small ponds benefit a little when
+    // Distance-based horizon mix - even small ponds benefit a little when
     // looking across a long stretch of placed water.
     float viewDist = length(toCameraVector);
     {

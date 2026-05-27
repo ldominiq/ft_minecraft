@@ -438,7 +438,7 @@ void InventoryUI::drawDeathScreen(float health)
 	const float bandH = fullscreenHeight * 0.18f;
 	for (int i = 0; i < 4; ++i)
 	{
-		const float t = (i + 1) / 4.0f; // 0.25..1.0 — outer bands are darker
+		const float t = (i + 1) / 4.0f; // 0.25..1.0 - outer bands are darker
 		const float a = 0.18f * t * fade;
 		drawSimpleQuad(0, fullscreenHeight - bandH * (i + 1),
 			fullscreenWidth, bandH, glm::vec4(0.0f, 0.0f, 0.0f, a));
