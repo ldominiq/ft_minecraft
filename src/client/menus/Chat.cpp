@@ -45,12 +45,12 @@ void Chat::goThroughChatLog(const int key)
 void Chat::onRender()
 {
 	drawSimpleQuad(x, y, w, h, chatColor);
-	float offset = 10.0f * menuScale;
-	float charHeight = (48+10)*textScale*menuScale; //48 cause font is 48 and 10 is height offset
+	float offset = 10.0f * textRenderer.getScale();
+	float charHeight = 48 * textRenderer.getScale();
 
 	textRenderer.renderText(currMsg, x + offset, y + offset, glm::vec3(0.5, 0.8f, 0.2f));
 
-	int currHeight = offset + charHeight;
+	float currHeight = offset + charHeight;
     for (auto it = chatLog.rbegin(); it != chatLog.rend() && currHeight < (h - charHeight); ++it)
 	{	
 		textRenderer.renderText(it->message.c_str(), x+offset, y+currHeight, glm::vec3(1.0f));
@@ -64,9 +64,9 @@ void Chat::renderRecentMessages()
 	auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(timepoint.time_since_epoch()).count();
 	auto nowS = std::chrono::duration_cast<std::chrono::seconds>(timepoint.time_since_epoch()).count();
 
-	float offset = 10.0f * menuScale;
-	float charHeight = (48+10)*textScale; //48 cause font is 48 and 10 is height offset
-	int currHeight = offset + charHeight;
+	float offset = 10.0f * textRenderer.getScale();
+	float charHeight = 48 * textRenderer.getScale();
+	float currHeight = offset + charHeight;
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -82,12 +82,12 @@ void Chat::renderRecentMessages()
 			std::clamp(1.0 - age / (MESSAGE_LIFETIME * 1000), 0.0, 1.0)
 		);
 
-		drawSimpleQuad(x + offset, y + (currHeight - 4) * menuScale, textRenderer.getPixelSizeOfString(msg->message) + 2, charHeight, glm::vec4(0,0,0,alpha/2.0f));
+		drawSimpleQuad(x + offset, y + currHeight - offset / 2.0f - 4, textRenderer.getPixelSizeOfString(msg->message) + 2, charHeight, glm::vec4(0,0,0,alpha/2.0f));
 	
 		textRenderer.renderText(
 			msg->message.c_str(),
 			x + offset,
-			y + currHeight * menuScale,
+			y + currHeight,
 			glm::vec3(1.0f),
 			alpha
 		);

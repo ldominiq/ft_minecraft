@@ -400,11 +400,10 @@ void Menu::resize(float width, float height)
 	float scale = std::min(scaleX, scaleY);
 
 	menuScale = scale;
-
 	this->menuWidth = DESIGN_WIDTH  * scale;
 	this->menuHeight = DESIGN_HEIGHT * scale;
 
-	textRenderer.setScale(textScale * scale);
+	textRenderer.setScale(scale / 2.0f);
 
 	build();
 }
