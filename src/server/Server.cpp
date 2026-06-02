@@ -770,9 +770,14 @@ void Server::receiveMessage(NetMessage &pkt, const sockaddr_in &cliaddr)
             std::istringstream iss(pkt.message.substr(strlen("tp ")));
             float x, y, z;
             if (iss >> x >> y >> z) {
-                player->movement->setPosition(glm::vec3(x, y, z));
-                player->movement->setVelocity(glm::vec3(0.0f));
-                player->movement->accumulatedFallDistance = 0.0f;
+				if (abs(x) < 100000000 && abs(y) < 100000000 && abs(z) < 2000)
+				{
+					player->movement->setPosition(glm::vec3(x, y, z));
+					player->movement->setVelocity(glm::vec3(0.0f));
+					player->movement->accumulatedFallDistance = 0.0f;
+				}
+				else
+					player->targetedMessages.push_back("You can't tp that far!");
             } else {
 				player->targetedMessages.push_back("[server] Usage: /tp <x> <y> <z>");
             }
