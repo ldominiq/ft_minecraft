@@ -403,7 +403,7 @@ void Menu::resize(float width, float height)
 	this->menuWidth = DESIGN_WIDTH  * scale;
 	this->menuHeight = DESIGN_HEIGHT * scale;
 
-	textRenderer.setScale(scale / 2.0f);
+	textRenderer.setScale(scale);
 
 	build();
 }

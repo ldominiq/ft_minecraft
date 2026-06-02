@@ -44,11 +44,12 @@ void PlayerListHUD::onRender()
 {
     if (m_players.empty()) return;
 
-    const float s        = menuScale;
-    const float panelW   = 300.0f * s * menuScale;
+    float scale = textRenderer.getScale() * 2.5f;
+    const float s        = scale;
+    const float panelW   = 300.0f * s;
     const float padX     = 10.0f  * s;
-    const float padY     = 8.0f   * s * menuScale;
-    const float lineH    = 20.0f  * s * menuScale;
+    const float padY     = 8.0f   * s;
+    const float lineH    = 20.0f  * s;
     const float iconSize = 12.0f  * s;
     const float topGap   = 10.0f  * s;
 
