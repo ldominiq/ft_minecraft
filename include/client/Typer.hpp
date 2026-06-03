@@ -26,7 +26,7 @@ struct TypingCharacter {
 
 class Typer {
 private:
-	float scale = 0.3;
+	float scale = 1.0f;
 	Shader shader;
 	std::map<GLchar, TypingCharacter> Characters;
 	unsigned int VAO, VBO;

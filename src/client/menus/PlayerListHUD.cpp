@@ -27,7 +27,11 @@ glm::vec3 PlayerListHUD::idToColor(uint32_t id)
 PlayerListHUD::PlayerListHUD(float width, float height)
     : Menu(width, height)
 {
+	DESIGN_WIDTH = 3840;
+	DESIGN_HEIGHT = 2160;
     build();
+
+	resize(width, height);
 }
 
 void PlayerListHUD::update(const std::vector<PlayerEntry>& players)
@@ -44,11 +48,12 @@ void PlayerListHUD::onRender()
 {
     if (m_players.empty()) return;
 
-    const float s        = menuScale;
-    const float panelW   = 300.0f * s * textScale * 3;
+    float scale = textRenderer.getScale() * 2.5f;
+    const float s        = scale;
+    const float panelW   = 300.0f * s;
     const float padX     = 10.0f  * s;
-    const float padY     = 8.0f   * s * textScale * 3;
-    const float lineH    = 20.0f  * s * textScale * 3;
+    const float padY     = 8.0f   * s;
+    const float lineH    = 20.0f  * s;
     const float iconSize = 12.0f  * s;
     const float topGap   = 10.0f  * s;
 

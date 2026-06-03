@@ -78,7 +78,7 @@ void App::init(const std::string& serverIp) {
         audio.reset();
     }
 
-    glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, const int width, const int height) {
+    glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, int width, int height) {
 		App* app = static_cast<App*>(glfwGetWindowUserPointer(w));
 		// Skip resize if window is minimized (0x0)
 		if (width == 0 || height == 0)
