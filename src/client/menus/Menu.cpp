@@ -405,6 +405,8 @@ void Menu::resize(float width, float height)
 
 	textRenderer.setScale(scale);
 
+	std::cout << scale << std::endl;
+
 	build();
 }
 
