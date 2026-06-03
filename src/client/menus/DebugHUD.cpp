@@ -4,6 +4,8 @@
 DebugHUD::DebugHUD(float width, float height)
     : Menu(width, height)
 {
+	DESIGN_WIDTH = 3840;
+	DESIGN_HEIGHT = 2160;
     build();
 }
 

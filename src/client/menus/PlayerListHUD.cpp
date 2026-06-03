@@ -27,6 +27,8 @@ glm::vec3 PlayerListHUD::idToColor(uint32_t id)
 PlayerListHUD::PlayerListHUD(float width, float height)
     : Menu(width, height)
 {
+	DESIGN_WIDTH = 3840;
+	DESIGN_HEIGHT = 2160;
     build();
 }
 
