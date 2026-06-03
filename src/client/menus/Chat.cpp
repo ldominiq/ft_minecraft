@@ -9,6 +9,8 @@ Chat::Chat(float width, float height) : Menu(width, height)
 	DESIGN_HEIGHT = 2160;
 	build();
 	chatColor = glm::vec4(0,0,0,0.6f);
+
+	resize(width, height);
 }
 
 Chat::~Chat()

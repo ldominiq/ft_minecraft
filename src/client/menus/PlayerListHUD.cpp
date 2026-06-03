@@ -30,6 +30,8 @@ PlayerListHUD::PlayerListHUD(float width, float height)
 	DESIGN_WIDTH = 3840;
 	DESIGN_HEIGHT = 2160;
     build();
+
+	resize(width, height);
 }
 
 void PlayerListHUD::update(const std::vector<PlayerEntry>& players)
